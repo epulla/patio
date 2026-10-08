@@ -309,7 +309,15 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if e == nil {
-				if st.Type != "temporary" || recent(tt.StatusUpdated) {
+				recentStatus := true
+				if st.Type == "temporary" {
+					recentStatus, e = recent(tt.StatusUpdated)
+					if e != nil {
+						errw(w, 500, e.Error())
+						return
+					}
+				}
+				if recentStatus {
 					if q := r.URL.Query().Get("q"); q == "" || strings.Contains(strings.ToLower(tt.Title), strings.ToLower(q)) || strings.Contains(strings.ToLower(tt.Code), strings.ToLower(q)) {
 						tickets[sid] = append(tickets[sid], tt)
 					}
@@ -349,12 +357,15 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, out)
 }
-func recent(v *string) bool {
+func recent(v *string) (bool, error) {
 	if v == nil {
-		return false
+		return false, nil
 	}
 	t, e := time.Parse("2006-01-02T15:04:05.000Z", *v)
-	return e == nil && time.Since(t) < 24*time.Hour
+	if e != nil {
+		return false, e
+	}
+	return time.Since(t) < 24*time.Hour, nil
 }
 
 func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {

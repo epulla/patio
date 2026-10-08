@@ -503,6 +503,22 @@ func TestBoardDataRejectsCorruptTicketOrder(t *testing.T) {
 	}
 }
 
+func TestBoardDataRejectsCorruptTemporaryStatusTimestamp(t *testing.T) {
+	database, handler := newAPI(t)
+	b := createBoard(t, handler, "TEMP", []string{"Todo"})
+	var status testStatus
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/statuses", map[string]any{"name": "Temporary", "type": "temporary"}, &status); code != http.StatusCreated {
+		t.Fatalf("create temporary status = %d", code)
+	}
+	ticket := createTicket(t, handler, b.ID, status.ID)
+	if _, err := database.Exec("UPDATE ticket SET status_updated_at=? WHERE id=?", "not a timestamp", ticket.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/boards/"+b.ID+"/data", nil, nil); code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", code)
+	}
+}
+
 func assertOrder(t *testing.T, database *sql.DB, statusID string, want []string) {
 	t.Helper()
 	var raw string
