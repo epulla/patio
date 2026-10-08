@@ -1,4 +1,10 @@
-import { useEffect, useState, type DragEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import ReactQuill from "react-quill-new";
 import {
   api,
@@ -67,27 +73,13 @@ export default function BoardView({
             value={query}
             onChange={(event) => search(event.target.value)}
           />
+          <ExportMenu boardId={id} />
           <button onClick={() => setSettings(!settings)}>
             <Icon name={settings ? "x" : "settings"} />
             {settings ? "Close settings" : "Board settings"}
           </button>
         </div>
       </div>
-      <section className="export-bar">
-        <strong>Export</strong>
-        <div className="export-links">
-          <a href={`/api/boards/${id}/export?format=xlsx`} download="">
-            <Icon name="download" /> Excel (.xlsx)
-          </a>
-          <a href={`/api/boards/${id}/export?format=csv`} download="">
-            <Icon name="download" /> CSV
-          </a>
-          <a href={`/api/boards/${id}/export?format=json`} download="" aria-describedby="board-export-hint">
-            <Icon name="download" /> JSON backup
-          </a>
-        </div>
-        <small id="board-export-hint">Full board backup — import into my-tickets on another computer.</small>
-      </section>
       <ErrorText error={error} />
       {settings ? (
         <Settings data={data} onReload={load} onError={setError} />
@@ -109,6 +101,84 @@ export default function BoardView({
           }}
           onError={setError}
         />
+      )}
+    </div>
+  );
+}
+
+const exportFormats = [
+  ["xlsx", "Excel (.xlsx)", "Spreadsheet of tickets"],
+  ["csv", "CSV", "Plain table"],
+  ["json", "JSON backup", "Import into my-tickets on another computer"],
+];
+
+function ExportMenu({ boardId }: { boardId: string }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const items = () => [
+    ...(root.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+  ];
+  useEffect(() => {
+    if (!open) return;
+    items()[0]?.focus();
+    const outside = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
+  }, [open]);
+  function close() {
+    setOpen(false);
+    trigger.current?.focus();
+  }
+  function keyDown(event: KeyboardEvent) {
+    if (!open) return;
+    if (event.key === "Escape") return close();
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const list = items();
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    const index = list.indexOf(document.activeElement as HTMLElement);
+    list[(index + step + list.length) % list.length].focus();
+  }
+  return (
+    <div
+      className="menu"
+      ref={root}
+      onKeyDown={keyDown}
+      onBlur={(event) => {
+        if (!root.current?.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <button
+        ref={trigger}
+        className="menu-trigger"
+        aria-label="Export"
+        data-tip="Export"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="download" />
+        <Icon name="chevronDown" />
+      </button>
+      {open && (
+        <div className="menu-list" role="menu" aria-label="Export">
+          {exportFormats.map(([format, label, hint]) => (
+            <a
+              key={format}
+              role="menuitem"
+              href={`/api/boards/${boardId}/export?format=${format}`}
+              download=""
+              // Defer so the browser starts the download before the item unmounts.
+              onClick={() => setTimeout(close)}
+            >
+              <strong>{label}</strong>
+              <small>{hint}</small>
+            </a>
+          ))}
+        </div>
       )}
     </div>
   );
