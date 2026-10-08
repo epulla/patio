@@ -523,6 +523,21 @@ function StatusManager({
   onReload: () => void;
   onError: (error: unknown) => void;
 }) {
+  // Bumped after each move so rows remount and drop unsaved edits.
+  const [moves, setMoves] = useState(0);
+  async function move(index: number, to: number) {
+    const ids = statuses.map((status) => status.id);
+    [ids[index], ids[to]] = [ids[to], ids[index]];
+    try {
+      await api.put(`/api/boards/${statuses[index].board_id}/status-order`, {
+        status_ids: ids,
+      });
+      setMoves((count) => count + 1);
+      onReload();
+    } catch (error) {
+      onError(error);
+    }
+  }
   return (
     <div className="settings-section">
       <h2>Columns</h2>
@@ -531,12 +546,39 @@ function StatusManager({
       </small>
       {statuses.map((status) => (
         <StatusRow
-          key={status.id}
+          key={`${moves}-${status.id}`}
           status={status}
           onReload={onReload}
           onError={onError}
         />
       ))}
+      <h3 className="preview-title">Order</h3>
+      <ol className="column-preview" aria-label="Column order">
+        {statuses.map((status, index) => (
+          <li
+            key={status.id}
+            className={`preview-card ${status.type === "temporary" ? "temporary" : ""}`}
+          >
+            <span>{status.name}</span>
+            <div>
+              <IconButton
+                className="ghost"
+                icon="chevronLeft"
+                label={`Move ${status.name} left`}
+                disabled={index === 0}
+                onClick={() => move(index, index - 1)}
+              />
+              <IconButton
+                className="ghost"
+                icon="chevronRight"
+                label={`Move ${status.name} right`}
+                disabled={index === statuses.length - 1}
+                onClick={() => move(index, index + 1)}
+              />
+            </div>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
