@@ -1,6 +1,6 @@
 # my-tickets
 
-Local, single-user kanban ticket app. One Go binary with an embedded React UI and a SQLite database. Runs on Windows, macOS, and Linux with no install or CGO.
+Local kanban ticket desktop app built with Go, Wails, React, and SQLite. MCP stdio subcommand gives AI clients access to same database.
 
 Port of the prod-tickets schema, plus a `ticket_status_transition` table that records every status change for future reporting.
 
@@ -11,26 +11,22 @@ Port of the prod-tickets schema, plus a `ticket_status_transition` table that re
 - Tickets: rich-text description, ticket types, due date, status, history ("Status changed from X to Y"), status transitions.
 - Export: board as Excel, CSV, or JSON backup; ticket as JSON or Markdown.
 - Import: a board JSON backup imports as a new board, e.g. on another computer. A colliding short name gets a suffix (`NB` -> `NB2`).
-- Print: `/print/tickets/<code>` shows a clean printable page with history and transitions.
+- Print: clean printable page with history and transitions.
 - Hidden: comments and assignee work in the API; the UI shows them only with `-show-hidden`.
 
-## Run
+## Install and run
+
+Download app for your OS from [Releases](https://github.com/epulla-hm/my-tickets/releases) and open it. Linux requires GTK 3 and WebKit2GTK runtime libraries (for Ubuntu 22.04, `libgtk-3-0` and `libwebkit2gtk-4.0-37`).
+
+On Linux, make downloaded binary executable with `chmod +x my-tickets-linux-amd64` before running it.
+
+macOS release is unsigned. On first launch, right-click app and choose **Open**, or remove quarantine:
 
 ```sh
-make build
-./bin/my-tickets            # opens http://127.0.0.1:<random port> in the browser
+xattr -dr com.apple.quarantine /Applications/my-tickets.app
 ```
 
-Flags:
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `-port` | `0` (random) | HTTP port, bound to 127.0.0.1 only |
-| `-d` | per-OS data directory | Database file path (see Data) |
-| `-no-browser` | `false` | Do not open the browser |
-| `-show-hidden` | `false` | Show comments and assignee in the UI |
-
-Stop it with `pkill -f bin/my-tickets` (macOS/Linux) or Ctrl+C.
+Optional flags: `-d path/to/file.db` selects database file; `-show-hidden` shows comments and assignee.
 
 ## Data
 
@@ -44,30 +40,42 @@ Override with `-d path/to/file.db`.
 
 Back up a board with its JSON export, or copy the `.db` file while the app is stopped.
 
+## Build from source
+
+Install Go and pnpm. Wails CLI version must match app version:
+
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+make build
+```
+
+On macOS, install Xcode command line tools. Linux also needs GTK 3 and WebKit2GTK development packages. Build output is under `build/bin/`.
+
 ## AI access (MCP)
 
-Configure an MCP client to spawn the stdio server:
+MCP runs as `my-tickets mcp` over stdio and shares database with desktop app. It acts as Martin, the AI persona shown with an AI badge in app. Use `-d path` after `mcp` if database is not at default location.
+
+Configure client with installed executable path:
+
+| OS | `command` | `args` |
+| --- | --- | --- |
+| macOS | `/Applications/my-tickets.app/Contents/MacOS/my-tickets` | `["mcp"]` |
+| Windows | `C:\\path\\to\\my-tickets-windows-amd64.exe` | `["mcp"]` |
+| Linux | `/path/to/my-tickets-linux-amd64` | `["mcp"]` |
+
+Example client config:
 
 ```json
-{"mcpServers":{"my-tickets":{"command":"/path/to/my-tickets","args":["mcp"]}}}
+{"mcpServers":{"my-tickets":{"command":"/Applications/my-tickets.app/Contents/MacOS/my-tickets","args":["mcp"]}}}
 ```
 
-It shares database with app. Use `-d path` when database is not at default location.
+For a separate database, append `"-d", "path/to/file.db"` to `args`.
 
-## Development
-
-```sh
-go run . -port 8080 -no-browser   # API on :8080
-pnpm --dir web install
-pnpm --dir web dev                # Vite dev server, proxies /api to :8080
-```
-
-## Build and test
+## Development and tests
 
 ```sh
-make test          # go test ./...
-make build         # frontend + bin/my-tickets
-make web release   # frontend + Windows/macOS/Linux binaries in bin/
+wails dev
+make test
 ```
 
 ## Manual smoke test

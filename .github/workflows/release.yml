@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin/arm64
+            artifact: my-tickets-darwin-arm64.zip
+            app: true
+          - os: macos-latest
+            platform: darwin/amd64
+            artifact: my-tickets-darwin-amd64.zip
+            app: true
+          - os: windows-latest
+            platform: windows/amd64
+            artifact: my-tickets-windows-amd64.exe
+          - os: ubuntu-22.04
+            platform: linux/amd64
+            artifact: my-tickets-linux-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+      - name: Test
+        run: go test ./...
+      - name: Build desktop app
+        run: wails build -platform ${{ matrix.platform }}
+      - name: Smoke-test Windows MCP initialize
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $request = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"1"}}}'
+          $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $startInfo.FileName = "build/bin/my-tickets.exe"
+          $startInfo.ArgumentList.Add("mcp")
+          $startInfo.UseShellExecute = $false
+          $startInfo.RedirectStandardInput = $true
+          $startInfo.RedirectStandardOutput = $true
+          $startInfo.RedirectStandardError = $true
+          $process = [System.Diagnostics.Process]::Start($startInfo)
+          try {
+            $process.StandardInput.WriteLine($request)
+            $process.StandardInput.Flush()
+            $response = $process.StandardOutput.ReadLine()
+            if ($response -notmatch '"name"\s*:\s*"my-tickets"') {
+              throw "MCP initialize response missing server name: $response"
+            }
+            $process.StandardInput.Close()
+            if (-not $process.WaitForExit(5000)) {
+              throw "MCP process did not exit after stdin closed"
+            }
+            if ($process.ExitCode -ne 0) {
+              throw "MCP process exited with code $($process.ExitCode)"
+            }
+          } finally {
+            if (-not $process.HasExited) { $process.Kill() }
+            $process.Dispose()
+          }
+      - name: Zip macOS app
+        if: matrix.app == true
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/my-tickets.app ${{ matrix.artifact }}
+      - name: Stage other build
+        if: matrix.app != true
+        shell: bash
+        run: cp build/bin/my-tickets${{ runner.os == 'Windows' && '.exe' || '' }} "${{ matrix.artifact }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true

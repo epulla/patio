@@ -1,26 +1,29 @@
 # AGENTS.md
 
-Local single-user kanban app: Go HTTP server + SQLite + React UI embedded into one binary. See README.md for features and usage.
+Local kanban desktop app: Go + SQLite + Wails v2 + React UI. `my-tickets mcp` exposes AI access over stdio. See README.md for features and usage.
 
 ## Rules
 
 - Always use `pnpm`, never `npm` or `npx` (use `pnpm dlx`).
-- No CGO: SQLite driver is `modernc.org/sqlite`. Every release target must cross-compile with `CGO_ENABLED=0`.
+- No CGO except the Wails desktop build on macOS/Linux; Windows and `go test` stay CGO-free. SQLite driver is `modernc.org/sqlite`.
 - No ORM, no router library, no state or CSS framework. `database/sql`, `net/http` ServeMux patterns, React with a tiny pathname router.
 - Plans live in `docs/plans/`. One commit per task.
 
 ## Layout
 
-- `main.go`: flags (`-port`, `-d`, `-no-browser`, `-show-hidden`), OS-specific DB path in `dbPath`, SPA serving, browser open.
-- `internal/db/`: `Open` applies pragmas (foreign_keys, WAL, busy_timeout) via DSN, runs embedded migrations tracked by `PRAGMA user_version`, seeds user `local`.
+- `main.go`: flags (`-d`, `-show-hidden`), `mcp` subcommand, Wails app, OS-specific DB path in `dbPath`.
+- `internal/db/`: `Open` applies pragmas (foreign_keys, WAL, busy_timeout) via DSN, runs embedded migrations tracked by `PRAGMA user_version`, seeds users, and `Watch` detects external writes.
 - `internal/db/migrations/`: numbered `.sql` files. Never edit an applied migration; add a new file.
 - `internal/api/`: `server.go` (routes, JSON helpers, types), `boards.go`, `tickets.go`, `transfer.go` (export/import).
-- `web/src/`: `App.tsx` (router), `BoardList.tsx`, `BoardView.tsx`, `TicketDetail.tsx`, `PrintTicket.tsx`, `api.ts` (types + fetch).
+- `internal/mcp/`: MCP stdio server; requests act as user `ai`.
+- `web/src/`: `App.tsx` (router), `AIBadge.tsx`, `BoardList.tsx`, `BoardView.tsx`, `TicketDetail.tsx`, `PrintTicket.tsx`, `api.ts` (types + fetch).
 - `web/embed.go`: `//go:embed all:dist`. `web/public/.gitkeep` keeps `web/dist/` non-empty so `go build` works before a frontend build.
+- `wails.json`: Wails app and pnpm frontend build configuration.
 
 ## Domain invariants
 
-- Acting user is always `local`. AI agents will get their own `user` rows later.
+- UI acting user is `local`; MCP acts as `ai` (Martin, `is_ai=1`).
+- `internal/db.Watch` polls `PRAGMA data_version`; external writes emit Wails event `db-changed` for UI refresh.
 - IDs are UUIDv4 TEXT generated in Go. Timestamps are ISO-8601 UTC TEXT.
 - Ticket number comes from `board_counter` per board; code is `<short_name>-<number>`. Changing short_name rewrites codes and stores old ones in `old_ticket_code`.
 - Ordering lives in JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Corrupt order JSON must return an error, never an empty list.
@@ -37,7 +40,10 @@ Local single-user kanban app: Go HTTP server + SQLite + React UI embedded into o
 gofmt -l internal                 # must be empty
 go vet ./... && go test ./... -count=1
 pnpm --dir web build              # runs tsc
-make web release                  # cross-compile check
+wails build
+make release                      # CGO-free Windows compile check
 ```
 
-Smoke-test with a throwaway data dir: `./bin/my-tickets -d "$(mktemp -d)/test.db" -port 18080 -no-browser`.
+Install Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0`.
+
+Smoke-test with a throwaway data dir: `build/bin/my-tickets.app/Contents/MacOS/my-tickets -d "$(mktemp -d)/test.db"`.
