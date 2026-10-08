@@ -1147,6 +1147,106 @@ a:has(> .svg-icon) {
   font-weight: 600;
 }
 
+/* MCP */
+.mcp-page {
+  max-width: 960px;
+}
+.mcp-page .muted {
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.mcp-status {
+  --state: var(--neutral);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-color: color-mix(in oklch, var(--state) 45%, var(--border));
+  background: color-mix(in oklch, var(--state) 8%, var(--base-100));
+}
+.mcp-status.up {
+  --state: oklch(72% 0.19 150);
+}
+.mcp-status.down {
+  --state: var(--error);
+}
+.status-dot {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--state);
+  box-shadow: 0 0 0 8px color-mix(in oklch, var(--state) 22%, transparent);
+}
+.mcp-status.up .status-dot {
+  animation: status-pulse 2.4s ease-out infinite;
+}
+@keyframes status-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--state) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcp-status.up .status-dot {
+    animation: none;
+  }
+}
+.mcp-status-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mcp-status-text strong {
+  font-size: 20px;
+}
+.mcp-status-text .muted {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mcp-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.mcp-section-head h2 {
+  margin: 0;
+}
+.mcp-config {
+  margin: 0;
+  padding: 16px;
+  background: var(--base-300);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 13px/1.5 var(--mono);
+  overflow-x: auto;
+}
+.mcp-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.mcp-tools div {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--base-200);
+}
+.mcp-tools dt code {
+  font: 600 13px var(--mono);
+}
+.mcp-tools dd {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 @media (max-width: 760px) {
   main {
     padding: 28px 16px;
