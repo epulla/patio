@@ -443,7 +443,7 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT h.id,h.content,h.created_at,h.user_id,u.name FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id=? ORDER BY h.created_at,h.id`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT h.id,h.content,h.created_at,h.user_id,u.name FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id=? ORDER BY h.created_at,h.rowid`, idParam(r, "id"))
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -465,7 +465,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, a)
 }
 func (s *Server) transitions(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT x.id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.ticket_id=? ORDER BY x.moved_at,x.id`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT x.id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.ticket_id=? ORDER BY x.moved_at,x.rowid`, idParam(r, "id"))
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -506,7 +506,7 @@ func (s *Server) transitions(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, a)
 }
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT c.id,c.content,c.created_at,c.updated_at,c.user_id,u.name FROM ticket_comment c JOIN "user" u ON u.id=c.user_id WHERE c.ticket_id=? ORDER BY c.created_at,c.id`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT c.id,c.content,c.created_at,c.updated_at,c.user_id,u.name FROM ticket_comment c JOIN "user" u ON u.id=c.user_id WHERE c.ticket_id=? ORDER BY c.created_at,c.rowid`, idParam(r, "id"))
 	if e != nil {
 		errw(w, 500, e.Error())
 		return

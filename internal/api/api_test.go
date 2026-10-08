@@ -158,7 +158,7 @@ func TestMoveAcrossColumnsAuditsAndOrders(t *testing.T) {
 		t.Fatalf("move audit counts = transition %d, history delta %d", transitions, histories-beforeHistory)
 	}
 	var history string
-	if err := database.QueryRow("SELECT content FROM ticket_history WHERE ticket_id=? ORDER BY created_at DESC LIMIT 1", second.ID).Scan(&history); err != nil {
+	if err := database.QueryRow("SELECT content FROM ticket_history WHERE ticket_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1", second.ID).Scan(&history); err != nil {
 		t.Fatal(err)
 	}
 	if history != "Status changed from To Do to In Progress" {

@@ -162,7 +162,7 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
-	rows, e = s.db.Query(`SELECT h.id,h.content,h.created_at,h.ticket_id,h.user_id,u.name FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY h.created_at,h.id`, id)
+	rows, e = s.db.Query(`SELECT h.id,h.content,h.created_at,h.ticket_id,h.user_id,u.name FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY h.created_at,h.rowid`, id)
 	if e != nil {
 		return b, e
 	}
@@ -178,7 +178,7 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
-	rows, e = s.db.Query(`SELECT x.id,x.ticket_id,x.board_id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.board_id=? ORDER BY x.moved_at,x.id`, id)
+	rows, e = s.db.Query(`SELECT x.id,x.ticket_id,x.board_id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.board_id=? ORDER BY x.moved_at,x.rowid`, id)
 	if e != nil {
 		return b, e
 	}
@@ -213,7 +213,7 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
-	rows, e = s.db.Query(`SELECT id,content,created_at,updated_at,ticket_id,user_id FROM ticket_comment WHERE ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY created_at,id`, id)
+	rows, e = s.db.Query(`SELECT id,content,created_at,updated_at,ticket_id,user_id FROM ticket_comment WHERE ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY created_at,rowid`, id)
 	if e != nil {
 		return b, e
 	}
