@@ -22,8 +22,10 @@ type testStatus struct {
 	ID string `json:"id"`
 }
 type testTicket struct {
-	ID   string `json:"id"`
-	Code string `json:"code"`
+	ID         string  `json:"id"`
+	Code       string  `json:"code"`
+	Title      string  `json:"title"`
+	ReporterID *string `json:"reporter_id"`
 }
 type testData struct {
 	Statuses []struct {
@@ -33,6 +35,10 @@ type testData struct {
 }
 
 func newAPI(t *testing.T) (*sql.DB, http.Handler) {
+	return newAPIAs(t, "local")
+}
+
+func newAPIAs(t *testing.T, userID string) (*sql.DB, http.Handler) {
 	t.Helper()
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -43,7 +49,7 @@ func newAPI(t *testing.T) (*sql.DB, http.Handler) {
 			t.Error(err)
 		}
 	})
-	return database, New(database, false)
+	return database, New(database, userID, false)
 }
 
 func requestJSON(t *testing.T, handler http.Handler, method, path string, body any, out any) int {
@@ -166,6 +172,63 @@ func TestMoveAcrossColumnsAuditsAndOrders(t *testing.T) {
 	}
 	assertOrder(t, database, statuses[0].ID, []string{first.ID})
 	assertOrder(t, database, statuses[1].ID, []string{second.ID})
+}
+
+func TestActingUserIsConfigurable(t *testing.T) {
+	database, handler := newAPIAs(t, "ai")
+	b := createBoard(t, handler, "AI", []string{"Todo", "Done"})
+	statuses := boardStatuses(t, handler, b.ID)
+	ticket := createTicket(t, handler, b.ID, statuses[0].ID)
+	if ticket.ReporterID == nil || *ticket.ReporterID != "ai" {
+		t.Fatalf("reporter = %#v", ticket.ReporterID)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/tickets/"+ticket.ID+"/move", map[string]any{"status_id": statuses[1].ID, "index": 0}, nil); code != http.StatusOK {
+		t.Fatalf("move status = %d", code)
+	}
+	var users []string
+	rows, err := database.Query("SELECT user_id FROM ticket_status_transition WHERE ticket_id=? ORDER BY rowid", ticket.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			t.Fatal(err)
+		}
+		users = append(users, userID)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(users, []string{"ai", "ai"}) {
+		t.Fatalf("transition users = %#v", users)
+	}
+}
+
+func TestSearchTickets(t *testing.T) {
+	_, handler := newAPI(t)
+	a := createBoard(t, handler, "SEA", []string{"Todo"})
+	b := createBoard(t, handler, "OTH", []string{"Todo"})
+	var first, second testTicket
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+a.ID+"/tickets", map[string]any{"title": "Partial Match"}, &first); code != http.StatusCreated {
+		t.Fatalf("first ticket status = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/tickets", map[string]any{"title": "Other"}, &second); code != http.StatusCreated {
+		t.Fatalf("second ticket status = %d", code)
+	}
+	for _, test := range []struct {
+		path string
+		want int
+	}{{"/api/tickets/search?q=partial", 1}, {"/api/tickets/search?q=" + first.Code, 1}, {"/api/tickets/search?q=match&board_id=" + b.ID, 0}} {
+		var got []testTicket
+		if code := requestJSON(t, handler, http.MethodGet, test.path, nil, &got); code != http.StatusOK || len(got) != test.want {
+			t.Fatalf("search %q = status %d, %#v", test.path, code, got)
+		}
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/search?q=%20", nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("empty search status = %d", code)
+	}
 }
 
 func TestSameColumnMoveOnlyReorders(t *testing.T) {

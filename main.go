@@ -54,7 +54,7 @@ func main() {
 	mime.AddExtensionType(".js", "text/javascript")
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/", api.New(database, *showHidden))
+	mux.Handle("/api/", api.New(database, "local", *showHidden))
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {

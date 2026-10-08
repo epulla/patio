@@ -14,11 +14,12 @@ import (
 
 type Server struct {
 	db         *sql.DB
+	userID     string
 	showHidden bool
 }
 
-func New(db *sql.DB, showHidden bool) http.Handler {
-	s := &Server{db: db, showHidden: showHidden}
+func New(db *sql.DB, userID string, showHidden bool) http.Handler {
+	s := &Server{db: db, userID: userID, showHidden: showHidden}
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/users", s.users)
@@ -36,6 +37,7 @@ func New(db *sql.DB, showHidden bool) http.Handler {
 	m.HandleFunc("PUT /api/ticket-types/{id}", s.updateType)
 	m.HandleFunc("DELETE /api/ticket-types/{id}", s.deleteType)
 	m.HandleFunc("POST /api/boards/{id}/tickets", s.createTicket)
+	m.HandleFunc("GET /api/tickets/search", s.searchTickets)
 	m.HandleFunc("GET /api/tickets/{idOrCode}", s.getTicket)
 	m.HandleFunc("PUT /api/tickets/{id}", s.updateTicket)
 	m.HandleFunc("DELETE /api/tickets/{id}", s.deleteTicket)

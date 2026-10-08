@@ -102,7 +102,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 			return e
 		}
 		code := fmt.Sprintf("%s-%d", short, num)
-		if _, e := tx.Exec(`INSERT INTO ticket(id,title,description,number,code,created_at,updated_at,status_updated_at,status_id,board_id,ticket_type_id,reporter_id,assignee_id,due_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, title, desc, num, code, t, t, t, sid, bid, nullIf(tt, ttset), "local", nullIf(ass, aset), nullIf(due, dset)); e != nil {
+		if _, e := tx.Exec(`INSERT INTO ticket(id,title,description,number,code,created_at,updated_at,status_updated_at,status_id,board_id,ticket_type_id,reporter_id,assignee_id,due_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, title, desc, num, code, t, t, t, sid, bid, nullIf(tt, ttset), s.userID, nullIf(ass, aset), nullIf(due, dset)); e != nil {
 			return e
 		}
 		var order string
@@ -117,13 +117,13 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		if _, e := tx.Exec(`UPDATE ticket_order SET ticket_ids=? WHERE status_id=?`, listJSON(a), sid); e != nil {
 			return e
 		}
-		if e := historyTx(tx, id, "Ticket created", t); e != nil {
+		if e := s.historyTx(tx, id, "Ticket created", t); e != nil {
 			return e
 		}
-		if e := transitionTx(tx, id, bid, "", sid, t); e != nil {
+		if e := s.transitionTx(tx, id, bid, "", sid, t); e != nil {
 			return e
 		}
-		out = ticket{id, title, desc, num, code, t, t, nullable(due, dset), &t, &sid, &bid, nullable(tt, ttset), ptr("local"), nullable(ass, aset)}
+		out = ticket{id, title, desc, num, code, t, t, nullable(due, dset), &t, &sid, &bid, nullable(tt, ttset), ptr(s.userID), nullable(ass, aset)}
 		return nil
 	})
 	if e != nil {
@@ -156,17 +156,54 @@ func mustShort(tx *sql.Tx, bid string) (string, error) {
 	e := tx.QueryRow(`SELECT short_name FROM board WHERE id=?`, bid).Scan(&x)
 	return x, e
 }
-func historyTx(tx *sql.Tx, tid, msg, t string) error {
-	_, e := tx.Exec(`INSERT INTO ticket_history(id,content,created_at,ticket_id,user_id) VALUES(?,?,?,?,?)`, uid(), msg, t, tid, "local")
+func (s *Server) historyTx(tx *sql.Tx, tid, msg, t string) error {
+	_, e := tx.Exec(`INSERT INTO ticket_history(id,content,created_at,ticket_id,user_id) VALUES(?,?,?,?,?)`, uid(), msg, t, tid, s.userID)
 	return e
 }
-func transitionTx(tx *sql.Tx, tid, bid, from, to, t string) error {
+func (s *Server) transitionTx(tx *sql.Tx, tid, bid, from, to, t string) error {
 	var f any = from
 	if from == "" {
 		f = nil
 	}
-	_, e := tx.Exec(`INSERT INTO ticket_status_transition(id,ticket_id,board_id,from_status_id,to_status_id,user_id,moved_at) VALUES(?,?,?,?,?,?,?)`, uid(), tid, bid, f, to, "local", t)
+	_, e := tx.Exec(`INSERT INTO ticket_status_transition(id,ticket_id,board_id,from_status_id,to_status_id,user_id,moved_at) VALUES(?,?,?,?,?,?,?)`, uid(), tid, bid, f, to, s.userID, t)
 	return e
+}
+func (s *Server) searchTickets(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		errw(w, http.StatusBadRequest, "q required")
+		return
+	}
+	q = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(q)
+	query := `SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id
+		FROM ticket t JOIN board b ON b.id=t.board_id
+		WHERE b.deleted_at IS NULL AND (t.title LIKE '%' || ? || '%' ESCAPE '\' OR t.code LIKE '%' || ? || '%' ESCAPE '\')`
+	args := []any{q, q}
+	if boardID := strings.TrimSpace(r.URL.Query().Get("board_id")); boardID != "" {
+		query += " AND t.board_id=?"
+		args = append(args, boardID)
+	}
+	query += " ORDER BY b.created_at,t.number"
+	rows, e := s.db.Query(query, args...)
+	if e != nil {
+		errw(w, http.StatusInternalServerError, e.Error())
+		return
+	}
+	defer rows.Close()
+	out := []ticket{}
+	for rows.Next() {
+		t, err := scanTicket(rows)
+		if err != nil {
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		out = append(out, t)
+	}
+	if e = rows.Err(); e != nil {
+		errw(w, http.StatusInternalServerError, e.Error())
+		return
+	}
+	write(w, http.StatusOK, out)
 }
 func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	key := idParam(r, "idOrCode")
@@ -207,7 +244,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 				}
 				updates = append(updates, k+"=?")
 				args = append(args, x)
-				if e = historyTx(tx, id, "Updated "+k, now()); e != nil {
+				if e = s.historyTx(tx, id, "Updated "+k, now()); e != nil {
 					return e
 				}
 			}
@@ -241,7 +278,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 					args = append(args, z)
 					*x.dst = &z
 				}
-				if e = historyTx(tx, id, "Updated "+x.k, now()); e != nil {
+				if e = s.historyTx(tx, id, "Updated "+x.k, now()); e != nil {
 					return e
 				}
 			}
@@ -255,7 +292,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 				var index int
 				index, e = lenMust(tx, z)
 				if e == nil {
-					e = moveTx(tx, out, id, z, index, true)
+					e = s.moveTx(tx, out, id, z, index, true)
 				}
 				if e != nil {
 					return e
@@ -292,7 +329,7 @@ func lenMust(tx *sql.Tx, sid string) (int, error) {
 	a, e := parseList(x)
 	return len(a), e
 }
-func moveTx(tx *sql.Tx, t ticket, id, target string, index int, audit bool) error {
+func (s *Server) moveTx(tx *sql.Tx, t ticket, id, target string, index int, audit bool) error {
 	if t.StatusID != nil && *t.StatusID == target {
 		return reorderTx(tx, target, id, index)
 	}
@@ -346,10 +383,10 @@ func moveTx(tx *sql.Tx, t ticket, id, target string, index int, audit bool) erro
 		if e := tx.QueryRow(`SELECT name FROM status WHERE id=?`, target).Scan(&toName); e != nil {
 			return e
 		}
-		if e := historyTx(tx, id, fmt.Sprintf("Status changed from %s to %s", fromName, toName), tm); e != nil {
+		if e := s.historyTx(tx, id, fmt.Sprintf("Status changed from %s to %s", fromName, toName), tm); e != nil {
 			return e
 		}
-		return transitionTx(tx, id, *t.BoardID, *t.StatusID, target, tm)
+		return s.transitionTx(tx, id, *t.BoardID, *t.StatusID, target, tm)
 	}
 	return nil
 }
@@ -395,7 +432,7 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			return e
 		}
-		if e = moveTx(tx, out, id, in.StatusID, in.Index, true); e != nil {
+		if e = s.moveTx(tx, out, id, in.StatusID, in.Index, true); e != nil {
 			return e
 		}
 		out, e = scanTicket(tx.QueryRow(`SELECT id,title,description,number,code,created_at,updated_at,due_date,status_updated_at,status_id,board_id,ticket_type_id,reporter_id,assignee_id FROM ticket WHERE id=?`, id))
@@ -542,11 +579,11 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 		if e := tx.QueryRow(`SELECT id FROM ticket WHERE id=?`, tid).Scan(&x); e != nil {
 			return e
 		}
-		if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, id, in.Content, t, t, tid, "local"); e != nil {
+		if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, id, in.Content, t, t, tid, s.userID); e != nil {
 			return e
 		}
-		c = comment{id, in.Content, t, t, "local", "Local"}
-		return nil
+		c = comment{id, in.Content, t, t, s.userID, ""}
+		return tx.QueryRow(`SELECT name FROM "user" WHERE id=?`, s.userID).Scan(&c.UserName)
 	})
 	if e == sql.ErrNoRows {
 		errw(w, 404, "ticket not found")
