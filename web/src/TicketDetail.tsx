@@ -39,6 +39,9 @@ export default function TicketDetail({
     status: "",
     assignee: "",
   });
+  const [tab, setTab] = useState<"comments" | "history" | "transitions">(
+    "comments",
+  );
   const previous = useRef({ id, showHidden: config.show_hidden, refresh });
   async function load(preserveForm = false) {
     try {
@@ -106,6 +109,12 @@ export default function TicketDetail({
         <ErrorText error={error} />
       </div>
     );
+  const activeTab = !config.show_hidden && tab === "comments" ? "history" : tab;
+  const tabs = [
+    ...(config.show_hidden ? ([["comments", "Comments"]] as const) : []),
+    ["history", "History"],
+    ["transitions", "Transitions"],
+  ] as const;
   return (
     <div className="ticket-page">
       <button
@@ -115,10 +124,10 @@ export default function TicketDetail({
         ← Back to board
       </button>
       <ErrorText error={error} />
-      <div className="ticket-layout">
-        <section className="panel ticket-main">
-          <div className="ticket-code">
-            {ticket.code}{" "}
+      <section className="panel ticket-shell">
+        <div className="ticket-top">
+          <span className="ticket-code">{ticket.code}</span>
+          <div className="ticket-links">
             <a
               href={`/print/tickets/${ticket.id}`}
               onClick={(event) => {
@@ -128,127 +137,160 @@ export default function TicketDetail({
             >
               Print
             </a>
-            {" "}<a href={`/api/tickets/${ticket.id}/export?format=json`} download="">Export JSON</a>
-            {" "}<a href={`/api/tickets/${ticket.id}/export?format=md`} download="">Export Markdown</a>
+            <a href={`/api/tickets/${ticket.id}/export?format=json`} download="">
+              Export JSON
+            </a>
+            <a href={`/api/tickets/${ticket.id}/export?format=md`} download="">
+              Export Markdown
+            </a>
           </div>
-          <input
-            className="title-input"
-            aria-label="Title"
-            value={form.title}
-            onChange={(event) =>
-              setForm({ ...form, title: event.target.value })
-            }
-            onBlur={() => save({ title: form.title })}
-          />
-          <label>
-            Description
-            <ReactQuill
-              theme="snow"
-              value={form.description}
-              onChange={(description) => setForm({ ...form, description })}
-              onBlur={() => save({ description: clean(form.description) })}
-            />
-          </label>
-          <h2>History</h2>
-          {history.map((item) => (
-            <div className="timeline" key={item.id}>
-              <strong>
-                {item.user_name} <AIBadge isAI={item.user_is_ai} />
-              </strong>
-              <span>{formatDate(item.created_at)}</span>
-              <p>{item.content}</p>
-            </div>
-          ))}
-        </section>
-        <aside className="panel ticket-side">
-          <label>
-            Status
-            <select
-              value={form.status}
-              onChange={(event) => {
-                setForm({ ...form, status: event.target.value });
-                save({ status_id: event.target.value });
-              }}
-            >
-              {board?.statuses.map((status) => (
-                <option key={status.id} value={status.id}>
-                  {status.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Type
-            <select
-              value={form.type}
-              onChange={(event) => {
-                setForm({ ...form, type: event.target.value });
-                save({ ticket_type_id: event.target.value || null });
-              }}
-            >
-              <option value="">No type</option>
-              {board?.ticket_types.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Due date
+        </div>
+        <div className="ticket-layout">
+          <div className="ticket-main">
             <input
-              type="date"
-              value={form.dueDate}
-              onChange={(event) => {
-                setForm({ ...form, dueDate: event.target.value });
-                save({ due_date: event.target.value || null });
-              }}
+              className="title-input"
+              aria-label="Title"
+              value={form.title}
+              onChange={(event) =>
+                setForm({ ...form, title: event.target.value })
+              }
+              onBlur={() => save({ title: form.title })}
             />
-          </label>
-          {config.show_hidden && (
-            <>
+            <label>
+              Description
+              <ReactQuill
+                theme="snow"
+                value={form.description}
+                onChange={(description) => setForm({ ...form, description })}
+                onBlur={() => save({ description: clean(form.description) })}
+              />
+            </label>
+          </div>
+          <aside className="ticket-side">
+            <label>
+              Status
+              <select
+                value={form.status}
+                onChange={(event) => {
+                  setForm({ ...form, status: event.target.value });
+                  save({ status_id: event.target.value });
+                }}
+              >
+                {board?.statuses.map((status) => (
+                  <option key={status.id} value={status.id}>
+                    {status.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="ticket-details">
               <label>
-                Assignee
+                Type
                 <select
-                  value={form.assignee}
+                  value={form.type}
                   onChange={(event) => {
-                    setForm({ ...form, assignee: event.target.value });
-                    save({ assignee_id: event.target.value || null });
+                    setForm({ ...form, type: event.target.value });
+                    save({ ticket_type_id: event.target.value || null });
                   }}
                 >
-                  <option value="">Unassigned</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} {user.last_name}
-                      {user.is_ai ? " (AI)" : ""}
+                  <option value="">No type</option>
+                  {board?.ticket_types.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
                     </option>
                   ))}
                 </select>
               </label>
-              <Comments
-                ticketId={ticket.id}
-                comments={comments}
-                onReload={load}
-              />
-            </>
-          )}
-          <button className="danger" onClick={remove}>
-            Delete ticket
-          </button>
-          <h2>Transitions</h2>
-          {transitions.map((item) => (
-            <div className="transition" key={item.id}>
-              <strong>
-                {item.from_status_name || "New"} → {item.to_status_name}
-              </strong>
-              <span>
-                {item.user_name} <AIBadge isAI={item.user_is_ai} /> ·{" "}
-                {formatDate(item.moved_at)}
-              </span>
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(event) => {
+                    setForm({ ...form, dueDate: event.target.value });
+                    save({ due_date: event.target.value || null });
+                  }}
+                />
+              </label>
+              {config.show_hidden && (
+                <label>
+                  Assignee
+                  <select
+                    value={form.assignee}
+                    onChange={(event) => {
+                      setForm({ ...form, assignee: event.target.value });
+                      save({ assignee_id: event.target.value || null });
+                    }}
+                  >
+                    <option value="">Unassigned</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} {user.last_name}
+                        {user.is_ai ? " (AI)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <dl>
+                <dt>Created</dt>
+                <dd>{formatDate(ticket.created_at)}</dd>
+                <dt>Updated</dt>
+                <dd>{formatDate(ticket.updated_at)}</dd>
+              </dl>
             </div>
+            <button className="danger-text" onClick={remove}>
+              Delete ticket
+            </button>
+          </aside>
+        </div>
+        <div className="tabs" role="tablist">
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              id={`tab-${key}`}
+              aria-selected={activeTab === key}
+              aria-controls="ticket-tabpanel"
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </button>
           ))}
-        </aside>
-      </div>
+        </div>
+        <div
+          className="tabpanel"
+          role="tabpanel"
+          id="ticket-tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+        >
+          {activeTab === "comments" && (
+            <Comments ticketId={ticket.id} comments={comments} onReload={load} />
+          )}
+          {activeTab === "history" &&
+            history.map((item) => (
+              <div className="timeline" key={item.id}>
+                <strong>
+                  {item.user_name} <AIBadge isAI={item.user_is_ai} />
+                </strong>
+                <span>{formatDate(item.created_at)}</span>
+                <p>{item.content}</p>
+              </div>
+            ))}
+          {activeTab === "transitions" &&
+            transitions.map((item) => (
+              <div className="transition" key={item.id}>
+                <strong>
+                  {item.from_status_name || "New"} → {item.to_status_name}
+                </strong>
+                <span>
+                  {item.user_name} <AIBadge isAI={item.user_is_ai} /> ·{" "}
+                  {formatDate(item.moved_at)}
+                </span>
+              </div>
+            ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -273,9 +315,10 @@ function Comments({
   }
   return (
     <section className="comments">
-      <h2>Comments</h2>
       <ReactQuill theme="snow" value={content} onChange={setContent} />
-      <button onClick={add}>Add comment</button>
+      <button className="primary" onClick={add}>
+        Add comment
+      </button>
       {comments.map((comment) => (
         <div className="comment" key={comment.id}>
           <strong>

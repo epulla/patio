@@ -714,33 +714,95 @@ button[aria-pressed="true"] {
 .ticket-page {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+.ticket-shell {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
+}
+.ticket-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ticket-links {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
 }
 .ticket-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 24px;
 }
 .ticket-main,
 .ticket-side {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 .title-input {
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
-  font-size: 30px;
-  font-weight: 800;
+  font-size: 26px;
+  font-weight: 700;
   height: auto;
-  padding: 0;
-  outline: 0;
+  padding: 4px 8px;
+  margin: 0 -8px;
 }
-.ticket-side h2,
-.ticket-main h2 {
-  font-size: 15px;
-  border-top: 1px solid var(--border);
-  padding-top: 18px;
+.title-input:hover {
+  border-color: var(--border);
+}
+.ticket-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-box);
+}
+.ticket-details dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.ticket-details dt {
+  color: var(--muted);
+}
+.ticket-details dd {
+  margin: 0;
+}
+.ticket-side .danger-text {
+  align-self: flex-start;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.tabs button:hover {
+  color: var(--content);
+}
+.tabs button[aria-selected="true"] {
+  color: var(--content);
+  border-bottom-color: var(--primary);
+}
+.tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .timeline,
 .transition,
@@ -754,18 +816,19 @@ button[aria-pressed="true"] {
 .comment span {
   float: right;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .timeline p {
+  margin: 4px 0 0;
   color: var(--muted);
 }
 .comments {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 10px;
 }
-.comments h2 {
-  margin-bottom: 0;
+.comments > button {
+  align-self: flex-end;
 }
 .comment {
   border-color: var(--border);
