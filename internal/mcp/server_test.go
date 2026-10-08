@@ -185,6 +185,33 @@ func TestMCPInstructions(t *testing.T) {
 	}
 }
 
+func TestCheck(t *testing.T) {
+	database, err := db.Open(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := database.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	server := NewServer(api.New(database, "ai", true))
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	tools, _, err := Check(context.Background(), clientTransport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range tools {
+		if tool.Name == "list_boards" {
+			return
+		}
+	}
+	t.Fatalf("tools do not include list_boards: %#v", tools)
+}
+
 func callTool(t *testing.T, session *sdk.ClientSession, name string, args any) *sdk.CallToolResult {
 	t.Helper()
 	result, err := session.CallTool(context.Background(), &sdk.CallToolParams{Name: name, Arguments: args})

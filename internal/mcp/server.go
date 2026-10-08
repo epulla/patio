@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -142,6 +143,25 @@ func NewServer(h http.Handler) *sdk.Server {
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	return s
+}
+
+func Check(ctx context.Context, t sdk.Transport) ([]*sdk.Tool, time.Duration, error) {
+	start := time.Now()
+	client := sdk.NewClient(&sdk.Implementation{Name: "my-tickets-check", Version: "1"}, nil)
+	session, err := client.Connect(ctx, t, nil)
+	if err != nil {
+		return nil, time.Since(start), fmt.Errorf("connect: %w", err)
+	}
+	result, err := session.ListTools(ctx, nil)
+	elapsed := time.Since(start)
+	closeErr := session.Close()
+	if err != nil {
+		return nil, elapsed, fmt.Errorf("list tools: %w", err)
+	}
+	if closeErr != nil {
+		return nil, elapsed, fmt.Errorf("close session: %w", closeErr)
+	}
+	return result.Tools, elapsed, nil
 }
 
 type request struct {
