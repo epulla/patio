@@ -51,11 +51,30 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		t.Fatalf("tool count = %d, want 13", count)
 	}
 
-	boardResult := callTool(t, session, "create_board", map[string]any{"name": "AI Board", "short_name": "AI", "statuses": []string{"Backlog", "Done"}})
+	boardResult := callTool(t, session, "create_board", map[string]any{
+		"name": "AI Board", "short_name": "AI", "statuses": []map[string]any{
+			{"name": "Backlog"}, {"name": "Done", "hide_after_days": 2},
+		},
+	})
 	var board struct {
 		ID string `json:"id"`
 	}
 	decodeText(t, boardResult, &board)
+	var boardData struct {
+		Statuses []struct {
+			Name          string `json:"name"`
+			Type          string `json:"type"`
+			HideAfterDays *int   `json:"hide_after_days"`
+		} `json:"statuses"`
+	}
+	decodeText(t, callTool(t, session, "get_board", map[string]any{"board_id": board.ID}), &boardData)
+	if len(boardData.Statuses) != 2 || boardData.Statuses[0].Name != "Backlog" || boardData.Statuses[0].Type != "classic" {
+		t.Fatalf("Backlog status = %#v, want classic column", boardData.Statuses)
+	}
+	doneStatus := boardData.Statuses[1]
+	if doneStatus.Name != "Done" || doneStatus.Type != "temporary" || doneStatus.HideAfterDays == nil || *doneStatus.HideAfterDays != 2 {
+		t.Fatalf("Done status = %#v, want temporary column hiding after 2 days", doneStatus)
+	}
 	ticketResult := callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "MCP ticket", "due_date": "2026-10-10"})
 	var ticket struct {
 		ID string `json:"id"`

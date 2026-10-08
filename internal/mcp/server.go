@@ -20,9 +20,23 @@ type boardArgs struct {
 	BoardID string `json:"board_id" jsonschema:"Board UUID"`
 }
 type createBoardArgs struct {
-	Name      string   `json:"name" jsonschema:"Board name"`
-	ShortName string   `json:"short_name" jsonschema:"Short board code"`
-	Statuses  []string `json:"statuses,omitempty" jsonschema:"Optional status names"`
+	Name      string              `json:"name" jsonschema:"Board name"`
+	ShortName string              `json:"short_name" jsonschema:"Short board code"`
+	Statuses  []createBoardStatus `json:"statuses,omitempty" jsonschema:"Optional columns; set hide_after_days to make a column temporary, or omit it for a classic column"`
+}
+type createBoardStatus struct {
+	Name          string `json:"name" jsonschema:"Column name"`
+	HideAfterDays *int   `json:"hide_after_days,omitempty" jsonschema:"Set to make this a temporary column: tickets auto-hide N days after entering it. Omit for a classic column."`
+}
+type createBoardStatusBody struct {
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	HideAfterDays *int   `json:"hide_after_days,omitempty"`
+}
+type createBoardBody struct {
+	Name      string                  `json:"name"`
+	ShortName string                  `json:"short_name"`
+	Statuses  []createBoardStatusBody `json:"statuses,omitempty"`
 }
 type createTicketArgs struct {
 	BoardID      string  `json:"board_id" jsonschema:"Board UUID"`
@@ -100,7 +114,20 @@ func NewServer(h http.Handler) *sdk.Server {
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
 	})
-	addGeneric(s, "create_board", "Create a board", h, func(a createBoardArgs) request { return request{http.MethodPost, "/api/boards", a} })
+	addGeneric(s, "create_board", "Create a board; set hide_after_days for temporary columns that auto-hide tickets after entering them, or omit it for classic columns", h, func(a createBoardArgs) request {
+		body := createBoardBody{Name: a.Name, ShortName: a.ShortName}
+		if a.Statuses != nil {
+			body.Statuses = make([]createBoardStatusBody, len(a.Statuses))
+			for i, status := range a.Statuses {
+				typeName := "classic"
+				if status.HideAfterDays != nil {
+					typeName = "temporary"
+				}
+				body.Statuses[i] = createBoardStatusBody{status.Name, typeName, status.HideAfterDays}
+			}
+		}
+		return request{http.MethodPost, "/api/boards", body}
+	})
 	addGeneric(s, "create_ticket", "Create a ticket", h, func(a createTicketArgs) request {
 		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/tickets", a}
 	})

@@ -18,6 +18,6 @@
 ## Tasks
 
 - [x] API: `createBoard` accepts string or object statuses, writes type + `hide_after_days`. Check: new Go test creates board with mixed statuses, board data shows temporary column with days; invalid type/days -> 400; `go test ./... -count=1`.
-- [ ] MCP: `create_board` statuses as `{name, hide_after_days?}`. Check: `internal/mcp/server_test.go` creates one classic and one temporary (`hide_after_days: 2`) column and verifies type + days; `go test ./internal/mcp -count=1`.
+- [x] MCP: `create_board` statuses as `{name, hide_after_days?}`. Check: `internal/mcp/server_test.go` creates one classic and one temporary (`hide_after_days: 2`) column and verifies type + days; `go test ./internal/mcp -count=1`.
 - [x] Settings + board badge labels (decisions 1-3). Check: `pnpm --dir web build`; smoke-test settings and badge tooltip.
 - [ ] Create-board column row editor (decision 4). Check: `pnpm --dir web build`; smoke-test creating board with a temporary "Done" (2 days), confirm in settings.
