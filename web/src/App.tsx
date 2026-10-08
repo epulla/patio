@@ -1,7 +1,65 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import BoardList from "./BoardList";
+import BoardView from "./BoardView";
+import TicketDetail from "./TicketDetail";
+import { api } from "./api";
+
+export type Config = { show_hidden: boolean };
+
+export function navigate(path: string) {
+  history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+export function ErrorText({ error }: { error: unknown }) {
+  if (!error) return null;
+  return (
+    <p className="error" role="alert">
+      {error instanceof Error ? error.message : String(error)}
+    </p>
+  );
+}
+
+export function formatDate(value: string | null) {
+  return value ? new Date(value).toLocaleString() : "Never";
+}
 
 export default function App() {
-  const [healthy, setHealthy] = useState<boolean | null>(null);
-  useEffect(() => { fetch("/api/health").then((r) => r.ok).then(setHealthy).catch(() => setHealthy(false)); }, []);
-  return <main><h1>my-tickets</h1><p>API: {healthy === null ? "checking..." : healthy ? "healthy" : "unavailable"}</p></main>;
+  const [path, setPath] = useState(location.pathname);
+  const [config, setConfig] = useState<Config>({ show_hidden: false });
+
+  useEffect(() => {
+    const onPopState = () => setPath(location.pathname);
+    addEventListener("popstate", onPopState);
+    return () => removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    api
+      .get<Config>("/api/config")
+      .then(setConfig)
+      .catch(() => undefined);
+  }, []);
+
+  const boardMatch = path.match(/^\/boards\/([^/]+)$/);
+  const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
+  let page: ReactNode = <BoardList />;
+  if (boardMatch) page = <BoardView id={decodeURIComponent(boardMatch[1])} />;
+  if (ticketMatch) {
+    page = (
+      <TicketDetail id={decodeURIComponent(ticketMatch[1])} config={config} />
+    );
+  }
+
+  return (
+    <>
+      <header className="top">
+        <button className="brand" onClick={() => navigate("/")}>
+          my-tickets
+        </button>
+        <span>Local workspace</span>
+      </header>
+      <main>{page}</main>
+    </>
+  );
 }

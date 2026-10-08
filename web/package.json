@@ -1,6 +1,6 @@
 {
   "private": true,
   "scripts": { "dev": "vite", "build": "tsc -b && vite build" },
-  "dependencies": { "react": "latest", "react-dom": "latest" },
+  "dependencies": { "dompurify": "latest", "react": "latest", "react-dom": "latest", "react-quill-new": "latest" },
   "devDependencies": { "@types/react": "latest", "@types/react-dom": "latest", "@vitejs/plugin-react": "latest", "typescript": "latest", "vite": "latest" }
 }
