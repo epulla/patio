@@ -326,7 +326,13 @@ button[aria-pressed="true"] {
 .icon {
   width: 40px;
   padding: 0;
-  border-radius: 999px;
+}
+.icon.danger-text {
+  background: var(--base-200);
+  border-color: color-mix(in oklch, var(--error) 35%, transparent);
+}
+.icon.danger-text:hover {
+  background: color-mix(in oklch, var(--error) 12%, var(--base-200));
 }
 .svg-icon {
   width: 18px;
