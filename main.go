@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 
+	"my-tickets/internal/api"
 	"my-tickets/internal/db"
 	"my-tickets/web"
 )
@@ -23,6 +24,7 @@ import (
 func main() {
 	port := flag.Int("port", 0, "HTTP port, or 0 for a random free port")
 	noBrowser := flag.Bool("no-browser", false, "do not open browser")
+	showHidden := flag.Bool("show-hidden", false, "show temporary statuses")
 	flag.Parse()
 	config, err := os.UserConfigDir()
 	if err != nil {
@@ -41,12 +43,10 @@ func main() {
 			log.Printf("close database: %v", err)
 		}
 	}()
-	if _, err := database.Exec(`INSERT INTO "user" (id, name, email, email_verified, role) VALUES ('local', 'Local', 'local@localhost', 1, 'admin') ON CONFLICT(id) DO NOTHING`); err != nil {
-		log.Fatal(err)
-	}
 	mime.AddExtensionType(".js", "text/javascript")
 
 	mux := http.NewServeMux()
+	mux.Handle("/api/", api.New(database, *showHidden))
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {

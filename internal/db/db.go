@@ -58,5 +58,8 @@ func Open(path string) (*sql.DB, error) {
 			return closeOnError(fmt.Errorf("commit migration %s: %w", entry.Name(), err))
 		}
 	}
+	if _, err := db.Exec(`INSERT INTO "user" (id, name, email, email_verified, role) VALUES ('local', 'Local', 'local@localhost', 1, 'admin') ON CONFLICT(id) DO NOTHING`); err != nil {
+		return closeOnError(fmt.Errorf("seed local user: %w", err))
+	}
 	return db, nil
 }
