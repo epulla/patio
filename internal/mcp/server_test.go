@@ -62,7 +62,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	}
 	decodeText(t, ticketResult, &ticket)
 	calendarResult := callTool(t, session, "create_calendar_item", map[string]any{
-		"kind": "reminder", "title": "Ticket reminder", "starts_at": "2026-10-10", "all_day": true, "ticket_id": ticket.ID,
+		"kind": "reminder", "title": "Ticket reminder", "starts_at": "2026-10-10T12:00:00Z", "ticket_id": ticket.ID,
 	})
 	var calendarItem struct {
 		ID            string `json:"id"`

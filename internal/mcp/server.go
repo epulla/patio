@@ -64,7 +64,7 @@ type createCalendarItemArgs struct {
 	Description string  `json:"description,omitempty" jsonschema:"Optional description"`
 	StartsAt    string  `json:"starts_at" jsonschema:"Start time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
 	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional end time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
-	AllDay      bool    `json:"all_day" jsonschema:"True for all-day items using YYYY-MM-DD dates; false for timed items using RFC3339 with offset"`
+	AllDay      bool    `json:"all_day,omitempty" jsonschema:"True for all-day items using YYYY-MM-DD dates; omit or false for timed items using RFC3339 with offset"`
 	BoardID     *string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
 	TicketID    *string `json:"ticket_id,omitempty" jsonschema:"Optional linked ticket UUID"`
 }
