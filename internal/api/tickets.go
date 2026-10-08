@@ -60,6 +60,10 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 	sid, has, _ := ticketInput(m, "status_id")
 	tt, _, ttset := ticketInput(m, "ticket_type_id")
 	due, _, dset := ticketInput(m, "due_date")
+	if dset && m["due_date"] != nil && string(m["due_date"]) != "null" && !validDate(due) {
+		errw(w, 400, "due_date must be YYYY-MM-DD")
+		return
+	}
 	ass, _, aset := ticketInput(m, "assignee_id")
 	id, t := uid(), now()
 	var out ticket
@@ -261,6 +265,9 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 					var z string
 					if json.Unmarshal(v, &z) != nil {
 						return errors.New("invalid " + x.k)
+					}
+					if x.k == "due_date" && !validDate(z) {
+						return errors.New("invalid due_date: must be YYYY-MM-DD")
 					}
 					if x.k == "assignee_id" {
 						var q string

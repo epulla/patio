@@ -27,6 +27,20 @@ type testTicket struct {
 	Title      string  `json:"title"`
 	ReporterID *string `json:"reporter_id"`
 }
+type testCalendarItem struct {
+	ID            string  `json:"id"`
+	Kind          string  `json:"kind"`
+	Title         string  `json:"title"`
+	StartsAt      string  `json:"starts_at"`
+	BoardID       *string `json:"board_id"`
+	TicketID      *string `json:"ticket_id"`
+	CreatedBy     string  `json:"created_by"`
+	CreatedByIsAI bool    `json:"created_by_is_ai"`
+}
+type testCalendarResponse struct {
+	Items   []testCalendarItem `json:"items"`
+	Tickets []testTicket       `json:"tickets"`
+}
 type testData struct {
 	Statuses []struct {
 		ID      string       `json:"id"`
@@ -347,6 +361,123 @@ func TestInvalidShortNameReturnsBadRequest(t *testing.T) {
 				t.Fatalf("status = %d", code)
 			}
 		})
+	}
+}
+
+func TestCalendarRangeBoardFilterAndSoftDelete(t *testing.T) {
+	database, handler := newAPI(t)
+	a := createBoard(t, handler, "CAL", []string{"Todo"})
+	b := createBoard(t, handler, "OTH", []string{"Todo"})
+	ticketA := createTicket(t, handler, a.ID, "")
+	ticketB := createTicket(t, handler, b.ID, "")
+	if code := requestJSON(t, handler, http.MethodPut, "/api/tickets/"+ticketA.ID, map[string]any{"due_date": "2026-04-12"}, nil); code != http.StatusOK {
+		t.Fatalf("set due date status = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/tickets/"+ticketB.ID, map[string]any{"due_date": "2026-04-13"}, nil); code != http.StatusOK {
+		t.Fatalf("set other due date status = %d", code)
+	}
+	var within, outside, linked, boardItem testCalendarItem
+	for _, item := range []struct {
+		out  *testCalendarItem
+		body map[string]any
+	}{{&within, map[string]any{"kind": "event", "title": "In range", "starts_at": "2026-04-12", "all_day": true, "board_id": a.ID}}, {&outside, map[string]any{"kind": "event", "title": "Outside", "starts_at": "2026-04-14", "all_day": true, "board_id": a.ID}}, {&linked, map[string]any{"kind": "reminder", "title": "Ticket link", "starts_at": "2026-04-12T12:00:00-05:00", "ticket_id": ticketA.ID}}, {&boardItem, map[string]any{"kind": "event", "title": "Board item", "starts_at": "2026-04-10", "ends_at": "2026-04-12", "all_day": true, "board_id": a.ID}}} {
+		if code := requestJSON(t, handler, http.MethodPost, "/api/calendar-items", item.body, item.out); code != http.StatusCreated {
+			t.Fatalf("create calendar item status = %d", code)
+		}
+	}
+	if linked.BoardID == nil || *linked.BoardID != a.ID || linked.CreatedBy != "local" || linked.CreatedByIsAI {
+		t.Fatalf("linked item actor/board = %#v", linked)
+	}
+	if _, err := database.Exec(`UPDATE calendar_item SET board_id=NULL WHERE id=?`, linked.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/calendar-items/"+within.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete calendar item status = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/calendar-items/"+within.ID, nil, nil); code != http.StatusNotFound {
+		t.Fatalf("delete already deleted status = %d", code)
+	}
+	for _, test := range []struct {
+		path        string
+		itemCount   int
+		ticketCount int
+	}{{"/api/calendar?from=2026-04-12&to=2026-04-12", 2, 1}, {"/api/calendar?from=2026-04-12&to=2026-04-12&board_id=" + a.ID, 2, 1}, {"/api/calendar?from=2026-04-12&to=2026-04-12&board_id=" + b.ID, 0, 0}} {
+		var got testCalendarResponse
+		if code := requestJSON(t, handler, http.MethodGet, test.path, nil, &got); code != http.StatusOK {
+			t.Fatalf("calendar %q status = %d", test.path, code)
+		}
+		if len(got.Items) != test.itemCount || len(got.Tickets) != test.ticketCount {
+			t.Errorf("calendar %q counts = %d items, %d tickets; want %d, %d", test.path, len(got.Items), len(got.Tickets), test.itemCount, test.ticketCount)
+		}
+		if test.path == "/api/calendar?from=2026-04-12&to=2026-04-12&board_id="+a.ID && !containsCalendarItem(got.Items, linked.ID) {
+			t.Errorf("board filter missed ticket-linked item: %#v", got.Items)
+		}
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/boards/"+a.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete board status = %d", code)
+	}
+	var got testCalendarResponse
+	requestJSON(t, handler, http.MethodGet, "/api/calendar?from=2026-04-12&to=2026-04-12", nil, &got)
+	if len(got.Items) != 1 || got.Items[0].ID != linked.ID || len(got.Tickets) != 0 {
+		t.Fatalf("after board delete = %#v", got)
+	}
+}
+
+func containsCalendarItem(items []testCalendarItem, id string) bool {
+	for _, item := range items {
+		if item.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCalendarItemPartialUpdateAndAIActor(t *testing.T) {
+	_, handler := newAPIAs(t, "ai")
+	var created testCalendarItem
+	body := map[string]any{"kind": "event", "title": "Before", "starts_at": "2026-04-12", "all_day": true}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/calendar-items", body, &created); code != http.StatusCreated {
+		t.Fatalf("create status = %d", code)
+	}
+	if created.CreatedBy != "ai" || !created.CreatedByIsAI {
+		t.Fatalf("created actor = %#v", created)
+	}
+	var updated testCalendarItem
+	if code := requestJSON(t, handler, http.MethodPut, "/api/calendar-items/"+created.ID, map[string]any{"title": "After"}, &updated); code != http.StatusOK {
+		t.Fatalf("update status = %d", code)
+	}
+	if updated.Title != "After" || updated.Kind != "event" || updated.StartsAt != "2026-04-12" {
+		t.Fatalf("partial update = %#v", updated)
+	}
+}
+
+func TestCalendarItemValidation(t *testing.T) {
+	_, handler := newAPI(t)
+	for _, test := range []struct {
+		name string
+		body map[string]any
+	}{{"bad kind", map[string]any{"kind": "other", "title": "Event", "starts_at": "2026-04-12", "all_day": true}}, {"empty title", map[string]any{"kind": "event", "title": "  ", "starts_at": "2026-04-12", "all_day": true}}, {"all-day timestamp", map[string]any{"kind": "event", "title": "Event", "starts_at": "2026-04-12T10:00:00Z", "all_day": true}}, {"timed date-only", map[string]any{"kind": "event", "title": "Event", "starts_at": "2026-04-12"}}, {"ends before starts", map[string]any{"kind": "event", "title": "Event", "starts_at": "2026-04-12T10:00:00Z", "ends_at": "2026-04-12T09:00:00Z"}}} {
+		t.Run(test.name, func(t *testing.T) {
+			if code := requestJSON(t, handler, http.MethodPost, "/api/calendar-items", test.body, nil); code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", code)
+			}
+		})
+	}
+}
+
+func TestDueDateValidationOnTicketCreateAndUpdate(t *testing.T) {
+	_, handler := newAPI(t)
+	b := createBoard(t, handler, "DUE", []string{"Todo"})
+	for _, dueDate := range []string{"2026-02-30", "2026-02-01T00:00:00Z"} {
+		if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/tickets", map[string]any{"title": "Bad due", "due_date": dueDate}, nil); code != http.StatusBadRequest {
+			t.Errorf("create due_date %q status = %d", dueDate, code)
+		}
+	}
+	ticket := createTicket(t, handler, b.ID, "")
+	for _, dueDate := range []string{"2026-02-30", "2026-02-01T00:00:00Z"} {
+		if code := requestJSON(t, handler, http.MethodPut, "/api/tickets/"+ticket.ID, map[string]any{"due_date": dueDate}, nil); code != http.StatusBadRequest {
+			t.Errorf("update due_date %q status = %d", dueDate, code)
+		}
 	}
 }
 
