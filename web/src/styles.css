@@ -610,16 +610,9 @@ a:has(> .svg-icon) {
 .menu {
   position: relative;
 }
-.menu-trigger {
-  gap: 2px;
-  padding: 0 10px;
-}
-.menu-trigger .svg-icon + .svg-icon {
+.menu > button .svg-icon:last-child {
   width: 14px;
   height: 14px;
-}
-.menu-trigger[aria-expanded="true"]::after {
-  display: none;
 }
 .menu-list {
   position: absolute;

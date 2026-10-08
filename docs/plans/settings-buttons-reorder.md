@@ -19,5 +19,5 @@
 ## Tasks
 
 - [x] Rounded-square `IconButton` app-wide, ghost per decision 2, trash bordered red. Check: `pnpm --dir web build`; code review: no `border-radius: 999px` on `.icon`, ghost list matches decision 2.
-- [ ] Export button label, no tooltip. Check: `pnpm --dir web build`; menu still opens/closes with keyboard.
+- [x] Export button label, no tooltip. Check: `pnpm --dir web build`; menu still opens/closes with keyboard.
 - [ ] Settings column preview strip with move buttons; rows reset after move. Check: `pnpm --dir web build`; `go test ./... -count=1`; code review confirms order saved via status-order endpoint and rows remount after move.

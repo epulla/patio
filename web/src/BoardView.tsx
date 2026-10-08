@@ -153,15 +153,11 @@ function ExportMenu({ boardId }: { boardId: string }) {
     >
       <button
         ref={trigger}
-        className="menu-trigger"
-        aria-label="Export"
-        data-tip="Export"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <Icon name="download" />
-        <Icon name="chevronDown" />
+        <Icon name="download" /> Export <Icon name="chevronDown" />
       </button>
       {open && (
         <div className="menu-list" role="menu" aria-label="Export">
