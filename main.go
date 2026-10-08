@@ -14,8 +14,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/gen2brain/beeep"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -24,6 +26,7 @@ import (
 	"my-tickets/internal/api"
 	"my-tickets/internal/db"
 	mcpserver "my-tickets/internal/mcp"
+	"my-tickets/internal/reminder"
 	"my-tickets/web"
 )
 
@@ -65,8 +68,8 @@ func main() {
 		}
 	})
 	var appCtx context.Context
-	var stopWatch context.CancelFunc
-	var watchDone chan struct{}
+	var stopBackground context.CancelFunc
+	var background sync.WaitGroup
 	// WKWebView ignores window.print(); Wails exposes native printing only from Go.
 	mux.HandleFunc("POST /api/print", func(w http.ResponseWriter, _ *http.Request) {
 		wruntime.WindowPrint(appCtx)
@@ -80,15 +83,23 @@ func main() {
 		Height: 800,
 		OnStartup: func(ctx context.Context) {
 			appCtx = ctx
-			watchCtx, cancel := context.WithCancel(ctx)
-			stopWatch = cancel
-			watchDone = make(chan struct{})
+			backgroundCtx, cancel := context.WithCancel(ctx)
+			stopBackground = cancel
+			background.Add(2)
 			go func() {
-				defer close(watchDone)
-				if err := db.Watch(watchCtx, database, time.Second, func() {
+				defer background.Done()
+				if err := db.Watch(backgroundCtx, database, time.Second, func() {
 					wruntime.EventsEmit(ctx, "db-changed")
 				}); err != nil {
 					log.Printf("watch database changes: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(title, message string) error {
+					return beeep.Notify("Reminder: "+title, message, "")
+				}); err != nil {
+					log.Printf("run reminders: %v", err)
 				}
 			}()
 		},
@@ -96,12 +107,10 @@ func main() {
 			Handler: mux,
 		},
 	})
-	if stopWatch != nil {
-		stopWatch()
+	if stopBackground != nil {
+		stopBackground()
 	}
-	if watchDone != nil {
-		<-watchDone
-	}
+	background.Wait()
 	if err := database.Close(); err != nil {
 		log.Printf("close database: %v", err)
 	}
