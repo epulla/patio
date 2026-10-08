@@ -8,7 +8,7 @@
 
 1. Delete ticket: remove the button (`TicketDetail.tsx:242`) and its `remove()` handler. Keep `DELETE /api/tickets/{id}`. Temporary statuses handle crowding; see `temp-status-ttl.md`.
 2. Icons: hand-written inline SVG components in `web/src/icons.tsx` (Lucide-style paths, MIT). No new dependency.
-3. Icon-only + tooltip: sidebar collapse, theme toggle, column move/add, add ticket, modal close, calendar prev/next/add, status/type row save/delete, export links. Icon + text: Create board, Create ticket, Save board, Delete board, Add comment, Print, Back.
+3. Icon-only + tooltip: sidebar collapse, theme toggle, column move/add, add ticket, modal close, calendar prev/next/add, status/type row save/delete. Icon + text: export links (all share the download icon, so icon-only can't tell them apart), sidebar nav items (keep native `title`; nav `overflow-y: auto` clips CSS tooltips), Create board, Create ticket, Save board, Delete board, Add comment, Print, Back.
 4. Tooltip: CSS-only, from a `data-tip` attribute that mirrors `aria-label`. Shown on `:hover` and `:focus-visible`.
 5. Native dialogs: replace `prompt("Column name")` with an inline input. Keep `confirm()` for destructive actions and add it to status/type delete.
 6. Polish fixes:
@@ -24,6 +24,6 @@
 ## Tasks
 
 - [x] 1. Remove the Delete ticket button and `remove()` from `TicketDetail.tsx`. Check: `rg "Delete ticket|confirm\(\"Delete this ticket" web/src` is empty; `pnpm --dir web build` passes.
-- [ ] 2. Add `icons.tsx` and the `data-tip` tooltip CSS; convert the buttons listed in decision 3. Check: `pnpm --dir web build` passes; `rg "[＋×«»☀☾]" web/src/*.tsx` is empty; every icon-only button has `aria-label` and `data-tip`.
+- [x] 2. Add `icons.tsx` and the `data-tip` tooltip CSS; convert the buttons listed in decision 3. Check: `pnpm --dir web build` passes; `rg "[＋×«»☀☾]" web/src/*.tsx` is empty; every icon-only button has `aria-label` and `data-tip`.
 - [ ] 3. Replace the add-column `prompt()` with an inline input; add `confirm()` to status/type delete. Check: `rg "prompt\(" web/src` is empty; build passes; smoke-test add column and delete status/type in a throwaway DB.
 - [ ] 4. Apply the polish fixes in decision 6. Check: build passes; `rg "font-size: ?(9|10)px" web/src/styles.css` is empty; smoke-test Tab into a ticket card, Enter opens it, Escape closes the NewTicket modal, both themes look right.

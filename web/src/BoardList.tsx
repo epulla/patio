@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Board } from "./api";
 import { ErrorText, navigate } from "./App";
+import { Icon } from "./icons";
 
 export default function BoardList({ refresh }: { refresh: number }) {
   const [boards, setBoards] = useState<Board[]>([]);
@@ -34,7 +35,9 @@ export default function BoardList({ refresh }: { refresh: number }) {
               <strong>{board.name}</strong>
               <small>{board.short_name}</small>
             </span>
-            <span className="arrow">→</span>
+            <span className="arrow">
+              <Icon name="chevronRight" />
+            </span>
           </button>
         ))}
       </div>
@@ -125,7 +128,9 @@ function CreateBoard({ onCreated }: { onCreated: (board: Board) => void }) {
             onChange={(event) => setTemplate(event.target.value)}
           />
         </label>
-        <button className="primary">Create board</button>
+        <button className="primary">
+          <Icon name="plus" /> Create board
+        </button>
       </form>
       <ErrorText error={error} />
     </section>

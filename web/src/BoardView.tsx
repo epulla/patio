@@ -8,6 +8,7 @@ import {
   type TicketType,
 } from "./api";
 import { ErrorText, navigate } from "./App";
+import { Icon, IconButton } from "./icons";
 
 export default function BoardView({
   id,
@@ -54,7 +55,7 @@ export default function BoardView({
       <div className="page-heading">
         <div>
           <button className="back" onClick={() => navigate("/")}>
-            ← Boards
+            <Icon name="arrowLeft" /> Boards
           </button>
           <h1>{data.board.name}</h1>
         </div>
@@ -67,6 +68,7 @@ export default function BoardView({
             onChange={(event) => search(event.target.value)}
           />
           <button onClick={() => setSettings(!settings)}>
+            <Icon name={settings ? "x" : "settings"} />
             {settings ? "Close settings" : "Board settings"}
           </button>
         </div>
@@ -74,9 +76,15 @@ export default function BoardView({
       <section className="export-bar">
         <strong>Export</strong>
         <div className="export-links">
-          <a href={`/api/boards/${id}/export?format=xlsx`} download="">Excel (.xlsx)</a>
-          <a href={`/api/boards/${id}/export?format=csv`} download="">CSV</a>
-          <a href={`/api/boards/${id}/export?format=json`} download="" title="Full board backup — import into my-tickets on another computer." aria-describedby="board-export-hint">JSON backup</a>
+          <a href={`/api/boards/${id}/export?format=xlsx`} download="">
+            <Icon name="download" /> Excel (.xlsx)
+          </a>
+          <a href={`/api/boards/${id}/export?format=csv`} download="">
+            <Icon name="download" /> CSV
+          </a>
+          <a href={`/api/boards/${id}/export?format=json`} download="" aria-describedby="board-export-hint">
+            <Icon name="download" /> JSON backup
+          </a>
         </div>
         <small id="board-export-hint">Full board backup — import into my-tickets on another computer.</small>
       </section>
@@ -144,9 +152,7 @@ function Kanban({
           onAdd={onAdd}
         />
       ))}
-      <button className="add-column" onClick={addColumn}>
-        ＋ Add column
-      </button>
+      <IconButton className="add-column" icon="plus" label="Add column" onClick={addColumn} />
     </div>
   );
 }
@@ -247,22 +253,20 @@ function Column({
           )}
         </div>
         <div className="column-actions">
-          <button
+          <IconButton
             className="ghost"
-            aria-label={`Move ${status.name} left`}
+            icon="chevronLeft"
+            label={`Move ${status.name} left`}
             disabled={index === 0}
             onClick={() => moveColumn(index - 1)}
-          >
-            ←
-          </button>
-          <button
+          />
+          <IconButton
             className="ghost"
-            aria-label={`Move ${status.name} right`}
+            icon="chevronRight"
+            label={`Move ${status.name} right`}
             disabled={index === statuses.length - 1}
             onClick={() => moveColumn(index + 1)}
-          >
-            →
-          </button>
+          />
         </div>
       </div>
       <div className="cards">
@@ -275,9 +279,12 @@ function Column({
           />
         ))}
       </div>
-      <button className="add-ticket" onClick={() => onAdd(status.id)}>
-        ＋ Add ticket
-      </button>
+      <IconButton
+        className="add-ticket tip-up"
+        icon="plus"
+        label={`Add ticket to ${status.name}`}
+        onClick={() => onAdd(status.id)}
+      />
     </section>
   );
 }
@@ -373,10 +380,10 @@ function Settings({
             />
           </label>
           <button className="primary" onClick={saveBoard}>
-            Save
+            <Icon name="check" /> Save
           </button>
           <button className="danger" onClick={deleteBoard}>
-            Delete
+            <Icon name="trash" /> Delete board
           </button>
         </div>
       </div>
@@ -460,10 +467,13 @@ function StatusRow({
         <option value="classic">Classic</option>
         <option value="temporary">Temporary</option>
       </select>
-      <button onClick={save}>Save</button>
-      <button className="danger-text" onClick={remove}>
-        Delete
-      </button>
+      <IconButton icon="check" label={`Save ${status.name}`} onClick={save} />
+      <IconButton
+        className="danger-text"
+        icon="trash"
+        label={`Delete ${status.name}`}
+        onClick={remove}
+      />
     </div>
   );
 }
@@ -518,7 +528,9 @@ function TypeManager({
             onChange={(event) => setColor(event.target.value)}
           />
         </label>
-        <button onClick={add}>Add type</button>
+        <button onClick={add}>
+          <Icon name="plus" /> Add type
+        </button>
       </div>
     </div>
   );
@@ -563,10 +575,13 @@ function TypeRow({
         value={color}
         onChange={(event) => setColor(event.target.value)}
       />
-      <button onClick={save}>Save</button>
-      <button className="danger-text" onClick={remove}>
-        Delete
-      </button>
+      <IconButton icon="check" label={`Save ${type.name}`} onClick={save} />
+      <IconButton
+        className="danger-text"
+        icon="trash"
+        label={`Delete ${type.name}`}
+        onClick={remove}
+      />
     </div>
   );
 }
@@ -606,14 +621,13 @@ function NewTicket({
       <form className="panel ticket-form" onSubmit={submit}>
         <div className="page-heading">
           <h2>New ticket</h2>
-          <button
+          <IconButton
             type="button"
-            className="ghost icon"
-            aria-label="Close"
+            className="ghost"
+            icon="x"
+            label="Close"
             onClick={onDone}
-          >
-            ×
-          </button>
+          />
         </div>
         <label>
           Title
@@ -655,7 +669,9 @@ function NewTicket({
             />
           </label>
         </div>
-        <button className="primary">Create ticket</button>
+        <button className="primary">
+          <Icon name="plus" /> Create ticket
+        </button>
       </form>
     </div>
   );

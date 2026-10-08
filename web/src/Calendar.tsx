@@ -8,6 +8,7 @@ import {
   type Ticket,
 } from "./api";
 import { ErrorText, navigate } from "./App";
+import { Icon, IconButton } from "./icons";
 
 type Draft = {
   kind: "event" | "reminder";
@@ -158,12 +159,16 @@ export default function Calendar({ refresh }: { refresh: number }) {
         <div className="calendar-controls">
           <div className="join">
             <button onClick={() => setAnchor(new Date())}>Today</button>
-            <button aria-label="Previous period" onClick={() => move(-1)}>
-              ←
-            </button>
-            <button aria-label="Next period" onClick={() => move(1)}>
-              →
-            </button>
+            <IconButton
+              icon="chevronLeft"
+              label="Previous period"
+              onClick={() => move(-1)}
+            />
+            <IconButton
+              icon="chevronRight"
+              label="Next period"
+              onClick={() => move(1)}
+            />
           </div>
           <div className="join">
             <button
@@ -220,13 +225,12 @@ export default function Calendar({ refresh }: { refresh: number }) {
             >
               <div className="calendar-day-head">
                 <time dateTime={key}>{day.getDate()}</time>
-                <button
+                <IconButton
                   className="ghost"
-                  aria-label={`Add item on ${key}`}
+                  icon="plus"
+                  label={`Add item on ${key}`}
                   onClick={() => createOn(key)}
-                >
-                  +
-                </button>
+                />
               </div>
               <div className="calendar-chips">
                 {tickets.map((ticket) => (
@@ -361,7 +365,7 @@ function CalendarForm({
     <section className="panel calendar-form-panel">
       <div className="page-heading">
         <h2>{item ? "Edit calendar item" : "New calendar item"}</h2>
-        <button onClick={onCancel}>Close</button>
+        <IconButton className="ghost" icon="x" label="Close" onClick={onCancel} />
       </div>
       <form className="calendar-form" onSubmit={submit}>
         <label>
@@ -442,7 +446,7 @@ function CalendarForm({
         </label>
         <div className="calendar-form-actions">
           <button className="primary" disabled={saving}>
-            Save
+            <Icon name="check" /> Save
           </button>
           {item && (
             <button
@@ -451,7 +455,7 @@ function CalendarForm({
               disabled={saving}
               onClick={remove}
             >
-              Delete
+              <Icon name="trash" /> Delete
             </button>
           )}
         </div>

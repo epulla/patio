@@ -12,6 +12,7 @@ import {
   type User,
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
+import { Icon } from "./icons";
 
 const clean = (html: string) => DOMPurify.sanitize(html || "");
 
@@ -112,7 +113,7 @@ export default function TicketDetail({
         className="back"
         onClick={() => navigate(`/boards/${ticket.board_id}`)}
       >
-        ← Back to board
+        <Icon name="arrowLeft" /> Back to board
       </button>
       <ErrorText error={error} />
       <section className="panel ticket-shell">
@@ -126,13 +127,13 @@ export default function TicketDetail({
                 navigate(`/print/tickets/${ticket.id}`);
               }}
             >
-              Print
+              <Icon name="printer" /> Print
             </a>
             <a href={`/api/tickets/${ticket.id}/export?format=json`} download="">
-              Export JSON
+              <Icon name="download" /> Export JSON
             </a>
             <a href={`/api/tickets/${ticket.id}/export?format=md`} download="">
-              Export Markdown
+              <Icon name="download" /> Export Markdown
             </a>
           </div>
         </div>
@@ -305,7 +306,7 @@ function Comments({
     <section className="comments">
       <ReactQuill theme="snow" value={content} onChange={setContent} />
       <button className="primary" onClick={add}>
-        Add comment
+        <Icon name="send" /> Add comment
       </button>
       {comments.map((comment) => (
         <div className="comment" key={comment.id}>

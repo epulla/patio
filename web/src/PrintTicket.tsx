@@ -9,6 +9,7 @@ import {
   type Transition,
 } from "./api";
 import { ErrorText, formatDate, navigate } from "./App";
+import { Icon } from "./icons";
 
 type PrintData = {
   ticket: Ticket;
@@ -70,7 +71,7 @@ export default function PrintTicket({
             )
           }
         >
-          Print
+          <Icon name="printer" /> Print
         </button>
         <a
           href={`/tickets/${ticket.id}`}
@@ -79,7 +80,7 @@ export default function PrintTicket({
             navigate(`/tickets/${ticket.id}`);
           }}
         >
-          Back to ticket
+          <Icon name="arrowLeft" /> Back to ticket
         </a>
       </div>
       <header className="print-heading">

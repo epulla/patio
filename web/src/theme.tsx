@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { IconButton } from "./icons";
 
 type Theme = "light" | "dark";
 
@@ -21,13 +22,11 @@ export function ThemeToggle() {
     setTheme(next);
   }
   return (
-    <button
-      className="ghost icon"
+    <IconButton
+      className="ghost"
+      icon={theme === "dark" ? "sun" : "moon"}
+      label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
       onClick={toggle}
-      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-      title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-    >
-      {theme === "dark" ? "☀" : "☾"}
-    </button>
+    />
   );
 }

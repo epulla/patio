@@ -6,6 +6,7 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import { api, type Board } from "./api";
 import { ThemeToggle } from "./theme";
+import { Icon, IconButton } from "./icons";
 
 export type Config = { show_hidden: boolean };
 
@@ -105,21 +106,20 @@ export default function App() {
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-head">
           <span className="brand nav-label">my-tickets</span>
-          <button
-            className="ghost icon"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          <IconButton
+            className="ghost"
+            icon={collapsed ? "chevronsRight" : "chevronsLeft"}
+            label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
             onClick={() => {
               localStorage.setItem("sidebar", collapsed ? "open" : "closed");
               setCollapsed(!collapsed);
             }}
-          >
-            {collapsed ? "»" : "«"}
-          </button>
+          />
         </div>
         <nav>
-          {navItem("/", "Boards", <span className="glyph">▦</span>, path === "/")}
-          {navItem("/calendar", "Calendar", <span className="glyph">▤</span>, isCalendar)}
+          {navItem("/", "Boards", <Icon name="boards" />, path === "/")}
+          {navItem("/calendar", "Calendar", <Icon name="calendar" />, isCalendar)}
           {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
           {boards.map((board) =>
             navItem(
