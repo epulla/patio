@@ -29,7 +29,7 @@ type createTicketArgs struct {
 	Description  *string `json:"description,omitempty" jsonschema:"Optional description"`
 	StatusID     *string `json:"status_id,omitempty" jsonschema:"Optional status UUID"`
 	TicketTypeID *string `json:"ticket_type_id,omitempty" jsonschema:"Optional ticket type UUID"`
-	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional due date"`
+	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional due date in YYYY-MM-DD format"`
 }
 type ticketIDArgs struct {
 	ID string `json:"id" jsonschema:"Ticket UUID or code"`
@@ -38,7 +38,7 @@ type updateTicketArgs struct {
 	ID           string  `json:"id" jsonschema:"Ticket UUID"`
 	Title        *string `json:"title,omitempty" jsonschema:"Optional new title"`
 	Description  *string `json:"description,omitempty" jsonschema:"Optional new description"`
-	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional new due date"`
+	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional new due date in YYYY-MM-DD format"`
 	TicketTypeID *string `json:"ticket_type_id,omitempty" jsonschema:"Optional ticket type UUID"`
 }
 type moveTicketArgs struct {
@@ -52,6 +52,45 @@ type searchArgs struct {
 type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
 	Content  string `json:"content" jsonschema:"Comment text"`
+}
+type listCalendarArgs struct {
+	From    string `json:"from" jsonschema:"Start date in YYYY-MM-DD format"`
+	To      string `json:"to" jsonschema:"End date in YYYY-MM-DD format"`
+	BoardID string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
+}
+type createCalendarItemArgs struct {
+	Kind        string  `json:"kind" jsonschema:"event or reminder"`
+	Title       string  `json:"title" jsonschema:"Calendar item title"`
+	Description string  `json:"description,omitempty" jsonschema:"Optional description"`
+	StartsAt    string  `json:"starts_at" jsonschema:"Start time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
+	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional end time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
+	AllDay      bool    `json:"all_day" jsonschema:"True for all-day items using YYYY-MM-DD dates; false for timed items using RFC3339 with offset"`
+	BoardID     *string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
+	TicketID    *string `json:"ticket_id,omitempty" jsonschema:"Optional linked ticket UUID"`
+}
+type updateCalendarItemArgs struct {
+	ID          string  `json:"id" jsonschema:"Calendar item UUID"`
+	Kind        *string `json:"kind,omitempty" jsonschema:"Optional event or reminder"`
+	Title       *string `json:"title,omitempty" jsonschema:"Optional new title"`
+	Description *string `json:"description,omitempty" jsonschema:"Optional new description"`
+	StartsAt    *string `json:"starts_at,omitempty" jsonschema:"Optional new start time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
+	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional new end time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
+	AllDay      *bool   `json:"all_day,omitempty" jsonschema:"Optional all-day flag; dates use YYYY-MM-DD, timed values use RFC3339 with offset"`
+	BoardID     *string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
+	TicketID    *string `json:"ticket_id,omitempty" jsonschema:"Optional linked ticket UUID"`
+}
+type calendarItemUpdateBody struct {
+	Kind        *string `json:"kind,omitempty"`
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	StartsAt    *string `json:"starts_at,omitempty"`
+	EndsAt      *string `json:"ends_at,omitempty"`
+	AllDay      *bool   `json:"all_day,omitempty"`
+	BoardID     *string `json:"board_id,omitempty"`
+	TicketID    *string `json:"ticket_id,omitempty"`
+}
+type calendarItemIDArgs struct {
+	ID string `json:"id" jsonschema:"Calendar item UUID"`
 }
 
 func NewServer(h http.Handler) *sdk.Server {
@@ -80,6 +119,27 @@ func NewServer(h http.Handler) *sdk.Server {
 	})
 	addGeneric(s, "add_comment", "Add a ticket comment", h, func(a commentArgs) request {
 		return request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", map[string]string{"content": a.Content}}
+	})
+	addGeneric(s, "list_calendar", "List calendar items and tickets due in a date range", h, func(a listCalendarArgs) request {
+		q := url.Values{"from": {a.From}, "to": {a.To}}
+		if a.BoardID != "" {
+			q.Set("board_id", a.BoardID)
+		}
+		return request{http.MethodGet, "/api/calendar?" + q.Encode(), nil}
+	})
+	addGeneric(s, "create_calendar_item", "Create a calendar event or reminder", h, func(a createCalendarItemArgs) request {
+		return request{http.MethodPost, "/api/calendar-items", a}
+	})
+	addGeneric(s, "update_calendar_item", "Update provided calendar item fields", h, func(a updateCalendarItemArgs) request {
+		body := calendarItemUpdateBody{a.Kind, a.Title, a.Description, a.StartsAt, a.EndsAt, a.AllDay, a.BoardID, a.TicketID}
+		return request{http.MethodPut, "/api/calendar-items/" + url.PathEscape(a.ID), body}
+	})
+	addGenericHandler(s, "delete_calendar_item", "Delete a calendar item", func(a calendarItemIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(h, request{http.MethodDelete, "/api/calendar-items/" + url.PathEscape(a.ID), nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	return s
 }

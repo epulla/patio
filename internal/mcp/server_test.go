@@ -47,8 +47,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 9 {
-		t.Fatalf("tool count = %d, want 9", count)
+	if count != 13 {
+		t.Fatalf("tool count = %d, want 13", count)
 	}
 
 	boardResult := callTool(t, session, "create_board", map[string]any{"name": "AI Board", "short_name": "AI", "statuses": []string{"Backlog", "Done"}})
@@ -56,11 +56,64 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		ID string `json:"id"`
 	}
 	decodeText(t, boardResult, &board)
-	ticketResult := callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "MCP ticket"})
+	ticketResult := callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "MCP ticket", "due_date": "2026-10-10"})
 	var ticket struct {
 		ID string `json:"id"`
 	}
 	decodeText(t, ticketResult, &ticket)
+	calendarResult := callTool(t, session, "create_calendar_item", map[string]any{
+		"kind": "reminder", "title": "Ticket reminder", "starts_at": "2026-10-10", "all_day": true, "ticket_id": ticket.ID,
+	})
+	var calendarItem struct {
+		ID            string `json:"id"`
+		Title         string `json:"title"`
+		TicketID      string `json:"ticket_id"`
+		CreatedByIsAI bool   `json:"created_by_is_ai"`
+	}
+	decodeText(t, calendarResult, &calendarItem)
+	if calendarItem.TicketID != ticket.ID || !calendarItem.CreatedByIsAI {
+		t.Fatalf("created calendar item = %#v, want linked ticket and created_by_is_ai", calendarItem)
+	}
+	listCalendar := func() struct {
+		Items []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+		} `json:"items"`
+		Tickets []struct {
+			ID      string `json:"id"`
+			DueDate string `json:"due_date"`
+		} `json:"tickets"`
+	} {
+		var result struct {
+			Items []struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+			} `json:"items"`
+			Tickets []struct {
+				ID      string `json:"id"`
+				DueDate string `json:"due_date"`
+			} `json:"tickets"`
+		}
+		decodeText(t, callTool(t, session, "list_calendar", map[string]any{"from": "2026-10-01", "to": "2026-10-31"}), &result)
+		return result
+	}
+	listed := listCalendar()
+	if len(listed.Items) != 1 || listed.Items[0].ID != calendarItem.ID || len(listed.Tickets) != 1 || listed.Tickets[0].ID != ticket.ID || listed.Tickets[0].DueDate != "2026-10-10" {
+		t.Fatalf("calendar listing = %#v, want linked item and ticket due 2026-10-10", listed)
+	}
+	callTool(t, session, "update_calendar_item", map[string]any{"id": calendarItem.ID, "title": "Updated reminder"})
+	updated := listCalendar()
+	if len(updated.Items) != 1 || updated.Items[0].Title != "Updated reminder" {
+		t.Fatalf("updated calendar items = %#v, want updated title", updated.Items)
+	}
+	deleteResult := callTool(t, session, "delete_calendar_item", map[string]any{"id": calendarItem.ID})
+	deleteText, ok := deleteResult.Content[0].(*sdk.TextContent)
+	if deleteResult.IsError || !ok || deleteText.Text == "" {
+		t.Fatalf("delete result = %#v, want non-empty success text", deleteResult)
+	}
+	if remaining := listCalendar(); len(remaining.Items) != 0 {
+		t.Fatalf("calendar items after delete = %#v, want none", remaining.Items)
+	}
 	callTool(t, session, "move_ticket", map[string]any{"id": ticket.ID, "status": "done"})
 	getResult := callTool(t, session, "get_ticket", map[string]any{"id": ticket.ID})
 	var got struct {
