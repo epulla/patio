@@ -56,7 +56,16 @@ export default function PrintTicket({ id }: { id: string }) {
   return (
     <article className="print-ticket">
       <div className="print-toolbar">
-        <button onClick={() => window.print()}>Print</button>
+        <button
+          onClick={() =>
+            fetch("/api/print", { method: "POST" }).then(
+              (res) => res.ok || window.print(),
+              () => window.print(),
+            )
+          }
+        >
+          Print
+        </button>
         <a
           href={`/tickets/${ticket.id}`}
           onClick={(event) => {

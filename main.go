@@ -8,16 +8,18 @@ import (
 	"io/fs"
 	"log"
 	"mime"
-	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"my-tickets/internal/api"
 	"my-tickets/internal/db"
 	mcpserver "my-tickets/internal/mcp"
@@ -29,9 +31,7 @@ func main() {
 		runMCP(os.Args[2:])
 		return
 	}
-	port := flag.Int("port", 0, "HTTP port, or 0 for a random free port")
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
-	noBrowser := flag.Bool("no-browser", false, "do not open browser")
 	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
 	flag.Parse()
 	home := ""
@@ -53,11 +53,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		if err := database.Close(); err != nil {
-			log.Printf("close database: %v", err)
-		}
-	}()
 	mime.AddExtensionType(".js", "text/javascript")
 
 	mux := http.NewServeMux()
@@ -68,19 +63,28 @@ func main() {
 			log.Printf("write health response: %v", err)
 		}
 	})
+	var appCtx context.Context
+	// WKWebView ignores window.print(); Wails exposes native printing only from Go.
+	mux.HandleFunc("POST /api/print", func(w http.ResponseWriter, _ *http.Request) {
+		wruntime.WindowPrint(appCtx)
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("/", spaHandler)
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
-	if err != nil {
-		log.Fatal(err)
-	}
-	url := "http://" + listener.Addr().String()
-	log.Printf("listening at %s", url)
 	log.Printf("database at %s", path)
-	if !*noBrowser {
-		openBrowser(url)
+	runErr := wails.Run(&options.App{
+		Title:     "My Tickets",
+		Width:     1280,
+		Height:    800,
+		OnStartup: func(ctx context.Context) { appCtx = ctx },
+		AssetServer: &assetserver.Options{
+			Handler: mux,
+		},
+	})
+	if err := database.Close(); err != nil {
+		log.Printf("close database: %v", err)
 	}
-	if err := http.Serve(listener, mux); err != nil {
-		log.Fatal(err)
+	if runErr != nil {
+		log.Fatal(runErr)
 	}
 }
 
@@ -166,20 +170,4 @@ func spaHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = "/"
 	}
 	http.FileServerFS(sub).ServeHTTP(w, r)
-}
-
-func openBrowser(url string) {
-	var command string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		command, args = "open", []string{url}
-	case "windows":
-		command, args = "rundll32", []string{"url.dll,FileProtocolHandler", url}
-	default:
-		command, args = "xdg-open", []string{url}
-	}
-	if err := exec.Command(command, args...).Start(); err != nil {
-		log.Printf("open browser: %v", err)
-	}
 }

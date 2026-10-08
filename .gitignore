@@ -4,3 +4,6 @@ web/dist/*
 !web/dist/.gitkeep
 *.db
 *.tsbuildinfo
+build/
+web/wailsjs/
+web/package.json.md5
