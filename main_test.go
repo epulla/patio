@@ -56,7 +56,7 @@ func TestDBPath(t *testing.T) {
 			name: "absolute flag",
 			flag: "/tmp/custom.db",
 			goos: "windows",
-			want: "/tmp/custom.db",
+			want: mustAbs("/tmp/custom.db"),
 		},
 		{
 			name: "relative flag",

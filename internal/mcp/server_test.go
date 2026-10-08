@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"my-tickets/internal/api"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestMCPToolsAndAudit(t *testing.T) {
-	database, err := db.Open(t.TempDir() + "/test.db")
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +225,7 @@ func TestMCPInstructions(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
-	database, err := db.Open(t.TempDir() + "/test.db")
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
