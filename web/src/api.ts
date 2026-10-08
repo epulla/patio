@@ -50,6 +50,14 @@ export type CalendarItem = {
   created_by_is_ai: boolean;
 };
 export type CalendarResponse = { items: CalendarItem[]; tickets: Ticket[] };
+export type McpStatus = {
+  command: string;
+  args: string[];
+  ok: boolean;
+  error: string;
+  tools: { name: string; description: string }[];
+  latency_ms: number;
+};
 export type BoardData = {
   board: Board;
   statuses: Status[];

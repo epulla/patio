@@ -4,6 +4,7 @@ import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
+import Mcp from "./Mcp";
 import { api, type Board } from "./api";
 import { ThemeToggle } from "./theme";
 import { Icon, IconButton } from "./icons";
@@ -68,6 +69,7 @@ export default function App() {
   const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
   const isCalendar = path === "/calendar";
+  const isMcp = path === "/mcp";
   let page: ReactNode = <BoardList refresh={refresh} />;
   if (boardMatch)
     page = (
@@ -87,6 +89,7 @@ export default function App() {
     );
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
+  if (isMcp) page = <Mcp />;
 
   const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (
     <button
@@ -120,6 +123,7 @@ export default function App() {
         <nav>
           {navItem("/", "Boards", <Icon name="boards" />, path === "/")}
           {navItem("/calendar", "Calendar", <Icon name="calendar" />, isCalendar)}
+          {navItem("/mcp", "MCP", <Icon name="plug" />, isMcp)}
           {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
           {boards.map((board) =>
             navItem(
