@@ -207,7 +207,7 @@ func dbPath(flagValue, goos string, getenv func(string) string, home string) (st
 		return filepath.Join(home, "Library", "Application Support", "my-tickets", "my-tickets.db"), nil
 	default:
 		xdg := getenv("XDG_DATA_HOME")
-		if filepath.IsAbs(xdg) {
+		if path.IsAbs(xdg) {
 			return filepath.Join(xdg, "my-tickets", "my-tickets.db"), nil
 		}
 		return filepath.Join(home, ".local", "share", "my-tickets", "my-tickets.db"), nil
