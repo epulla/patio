@@ -5,6 +5,7 @@ import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import { api } from "./api";
+import { ThemeToggle } from "./theme";
 
 export type Config = { show_hidden: boolean };
 
@@ -85,6 +86,7 @@ export default function App() {
         <button className="back" onClick={() => navigate("/calendar")}>
           Calendar
         </button>
+        <ThemeToggle />
       </header>
       <main>{page}</main>
     </>
