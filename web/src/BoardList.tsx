@@ -5,6 +5,7 @@ import { ErrorText, navigate } from "./App";
 export default function BoardList() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [error, setError] = useState<unknown>();
+  const [importing, setImporting] = useState(false);
 
   const load = () =>
     api.get<Board[]>("/api/boards").then(setBoards).catch(setError);
@@ -38,6 +39,25 @@ export default function BoardList() {
         ))}
       </div>
       <CreateBoard onCreated={(board) => navigate(`/boards/${board.id}`)} />
+      <section className="panel">
+        <h2>Import board</h2>
+        <p id="import-hint">Full board backup — import into my-tickets on another computer.</p>
+        <label>
+          Import board (JSON backup)
+          <input type="file" accept="application/json,.json" disabled={importing} onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            setImporting(true);
+            try {
+              const response = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: await file.text() });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+              navigate(`/boards/${result.id}`);
+            } catch (reason) { setError(reason); } finally { setImporting(false); event.target.value = ""; }
+          }} />
+        </label>
+        <small>Full board backup — import into my-tickets on another computer.</small>
+      </section>
     </div>
   );
 }

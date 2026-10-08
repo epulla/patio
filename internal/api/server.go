@@ -44,6 +44,9 @@ func New(db *sql.DB, showHidden bool) http.Handler {
 	m.HandleFunc("GET /api/tickets/{id}/transitions", s.transitions)
 	m.HandleFunc("GET /api/tickets/{id}/comments", s.comments)
 	m.HandleFunc("POST /api/tickets/{id}/comments", s.addComment)
+	m.HandleFunc("GET /api/boards/{id}/export", s.exportBoard)
+	m.HandleFunc("GET /api/tickets/{id}/export", s.exportTicket)
+	m.HandleFunc("POST /api/import", s.importBoard)
 	return m
 }
 

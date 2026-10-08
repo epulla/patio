@@ -105,7 +105,20 @@ export default function TicketDetail({
       <ErrorText error={error} />
       <div className="ticket-layout">
         <section className="panel ticket-main">
-          <div className="ticket-code">{ticket.code}</div>
+          <div className="ticket-code">
+            {ticket.code}{" "}
+            <a
+              href={`/print/tickets/${ticket.id}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/print/tickets/${ticket.id}`);
+              }}
+            >
+              Print
+            </a>
+            {" "}<a href={`/api/tickets/${ticket.id}/export?format=json`} download="">Export JSON</a>
+            {" "}<a href={`/api/tickets/${ticket.id}/export?format=md`} download="">Export Markdown</a>
+          </div>
           <input
             className="title-input"
             aria-label="Title"

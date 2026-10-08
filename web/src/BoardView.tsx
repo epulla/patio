@@ -65,6 +65,15 @@ export default function BoardView({ id }: { id: string }) {
           </button>
         </div>
       </div>
+      <section className="panel">
+        <h2>Export</h2>
+        <div className="actions">
+          <a href={`/api/boards/${id}/export?format=xlsx`} download="">Excel (.xlsx)</a>
+          <a href={`/api/boards/${id}/export?format=csv`} download="">CSV</a>
+          <a href={`/api/boards/${id}/export?format=json`} download="" title="Full board backup — import into my-tickets on another computer." aria-describedby="board-export-hint">JSON backup</a>
+        </div>
+        <small id="board-export-hint">Full board backup — import into my-tickets on another computer.</small>
+      </section>
       <ErrorText error={error} />
       {settings ? (
         <Settings data={data} onReload={load} onError={setError} />
