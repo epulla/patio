@@ -279,8 +279,8 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 	ticketOrders := map[string][]string{}
 	temporary := map[string]bool{}
 	for _, sid := range ids {
-		var st status
-		if e = s.db.QueryRow(`SELECT id,name,type,board_id FROM status WHERE id=? AND deleted_at IS NULL`, sid).Scan(&st.ID, &st.Name, &st.Type, &st.BoardID); e != nil {
+		st, scanErr := scanStatus(s.db.QueryRow(`SELECT id,name,type,board_id,additional_fields FROM status WHERE id=? AND deleted_at IS NULL`, sid))
+		if e = scanErr; e != nil {
 			if e == sql.ErrNoRows {
 				continue
 			}
@@ -312,7 +312,7 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 	for _, st := range sts {
 		if st.Type == "temporary" {
 			clauses = append(clauses, "(t.status_id=? AND t.status_updated_at>=?)")
-			args = append(args, st.ID, time.Now().UTC().Add(-24*time.Hour).Format("2006-01-02T15:04:05.000Z"))
+			args = append(args, st.ID, time.Now().UTC().Add(-time.Duration(st.HideAfterDays)*24*time.Hour).Format("2006-01-02T15:04:05.000Z"))
 		} else {
 			classicIDs = append(classicIDs, st.ID)
 		}
@@ -398,16 +398,26 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name string `json:"name"`
-		Type string `json:"type"`
+		Name          string `json:"name"`
+		Type          string `json:"type"`
+		HideAfterDays *int   `json:"hide_after_days"`
 	}
-	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") {
+	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") || (in.HideAfterDays != nil && *in.HideAfterDays < 1) {
 		errw(w, 400, "name and valid type required")
+		return
+	}
+	days := 1
+	if in.HideAfterDays != nil {
+		days = *in.HideAfterDays
+	}
+	additional, e := setStatusHideAfterDays(map[string]json.RawMessage{}, days)
+	if e != nil {
+		errw(w, 500, e.Error())
 		return
 	}
 	id, bid := uid(), idParam(r, "id")
 	var out status
-	e := txrun(s.db, func(tx *sql.Tx) error {
+	e = txrun(s.db, func(tx *sql.Tx) error {
 		var x string
 		if e := tx.QueryRow(`SELECT id FROM board WHERE id=? AND deleted_at IS NULL`, bid).Scan(&x); e != nil {
 			return e
@@ -420,14 +430,14 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 			return e
 		}
 		a = append(a, id)
-		if _, e := tx.Exec(`INSERT INTO status(id,name,type,board_id) VALUES(?,?,?,?)`, id, in.Name, in.Type, bid); e != nil {
+		if _, e := tx.Exec(`INSERT INTO status(id,name,type,additional_fields,board_id) VALUES(?,?,?,?,?)`, id, in.Name, in.Type, additional, bid); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(`INSERT INTO ticket_order(id,status_id) VALUES(?,?)`, uid(), id); e != nil {
 			return e
 		}
 		_, e = tx.Exec(`UPDATE status_order SET status_ids=? WHERE board_id=?`, listJSON(a), bid)
-		out = status{id, in.Name, in.Type, bid}
+		out = status{ID: id, Name: in.Name, Type: in.Type, BoardID: bid, HideAfterDays: days}
 		return e
 	})
 	if e != nil {
@@ -442,20 +452,42 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name string `json:"name"`
-		Type string `json:"type"`
+		Name          string `json:"name"`
+		Type          string `json:"type"`
+		HideAfterDays *int   `json:"hide_after_days"`
 	}
-	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") {
+	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") || (in.HideAfterDays != nil && *in.HideAfterDays < 1) {
 		errw(w, 400, "name and valid type required")
 		return
 	}
 	var x status
-	e := s.db.QueryRow(`UPDATE status SET name=?,type=?,updated_at=? WHERE id=? AND deleted_at IS NULL RETURNING id,name,type,board_id`, in.Name, in.Type, now(), idParam(r, "id")).Scan(&x.ID, &x.Name, &x.Type, &x.BoardID)
+	days := 1
+	id := idParam(r, "id")
+	e := txrun(s.db, func(tx *sql.Tx) error {
+		var raw string
+		if e := tx.QueryRow(`SELECT additional_fields FROM status WHERE id=? AND deleted_at IS NULL`, id).Scan(&raw); e != nil {
+			return e
+		}
+		fields, existingDays, e := statusFields(raw)
+		if e != nil {
+			return e
+		}
+		days = existingDays
+		if in.HideAfterDays != nil {
+			days = *in.HideAfterDays
+			raw, e = setStatusHideAfterDays(fields, days)
+			if e != nil {
+				return e
+			}
+		}
+		return tx.QueryRow(`UPDATE status SET name=?,type=?,additional_fields=?,updated_at=? WHERE id=? AND deleted_at IS NULL RETURNING id,name,type,board_id`, in.Name, in.Type, raw, now(), id).Scan(&x.ID, &x.Name, &x.Type, &x.BoardID)
+	})
 	if e == sql.ErrNoRows {
 		errw(w, 404, "status not found")
 	} else if e != nil {
 		errw(w, 500, e.Error())
 	} else {
+		x.HideAfterDays = days
 		write(w, 200, x)
 	}
 }

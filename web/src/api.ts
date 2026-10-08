@@ -11,6 +11,7 @@ export type Status = {
   name: string;
   type: "classic" | "temporary";
   board_id: string;
+  hide_after_days: number;
   tickets: Ticket[];
 };
 export type TicketType = {

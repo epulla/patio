@@ -37,7 +37,8 @@ type transferTicket struct {
 }
 type transferStatus struct {
 	status
-	TicketIDs []string `json:"ticket_ids"`
+	HideAfterDays *int     `json:"hide_after_days,omitempty"`
+	TicketIDs     []string `json:"ticket_ids"`
 }
 type transferType = ticketType
 type transferUser struct {
@@ -137,9 +138,13 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	}
 	for _, sid := range statusIDs {
 		var x transferStatus
-		if e = s.db.QueryRow(`SELECT id,name,type,board_id FROM status WHERE id=?`, sid).Scan(&x.ID, &x.Name, &x.Type, &x.BoardID); e != nil {
+		st, scanErr := scanStatus(s.db.QueryRow(`SELECT id,name,type,board_id,additional_fields FROM status WHERE id=?`, sid))
+		if e = scanErr; e != nil {
 			return b, e
 		}
+		x.status = st
+		days := st.HideAfterDays
+		x.HideAfterDays = &days
 		var q string
 		if e = s.db.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&q); e != nil {
 			return b, e
@@ -505,12 +510,21 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "invalid board")
 		return
 	}
-	for _, x := range b.Statuses {
+	for i := range b.Statuses {
+		x := &b.Statuses[i]
+		if x.HideAfterDays == nil {
+			days := 1
+			x.HideAfterDays = &days
+		} else if *x.HideAfterDays < 1 {
+			errw(w, 400, "hide_after_days must be at least 1")
+			return
+		}
+		x.status.HideAfterDays = *x.HideAfterDays
 		if x.BoardID != b.Board.ID || statusMap[x.ID].ID != "" {
 			errw(w, 400, "invalid status reference")
 			return
 		}
-		statusMap[x.ID] = x
+		statusMap[x.ID] = *x
 	}
 	for _, x := range b.TicketTypes {
 		if x.BoardID != b.Board.ID || typeMap[x.ID].ID != "" {
@@ -620,7 +634,11 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 			id := uid()
 			sm[x.ID] = id
 			so = append(so, id)
-			if _, e := tx.Exec(`INSERT INTO status(id,name,type,board_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`, id, x.Name, x.Type, bid, b.Board.Created, b.Board.Updated); e != nil {
+			additional, e := setStatusHideAfterDays(map[string]json.RawMessage{}, *x.HideAfterDays)
+			if e != nil {
+				return e
+			}
+			if _, e := tx.Exec(`INSERT INTO status(id,name,type,additional_fields,board_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, id, x.Name, x.Type, additional, bid, b.Board.Created, b.Board.Updated); e != nil {
 				return e
 			}
 			if _, e := tx.Exec(`INSERT INTO ticket_order(id,ticket_ids,status_id) VALUES(?,?,?)`, uid(), "[]", id); e != nil {

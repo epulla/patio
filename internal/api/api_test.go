@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"my-tickets/internal/db"
 )
@@ -19,7 +20,8 @@ type testBoard struct {
 	ShortName string `json:"short_name"`
 }
 type testStatus struct {
-	ID string `json:"id"`
+	ID            string `json:"id"`
+	HideAfterDays int    `json:"hide_after_days"`
 }
 type testTicket struct {
 	ID         string  `json:"id"`
@@ -43,8 +45,9 @@ type testCalendarResponse struct {
 }
 type testData struct {
 	Statuses []struct {
-		ID      string       `json:"id"`
-		Tickets []testTicket `json:"tickets"`
+		ID            string       `json:"id"`
+		HideAfterDays int          `json:"hide_after_days"`
+		Tickets       []testTicket `json:"tickets"`
 	} `json:"statuses"`
 }
 
@@ -584,6 +587,81 @@ func TestBoardDataTemporaryTTLAndOrdering(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTemporaryStatusHideAfterDays(t *testing.T) {
+	database, handler := newAPI(t)
+	b := createBoard(t, handler, "DAYS", []string{"Todo"})
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/statuses", map[string]any{"name": "Bad", "type": "temporary", "hide_after_days": 0}, nil); code != http.StatusBadRequest {
+		t.Fatalf("create hide_after_days=0 status = %d", code)
+	}
+	var status testStatus
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/statuses", map[string]any{"name": "Temporary", "type": "temporary"}, &status); code != http.StatusCreated {
+		t.Fatalf("create temporary status = %d", code)
+	}
+	if status.HideAfterDays != 1 {
+		t.Fatalf("created hide_after_days = %d, want 1", status.HideAfterDays)
+	}
+	if _, err := database.Exec(`UPDATE status SET additional_fields=? WHERE id=?`, `{"custom":"kept"}`, status.ID); err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{"name": "Temporary", "type": "temporary", "hide_after_days": 0}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/statuses/"+status.ID, body, nil); code != http.StatusBadRequest {
+		t.Fatalf("update hide_after_days=0 status = %d", code)
+	}
+	body["hide_after_days"] = 3
+	if code := requestJSON(t, handler, http.MethodPut, "/api/statuses/"+status.ID, body, &status); code != http.StatusOK {
+		t.Fatalf("update temporary status = %d", code)
+	}
+	if status.HideAfterDays != 3 {
+		t.Fatalf("updated hide_after_days = %d, want 3", status.HideAfterDays)
+	}
+	var fields map[string]json.RawMessage
+	var raw string
+	if err := database.QueryRow(`SELECT additional_fields FROM status WHERE id=?`, status.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil || string(fields["custom"]) != `"kept"` {
+		t.Fatalf("preserved status fields = %v, err = %v", fields, err)
+	}
+	old := createTicket(t, handler, b.ID, status.ID)
+	fresh := createTicket(t, handler, b.ID, status.ID)
+	for ticket, age := range map[string]int{old.ID: 4, fresh.ID: 2} {
+		if _, err := database.Exec(`UPDATE ticket SET status_updated_at=? WHERE id=?`, time.Now().UTC().AddDate(0, 0, -age).Format("2006-01-02T15:04:05.000Z"), ticket); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		id   string
+		want bool
+	}{{"aged 4 days hidden", old.ID, false}, {"aged 2 days shown", fresh.ID, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var data testData
+			if code := requestJSON(t, handler, http.MethodGet, "/api/boards/"+b.ID+"/data", nil, &data); code != http.StatusOK {
+				t.Fatalf("board data status = %d", code)
+			}
+			if len(data.Statuses) != 2 || data.Statuses[1].HideAfterDays != 3 {
+				t.Fatalf("temporary status data = %#v", data.Statuses)
+			}
+			found := false
+			for _, ticket := range data.Statuses[1].Tickets {
+				found = found || ticket.ID == tc.id
+			}
+			if found != tc.want {
+				t.Errorf("ticket %s visible = %t, want %t", tc.id, found, tc.want)
+			}
+		})
+	}
+	if _, err := database.Exec(`UPDATE status SET additional_fields=? WHERE id=?`, "not json", status.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/boards/"+b.ID+"/data", nil, nil); code != http.StatusInternalServerError {
+		t.Fatalf("corrupt additional_fields board data status = %d, want 500", code)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/statuses/"+status.ID, map[string]any{"name": "Temporary", "type": "temporary", "hide_after_days": 3}, nil); code != http.StatusInternalServerError {
+		t.Fatalf("corrupt additional_fields update status = %d, want 500", code)
 	}
 }
 

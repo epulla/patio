@@ -65,11 +65,49 @@ type board struct {
 	Updated  string `json:"updated_at"`
 }
 type status struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	BoardID string `json:"board_id"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	BoardID       string `json:"board_id"`
+	HideAfterDays int    `json:"hide_after_days"`
 }
+
+func statusFields(raw string) (map[string]json.RawMessage, int, error) {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil || fields == nil {
+		return nil, 0, errors.New("invalid status additional_fields")
+	}
+	days := 1
+	if value, ok := fields["hide_after_days"]; ok && json.Unmarshal(value, &days) != nil {
+		return nil, 0, errors.New("invalid hide_after_days")
+	}
+	if days < 1 {
+		return nil, 0, errors.New("hide_after_days must be at least 1")
+	}
+	return fields, days, nil
+}
+
+func setStatusHideAfterDays(fields map[string]json.RawMessage, days int) (string, error) {
+	value, err := json.Marshal(days)
+	if err != nil {
+		return "", err
+	}
+	fields["hide_after_days"] = value
+	encoded, err := json.Marshal(fields)
+	return string(encoded), err
+}
+
+func scanStatus(row interface{ Scan(...any) error }) (status, error) {
+	var st status
+	var raw string
+	if err := row.Scan(&st.ID, &st.Name, &st.Type, &st.BoardID, &raw); err != nil {
+		return st, err
+	}
+	_, days, err := statusFields(raw)
+	st.HideAfterDays = days
+	return st, err
+}
+
 type ticketType struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`

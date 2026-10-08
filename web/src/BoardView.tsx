@@ -472,9 +472,14 @@ function StatusRow({
 }) {
   const [name, setName] = useState(status.name);
   const [type, setType] = useState(status.type);
+  const [hideAfterDays, setHideAfterDays] = useState(status.hide_after_days);
   async function save() {
     try {
-      await api.put(`/api/statuses/${status.id}`, { name, type });
+      await api.put(`/api/statuses/${status.id}`, {
+        name,
+        type,
+        hide_after_days: hideAfterDays,
+      });
       onReload();
     } catch (error) {
       onError(error);
@@ -504,6 +509,16 @@ function StatusRow({
         <option value="classic">Classic</option>
         <option value="temporary">Temporary</option>
       </select>
+      {type === "temporary" && (
+        <input
+          type="number"
+          min={1}
+          aria-label={`${status.name} hide after days`}
+          value={hideAfterDays}
+          onChange={(event) => setHideAfterDays(Number(event.target.value))}
+          style={{ width: "5rem" }}
+        />
+      )}
       <IconButton icon="check" label={`Save ${status.name}`} onClick={save} />
       <IconButton
         className="danger-text"

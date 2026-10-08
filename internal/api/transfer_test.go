@@ -85,6 +85,66 @@ func TestBoardJSONRoundTripAndCollision(t *testing.T) {
 	}
 }
 
+func TestBoardJSONImportDefaultsHideAfterDays(t *testing.T) {
+	_, sourceHandler := newAPI(t)
+	board := createBoard(t, sourceHandler, "DAYS", []string{"Temporary"})
+	status := boardStatuses(t, sourceHandler, board.ID)[0]
+	if code := requestJSON(t, sourceHandler, http.MethodPut, "/api/statuses/"+status.ID, map[string]any{"name": "Temporary", "type": "temporary", "hide_after_days": 3}, nil); code != http.StatusOK {
+		t.Fatalf("update temporary status = %d", code)
+	}
+	var backup map[string]json.RawMessage
+	if err := json.Unmarshal(exportJSON(t, sourceHandler, board.ID), &backup); err != nil {
+		t.Fatal(err)
+	}
+	var statuses []map[string]json.RawMessage
+	if err := json.Unmarshal(backup["statuses"], &statuses); err != nil {
+		t.Fatal(err)
+	}
+	var days int
+	if err := json.Unmarshal(statuses[0]["hide_after_days"], &days); err != nil || days != 3 {
+		t.Fatalf("export hide_after_days = %d, err = %v", days, err)
+	}
+	delete(statuses[0], "hide_after_days")
+	statusJSON, err := json.Marshal(statuses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backup["statuses"] = statusJSON
+	legacy, err := json.Marshal(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, destinationHandler := newAPI(t)
+	w := transferRequest(t, destinationHandler, http.MethodPost, "/api/import", legacy)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("legacy import status = %d: %s", w.Code, w.Body)
+	}
+	var imported testBoard
+	if err := json.NewDecoder(w.Body).Decode(&imported); err != nil {
+		t.Fatal(err)
+	}
+	var data testData
+	if code := requestJSON(t, destinationHandler, http.MethodGet, "/api/boards/"+imported.ID+"/data", nil, &data); code != http.StatusOK {
+		t.Fatalf("imported board data status = %d", code)
+	}
+	if len(data.Statuses) != 1 || data.Statuses[0].HideAfterDays != 1 {
+		t.Fatalf("imported hide_after_days = %#v, want 1", data.Statuses)
+	}
+	statuses[0]["hide_after_days"] = json.RawMessage("0")
+	statusJSON, err = json.Marshal(statuses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backup["statuses"] = statusJSON
+	invalid, err := json.Marshal(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := transferRequest(t, destinationHandler, http.MethodPost, "/api/import", invalid); w.Code != http.StatusBadRequest {
+		t.Fatalf("import hide_after_days=0 status = %d", w.Code)
+	}
+}
+
 func TestBoardJSONCalendarItemRoundTripAndLegacyImport(t *testing.T) {
 	source, sourceHandler := newAPI(t)
 	board := createBoard(t, sourceHandler, "CALIMP", []string{"Todo"})
