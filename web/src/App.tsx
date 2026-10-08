@@ -3,6 +3,7 @@ import BoardList from "./BoardList";
 import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
+import Calendar from "./Calendar";
 import { api } from "./api";
 
 export type Config = { show_hidden: boolean };
@@ -53,11 +54,16 @@ export default function App() {
   const boardMatch = path.match(/^\/boards\/([^/]+)$/);
   const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
+  const isCalendar = path === "/calendar";
   let page: ReactNode = <BoardList refresh={refresh} />;
   if (boardMatch)
-    page = <BoardView id={decodeURIComponent(boardMatch[1])} refresh={refresh} />;
+    page = (
+      <BoardView id={decodeURIComponent(boardMatch[1])} refresh={refresh} />
+    );
   if (printMatch)
-    page = <PrintTicket id={decodeURIComponent(printMatch[1])} refresh={refresh} />;
+    page = (
+      <PrintTicket id={decodeURIComponent(printMatch[1])} refresh={refresh} />
+    );
   if (ticketMatch) {
     page = (
       <TicketDetail
@@ -67,6 +73,7 @@ export default function App() {
       />
     );
   }
+  if (isCalendar) page = <Calendar refresh={refresh} />;
 
   return (
     <>
@@ -75,6 +82,9 @@ export default function App() {
           my-tickets
         </button>
         <span>Local workspace</span>
+        <button className="back" onClick={() => navigate("/calendar")}>
+          Calendar
+        </button>
       </header>
       <main>{page}</main>
     </>

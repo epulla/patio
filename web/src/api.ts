@@ -35,6 +35,20 @@ export type Ticket = {
   reporter_id: string | null;
   assignee_id: string | null;
 };
+export type CalendarItem = {
+  id: string;
+  kind: "event" | "reminder";
+  title: string;
+  description: string;
+  starts_at: string;
+  ends_at: string | null;
+  all_day: boolean;
+  board_id: string | null;
+  ticket_id: string | null;
+  created_by: string;
+  created_by_is_ai: boolean;
+};
+export type CalendarResponse = { items: CalendarItem[]; tickets: Ticket[] };
 export type BoardData = {
   board: Board;
   statuses: Status[];
