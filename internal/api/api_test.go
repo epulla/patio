@@ -665,6 +665,38 @@ func TestTemporaryStatusHideAfterDays(t *testing.T) {
 	}
 }
 
+func TestCreateBoardTemporaryStatuses(t *testing.T) {
+	_, handler := newAPI(t)
+	for _, tc := range []struct {
+		name     string
+		statuses []any
+		wantCode int
+	}{{"mixed", []any{"To Do", map[string]any{"name": "Done", "type": "temporary", "hide_after_days": 2}}, http.StatusCreated}, {"bad type", []any{map[string]any{"name": "Done", "type": "other"}}, http.StatusBadRequest}, {"zero days", []any{map[string]any{"name": "Done", "hide_after_days": 0}}, http.StatusBadRequest}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b testBoard
+			body := map[string]any{"name": tc.name, "short_name": tc.name, "statuses": tc.statuses}
+			if code := requestJSON(t, handler, http.MethodPost, "/api/boards", body, &b); code != tc.wantCode {
+				t.Fatalf("create board status = %d, want %d", code, tc.wantCode)
+			}
+			if tc.wantCode != http.StatusCreated {
+				return
+			}
+			var data struct {
+				Statuses []struct {
+					Name, Type    string
+					HideAfterDays int `json:"hide_after_days"`
+				} `json:"statuses"`
+			}
+			if code := requestJSON(t, handler, http.MethodGet, "/api/boards/"+b.ID+"/data", nil, &data); code != http.StatusOK {
+				t.Fatalf("board data status = %d", code)
+			}
+			if len(data.Statuses) != 2 || data.Statuses[0].Name != "To Do" || data.Statuses[0].Type != "classic" || data.Statuses[1].Name != "Done" || data.Statuses[1].Type != "temporary" || data.Statuses[1].HideAfterDays != 2 {
+				t.Fatalf("created statuses = %#v", data.Statuses)
+			}
+		})
+	}
+}
+
 func assertOrder(t *testing.T, database *sql.DB, statusID string, want []string) {
 	t.Helper()
 	var raw string

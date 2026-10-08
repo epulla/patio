@@ -3,7 +3,6 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -90,10 +89,46 @@ func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "name and valid short_name required")
 		return
 	}
-	statuses := []string{"To Do", "In Progress", "Done"}
+	type boardStatus struct {
+		Name          string `json:"name"`
+		Type          string `json:"type"`
+		HideAfterDays *int   `json:"hide_after_days"`
+		Additional    string
+	}
+	statuses := []boardStatus{{Name: "To Do"}, {Name: "In Progress"}, {Name: "Done"}}
 	if raw, ok := m["statuses"]; ok {
-		if json.Unmarshal(raw, &statuses) != nil || len(statuses) == 0 {
-			errw(w, 400, "statuses must be non-empty strings")
+		var elements []json.RawMessage
+		if json.Unmarshal(raw, &elements) != nil || len(elements) == 0 {
+			errw(w, 400, "statuses must be non-empty")
+			return
+		}
+		statuses = make([]boardStatus, len(elements))
+		for i, element := range elements {
+			if json.Unmarshal(element, &statuses[i].Name) != nil {
+				if json.Unmarshal(element, &statuses[i]) != nil {
+					errw(w, 400, "invalid status")
+					return
+				}
+			}
+		}
+	}
+	for i := range statuses {
+		st := &statuses[i]
+		if st.Type == "" {
+			st.Type = "classic"
+		}
+		if !required(st.Name) || (st.Type != "classic" && st.Type != "temporary") || (st.HideAfterDays != nil && *st.HideAfterDays < 1) {
+			errw(w, 400, "name and valid type required")
+			return
+		}
+		days := 1
+		if st.HideAfterDays != nil {
+			days = *st.HideAfterDays
+		}
+		var e error
+		st.Additional, e = setStatusHideAfterDays(map[string]json.RawMessage{}, days)
+		if e != nil {
+			errw(w, 500, e.Error())
 			return
 		}
 	}
@@ -113,13 +148,10 @@ func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
 			return e
 		}
 		ids := []string{}
-		for _, n := range statuses {
-			if !required(n) {
-				return errors.New("status name required")
-			}
+		for _, st := range statuses {
 			sid := uid()
 			ids = append(ids, sid)
-			if _, e := tx.Exec(`INSERT INTO status(id,name,type,board_id) VALUES(?,?,?,?)`, sid, n, "classic", id); e != nil {
+			if _, e := tx.Exec(`INSERT INTO status(id,name,type,additional_fields,board_id) VALUES(?,?,?,?,?)`, sid, st.Name, st.Type, st.Additional, id); e != nil {
 				return e
 			}
 			if _, e := tx.Exec(`INSERT INTO ticket_order(id,status_id) VALUES(?,?)`, uid(), sid); e != nil {
