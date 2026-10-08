@@ -26,15 +26,18 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "do not open browser")
 	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
 	flag.Parse()
-	config, err := os.UserConfigDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	dataDir := filepath.Join(config, "my-tickets")
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+	dir, err := dataDir(runtime.GOOS, os.Getenv, home)
+	if err != nil {
 		log.Fatal(err)
 	}
-	database, err := db.Open(filepath.Join(dataDir, "my-tickets.db"))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		log.Fatal(err)
+	}
+	database, err := db.Open(filepath.Join(dir, "my-tickets.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -65,6 +68,26 @@ func main() {
 	}
 	if err := http.Serve(listener, mux); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func dataDir(goos string, getenv func(string) string, home string) (string, error) {
+	switch goos {
+	case "windows":
+		local := getenv("LOCALAPPDATA")
+		if local == "" {
+			return "", fmt.Errorf("LOCALAPPDATA is not set")
+		}
+		// Use Local instead of Roaming because SQLite WAL breaks on redirected or network Roaming profiles.
+		return filepath.Join(local, "my-tickets"), nil
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "my-tickets"), nil
+	default:
+		xdg := getenv("XDG_DATA_HOME")
+		if filepath.IsAbs(xdg) {
+			return filepath.Join(xdg, "my-tickets"), nil
+		}
+		return filepath.Join(home, ".local", "share", "my-tickets"), nil
 	}
 }
 

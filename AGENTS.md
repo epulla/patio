@@ -11,7 +11,7 @@ Local single-user kanban app: Go HTTP server + SQLite + React UI embedded into o
 
 ## Layout
 
-- `main.go`: flags (`-port`, `-no-browser`, `-show-hidden`), DB path in `os.UserConfigDir()/my-tickets/`, SPA serving, browser open.
+- `main.go`: flags (`-port`, `-no-browser`, `-show-hidden`), OS-specific DB path in `dataDir`, SPA serving, browser open.
 - `internal/db/`: `Open` applies pragmas (foreign_keys, WAL, busy_timeout) via DSN, runs embedded migrations tracked by `PRAGMA user_version`, seeds user `local`.
 - `internal/db/migrations/`: numbered `.sql` files. Never edit an applied migration; add a new file.
 - `internal/api/`: `server.go` (routes, JSON helpers, types), `boards.go`, `tickets.go`, `transfer.go` (export/import).
@@ -40,4 +40,4 @@ pnpm --dir web build              # runs tsc
 make web release                  # cross-compile check
 ```
 
-Smoke-test with a throwaway data dir: `HOME=$(mktemp -d) ./bin/my-tickets -port 18080 -no-browser` (macOS; on Linux set `XDG_CONFIG_HOME`).
+Smoke-test with a throwaway data dir: `HOME=$(mktemp -d) ./bin/my-tickets -port 18080 -no-browser` (macOS; on Linux set `XDG_DATA_HOME`).

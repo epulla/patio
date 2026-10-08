@@ -33,11 +33,11 @@ Stop it with `pkill -f bin/my-tickets` (macOS/Linux) or Ctrl+C.
 
 ## Data
 
-The database is `my-tickets.db` in the OS user config directory:
+The database is `my-tickets.db` in the OS data directory:
 
 - macOS: `~/Library/Application Support/my-tickets/`
-- Linux: `$XDG_CONFIG_HOME/my-tickets/` or `~/.config/my-tickets/`
-- Windows: `%AppData%\my-tickets\`
+- Linux: `$XDG_DATA_HOME/my-tickets/` or `~/.local/share/my-tickets/`
+- Windows: `%LOCALAPPDATA%\my-tickets\`
 
 Back up a board with its JSON export, or copy the `.db` file while the app is stopped.
 
