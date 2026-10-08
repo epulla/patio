@@ -719,6 +719,15 @@ a:has(> .svg-icon) {
   align-self: flex-start;
   border: 1px dashed var(--border);
 }
+.new-column {
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+}
+.new-column input {
+  flex: 1;
+}
 
 /* Settings */
 .settings {

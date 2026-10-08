@@ -125,14 +125,16 @@ function Kanban({
   onError: (error: unknown) => void;
   onAdd: (statusId: string) => void;
 }) {
-  async function addColumn() {
-    const name = prompt("Column name");
-    if (!name) return;
+  const [newColumn, setNewColumn] = useState<string>();
+  async function addColumn(event: React.FormEvent) {
+    event.preventDefault();
+    if (!newColumn?.trim()) return;
     try {
       await api.post(`/api/boards/${data.board.id}/statuses`, {
-        name,
+        name: newColumn.trim(),
         type: "classic",
       });
+      setNewColumn(undefined);
       onReload();
     } catch (error) {
       onError(error);
@@ -152,7 +154,37 @@ function Kanban({
           onAdd={onAdd}
         />
       ))}
-      <IconButton className="add-column" icon="plus" label="Add column" onClick={addColumn} />
+      {newColumn === undefined ? (
+        <IconButton
+          className="add-column"
+          icon="plus"
+          label="Add column"
+          onClick={() => setNewColumn("")}
+        />
+      ) : (
+        <form
+          className="column new-column"
+          onSubmit={addColumn}
+          onKeyDown={(event) => event.key === "Escape" && setNewColumn(undefined)}
+        >
+          <input
+            autoFocus
+            required
+            aria-label="Column name"
+            placeholder="Column name"
+            value={newColumn}
+            onChange={(event) => setNewColumn(event.target.value)}
+          />
+          <IconButton className="primary" icon="check" label="Create column" />
+          <IconButton
+            type="button"
+            className="ghost"
+            icon="x"
+            label="Cancel"
+            onClick={() => setNewColumn(undefined)}
+          />
+        </form>
+      )}
     </div>
   );
 }
@@ -445,6 +477,7 @@ function StatusRow({
     }
   }
   async function remove() {
+    if (!confirm(`Delete column "${status.name}"?`)) return;
     try {
       await api.delete(`/api/statuses/${status.id}`);
       onReload();
@@ -555,6 +588,7 @@ function TypeRow({
     }
   }
   async function remove() {
+    if (!confirm(`Delete ticket type "${type.name}"?`)) return;
     try {
       await api.delete(`/api/ticket-types/${type.id}`);
       onReload();
