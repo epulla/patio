@@ -1,6 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import { api, type Board } from "./api";
 import { ErrorText, navigate } from "./App";
+import { DaysField } from "./BoardView";
 import { Icon, IconButton } from "./icons";
 
 type NewColumn = {
@@ -13,12 +20,27 @@ export default function BoardList({ refresh }: { refresh: number }) {
   const [boards, setBoards] = useState<Board[]>([]);
   const [error, setError] = useState<unknown>();
   const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const createButton = useRef<HTMLButtonElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const load = () =>
     api.get<Board[]>("/api/boards").then(setBoards).catch(setError);
   useEffect(() => {
     load();
   }, [refresh]);
+
+  async function importFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const response = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: await file.text() });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+      navigate(`/boards/${result.id}`);
+    } catch (reason) { setError(reason); } finally { setImporting(false); event.target.value = ""; }
+  }
 
   return (
     <div className="stack">
@@ -27,8 +49,32 @@ export default function BoardList({ refresh }: { refresh: number }) {
           <p className="eyebrow">Workspace</p>
           <h1>Boards</h1>
         </div>
+        <div className="actions">
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={importFile}
+          />
+          <button
+            data-tip="Import a JSON backup"
+            disabled={importing}
+            onClick={() => fileInput.current?.click()}
+          >
+            <Icon name="upload" /> {importing ? "Importing..." : "Import"}
+          </button>
+          <button
+            ref={createButton}
+            className="primary"
+            onClick={() => setCreating(true)}
+          >
+            <Icon name="plus" /> Create board
+          </button>
+        </div>
       </div>
       <ErrorText error={error} />
+      {boards.length === 0 && <small>No boards yet. Create one to get started.</small>}
       <div className="board-grid">
         {boards.map((board) => (
           <button
@@ -47,43 +93,47 @@ export default function BoardList({ refresh }: { refresh: number }) {
           </button>
         ))}
       </div>
-      <CreateBoard onCreated={(board) => navigate(`/boards/${board.id}`)} />
-      <section className="panel import">
-        <h2>Import board</h2>
-        <label>
-          JSON backup
-          <input type="file" accept="application/json,.json" disabled={importing} onChange={async (event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            setImporting(true);
-            try {
-              const response = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: await file.text() });
-              const result = await response.json();
-              if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-              navigate(`/boards/${result.id}`);
-            } catch (reason) { setError(reason); } finally { setImporting(false); event.target.value = ""; }
-          }} aria-describedby="import-hint" />
-        </label>
-        <small id="import-hint">Full board backup — import into my-tickets on another computer.</small>
-      </section>
+      {creating && (
+        <CreateBoard
+          onCreated={(board) => navigate(`/boards/${board.id}`)}
+          onClose={() => {
+            setCreating(false);
+            createButton.current?.focus();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function CreateBoard({ onCreated }: { onCreated: (board: Board) => void }) {
+function CreateBoard({
+  onCreated,
+  onClose,
+}: {
+  onCreated: (board: Board) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
   const [template, setTemplate] = useState("");
   const [columns, setColumns] = useState<NewColumn[]>([
     { name: "To Do", type: "classic", hide_after_days: "1" },
     { name: "In Progress", type: "classic", hide_after_days: "1" },
-    { name: "Done", type: "classic", hide_after_days: "1" },
+    { name: "Done", type: "temporary", hide_after_days: "1" },
   ]);
   const [error, setError] = useState<unknown>();
 
   function updateColumn(index: number, patch: Partial<NewColumn>) {
     setColumns((current) => current.map((column, i) => i === index ? { ...column, ...patch } : column));
   }
+
+  const dialog = useRef<HTMLDialogElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  // Native modal dialog: inert background, focus trap, Esc closes via onClose.
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal();
+    nameInput.current?.focus();
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -104,94 +154,104 @@ function CreateBoard({ onCreated }: { onCreated: (board: Board) => void }) {
   }
 
   return (
-    <section className="panel create">
-      <div>
-        <p className="eyebrow">Start something new</p>
-        <h2>Create board</h2>
-      </div>
-      <form onSubmit={submit}>
-        <label>
-          Name
-          <input
-            required
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label>
-          Short name
-          <input
-            required
-            maxLength={10}
-            value={shortName}
-            onChange={(event) => setShortName(event.target.value)}
-          />
-        </label>
-        <fieldset className="create-columns">
-          <legend>Columns</legend>
-          <small>
-            Temporary: tickets auto-hide from the board N days after entering the column. They are not deleted.
-          </small>
-          {columns.map((column, index) => (
-            <div className="type-row" key={index}>
-              <input
-                aria-label={`Column ${index + 1} name`}
-                value={column.name}
-                onChange={(event) => updateColumn(index, { name: event.target.value })}
-              />
-              <select
-                aria-label={`Column ${index + 1} type`}
-                value={column.type}
-                onChange={(event) => updateColumn(index, { type: event.target.value as NewColumn["type"] })}
-              >
-                <option value="classic">Classic</option>
-                <option value="temporary">Temporary</option>
-              </select>
-              {column.type === "temporary" && (
-                <>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    required
-                    title="Hide tickets after N days"
-                    aria-label={`Column ${index + 1} hide after days`}
-                    value={column.hide_after_days}
-                    onChange={(event) => updateColumn(index, { hide_after_days: event.target.value })}
-                    style={{ width: "5rem" }}
-                  />
-                  <small>days</small>
-                </>
-              )}
-              <IconButton
-                type="button"
-                className="danger-text"
-                icon="trash"
-                label={`Remove column ${index + 1}`}
-                disabled={columns.length === 1}
-                onClick={() => setColumns((current) => current.filter((_, i) => i !== index))}
-              />
-            </div>
-          ))}
-          <button
+    <dialog
+      ref={dialog}
+      className="create-dialog"
+      aria-labelledby="create-board-title"
+      onClose={onClose}
+    >
+      <section className="panel create create-modal">
+        <div className="page-heading">
+          <h2 id="create-board-title">Create board</h2>
+          <IconButton
             type="button"
-            onClick={() => setColumns((current) => [...current, { name: "", type: "classic", hide_after_days: "1" }])}
-          >
-            <Icon name="plus" /> Add column
-          </button>
-        </fieldset>
-        <label>
-          Template HTML
-          <input
-            value={template}
-            onChange={(event) => setTemplate(event.target.value)}
+            className="ghost"
+            icon="x"
+            label="Close"
+            onClick={() => dialog.current?.close()}
           />
-        </label>
-        <button className="primary">
-          <Icon name="plus" /> Create board
-        </button>
-      </form>
-      <ErrorText error={error} />
-    </section>
+        </div>
+        <form onSubmit={submit}>
+          <label>
+            Name
+            <input
+              ref={nameInput}
+              required
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          <label>
+            Short name
+            <input
+              required
+              maxLength={10}
+              value={shortName}
+              onChange={(event) => setShortName(event.target.value)}
+            />
+          </label>
+          <fieldset className="create-columns">
+            <legend>Columns</legend>
+            <p className="callout">
+              Temporary columns hide their tickets from the board N days after
+              they enter the column. Tickets are not deleted. Good for Done.
+            </p>
+            {columns.map((column, index) => (
+              <div className="type-row" key={index}>
+                <input
+                  aria-label={`Column ${index + 1} name`}
+                  value={column.name}
+                  onChange={(event) => updateColumn(index, { name: event.target.value })}
+                />
+                <select
+                  aria-label={`Column ${index + 1} type`}
+                  value={column.type}
+                  onChange={(event) => updateColumn(index, { type: event.target.value as NewColumn["type"] })}
+                >
+                  <option value="classic">Classic</option>
+                  <option value="temporary">Temporary</option>
+                </select>
+                <DaysField
+                  label={`Column ${index + 1} hide after days`}
+                  value={column.hide_after_days}
+                  onChange={(value) => updateColumn(index, { hide_after_days: value })}
+                  hidden={column.type !== "temporary"}
+                />
+                <IconButton
+                  type="button"
+                  className="danger-text"
+                  icon="trash"
+                  label={`Remove column ${index + 1}`}
+                  disabled={columns.length === 1}
+                  onClick={() => setColumns((current) => current.filter((_, i) => i !== index))}
+                />
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setColumns((current) => [...current, { name: "", type: "classic", hide_after_days: "1" }])}
+            >
+              <Icon name="plus" /> Add column
+            </button>
+          </fieldset>
+          <label>
+            Template HTML
+            <input
+              value={template}
+              onChange={(event) => setTemplate(event.target.value)}
+            />
+          </label>
+          <div className="modal-actions">
+            <button type="button" onClick={() => dialog.current?.close()}>
+              Cancel
+            </button>
+            <button className="primary">
+              <Icon name="plus" /> Create board
+            </button>
+          </div>
+        </form>
+        <ErrorText error={error} />
+      </section>
+    </dialog>
   );
 }

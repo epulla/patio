@@ -413,7 +413,7 @@ a:has(> .svg-icon) {
   display: grid;
   place-items: center;
   padding: 20px;
-  z-index: 5;
+  z-index: 30;
 }
 .modal > .panel {
   max-height: calc(100vh - 40px);
@@ -562,14 +562,44 @@ a:has(> .svg-icon) {
   flex: 1;
   gap: 12px;
 }
-.import label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 420px;
-  margin-bottom: 6px;
+.create-dialog {
+  width: min(680px, calc(100vw - 40px));
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.create-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+.create-modal {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
+}
+.create-modal .page-heading {
+  align-items: center;
+}
+.create-columns legend {
   font-size: 13px;
   font-weight: 600;
+  margin-bottom: 6px;
+}
+.callout {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid color-mix(in oklch, var(--primary) 70%, transparent);
+  border-radius: var(--radius-field);
+  background: var(--base-200);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.modal-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .menu {
   position: relative;
@@ -654,6 +684,7 @@ a:has(> .svg-icon) {
   border-color: color-mix(in oklch, var(--primary) 60%, transparent);
 }
 .column-head {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -688,8 +719,16 @@ a:has(> .svg-icon) {
   color: var(--content);
   border-color: var(--muted);
 }
+/* Anchor to .column-head so the tooltip stays inside the column and the .kanban scroller. */
+.help-tip[data-tip] {
+  position: static;
+}
 .help-tip[data-tip]::after {
-  left: 0;
+  top: 100%;
+  left: 4px;
+  right: 4px;
+  width: auto;
+  max-width: none;
   transform: none;
 }
 .count {
