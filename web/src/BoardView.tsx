@@ -420,12 +420,13 @@ function Settings({
               onChange={(event) => setShortName(event.target.value)}
             />
           </label>
-          <button className="primary" onClick={saveBoard}>
-            <Icon name="check" /> Save
-          </button>
-          <button className="danger" onClick={deleteBoard}>
-            <Icon name="trash" /> Delete board
-          </button>
+          <IconButton icon="check" label="Save board" onClick={saveBoard} />
+          <IconButton
+            className="danger-text"
+            icon="trash"
+            label="Delete board"
+            onClick={deleteBoard}
+          />
         </div>
       </div>
       <StatusManager
@@ -480,13 +481,15 @@ function StatusRow({
 }) {
   const [name, setName] = useState(status.name);
   const [type, setType] = useState(status.type);
-  const [hideAfterDays, setHideAfterDays] = useState(status.hide_after_days);
+  const [hideAfterDays, setHideAfterDays] = useState(
+    String(status.hide_after_days),
+  );
   async function save() {
     try {
       await api.put(`/api/statuses/${status.id}`, {
         name,
         type,
-        hide_after_days: hideAfterDays,
+        hide_after_days: Number(hideAfterDays),
       });
       onReload();
     } catch (error) {
@@ -517,18 +520,12 @@ function StatusRow({
         <option value="classic">Classic</option>
         <option value="temporary">Temporary</option>
       </select>
-      {type === "temporary" && (
-        <input
-          type="number"
-          min={1}
-          aria-label={`${status.name} hide after days`}
-          title="Hide tickets after N days"
-          value={hideAfterDays}
-          onChange={(event) => setHideAfterDays(Number(event.target.value))}
-          style={{ width: "5rem" }}
-        />
-      )}
-      {type === "temporary" && <small>days</small>}
+      <DaysField
+        label={`${status.name} hide after days`}
+        value={hideAfterDays}
+        onChange={setHideAfterDays}
+        hidden={type !== "temporary"}
+      />
       <IconButton icon="check" label={`Save ${status.name}`} onClick={save} />
       <IconButton
         className="danger-text"
@@ -537,6 +534,38 @@ function StatusRow({
         onClick={remove}
       />
     </div>
+  );
+}
+
+// Stays in layout when hidden so toggling Classic/Temporary doesn't shift the row.
+export function DaysField({
+  label,
+  value,
+  onChange,
+  hidden,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hidden: boolean;
+}) {
+  return (
+    <label
+      className={`days-field ${hidden ? "is-hidden" : ""}`}
+      data-tip="Hide tickets after N days"
+    >
+      <input
+        type="number"
+        min={1}
+        step={1}
+        required
+        disabled={hidden}
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <span>days</span>
+    </label>
   );
 }
 

@@ -367,8 +367,16 @@ a:has(> .svg-icon) {
   opacity: 1;
   transition-delay: 0.4s;
 }
-[data-tip]:focus-visible::after {
+[data-tip]:focus-visible::after,
+[data-tip]:has(:focus-visible)::after {
   opacity: 1;
+}
+.tip-wide[data-tip]::after {
+  width: max-content;
+  max-width: 260px;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
 }
 .tip-up[data-tip]::after {
   top: auto;
@@ -777,8 +785,37 @@ a:has(> .svg-icon) {
   display: flex;
   gap: 8px;
 }
-.type-row input:first-child {
+.type-row > input:first-child {
   flex: 1;
+}
+label.days-field {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  height: 40px;
+  padding-right: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--base-100);
+  font-weight: 400;
+}
+.days-field.is-hidden {
+  visibility: hidden;
+}
+.days-field:focus-within {
+  border-color: var(--primary);
+}
+.days-field input {
+  width: 4.5rem;
+  height: 38px;
+  border: 0;
+  background: transparent;
+}
+.days-field span {
+  color: var(--muted);
+  font-size: 13px;
 }
 .ticket-form {
   max-width: 680px;
