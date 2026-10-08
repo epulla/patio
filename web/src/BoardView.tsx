@@ -281,7 +281,12 @@ function Column({
           <h3>{status.name}</h3>
           <span className="count">{status.tickets.length}</span>
           {status.type === "temporary" && (
-            <span className="badge warning">Temporary</span>
+            <span
+              className="badge warning"
+              title={`Tickets hide after ${status.hide_after_days} day${status.hide_after_days === 1 ? "" : "s"}`}
+            >
+              Temporary
+            </span>
           )}
         </div>
         <div className="column-actions">
@@ -450,6 +455,9 @@ function StatusManager({
   return (
     <div className="settings-section">
       <h2>Columns</h2>
+      <small>
+        Temporary: tickets auto-hide from the board N days after entering the column. They are not deleted.
+      </small>
       {statuses.map((status) => (
         <StatusRow
           key={status.id}
@@ -514,11 +522,13 @@ function StatusRow({
           type="number"
           min={1}
           aria-label={`${status.name} hide after days`}
+          title="Hide tickets after N days"
           value={hideAfterDays}
           onChange={(event) => setHideAfterDays(Number(event.target.value))}
           style={{ width: "5rem" }}
         />
       )}
+      {type === "temporary" && <small>days</small>}
       <IconButton icon="check" label={`Save ${status.name}`} onClick={save} />
       <IconButton
         className="danger-text"
