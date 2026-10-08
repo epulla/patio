@@ -16,7 +16,7 @@ Port of the prod-tickets schema, plus a `ticket_status_transition` table that re
 
 ## Install and run
 
-Download app for your OS from [Releases](https://github.com/epulla-hm/my-tickets/releases) and open it. Linux requires GTK 3 and WebKit2GTK runtime libraries (for Ubuntu 22.04, `libgtk-3-0` and `libwebkit2gtk-4.0-37`).
+Download app for your OS from [Releases](https://github.com/epulla/my-tickets/releases) and open it. Linux requires GTK 3 and WebKit2GTK runtime libraries (for Ubuntu 22.04, `libgtk-3-0` and `libwebkit2gtk-4.0-37`).
 
 On Linux, make downloaded binary executable with `chmod +x my-tickets-linux-amd64` before running it.
 

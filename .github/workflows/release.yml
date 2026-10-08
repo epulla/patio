@@ -50,7 +50,13 @@ jobs:
       - name: Test
         run: go test ./...
       - name: Build desktop app
-        run: wails build -platform ${{ matrix.platform }}
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            wails build -platform "${{ matrix.platform }}" -ldflags "-X main.version=${GITHUB_REF_NAME}"
+          else
+            wails build -platform "${{ matrix.platform }}"
+          fi
       - name: Smoke-test Windows MCP initialize
         if: runner.os == 'Windows'
         shell: pwsh
@@ -108,3 +114,4 @@ jobs:
         with:
           files: dist/*
           fail_on_unmatched_files: true
+          generate_release_notes: true
