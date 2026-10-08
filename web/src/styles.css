@@ -72,31 +72,97 @@ a {
 }
 
 /* Shell */
-.top {
-  height: 64px;
-  border-bottom: 1px solid var(--border);
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 12px;
   background: var(--base-200);
+  border-right: 1px solid var(--border);
+}
+.sidebar-head {
   display: flex;
   align-items: center;
-  padding: 0 max(24px, calc((100% - 1440px) / 2));
-  gap: 16px;
-  color: var(--muted);
-  font-size: 13px;
+  justify-content: space-between;
+  padding: 0 4px 8px;
 }
 .brand {
-  border: 0;
-  background: none;
   font-weight: 800;
   font-size: 18px;
-  color: var(--content);
 }
-.top .icon {
-  margin-left: auto;
+.sidebar nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.nav-item {
+  justify-content: flex-start;
+  gap: 10px;
+  height: 40px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  text-align: left;
+}
+.nav-item:hover {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+.nav-item[aria-current="page"] {
+  background: var(--primary);
+  color: var(--primary-content);
+}
+.nav-mark {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--content) 8%, transparent);
+  font: 600 11px var(--mono);
+  text-transform: uppercase;
+}
+.glyph {
+  font-size: 18px;
+}
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-label {
+  margin: 16px 8px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sidebar.collapsed {
+  width: auto;
+}
+.sidebar.collapsed .nav-label {
+  display: none;
+}
+.sidebar.collapsed .sidebar-head {
+  justify-content: center;
 }
 main {
+  flex: 1;
+  min-width: 0;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 40px 32px 80px;
+  padding: 32px 32px 80px;
 }
 .stack {
   display: flex;
@@ -785,8 +851,11 @@ button[aria-pressed="true"] {
   main {
     padding: 28px 16px;
   }
-  .top {
-    padding: 0 16px;
+  .sidebar {
+    width: auto;
+  }
+  .sidebar .nav-label {
+    display: none;
   }
   .page-heading,
   .create,
@@ -832,7 +901,7 @@ button[aria-pressed="true"] {
     background: #fff;
     color: #000;
   }
-  .top {
+  .sidebar {
     display: none;
   }
   main {

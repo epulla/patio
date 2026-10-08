@@ -4,7 +4,7 @@ import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
-import { api } from "./api";
+import { api, type Board } from "./api";
 import { ThemeToggle } from "./theme";
 
 export type Config = { show_hidden: boolean };
@@ -31,6 +31,17 @@ export default function App() {
   const [path, setPath] = useState(location.pathname);
   const [config, setConfig] = useState<Config>({ show_hidden: false });
   const [refresh, setRefresh] = useState(0);
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("sidebar") === "closed",
+  );
+
+  useEffect(() => {
+    api
+      .get<Board[]>("/api/boards")
+      .then(setBoards)
+      .catch(() => undefined);
+  }, [path, refresh]);
 
   useEffect(() => {
     const onPopState = () => setPath(location.pathname);
@@ -76,19 +87,54 @@ export default function App() {
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
 
+  const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (
+    <button
+      key={to}
+      className="nav-item"
+      aria-current={active ? "page" : undefined}
+      title={label}
+      onClick={() => navigate(to)}
+    >
+      <span className="nav-mark">{mark}</span>
+      <span className="nav-label">{label}</span>
+    </button>
+  );
+
   return (
-    <>
-      <header className="top">
-        <button className="brand" onClick={() => navigate("/")}>
-          my-tickets
-        </button>
-        <span>Local workspace</span>
-        <button className="back" onClick={() => navigate("/calendar")}>
-          Calendar
-        </button>
-        <ThemeToggle />
-      </header>
+    <div className="app">
+      <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+        <div className="sidebar-head">
+          <span className="brand nav-label">my-tickets</span>
+          <button
+            className="ghost icon"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            onClick={() => {
+              localStorage.setItem("sidebar", collapsed ? "open" : "closed");
+              setCollapsed(!collapsed);
+            }}
+          >
+            {collapsed ? "»" : "«"}
+          </button>
+        </div>
+        <nav>
+          {navItem("/", "Boards", <span className="glyph">▦</span>, path === "/")}
+          {navItem("/calendar", "Calendar", <span className="glyph">▤</span>, isCalendar)}
+          {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
+          {boards.map((board) =>
+            navItem(
+              `/boards/${board.id}`,
+              board.name,
+              board.short_name.slice(0, 2),
+              boardMatch?.[1] === board.id,
+            ),
+          )}
+        </nav>
+        <div className="sidebar-foot">
+          <ThemeToggle />
+        </div>
+      </aside>
       <main>{page}</main>
-    </>
+    </div>
   );
 }
