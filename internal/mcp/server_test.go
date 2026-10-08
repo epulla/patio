@@ -21,7 +21,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server := NewServer(api.New(database, "ai", true))
+	server := NewServer(api.New(database, "ai", true, "dev"), "dev")
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	ctx := context.Background()
 	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
@@ -202,7 +202,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 }
 
 func TestMCPInstructions(t *testing.T) {
-	server := NewServer(nil)
+	server := NewServer(nil, "dev")
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestCheck(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server := NewServer(api.New(database, "ai", true))
+	server := NewServer(api.New(database, "ai", true, "dev"), "dev")
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
 		t.Fatal(err)

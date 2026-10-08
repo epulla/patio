@@ -16,10 +16,11 @@ type Server struct {
 	db         *sql.DB
 	userID     string
 	showHidden bool
+	version    string
 }
 
-func New(db *sql.DB, userID string, showHidden bool) http.Handler {
-	s := &Server{db: db, userID: userID, showHidden: showHidden}
+func New(db *sql.DB, userID string, showHidden bool, version string) http.Handler {
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version}
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/users", s.users)

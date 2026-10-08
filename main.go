@@ -31,6 +31,8 @@ import (
 	"my-tickets/web"
 )
 
+var version = "dev"
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		runMCP(os.Args[2:])
@@ -65,7 +67,7 @@ func main() {
 	mime.AddExtensionType(".js", "text/javascript")
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/", api.New(database, "local", *showHidden))
+	mux.Handle("/api/", api.New(database, "local", *showHidden, version))
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
@@ -182,7 +184,7 @@ func runMCP(args []string) {
 			log.Printf("close database: %v", err)
 		}
 	}()
-	server := mcpserver.NewServer(api.New(database, "ai", true))
+	server := mcpserver.NewServer(api.New(database, "ai", true, version), version)
 	if err := server.Run(context.Background(), &sdk.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}

@@ -66,7 +66,29 @@ func newAPIAs(t *testing.T, userID string) (*sql.DB, http.Handler) {
 			t.Error(err)
 		}
 	})
-	return database, New(database, userID, false)
+	return database, New(database, userID, false, "dev")
+}
+
+func TestConfigReturnsVersion(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := database.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	handler := New(database, "local", false, "v1.2.3")
+	var config struct {
+		Version string `json:"version"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/config", nil, &config); code != http.StatusOK {
+		t.Fatalf("GET /api/config status = %d, want %d", code, http.StatusOK)
+	}
+	if config.Version != "v1.2.3" {
+		t.Fatalf("config version = %q, want %q", config.Version, "v1.2.3")
+	}
 }
 
 func requestJSON(t *testing.T, handler http.Handler, method, path string, body any, out any) int {

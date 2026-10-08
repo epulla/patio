@@ -109,8 +109,8 @@ type calendarItemIDArgs struct {
 	ID string `json:"id" jsonschema:"Calendar item UUID"`
 }
 
-func NewServer(h http.Handler) *sdk.Server {
-	s := sdk.NewServer(&sdk.Implementation{Name: "my-tickets", Version: "1"}, &sdk.ServerOptions{Instructions: "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"})
+func NewServer(h http.Handler, version string) *sdk.Server {
+	s := sdk.NewServer(&sdk.Implementation{Name: "my-tickets", Version: version}, &sdk.ServerOptions{Instructions: "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"})
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
