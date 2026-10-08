@@ -479,18 +479,46 @@ button[aria-pressed="true"] {
 }
 .create {
   display: flex;
-  gap: 26px;
-  align-items: end;
+  flex-direction: column;
+  gap: 16px;
 }
 .create h2,
 .settings h2 {
   margin: 4px 0;
   font-size: 18px;
 }
-.create form,
+.create form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
 .inline-form {
   display: flex;
   flex: 1;
+  gap: 12px;
+}
+.import label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.export-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: var(--base-200);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.export-links {
+  display: flex;
   gap: 12px;
 }
 .create label,
@@ -516,99 +544,133 @@ button[aria-pressed="true"] {
   min-height: 480px;
 }
 .column {
+  display: flex;
+  flex-direction: column;
   background: var(--base-200);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-box);
-  min-width: 285px;
-  width: 285px;
-  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  min-width: 272px;
+  width: 272px;
+  padding: 8px;
   transition: 0.15s;
 }
 .column.drop {
   background: var(--base-300);
-  border-color: var(--primary);
+  border-color: color-mix(in oklch, var(--primary) 60%, transparent);
 }
 .column-head {
   display: flex;
   justify-content: space-between;
-  align-items: start;
-  padding: 3px 2px 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 10px;
   cursor: grab;
 }
+.column-head > div:first-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .column-head h3 {
-  display: inline;
   margin: 0;
   font-size: 14px;
+  font-weight: 600;
 }
 .count {
-  margin-left: 8px;
   color: var(--muted);
   font: 12px var(--mono);
 }
-.temporary {
-  display: block;
-  color: var(--warning-content);
-  font: 10px var(--mono);
-  margin-top: 6px;
-}
 .column-actions {
   display: flex;
-  gap: 3px;
 }
 .column-actions button {
-  height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 .cards {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 8px;
   min-height: 80px;
 }
 .ticket-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   background: var(--base-100);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 13px;
+  padding: 12px;
   box-shadow: var(--shadow);
   cursor: grab;
+  transition: border-color 0.15s;
+}
+.ticket-card:active {
+  cursor: grabbing;
 }
 .ticket-card:hover {
-  border-color: var(--primary);
+  border-color: color-mix(in oklch, var(--primary) 60%, transparent);
 }
 .ticket-card h4 {
-  margin: 9px 0 14px;
-  font-size: 13px;
-  line-height: 1.45;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.grip {
-  float: right;
-  color: var(--muted);
-  font-size: 18px;
+.ticket-card .due {
+  font-size: 12px;
 }
 .ticket-meta {
   display: flex;
   justify-content: space-between;
-  color: var(--muted);
+  align-items: center;
+  font-size: 12px;
+}
+.ticket-meta .ticket-code {
   font-size: 11px;
 }
 .type {
-  color: var(--type-color);
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.type::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--type-color);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--content) 20%, transparent);
 }
 .add-ticket,
 .add-column {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 8px;
   background: transparent;
-  border-style: dashed;
+  border-color: transparent;
   color: var(--muted);
+  justify-content: flex-start;
+}
+.add-ticket:hover,
+.add-column:hover {
+  background: color-mix(in oklch, var(--content) 6%, transparent);
+  color: var(--content);
 }
 .add-column {
+  width: auto;
   min-width: 180px;
-  height: 45px;
+  margin-top: 0;
   align-self: flex-start;
+  border: 1px dashed var(--border);
 }
 
 /* Settings */
@@ -618,8 +680,11 @@ button[aria-pressed="true"] {
   gap: 24px;
 }
 .settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 22px;
+  padding-bottom: 24px;
 }
 .settings-section:last-child {
   border: 0;

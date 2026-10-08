@@ -39,11 +39,10 @@ export default function BoardList({ refresh }: { refresh: number }) {
         ))}
       </div>
       <CreateBoard onCreated={(board) => navigate(`/boards/${board.id}`)} />
-      <section className="panel">
+      <section className="panel import">
         <h2>Import board</h2>
-        <p id="import-hint">Full board backup — import into my-tickets on another computer.</p>
         <label>
-          Import board (JSON backup)
+          JSON backup
           <input type="file" accept="application/json,.json" disabled={importing} onChange={async (event) => {
             const file = event.target.files?.[0];
             if (!file) return;
@@ -54,9 +53,9 @@ export default function BoardList({ refresh }: { refresh: number }) {
               if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
               navigate(`/boards/${result.id}`);
             } catch (reason) { setError(reason); } finally { setImporting(false); event.target.value = ""; }
-          }} />
+          }} aria-describedby="import-hint" />
         </label>
-        <small>Full board backup — import into my-tickets on another computer.</small>
+        <small id="import-hint">Full board backup — import into my-tickets on another computer.</small>
       </section>
     </div>
   );

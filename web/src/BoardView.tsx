@@ -71,9 +71,9 @@ export default function BoardView({
           </button>
         </div>
       </div>
-      <section className="panel">
-        <h2>Export</h2>
-        <div className="actions">
+      <section className="export-bar">
+        <strong>Export</strong>
+        <div className="export-links">
           <a href={`/api/boards/${id}/export?format=xlsx`} download="">Excel (.xlsx)</a>
           <a href={`/api/boards/${id}/export?format=csv`} download="">CSV</a>
           <a href={`/api/boards/${id}/export?format=json`} download="" title="Full board backup — import into my-tickets on another computer." aria-describedby="board-export-hint">JSON backup</a>
@@ -243,11 +243,12 @@ function Column({
           <h3>{status.name}</h3>
           <span className="count">{status.tickets.length}</span>
           {status.type === "temporary" && (
-            <span className="temporary">temporary</span>
+            <span className="badge warning">Temporary</span>
           )}
         </div>
         <div className="column-actions">
           <button
+            className="ghost"
             aria-label={`Move ${status.name} left`}
             disabled={index === 0}
             onClick={() => moveColumn(index - 1)}
@@ -255,6 +256,7 @@ function Column({
             ←
           </button>
           <button
+            className="ghost"
             aria-label={`Move ${status.name} right`}
             disabled={index === statuses.length - 1}
             onClick={() => moveColumn(index + 1)}
@@ -298,21 +300,22 @@ function Card({
       onDragStart={(event) => onDrag(event, "ticket", ticket.id)}
       onClick={() => navigate(`/tickets/${ticket.code || ticket.id}`)}
     >
-      <div className="ticket-code">
-        {ticket.code}
-        <span className="grip">⠿</span>
-      </div>
       <h4>{ticket.title}</h4>
+      {ticket.due_date && (
+        <small className="due">Due {ticket.due_date.slice(0, 10)}</small>
+      )}
       <div className="ticket-meta">
-        {type && (
+        {type ? (
           <span
             className="type"
             style={{ "--type-color": type.color } as React.CSSProperties}
           >
             {type.name}
           </span>
+        ) : (
+          <span />
         )}
-        {ticket.due_date && <span>Due {ticket.due_date.slice(0, 10)}</span>}
+        <span className="ticket-code">{ticket.code}</span>
       </div>
     </article>
   );
@@ -603,7 +606,12 @@ function NewTicket({
       <form className="panel ticket-form" onSubmit={submit}>
         <div className="page-heading">
           <h2>New ticket</h2>
-          <button type="button" onClick={onDone}>
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="Close"
+            onClick={onDone}
+          >
             ×
           </button>
         </div>
