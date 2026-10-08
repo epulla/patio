@@ -331,13 +331,17 @@ function Card({
   onDrag: (event: DragEvent, kind: string, id: string) => void;
 }) {
   const type = types.find((item) => item.id === ticket.ticket_type_id);
+  const open = () => navigate(`/tickets/${ticket.code || ticket.id}`);
   return (
     <article
       className="ticket-card"
       data-ticket={ticket.id}
       draggable
       onDragStart={(event) => onDrag(event, "ticket", ticket.id)}
-      onClick={() => navigate(`/tickets/${ticket.code || ticket.id}`)}
+      role="link"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(event) => event.key === "Enter" && open()}
     >
       <h4>{ticket.title}</h4>
       {ticket.due_date && (
@@ -651,10 +655,16 @@ function NewTicket({
     }
   }
   return (
-    <div className="modal">
+    <div
+      className="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-ticket-title"
+      onKeyDown={(event) => event.key === "Escape" && onDone()}
+    >
       <form className="panel ticket-form" onSubmit={submit}>
         <div className="page-heading">
-          <h2>New ticket</h2>
+          <h2 id="new-ticket-title">New ticket</h2>
           <IconButton
             type="button"
             className="ghost"
@@ -666,6 +676,7 @@ function NewTicket({
         <label>
           Title
           <input
+            autoFocus
             required
             value={title}
             onChange={(event) => setTitle(event.target.value)}

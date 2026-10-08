@@ -41,7 +41,7 @@
   --radius-box: 1rem;
   --radius-sm: 0.5rem;
   --border: color-mix(in oklch, var(--content) 14%, transparent);
-  --muted: color-mix(in oklch, var(--content) 62%, transparent);
+  --muted: color-mix(in oklch, var(--content) 72%, transparent);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-family: var(--font);
@@ -145,6 +145,14 @@ a {
   font-size: 12px;
   font-weight: 600;
 }
+.sidebar-foot {
+  display: flex;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--border);
+}
+.sidebar.collapsed .sidebar-foot {
+  justify-content: center;
+}
 .sidebar.collapsed {
   width: auto;
 }
@@ -196,7 +204,7 @@ small {
   border-radius: 999px;
   background: color-mix(in oklch, var(--primary) 18%, transparent);
   color: var(--primary-text);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.6;
   vertical-align: middle;
@@ -404,7 +412,7 @@ a:has(> .svg-icon) {
 }
 .panel h2 {
   margin: 0 0 12px;
-  font-size: 17px;
+  font-size: 18px;
 }
 .modal {
   position: fixed;
@@ -424,6 +432,12 @@ a:has(> .svg-icon) {
   text-align: center;
   padding: 100px;
   color: var(--muted);
+}
+.print-loading {
+  padding: 48px 24px;
+}
+.search {
+  min-width: 240px;
 }
 
 /* Quill */
@@ -655,6 +669,9 @@ a:has(> .svg-icon) {
   box-shadow: var(--shadow);
   cursor: grab;
   transition: border-color 0.15s;
+}
+.ticket-card:focus-visible {
+  border-color: var(--primary);
 }
 .ticket-card:active {
   cursor: grabbing;
@@ -971,7 +988,7 @@ a:has(> .svg-icon) {
   padding: 0;
   border-radius: 999px;
   color: var(--primary-text);
-  opacity: 0;
+  opacity: 0.35;
 }
 .calendar-day:hover .calendar-day-head button,
 .calendar-day-head button:focus-visible {
@@ -1017,7 +1034,7 @@ a:has(> .svg-icon) {
   background: color-mix(in oklch, var(--error) 14%, var(--base-100));
 }
 .calendar-kind {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -1108,7 +1125,7 @@ a:has(> .svg-icon) {
 }
 .print-section h2 {
   margin: 0 0 10px;
-  font-size: 17px;
+  font-size: 18px;
 }
 .print-description {
   line-height: 1.6;

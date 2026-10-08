@@ -26,4 +26,4 @@
 - [x] 1. Remove the Delete ticket button and `remove()` from `TicketDetail.tsx`. Check: `rg "Delete ticket|confirm\(\"Delete this ticket" web/src` is empty; `pnpm --dir web build` passes.
 - [x] 2. Add `icons.tsx` and the `data-tip` tooltip CSS; convert the buttons listed in decision 3. Check: `pnpm --dir web build` passes; `rg "[＋×«»☀☾]" web/src/*.tsx` is empty; every icon-only button has `aria-label` and `data-tip`.
 - [x] 3. Replace the add-column `prompt()` with an inline input; add `confirm()` to status/type delete. Check: `rg "prompt\(" web/src` is empty; build passes; smoke-test add column and delete status/type in a throwaway DB.
-- [ ] 4. Apply the polish fixes in decision 6. Check: build passes; `rg "font-size: ?(9|10)px" web/src/styles.css` is empty; smoke-test Tab into a ticket card, Enter opens it, Escape closes the NewTicket modal, both themes look right.
+- [x] 4. Apply the polish fixes in decision 6. Check: build passes; `rg "font-size: ?(9|10)px" web/src/styles.css` is empty; smoke-test Tab into a ticket card, Enter opens it, Escape closes the NewTicket modal, both themes look right.
