@@ -554,6 +554,17 @@ a:has(> .svg-icon) {
   gap: 12px;
   align-items: end;
 }
+.create-columns {
+  grid-column: 1 / -1;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .inline-form {
   display: flex;
   flex: 1;
