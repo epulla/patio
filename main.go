@@ -24,7 +24,7 @@ import (
 func main() {
 	port := flag.Int("port", 0, "HTTP port, or 0 for a random free port")
 	noBrowser := flag.Bool("no-browser", false, "do not open browser")
-	showHidden := flag.Bool("show-hidden", false, "show temporary statuses")
+	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
 	flag.Parse()
 	config, err := os.UserConfigDir()
 	if err != nil {
