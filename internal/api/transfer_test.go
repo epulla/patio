@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -84,6 +85,104 @@ func TestBoardJSONRoundTripAndCollision(t *testing.T) {
 	}
 }
 
+func TestBoardJSONCalendarItemRoundTripAndLegacyImport(t *testing.T) {
+	source, sourceHandler := newAPI(t)
+	board := createBoard(t, sourceHandler, "CALIMP", []string{"Todo"})
+	ticket := createTicket(t, sourceHandler, board.ID, boardStatuses(t, sourceHandler, board.ID)[0].ID)
+	var event, reminder testCalendarItem
+	if code := requestJSON(t, sourceHandler, http.MethodPost, "/api/calendar-items", map[string]any{"kind": "event", "title": "Board event", "starts_at": "2026-04-12", "all_day": true, "board_id": board.ID}, &event); code != http.StatusCreated {
+		t.Fatalf("create event status = %d", code)
+	}
+	if code := requestJSON(t, sourceHandler, http.MethodPost, "/api/calendar-items", map[string]any{"kind": "reminder", "title": "Ticket reminder", "starts_at": "2026-04-12T12:00:00Z", "ticket_id": ticket.ID}, &reminder); code != http.StatusCreated {
+		t.Fatalf("create reminder status = %d", code)
+	}
+	const notifiedAt = "2026-04-12T12:00:00.000Z"
+	if _, err := source.Exec(`UPDATE calendar_item SET notified_at=? WHERE id=?`, notifiedAt, reminder.ID); err != nil {
+		t.Fatal(err)
+	}
+	backup := exportJSON(t, sourceHandler, board.ID)
+	var exported boardBackup
+	if err := json.Unmarshal(backup, &exported); err != nil {
+		t.Fatal(err)
+	}
+	if len(exported.CalendarItems) != 2 {
+		t.Fatalf("exported calendar items = %d", len(exported.CalendarItems))
+	}
+	var creatorIncluded bool
+	for _, user := range exported.Users {
+		if user.ID == "local" {
+			creatorIncluded = true
+		}
+	}
+	if !creatorIncluded {
+		t.Fatal("calendar item creator missing from user references")
+	}
+
+	destination, destinationHandler := newAPI(t)
+	w := transferRequest(t, destinationHandler, http.MethodPost, "/api/import", backup)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import status = %d: %s", w.Code, w.Body)
+	}
+	var imported testBoard
+	if err := json.NewDecoder(w.Body).Decode(&imported); err != nil {
+		t.Fatal(err)
+	}
+	var importedTicketID string
+	if err := destination.QueryRow(`SELECT id FROM ticket WHERE board_id=?`, imported.ID).Scan(&importedTicketID); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := destination.Query(`SELECT id,board_id,ticket_id,notified_at FROM calendar_item WHERE board_id=? ORDER BY starts_at,rowid`, imported.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var id, boardID string
+		var ticketID, importedNotifiedAt sql.NullString
+		if err := rows.Scan(&id, &boardID, &ticketID, &importedNotifiedAt); err != nil {
+			t.Fatal(err)
+		}
+		count++
+		if boardID != imported.ID {
+			t.Errorf("calendar item board_id = %q, want %q", boardID, imported.ID)
+		}
+		if id == event.ID || id == reminder.ID {
+			t.Errorf("calendar item id was not remapped: %q", id)
+		}
+		if ticketID.Valid && ticketID.String != importedTicketID {
+			t.Errorf("ticket_id = %q, want imported ticket %q", ticketID.String, importedTicketID)
+		}
+		if importedNotifiedAt.Valid && importedNotifiedAt.String != notifiedAt {
+			t.Errorf("notified_at = %q, want %q", importedNotifiedAt.String, notifiedAt)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("imported calendar items = %d", count)
+	}
+	var linkedTicketID string
+	if err := destination.QueryRow(`SELECT ticket_id FROM calendar_item WHERE board_id=? AND ticket_id IS NOT NULL`, imported.ID).Scan(&linkedTicketID); err != nil {
+		t.Fatal(err)
+	}
+	if linkedTicketID != importedTicketID || linkedTicketID == ticket.ID {
+		t.Fatalf("imported ticket link = %q; imported ticket = %q, source ticket = %q", linkedTicketID, importedTicketID, ticket.ID)
+	}
+
+	exported.CalendarItems = nil
+	legacyBackup, err := json.Marshal(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, legacyHandler := newAPI(t)
+	legacy := transferRequest(t, legacyHandler, http.MethodPost, "/api/import", legacyBackup)
+	if legacy.Code != http.StatusCreated {
+		t.Fatalf("legacy import status = %d: %s", legacy.Code, legacy.Body)
+	}
+}
+
 func TestMarkdownExportLabelsAIActor(t *testing.T) {
 	database, h := newAPIAs(t, "ai")
 	b := createBoard(t, h, "MARTIN", []string{"Todo", "Done"})
@@ -120,9 +219,13 @@ func TestMarkdownExportLabelsAIActor(t *testing.T) {
 }
 
 func TestTransferInvalidBackups(t *testing.T) {
-	_, h := newAPI(t)
+	database, h := newAPI(t)
 	b := createBoard(t, h, "BAD", []string{"Todo"})
-	createTicket(t, h, b.ID, boardStatuses(t, h, b.ID)[0].ID)
+	ticket := createTicket(t, h, b.ID, boardStatuses(t, h, b.ID)[0].ID)
+	var item testCalendarItem
+	if code := requestJSON(t, h, http.MethodPost, "/api/calendar-items", map[string]any{"kind": "reminder", "title": "Ticket reminder", "starts_at": "2026-04-12T12:00:00Z", "ticket_id": ticket.ID}, &item); code != http.StatusCreated {
+		t.Fatalf("create calendar item status = %d", code)
+	}
 	backup := exportJSON(t, h, b.ID)
 	var original boardBackup
 	if err := json.Unmarshal(backup, &original); err != nil {
@@ -134,11 +237,13 @@ func TestTransferInvalidBackups(t *testing.T) {
 	}{
 		{"format", func(x *boardBackup) { x.Format = "other" }},
 		{"dangling status", func(x *boardBackup) { x.Tickets[0].StatusID = "missing" }},
+		{"dangling calendar ticket", func(x *boardBackup) { missing := "missing"; x.CalendarItems[0].TicketID = &missing }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			candidate := original
 			candidate.Tickets = append([]transferTicket(nil), original.Tickets...)
+			candidate.CalendarItems = append([]transferCalendarItem(nil), original.CalendarItems...)
 			test.mutate(&candidate)
 			body, err := json.Marshal(candidate)
 			if err != nil {
@@ -148,6 +253,13 @@ func TestTransferInvalidBackups(t *testing.T) {
 				t.Fatalf("status = %d", w.Code)
 			}
 		})
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM calendar_item WHERE ticket_id=?`, ticket.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("source calendar item count = %d", count)
 	}
 }
 

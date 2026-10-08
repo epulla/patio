@@ -77,18 +77,33 @@ type transferComment struct {
 	TicketID string `json:"ticket_id"`
 	UserID   string `json:"user_id"`
 }
+type transferCalendarItem struct {
+	ID          string  `json:"id"`
+	Kind        string  `json:"kind"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	StartsAt    string  `json:"starts_at"`
+	EndsAt      *string `json:"ends_at"`
+	AllDay      bool    `json:"all_day"`
+	TicketID    *string `json:"ticket_id"`
+	CreatedBy   string  `json:"created_by"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+	NotifiedAt  *string `json:"notified_at"`
+}
 type boardBackup struct {
-	Format      string               `json:"format"`
-	Version     int                  `json:"version"`
-	ExportedAt  string               `json:"exported_at"`
-	Board       board                `json:"board"`
-	Statuses    []transferStatus     `json:"statuses"`
-	TicketTypes []transferType       `json:"ticket_types"`
-	Tickets     []transferTicket     `json:"tickets"`
-	History     []transferHistory    `json:"history"`
-	Transitions []transferTransition `json:"transitions"`
-	Comments    []transferComment    `json:"comments"`
-	Users       []transferUser       `json:"users"`
+	Format        string                 `json:"format"`
+	Version       int                    `json:"version"`
+	ExportedAt    string                 `json:"exported_at"`
+	Board         board                  `json:"board"`
+	Statuses      []transferStatus       `json:"statuses"`
+	TicketTypes   []transferType         `json:"ticket_types"`
+	Tickets       []transferTicket       `json:"tickets"`
+	History       []transferHistory      `json:"history"`
+	Transitions   []transferTransition   `json:"transitions"`
+	Comments      []transferComment      `json:"comments"`
+	CalendarItems []transferCalendarItem `json:"calendar_items,omitempty"`
+	Users         []transferUser         `json:"users"`
 }
 
 func plain(s string) string { return html.UnescapeString(htmlTag.ReplaceAllString(s, "")) }
@@ -224,6 +239,29 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
+	rows, e = s.db.Query(calendarItemSelect+` WHERE c.deleted_at IS NULL AND (c.board_id=? OR c.ticket_id IN (SELECT id FROM ticket WHERE board_id=?)) ORDER BY c.starts_at,c.rowid`, id, id)
+	if e != nil {
+		return b, e
+	}
+	for rows.Next() {
+		item, err := scanCalendarItem(rows)
+		if err != nil {
+			rows.Close()
+			return b, err
+		}
+		b.CalendarItems = append(b.CalendarItems, transferCalendarItem{
+			ID: item.ID, Kind: item.Kind, Title: item.Title, Description: item.Description,
+			StartsAt: item.StartsAt, EndsAt: item.EndsAt, AllDay: item.AllDay,
+			TicketID: item.TicketID, CreatedBy: item.CreatedBy, CreatedAt: item.CreatedAt,
+			UpdatedAt: item.UpdatedAt, NotifiedAt: item.NotifiedAt,
+		})
+	}
+	if e = rows.Close(); e != nil {
+		return b, e
+	}
+	if e = rows.Err(); e != nil {
+		return b, e
+	}
 	refs := map[string]bool{}
 	for _, t := range b.Tickets {
 		if t.ReporterID != nil {
@@ -243,6 +281,9 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	}
 	for _, x := range b.Comments {
 		refs[x.UserID] = true
+	}
+	for _, x := range b.CalendarItems {
+		refs[x.CreatedBy] = true
 	}
 	for id := range refs {
 		var u transferUser
@@ -518,6 +559,12 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	for _, x := range b.CalendarItems {
+		if (x.Kind != "event" && x.Kind != "reminder") || !required(x.Title) || (x.TicketID != nil && ticketMap[*x.TicketID].ID == "") || userMap[x.CreatedBy].ID == "" {
+			errw(w, 400, "invalid calendar item reference")
+			return
+		}
+	}
 	short := shortName(b.Board.Short)
 	var out board
 	e := txrun(s.db, func(tx *sql.Tx) error {
@@ -641,6 +688,15 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, x := range b.Comments {
 			if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, uid(), x.Content, x.Created, x.Updated, ticketIDs[x.TicketID], users[x.UserID]); e != nil {
+				return e
+			}
+		}
+		for _, x := range b.CalendarItems {
+			var ticketID any
+			if x.TicketID != nil {
+				ticketID = ticketIDs[*x.TicketID]
+			}
+			if _, e := tx.Exec(`INSERT INTO calendar_item(id,kind,title,description,starts_at,ends_at,all_day,board_id,ticket_id,created_by,created_at,updated_at,notified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, uid(), x.Kind, x.Title, x.Description, x.StartsAt, x.EndsAt, x.AllDay, bid, ticketID, users[x.CreatedBy], x.CreatedAt, x.UpdatedAt, x.NotifiedAt); e != nil {
 				return e
 			}
 		}
