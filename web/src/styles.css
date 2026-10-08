@@ -451,3 +451,85 @@ button:disabled {
     flex-wrap: wrap;
   }
 }
+@media print {
+  @page {
+    margin: 15mm;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .top {
+    display: none;
+  }
+  main {
+    max-width: none;
+    padding: 0;
+  }
+  .print-ticket {
+    display: block;
+    color: #000;
+    font: 10pt Arial, sans-serif;
+  }
+  .print-toolbar {
+    display: none;
+  }
+  .print-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 12px;
+  }
+  .print-heading h1 {
+    margin: 6px 0 0;
+    font-size: 24pt;
+  }
+  .print-status {
+    align-self: start;
+    border: 1px solid #000;
+    padding: 5px 8px;
+  }
+  .print-fields {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 18px 0;
+  }
+  .print-fields div {
+    border-bottom: 1px solid #999;
+    padding-bottom: 5px;
+  }
+  .print-fields dt {
+    font-weight: bold;
+  }
+  .print-fields dd {
+    margin: 3px 0 0;
+  }
+  .print-section {
+    margin-top: 22px;
+  }
+  .print-section h2 {
+    border-bottom: 1px solid #000;
+    font-size: 14pt;
+    margin: 0 0 9px;
+    padding-bottom: 4px;
+  }
+  .print-description {
+    line-height: 1.5;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th,
+  td {
+    border: 1px solid #777;
+    padding: 6px;
+    text-align: left;
+    vertical-align: top;
+  }
+  tr {
+    break-inside: avoid;
+  }
+}

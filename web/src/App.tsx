@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import BoardList from "./BoardList";
 import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
+import PrintTicket from "./PrintTicket";
 import { api } from "./api";
 
 export type Config = { show_hidden: boolean };
@@ -42,9 +43,11 @@ export default function App() {
   }, []);
 
   const boardMatch = path.match(/^\/boards\/([^/]+)$/);
+  const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
   let page: ReactNode = <BoardList />;
   if (boardMatch) page = <BoardView id={decodeURIComponent(boardMatch[1])} />;
+  if (printMatch) page = <PrintTicket id={decodeURIComponent(printMatch[1])} />;
   if (ticketMatch) {
     page = (
       <TicketDetail id={decodeURIComponent(ticketMatch[1])} config={config} />
