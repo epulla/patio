@@ -91,6 +91,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
           monday(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)),
           6,
         );
+  const today = dateKey(new Date());
   const days: Date[] = [];
   for (let day = visibleStart; day <= visibleEnd; day = addDays(day, 1))
     days.push(day);
@@ -155,25 +156,29 @@ export default function Calendar({ refresh }: { refresh: number }) {
           <h1>Calendar</h1>
         </div>
         <div className="calendar-controls">
-          <button onClick={() => setAnchor(new Date())}>Today</button>
-          <button aria-label="Previous period" onClick={() => move(-1)}>
-            ←
-          </button>
-          <button aria-label="Next period" onClick={() => move(1)}>
-            →
-          </button>
-          <button
-            aria-pressed={view === "month"}
-            onClick={() => setView("month")}
-          >
-            Month
-          </button>
-          <button
-            aria-pressed={view === "week"}
-            onClick={() => setView("week")}
-          >
-            Week
-          </button>
+          <div className="join">
+            <button onClick={() => setAnchor(new Date())}>Today</button>
+            <button aria-label="Previous period" onClick={() => move(-1)}>
+              ←
+            </button>
+            <button aria-label="Next period" onClick={() => move(1)}>
+              →
+            </button>
+          </div>
+          <div className="join">
+            <button
+              aria-pressed={view === "month"}
+              onClick={() => setView("month")}
+            >
+              Month
+            </button>
+            <button
+              aria-pressed={view === "week"}
+              onClick={() => setView("week")}
+            >
+              Week
+            </button>
+          </div>
           <label>
             Board
             <select
@@ -210,12 +215,13 @@ export default function Calendar({ refresh }: { refresh: number }) {
           const { items, tickets } = dayItems(key);
           return (
             <section
-              className={`calendar-day ${view === "month" && day.getMonth() !== anchor.getMonth() ? "outside-month" : ""}`}
+              className={`calendar-day ${view === "month" && day.getMonth() !== anchor.getMonth() ? "outside-month" : ""} ${key === today ? "today" : ""}`}
               key={key}
             >
               <div className="calendar-day-head">
                 <time dateTime={key}>{day.getDate()}</time>
                 <button
+                  className="ghost"
                   aria-label={`Add item on ${key}`}
                   onClick={() => createOn(key)}
                 >

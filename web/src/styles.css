@@ -843,7 +843,7 @@ button[aria-pressed="true"] {
 }
 .calendar-controls {
   display: flex;
-  align-items: end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -858,12 +858,29 @@ button[aria-pressed="true"] {
   margin: 0;
   font-size: 18px;
 }
+.join {
+  display: flex;
+}
+.join button {
+  border-radius: 0;
+}
+.join button + button {
+  margin-left: -1px;
+}
+.join button:first-child {
+  border-radius: var(--radius-field) 0 0 var(--radius-field);
+}
+.join button:last-child {
+  border-radius: 0 var(--radius-field) var(--radius-field) 0;
+}
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(100px, 1fr));
   border-top: 1px solid var(--border);
   border-left: 1px solid var(--border);
+  border-radius: var(--radius-box);
   overflow-x: auto;
+  box-shadow: var(--shadow);
 }
 .calendar-weekday {
   padding: 10px;
@@ -896,9 +913,26 @@ button[aria-pressed="true"] {
   font: 500 12px var(--mono);
 }
 .calendar-day-head button {
+  width: 24px;
   height: 24px;
-  padding: 0 8px;
+  padding: 0;
+  border-radius: 999px;
   color: var(--primary-text);
+  opacity: 0;
+}
+.calendar-day:hover .calendar-day-head button,
+.calendar-day-head button:focus-visible {
+  opacity: 1;
+}
+.today .calendar-day-head time {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-content);
+  font-weight: 700;
 }
 .calendar-chips {
   display: flex;
@@ -975,6 +1009,74 @@ button[aria-pressed="true"] {
   gap: 8px;
 }
 
+/* Print view on screen */
+.print-ticket {
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.print-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.print-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.print-heading h1 {
+  margin: 6px 0 0;
+  font-size: 28px;
+}
+.print-status {
+  align-self: start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-content);
+  font-size: 13px;
+}
+.print-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 24px;
+  margin: 0;
+}
+.print-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.print-fields dd {
+  margin: 2px 0 0;
+}
+.print-section h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+.print-description {
+  line-height: 1.6;
+}
+.print-ticket table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.print-ticket th,
+.print-ticket td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.print-ticket th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 @media (max-width: 760px) {
   main {
     padding: 28px 16px;
@@ -1025,7 +1127,13 @@ button[aria-pressed="true"] {
   @page {
     margin: 15mm;
   }
-  :root {
+  :root,
+  :root[data-theme] {
+    color-scheme: light;
+    --base-100: #fff;
+    --content: #000;
+    --muted: #555;
+    --primary-text: #000;
     background: #fff;
     color: #000;
   }
@@ -1038,6 +1146,7 @@ button[aria-pressed="true"] {
   }
   .print-ticket {
     display: block;
+    max-width: none;
     color: #000;
     font: 10pt Arial, sans-serif;
   }
@@ -1058,6 +1167,10 @@ button[aria-pressed="true"] {
   .print-status {
     align-self: start;
     border: 1px solid #000;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font-size: inherit;
     padding: 5px 8px;
   }
   .print-fields {
@@ -1071,6 +1184,8 @@ button[aria-pressed="true"] {
     padding-bottom: 5px;
   }
   .print-fields dt {
+    color: #000;
+    font-size: inherit;
     font-weight: bold;
   }
   .print-fields dd {
@@ -1088,12 +1203,14 @@ button[aria-pressed="true"] {
   .print-description {
     line-height: 1.5;
   }
-  table {
+  .print-ticket table {
     border-collapse: collapse;
     width: 100%;
+    font-size: inherit;
   }
-  th,
-  td {
+  .print-ticket th,
+  .print-ticket td {
+    color: #000;
     border: 1px solid #777;
     padding: 6px;
     text-align: left;
