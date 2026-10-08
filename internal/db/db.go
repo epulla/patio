@@ -1,10 +1,13 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -62,4 +65,44 @@ func Open(path string) (*sql.DB, error) {
 		return closeOnError(fmt.Errorf("seed local user: %w", err))
 	}
 	return db, nil
+}
+
+// Watch calls changed when another connection commits. data_version is per connection, so it pins one.
+func Watch(ctx context.Context, database *sql.DB, every time.Duration, changed func()) (err error) {
+	conn, err := database.Conn(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("get watcher connection: %w", err)
+	}
+	defer func() { err = errors.Join(err, conn.Close()) }()
+
+	var version int
+	if err := conn.QueryRowContext(ctx, "PRAGMA data_version").Scan(&version); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("read initial data version: %w", err)
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			var current int
+			if err := conn.QueryRowContext(ctx, "PRAGMA data_version").Scan(&current); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("read data version: %w", err)
+			}
+			if current != version {
+				version = current
+				changed()
+			}
+		}
+	}
 }

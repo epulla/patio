@@ -17,7 +17,13 @@ type PrintData = {
   transitions: Transition[];
 };
 
-export default function PrintTicket({ id }: { id: string }) {
+export default function PrintTicket({
+  id,
+  refresh,
+}: {
+  id: string;
+  refresh: number;
+}) {
   const [data, setData] = useState<PrintData>();
   const [error, setError] = useState<unknown>();
 
@@ -36,7 +42,7 @@ export default function PrintTicket({ id }: { id: string }) {
       }
     }
     load();
-  }, [id]);
+  }, [id, refresh]);
 
   if (!data) {
     return (

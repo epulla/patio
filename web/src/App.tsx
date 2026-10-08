@@ -28,11 +28,19 @@ export function formatDate(value: string | null) {
 export default function App() {
   const [path, setPath] = useState(location.pathname);
   const [config, setConfig] = useState<Config>({ show_hidden: false });
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     const onPopState = () => setPath(location.pathname);
     addEventListener("popstate", onPopState);
     return () => removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.runtime?.EventsOn("db-changed", () =>
+      setRefresh((current) => current + 1),
+    );
+    return () => unsubscribe?.();
   }, []);
 
   useEffect(() => {
@@ -45,12 +53,18 @@ export default function App() {
   const boardMatch = path.match(/^\/boards\/([^/]+)$/);
   const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
-  let page: ReactNode = <BoardList />;
-  if (boardMatch) page = <BoardView id={decodeURIComponent(boardMatch[1])} />;
-  if (printMatch) page = <PrintTicket id={decodeURIComponent(printMatch[1])} />;
+  let page: ReactNode = <BoardList refresh={refresh} />;
+  if (boardMatch)
+    page = <BoardView id={decodeURIComponent(boardMatch[1])} refresh={refresh} />;
+  if (printMatch)
+    page = <PrintTicket id={decodeURIComponent(printMatch[1])} refresh={refresh} />;
   if (ticketMatch) {
     page = (
-      <TicketDetail id={decodeURIComponent(ticketMatch[1])} config={config} />
+      <TicketDetail
+        id={decodeURIComponent(ticketMatch[1])}
+        config={config}
+        refresh={refresh}
+      />
     );
   }
 

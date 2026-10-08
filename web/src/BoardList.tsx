@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, type Board } from "./api";
 import { ErrorText, navigate } from "./App";
 
-export default function BoardList() {
+export default function BoardList({ refresh }: { refresh: number }) {
   const [boards, setBoards] = useState<Board[]>([]);
   const [error, setError] = useState<unknown>();
   const [importing, setImporting] = useState(false);
@@ -11,7 +11,7 @@ export default function BoardList() {
     api.get<Board[]>("/api/boards").then(setBoards).catch(setError);
   useEffect(() => {
     load();
-  }, []);
+  }, [refresh]);
 
   return (
     <div className="stack">

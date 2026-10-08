@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wailsapp/wails/v2"
@@ -64,6 +65,8 @@ func main() {
 		}
 	})
 	var appCtx context.Context
+	var stopWatch context.CancelFunc
+	var watchDone chan struct{}
 	// WKWebView ignores window.print(); Wails exposes native printing only from Go.
 	mux.HandleFunc("POST /api/print", func(w http.ResponseWriter, _ *http.Request) {
 		wruntime.WindowPrint(appCtx)
@@ -72,14 +75,33 @@ func main() {
 	mux.HandleFunc("/", spaHandler)
 	log.Printf("database at %s", path)
 	runErr := wails.Run(&options.App{
-		Title:     "My Tickets",
-		Width:     1280,
-		Height:    800,
-		OnStartup: func(ctx context.Context) { appCtx = ctx },
+		Title:  "My Tickets",
+		Width:  1280,
+		Height: 800,
+		OnStartup: func(ctx context.Context) {
+			appCtx = ctx
+			watchCtx, cancel := context.WithCancel(ctx)
+			stopWatch = cancel
+			watchDone = make(chan struct{})
+			go func() {
+				defer close(watchDone)
+				if err := db.Watch(watchCtx, database, time.Second, func() {
+					wruntime.EventsEmit(ctx, "db-changed")
+				}); err != nil {
+					log.Printf("watch database changes: %v", err)
+				}
+			}()
+		},
 		AssetServer: &assetserver.Options{
 			Handler: mux,
 		},
 	})
+	if stopWatch != nil {
+		stopWatch()
+	}
+	if watchDone != nil {
+		<-watchDone
+	}
 	if err := database.Close(); err != nil {
 		log.Printf("close database: %v", err)
 	}

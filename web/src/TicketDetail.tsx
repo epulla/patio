@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import ReactQuill from "react-quill-new";
 import AIBadge from "./AIBadge";
@@ -18,9 +18,11 @@ const clean = (html: string) => DOMPurify.sanitize(html || "");
 export default function TicketDetail({
   id,
   config,
+  refresh,
 }: {
   id: string;
   config: Config;
+  refresh: number;
 }) {
   const [ticket, setTicket] = useState<Ticket>();
   const [board, setBoard] = useState<BoardData>();
@@ -37,18 +39,22 @@ export default function TicketDetail({
     status: "",
     assignee: "",
   });
-  async function load() {
+  const previous = useRef({ id, showHidden: config.show_hidden, refresh });
+  async function load(preserveForm = false) {
     try {
       const current = await api.get<Ticket>(`/api/tickets/${id}`);
       setTicket(current);
-      setForm({
-        title: current.title,
-        description: clean(current.description),
+      // Title and description save on blur, so keep in-progress text on live refresh.
+      setForm((prev) => ({
+        title: preserveForm ? prev.title : current.title,
+        description: preserveForm
+          ? prev.description
+          : clean(current.description),
         type: current.ticket_type_id || "",
         dueDate: current.due_date?.slice(0, 10) || "",
         status: current.status_id,
         assignee: current.assignee_id || "",
-      });
+      }));
       const [boardData, ticketHistory, ticketTransitions] = await Promise.all([
         api.get<BoardData>(`/api/boards/${current.board_id}/data`),
         api.get<History[]>(`/api/tickets/${current.id}/history`),
@@ -68,8 +74,13 @@ export default function TicketDetail({
     }
   }
   useEffect(() => {
-    load();
-  }, [id, config.show_hidden]);
+    const preserveForm =
+      previous.current.id === id &&
+      previous.current.showHidden === config.show_hidden &&
+      previous.current.refresh !== refresh;
+    previous.current = { id, showHidden: config.show_hidden, refresh };
+    load(preserveForm);
+  }, [id, config.show_hidden, refresh]);
   async function save(patch: unknown) {
     if (!ticket) return;
     try {

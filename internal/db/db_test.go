@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
@@ -43,5 +45,64 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if migrations != 3 {
 		t.Fatalf("migration count = %d, want 3", migrations)
+	}
+}
+
+func TestWatchDetectsChangesFromAnotherConnection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watch.db")
+	first, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := first.Close(); err != nil {
+			t.Errorf("close first database: %v", err)
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	changed := make(chan struct{}, 1)
+	watchDone := make(chan error, 1)
+	go func() {
+		watchDone <- Watch(ctx, first, 50*time.Millisecond, func() {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		})
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	second, err := Open(path)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	if _, err := second.Exec(`UPDATE "user" SET name = ? WHERE id = ?`, "Changed", "local"); err != nil {
+		if closeErr := second.Close(); closeErr != nil {
+			t.Errorf("close second database: %v", closeErr)
+		}
+		cancel()
+		t.Fatal(err)
+	}
+	if err := second.Close(); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+
+	select {
+	case <-changed:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("watcher did not detect external database change within 2s")
+	}
+	cancel()
+	select {
+	case err := <-watchDone:
+		if err != nil {
+			t.Fatalf("watch returned error after cancellation: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watch did not return after cancellation")
 	}
 }

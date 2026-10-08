@@ -9,7 +9,13 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 
-export default function BoardView({ id }: { id: string }) {
+export default function BoardView({
+  id,
+  refresh,
+}: {
+  id: string;
+  refresh: number;
+}) {
   const [data, setData] = useState<BoardData>();
   const [error, setError] = useState<unknown>();
   const [query, setQuery] = useState(
@@ -25,7 +31,7 @@ export default function BoardView({ id }: { id: string }) {
       .catch(setError);
   useEffect(() => {
     load();
-  }, [id, query]);
+  }, [id, query, refresh]);
 
   function search(value: string) {
     setQuery(value);
