@@ -70,6 +70,18 @@ small {
   color: #918b85;
   font-size: 12px;
 }
+.ai-badge {
+  display: inline-block;
+  margin-left: 3px;
+  padding: 1px 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: #6655bd;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
+  vertical-align: middle;
+}
 .back {
   border: 0;
   background: none;

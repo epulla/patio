@@ -14,7 +14,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]bool{"show_hidden": s.showHidden})
 }
 func (s *Server) users(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT id,name,last_name,email FROM "user" WHERE deleted_at IS NULL ORDER BY name`)
+	rows, e := s.db.Query(`SELECT id,name,last_name,email,is_ai FROM "user" WHERE deleted_at IS NULL ORDER BY name`)
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -23,7 +23,7 @@ func (s *Server) users(w http.ResponseWriter, r *http.Request) {
 	out := []user{}
 	for rows.Next() {
 		var u user
-		if e = rows.Scan(&u.ID, &u.Name, &u.LastName, &u.Email); e != nil {
+		if e = rows.Scan(&u.ID, &u.Name, &u.LastName, &u.Email, &u.IsAI); e != nil {
 			errw(w, 500, e.Error())
 			return
 		}

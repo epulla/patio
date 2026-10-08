@@ -43,8 +43,9 @@ export type BoardData = {
 export type User = {
   id: string;
   name: string;
-  last_name: string;
+  last_name: string | null;
   email: string;
+  is_ai: boolean;
 };
 export type History = {
   id: string;
@@ -52,6 +53,7 @@ export type History = {
   created_at: string;
   user_id: string;
   user_name: string;
+  user_is_ai: boolean;
 };
 export type Transition = {
   id: string;
@@ -61,6 +63,7 @@ export type Transition = {
   to_status_name: string;
   user_id: string;
   user_name: string;
+  user_is_ai: boolean;
   moved_at: string;
 };
 export type Comment = {
@@ -70,6 +73,7 @@ export type Comment = {
   updated_at: string;
   user_id: string;
   user_name: string;
+  user_is_ai: boolean;
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

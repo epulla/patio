@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import ReactQuill from "react-quill-new";
+import AIBadge from "./AIBadge";
 import {
   api,
   type BoardData,
@@ -140,7 +141,9 @@ export default function TicketDetail({
           <h2>History</h2>
           {history.map((item) => (
             <div className="timeline" key={item.id}>
-              <strong>{item.user_name}</strong>
+              <strong>
+                {item.user_name} <AIBadge isAI={item.user_is_ai} />
+              </strong>
               <span>{formatDate(item.created_at)}</span>
               <p>{item.content}</p>
             </div>
@@ -206,6 +209,7 @@ export default function TicketDetail({
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.name} {user.last_name}
+                      {user.is_ai ? " (AI)" : ""}
                     </option>
                   ))}
                 </select>
@@ -227,7 +231,8 @@ export default function TicketDetail({
                 {item.from_status_name || "New"} → {item.to_status_name}
               </strong>
               <span>
-                {item.user_name} · {formatDate(item.moved_at)}
+                {item.user_name} <AIBadge isAI={item.user_is_ai} /> ·{" "}
+                {formatDate(item.moved_at)}
               </span>
             </div>
           ))}
@@ -262,7 +267,9 @@ function Comments({
       <button onClick={add}>Add comment</button>
       {comments.map((comment) => (
         <div className="comment" key={comment.id}>
-          <strong>{comment.user_name}</strong>
+          <strong>
+            {comment.user_name} <AIBadge isAI={comment.user_is_ai} />
+          </strong>
           <span>{formatDate(comment.created_at)}</span>
           <div dangerouslySetInnerHTML={{ __html: clean(comment.content) }} />
         </div>

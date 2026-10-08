@@ -206,6 +206,61 @@ func TestActingUserIsConfigurable(t *testing.T) {
 	}
 }
 
+func TestAIPersonaInTicketAuditResponses(t *testing.T) {
+	_, handler := newAPIAs(t, "ai")
+	b := createBoard(t, handler, "PERSONA", []string{"Todo", "Done"})
+	statuses := boardStatuses(t, handler, b.ID)
+	ticket := createTicket(t, handler, b.ID, statuses[0].ID)
+	if code := requestJSON(t, handler, http.MethodPut, "/api/tickets/"+ticket.ID+"/move", map[string]any{"status_id": statuses[1].ID, "index": 0}, nil); code != http.StatusOK {
+		t.Fatalf("move status = %d", code)
+	}
+	var added struct {
+		UserName string `json:"user_name"`
+		UserIsAI bool   `json:"user_is_ai"`
+	}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/tickets/"+ticket.ID+"/comments", map[string]string{"content": "AI comment"}, &added); code != http.StatusCreated {
+		t.Fatalf("add comment status = %d", code)
+	}
+	if added.UserName != "Martin" || !added.UserIsAI {
+		t.Fatalf("added comment actor = %#v", added)
+	}
+	for _, endpoint := range []string{"history", "transitions", "comments"} {
+		t.Run(endpoint, func(t *testing.T) {
+			var actors []struct {
+				UserName string `json:"user_name"`
+				UserIsAI bool   `json:"user_is_ai"`
+			}
+			if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/"+ticket.ID+"/"+endpoint, nil, &actors); code != http.StatusOK {
+				t.Fatalf("%s status = %d", endpoint, code)
+			}
+			if len(actors) == 0 {
+				t.Fatalf("%s returned no audit entries", endpoint)
+			}
+			for _, actor := range actors {
+				if actor.UserName != "Martin" || !actor.UserIsAI {
+					t.Errorf("%s actor = %#v", endpoint, actor)
+				}
+			}
+		})
+	}
+	var users []struct {
+		Name string `json:"name"`
+		IsAI bool   `json:"is_ai"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/users", nil, &users); code != http.StatusOK {
+		t.Fatalf("users status = %d", code)
+	}
+	foundMartin := false
+	for _, user := range users {
+		if user.Name == "Martin" && user.IsAI {
+			foundMartin = true
+		}
+	}
+	if !foundMartin {
+		t.Fatalf("Martin AI user missing: %#v", users)
+	}
+}
+
 func TestSearchTickets(t *testing.T) {
 	_, handler := newAPI(t)
 	a := createBoard(t, handler, "SEA", []string{"Todo"})

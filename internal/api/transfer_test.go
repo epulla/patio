@@ -84,6 +84,41 @@ func TestBoardJSONRoundTripAndCollision(t *testing.T) {
 	}
 }
 
+func TestMarkdownExportLabelsAIActor(t *testing.T) {
+	database, h := newAPIAs(t, "ai")
+	b := createBoard(t, h, "MARTIN", []string{"Todo", "Done"})
+	statuses := boardStatuses(t, h, b.ID)
+	ticket := createTicket(t, h, b.ID, statuses[0].ID)
+	if code := requestJSON(t, h, http.MethodPut, "/api/tickets/"+ticket.ID+"/move", map[string]any{"status_id": statuses[1].ID, "index": 0}, nil); code != http.StatusOK {
+		t.Fatalf("move status = %d", code)
+	}
+	w := transferRequest(t, h, http.MethodGet, "/api/tickets/"+ticket.ID+"/export?format=md", nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Martin (AI)") {
+		t.Fatalf("markdown export = %d: %s", w.Code, w.Body)
+	}
+	backup := exportJSON(t, h, b.ID)
+	var exported boardBackup
+	if err := json.Unmarshal(backup, &exported); err != nil {
+		t.Fatal(err)
+	}
+	var foundAI bool
+	for _, user := range exported.Users {
+		if user.ID == "ai" && user.IsAI {
+			foundAI = true
+		}
+	}
+	if !foundAI {
+		t.Fatalf("AI user missing from backup: %#v", exported.Users)
+	}
+	var storedAI bool
+	if err := database.QueryRow(`SELECT is_ai FROM "user" WHERE id='ai'`).Scan(&storedAI); err != nil {
+		t.Fatal(err)
+	}
+	if !storedAI {
+		t.Fatal("AI user is not marked as AI")
+	}
+}
+
 func TestTransferInvalidBackups(t *testing.T) {
 	_, h := newAPI(t)
 	b := createBoard(t, h, "BAD", []string{"Todo"})

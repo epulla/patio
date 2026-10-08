@@ -45,6 +45,7 @@ type transferUser struct {
 	Name     string `json:"name"`
 	LastName string `json:"last_name"`
 	Email    string `json:"email"`
+	IsAI     bool   `json:"is_ai,omitempty"`
 }
 type transferHistory struct {
 	ID       string `json:"id"`
@@ -53,6 +54,7 @@ type transferHistory struct {
 	TicketID string `json:"ticket_id"`
 	UserID   string `json:"user_id"`
 	UserName string `json:"user_name"`
+	IsAI     bool   `json:"-"`
 }
 type transferTransition struct {
 	ID             string  `json:"id"`
@@ -65,6 +67,7 @@ type transferTransition struct {
 	ToStatusName   *string `json:"to_status_name"`
 	UserName       *string `json:"user_name"`
 	Moved          string  `json:"moved_at"`
+	IsAI           bool    `json:"-"`
 }
 type transferComment struct {
 	ID       string `json:"id"`
@@ -154,13 +157,13 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
-	rows, e = s.db.Query(`SELECT h.id,h.content,h.created_at,h.ticket_id,h.user_id,u.name FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY h.created_at,h.rowid`, id)
+	rows, e = s.db.Query(`SELECT h.id,h.content,h.created_at,h.ticket_id,h.user_id,u.name,u.is_ai FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY h.created_at,h.rowid`, id)
 	if e != nil {
 		return b, e
 	}
 	for rows.Next() {
 		var x transferHistory
-		if e = rows.Scan(&x.ID, &x.Content, &x.Created, &x.TicketID, &x.UserID, &x.UserName); e != nil {
+		if e = rows.Scan(&x.ID, &x.Content, &x.Created, &x.TicketID, &x.UserID, &x.UserName, &x.IsAI); e != nil {
 			rows.Close()
 			return b, e
 		}
@@ -170,14 +173,14 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
-	rows, e = s.db.Query(`SELECT x.id,x.ticket_id,x.board_id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.board_id=? ORDER BY x.moved_at,x.rowid`, id)
+	rows, e = s.db.Query(`SELECT x.id,x.ticket_id,x.board_id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,u.is_ai,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.board_id=? ORDER BY x.moved_at,x.rowid`, id)
 	if e != nil {
 		return b, e
 	}
 	for rows.Next() {
 		var x transferTransition
 		var f, fn, t, tn, u, un sql.NullString
-		if e = rows.Scan(&x.ID, &x.TicketID, &x.BoardID, &f, &fn, &t, &tn, &u, &un, &x.Moved); e != nil {
+		if e = rows.Scan(&x.ID, &x.TicketID, &x.BoardID, &f, &fn, &t, &tn, &u, &un, &x.IsAI, &x.Moved); e != nil {
 			rows.Close()
 			return b, e
 		}
@@ -243,7 +246,7 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	}
 	for id := range refs {
 		var u transferUser
-		if e = s.db.QueryRow(`SELECT id,name,COALESCE(last_name,''),email FROM "user" WHERE id=?`, id).Scan(&u.ID, &u.Name, &u.LastName, &u.Email); e != nil {
+		if e = s.db.QueryRow(`SELECT id,name,COALESCE(last_name,''),email,is_ai FROM "user" WHERE id=?`, id).Scan(&u.ID, &u.Name, &u.LastName, &u.Email, &u.IsAI); e != nil {
 			return b, e
 		}
 		b.Users = append(b.Users, u)
@@ -374,14 +377,22 @@ func (s *Server) exportTicket(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+t.Ticket.Code+`.md"`)
 	fmt.Fprintf(w, "# %s (%s)\n\n- Status: %s\n- Type: %s\n- Created: %s\n- Updated: %s\n- Due date: %s\n\n%s\n\n## History\n", t.Ticket.Title, t.Ticket.Code, t.StatusName, t.TypeName, t.Ticket.Created, t.Ticket.Updated, ptrText(t.Ticket.DueDate), plain(t.Ticket.Description))
 	for _, h := range t.History {
-		fmt.Fprintf(w, "- %s: %s (%s)\n", h.Created, h.Content, h.UserName)
+		name := h.UserName
+		if h.IsAI {
+			name += " (AI)"
+		}
+		fmt.Fprintf(w, "- %s: %s (%s)\n", h.Created, h.Content, name)
 	}
 	fmt.Fprint(w, "\n## Status transitions\n")
 	for _, x := range t.Transitions {
+		name := ptrText(x.UserName)
+		if x.IsAI {
+			name += " (AI)"
+		}
 		if x.FromStatusName == nil {
-			fmt.Fprintf(w, "- %s: Created in %s (%s)\n", x.Moved, ptrText(x.ToStatusName), ptrText(x.UserName))
+			fmt.Fprintf(w, "- %s: Created in %s (%s)\n", x.Moved, ptrText(x.ToStatusName), name)
 		} else {
-			fmt.Fprintf(w, "- %s: %s -> %s (%s)\n", x.Moved, ptrText(x.FromStatusName), ptrText(x.ToStatusName), ptrText(x.UserName))
+			fmt.Fprintf(w, "- %s: %s -> %s (%s)\n", x.Moved, ptrText(x.FromStatusName), ptrText(x.ToStatusName), name)
 		}
 	}
 }
@@ -545,7 +556,7 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 				e = tx.QueryRow(`SELECT id FROM "user" WHERE email=? AND deleted_at IS NULL`, u.Email).Scan(&id)
 				if e == sql.ErrNoRows {
 					id = uid()
-					if _, e = tx.Exec(`INSERT INTO "user"(id,name,last_name,email) VALUES(?,?,?,?)`, id, u.Name, u.LastName, u.Email); e != nil {
+					if _, e = tx.Exec(`INSERT INTO "user"(id,name,last_name,email,is_ai) VALUES(?,?,?,?,?)`, id, u.Name, u.LastName, u.Email, u.IsAI); e != nil {
 						return e
 					}
 				} else if e != nil {

@@ -41,7 +41,7 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 2 {
-		t.Fatalf("migration count = %d, want 2", migrations)
+	if migrations != 3 {
+		t.Fatalf("migration count = %d, want 3", migrations)
 	}
 }

@@ -110,6 +110,28 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	}
 }
 
+func TestMCPInstructions(t *testing.T) {
+	server := NewServer(nil)
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := session.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	want := "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"
+	if got := session.InitializeResult().Instructions; got != want {
+		t.Fatalf("instructions = %q, want %q", got, want)
+	}
+}
+
 func callTool(t *testing.T, session *sdk.ClientSession, name string, args any) *sdk.CallToolResult {
 	t.Helper()
 	result, err := session.CallTool(context.Background(), &sdk.CallToolParams{Name: name, Arguments: args})

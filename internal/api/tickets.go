@@ -480,7 +480,7 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT h.id,h.content,h.created_at,h.user_id,u.name FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id=? ORDER BY h.created_at,h.rowid`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT h.id,h.content,h.created_at,h.user_id,u.name,u.is_ai FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id=? ORDER BY h.created_at,h.rowid`, idParam(r, "id"))
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -489,7 +489,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	a := []history{}
 	for rows.Next() {
 		var x history
-		if e = rows.Scan(&x.ID, &x.Content, &x.Created, &x.UserID, &x.UserName); e != nil {
+		if e = rows.Scan(&x.ID, &x.Content, &x.Created, &x.UserID, &x.UserName, &x.UserIsAI); e != nil {
 			errw(w, 500, e.Error())
 			return
 		}
@@ -502,7 +502,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, a)
 }
 func (s *Server) transitions(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT x.id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.ticket_id=? ORDER BY x.moved_at,x.rowid`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT x.id,x.from_status_id,fs.name,x.to_status_id,ts.name,x.user_id,u.name,u.is_ai,x.moved_at FROM ticket_status_transition x LEFT JOIN status fs ON fs.id=x.from_status_id JOIN status ts ON ts.id=x.to_status_id JOIN "user" u ON u.id=x.user_id WHERE x.ticket_id=? ORDER BY x.moved_at,x.rowid`, idParam(r, "id"))
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -512,7 +512,7 @@ func (s *Server) transitions(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var x transition
 		var fid, fn, tid, tn, uid, un sql.NullString
-		if e = rows.Scan(&x.ID, &fid, &fn, &tid, &tn, &uid, &un, &x.Moved); e != nil {
+		if e = rows.Scan(&x.ID, &fid, &fn, &tid, &tn, &uid, &un, &x.UserIsAI, &x.Moved); e != nil {
 			errw(w, 500, e.Error())
 			return
 		}
@@ -543,7 +543,7 @@ func (s *Server) transitions(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, a)
 }
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT c.id,c.content,c.created_at,c.updated_at,c.user_id,u.name FROM ticket_comment c JOIN "user" u ON u.id=c.user_id WHERE c.ticket_id=? ORDER BY c.created_at,c.rowid`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT c.id,c.content,c.created_at,c.updated_at,c.user_id,u.name,u.is_ai FROM ticket_comment c JOIN "user" u ON u.id=c.user_id WHERE c.ticket_id=? ORDER BY c.created_at,c.rowid`, idParam(r, "id"))
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -552,7 +552,7 @@ func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
 	a := []comment{}
 	for rows.Next() {
 		var x comment
-		if e = rows.Scan(&x.ID, &x.Content, &x.Created, &x.Updated, &x.UserID, &x.UserName); e != nil {
+		if e = rows.Scan(&x.ID, &x.Content, &x.Created, &x.Updated, &x.UserID, &x.UserName, &x.UserIsAI); e != nil {
 			errw(w, 500, e.Error())
 			return
 		}
@@ -582,8 +582,8 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 		if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, id, in.Content, t, t, tid, s.userID); e != nil {
 			return e
 		}
-		c = comment{id, in.Content, t, t, s.userID, ""}
-		return tx.QueryRow(`SELECT name FROM "user" WHERE id=?`, s.userID).Scan(&c.UserName)
+		c = comment{ID: id, Content: in.Content, Created: t, Updated: t, UserID: s.userID}
+		return tx.QueryRow(`SELECT name,is_ai FROM "user" WHERE id=?`, s.userID).Scan(&c.UserName, &c.UserIsAI)
 	})
 	if e == sql.ErrNoRows {
 		errw(w, 404, "ticket not found")

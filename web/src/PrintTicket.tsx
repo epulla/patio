@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
+import AIBadge from "./AIBadge";
 import {
   api,
   type BoardData,
@@ -119,7 +120,9 @@ export default function PrintTicket({ id }: { id: string }) {
             {history.map((item) => (
               <tr key={item.id}>
                 <td>{formatDate(item.created_at)}</td>
-                <td>{item.user_name}</td>
+                <td>
+                  {item.user_name} <AIBadge isAI={item.user_is_ai} />
+                </td>
                 <td>{item.content}</td>
               </tr>
             ))}
@@ -143,7 +146,9 @@ export default function PrintTicket({ id }: { id: string }) {
                 <td>
                   {item.from_status_name || "Created"} → {item.to_status_name}
                 </td>
-                <td>{item.user_name}</td>
+                <td>
+                  {item.user_name} <AIBadge isAI={item.user_is_ai} />
+                </td>
               </tr>
             ))}
           </tbody>

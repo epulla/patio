@@ -98,17 +98,26 @@ func (t ticket) MarshalJSON() ([]byte, error) {
 	}{t.ID, t.Title, t.Description, t.Number, t.Code, t.Created, t.Updated, t.DueDate, t.StatusUpdated, t.StatusID, t.BoardID, t.TicketTypeID, t.ReporterID, t.AssigneeID})
 }
 
-type history struct{ ID, Content, Created, UserID, UserName string }
+type history struct {
+	ID, Content, Created, UserID, UserName string
+	UserIsAI                               bool
+}
 type transition struct {
 	ID                                               string
 	FromID, FromName, ToID, ToName, UserID, UserName *string
 	Moved                                            string
+	UserIsAI                                         bool
 }
-type comment struct{ ID, Content, Created, Updated, UserID, UserName string }
+type comment struct {
+	ID, Content, Created, Updated, UserID, UserName string
+	UserIsAI                                        bool
+}
 type user struct {
-	ID, Name string
-	LastName *string
-	Email    string
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	LastName *string `json:"last_name"`
+	Email    string  `json:"email"`
+	IsAI     bool    `json:"is_ai"`
 }
 
 func (h history) MarshalJSON() ([]byte, error) {
@@ -118,7 +127,8 @@ func (h history) MarshalJSON() ([]byte, error) {
 		Created  string `json:"created_at"`
 		UserID   string `json:"user_id"`
 		UserName string `json:"user_name"`
-	}{h.ID, h.Content, h.Created, h.UserID, h.UserName})
+		UserIsAI bool   `json:"user_is_ai"`
+	}{h.ID, h.Content, h.Created, h.UserID, h.UserName, h.UserIsAI})
 }
 func (c comment) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
@@ -128,7 +138,8 @@ func (c comment) MarshalJSON() ([]byte, error) {
 		Updated  string `json:"updated_at"`
 		UserID   string `json:"user_id"`
 		UserName string `json:"user_name"`
-	}{c.ID, c.Content, c.Created, c.Updated, c.UserID, c.UserName})
+		UserIsAI bool   `json:"user_is_ai"`
+	}{c.ID, c.Content, c.Created, c.Updated, c.UserID, c.UserName, c.UserIsAI})
 }
 func (t transition) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
@@ -139,8 +150,9 @@ func (t transition) MarshalJSON() ([]byte, error) {
 		ToName   *string `json:"to_status_name"`
 		UserID   *string `json:"user_id"`
 		UserName *string `json:"user_name"`
+		UserIsAI bool    `json:"user_is_ai"`
 		Moved    string  `json:"moved_at"`
-	}{t.ID, t.FromID, t.FromName, t.ToID, t.ToName, t.UserID, t.UserName, t.Moved})
+	}{t.ID, t.FromID, t.FromName, t.ToID, t.ToName, t.UserID, t.UserName, t.UserIsAI, t.Moved})
 }
 
 func now() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z") }
