@@ -519,6 +519,74 @@ func TestBoardDataRejectsCorruptTemporaryStatusTimestamp(t *testing.T) {
 	}
 }
 
+func TestBoardDataTemporaryTTLAndOrdering(t *testing.T) {
+	database, handler := newAPI(t)
+	b := createBoard(t, handler, "TTL", []string{"Classic"})
+	classicStatus := boardStatuses(t, handler, b.ID)[0].ID
+	var temporaryStatus testStatus
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/statuses", map[string]any{"name": "Temporary", "type": "temporary"}, &temporaryStatus); code != http.StatusCreated {
+		t.Fatalf("create temporary status = %d", code)
+	}
+	create := func(title, statusID string) testTicket {
+		t.Helper()
+		var out testTicket
+		if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/tickets", map[string]any{"title": title, "status_id": statusID}, &out); code != http.StatusCreated {
+			t.Fatalf("create ticket %q = %d", title, code)
+		}
+		return out
+	}
+	classicFirst := create("Classic First", classicStatus)
+	classicSecond := create("Classic Second", classicStatus)
+	temporaryOld := create("Temporary Old", temporaryStatus.ID)
+	temporaryAlpha := create("Fresh Alpha", temporaryStatus.ID)
+	temporaryBeta := create("Fresh Beta", temporaryStatus.ID)
+	for _, ticket := range []testTicket{classicFirst, classicSecond, temporaryOld} {
+		if _, err := database.Exec("UPDATE ticket SET status_updated_at=? WHERE id=?", "2020-01-01T00:00:00.000Z", ticket.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for statusID, order := range map[string][]string{
+		classicStatus:      {classicSecond.ID, classicFirst.ID},
+		temporaryStatus.ID: {temporaryBeta.ID, temporaryOld.ID, temporaryAlpha.ID},
+	} {
+		if _, err := database.Exec("UPDATE ticket_order SET ticket_ids=? WHERE status_id=?", listJSON(order), statusID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name      string
+		query     string
+		classic   []string
+		temporary []string
+	}{
+		{name: "ttl and ticket order", classic: []string{classicSecond.ID, classicFirst.ID}, temporary: []string{temporaryBeta.ID, temporaryAlpha.ID}},
+		{name: "q title filter", query: "ALPHA", classic: []string{}, temporary: []string{temporaryAlpha.ID}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var data testData
+			path := "/api/boards/" + b.ID + "/data"
+			if tc.query != "" {
+				path += "?q=" + tc.query
+			}
+			if code := requestJSON(t, handler, http.MethodGet, path, nil, &data); code != http.StatusOK {
+				t.Fatalf("board data status = %d", code)
+			}
+			if len(data.Statuses) != 2 {
+				t.Fatalf("statuses = %d, want 2", len(data.Statuses))
+			}
+			for i, want := range [][]string{tc.classic, tc.temporary} {
+				got := make([]string, len(data.Statuses[i].Tickets))
+				for j, ticket := range data.Statuses[i].Tickets {
+					got[j] = ticket.ID
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("status %d ticket order = %v, want %v", i, got, want)
+				}
+			}
+		})
+	}
+}
+
 func assertOrder(t *testing.T, database *sql.DB, statusID string, want []string) {
 	t.Helper()
 	var raw string

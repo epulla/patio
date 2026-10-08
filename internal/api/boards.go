@@ -276,6 +276,8 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 	}
 	sts := []status{}
 	tickets := map[string][]ticket{}
+	ticketOrders := map[string][]string{}
+	temporary := map[string]bool{}
 	for _, sid := range ids {
 		var st status
 		if e = s.db.QueryRow(`SELECT id,name,type,board_id FROM status WHERE id=? AND deleted_at IS NULL`, sid).Scan(&st.ID, &st.Name, &st.Type, &st.BoardID); e != nil {
@@ -299,32 +301,58 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 			errw(w, 500, e.Error())
 			return
 		}
-		for _, tid := range tids {
-			tt, e := s.ticketBy(s.db, tid)
-			if e == sql.ErrNoRows {
-				continue
-			}
-			if e != nil {
-				errw(w, 500, e.Error())
+		ticketOrders[sid] = tids
+		temporary[sid] = st.Type == "temporary"
+		sts = append(sts, st)
+	}
+	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
+	rows, e := s.db.Query(`SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id FROM ticket t JOIN status s ON s.id=t.status_id WHERE t.board_id=? AND (s.type!='temporary' OR t.status_updated_at>=? OR strftime('%Y-%m-%dT%H:%M:%fZ',t.status_updated_at) IS NULL)`, id, cutoff)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	defer rows.Close()
+	byID := map[string]ticket{}
+	for rows.Next() {
+		tt, scanErr := scanTicket(rows)
+		if scanErr != nil {
+			errw(w, 500, scanErr.Error())
+			return
+		}
+		if tt.StatusID == nil {
+			errw(w, 500, "ticket has no status")
+			return
+		}
+		statusID := *tt.StatusID
+		if _, active := temporary[statusID]; !active {
+			continue
+		}
+		if temporary[statusID] {
+			isRecent, parseErr := recent(tt.StatusUpdated)
+			if parseErr != nil {
+				errw(w, 500, parseErr.Error())
 				return
 			}
-			if e == nil {
-				recentStatus := true
-				if st.Type == "temporary" {
-					recentStatus, e = recent(tt.StatusUpdated)
-					if e != nil {
-						errw(w, 500, e.Error())
-						return
-					}
-				}
-				if recentStatus {
-					if q := r.URL.Query().Get("q"); q == "" || strings.Contains(strings.ToLower(tt.Title), strings.ToLower(q)) || strings.Contains(strings.ToLower(tt.Code), strings.ToLower(q)) {
-						tickets[sid] = append(tickets[sid], tt)
-					}
-				}
+			if !isRecent {
+				continue
 			}
 		}
-		sts = append(sts, st)
+		byID[tt.ID] = tt
+	}
+	if e = rows.Err(); e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	for sid, tids := range ticketOrders {
+		for _, tid := range tids {
+			tt, ok := byID[tid]
+			if !ok {
+				continue
+			}
+			if q := r.URL.Query().Get("q"); q == "" || strings.Contains(strings.ToLower(tt.Title), strings.ToLower(q)) || strings.Contains(strings.ToLower(tt.Code), strings.ToLower(q)) {
+				tickets[sid] = append(tickets[sid], tt)
+			}
+		}
 	}
 	ts := []ticketType{}
 	for _, tid := range typeids {
