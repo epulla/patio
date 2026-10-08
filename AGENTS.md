@@ -14,9 +14,10 @@ Local kanban desktop app: Go + SQLite + Wails v2 + React UI. `my-tickets mcp` ex
 - `main.go`: flags (`-d`, `-show-hidden`), `mcp` subcommand, Wails app, OS-specific DB path in `dbPath`.
 - `internal/db/`: `Open` applies pragmas (foreign_keys, WAL, busy_timeout) via DSN, runs embedded migrations tracked by `PRAGMA user_version`, seeds users, and `Watch` detects external writes.
 - `internal/db/migrations/`: numbered `.sql` files. Never edit an applied migration; add a new file.
-- `internal/api/`: `server.go` (routes, JSON helpers, types), `boards.go`, `tickets.go`, `transfer.go` (export/import).
+- `internal/api/`: `server.go` (routes, JSON helpers, types), `boards.go`, `tickets.go`, `transfer.go` (export/import), `calendar.go` (calendar items + due tickets).
 - `internal/mcp/`: MCP stdio server; requests act as user `ai`.
-- `web/src/`: `App.tsx` (router), `AIBadge.tsx`, `BoardList.tsx`, `BoardView.tsx`, `TicketDetail.tsx`, `PrintTicket.tsx`, `api.ts` (types + fetch).
+- `internal/reminder/`: claims due reminders once (`notified_at`) and fires OS notifications from the desktop app.
+- `web/src/`: `App.tsx` (router), `AIBadge.tsx`, `BoardList.tsx`, `BoardView.tsx`, `TicketDetail.tsx`, `PrintTicket.tsx`, `Calendar.tsx`, `api.ts` (types + fetch).
 - `web/embed.go`: `//go:embed all:dist`. `web/public/.gitkeep` keeps `web/dist/` non-empty so `go build` works before a frontend build.
 - `wails.json`: Wails app and pnpm frontend build configuration.
 
