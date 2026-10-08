@@ -305,43 +305,54 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 		temporary[sid] = st.Type == "temporary"
 		sts = append(sts, st)
 	}
-	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
-	rows, e := s.db.Query(`SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id FROM ticket t JOIN status s ON s.id=t.status_id WHERE t.board_id=? AND (s.type!='temporary' OR t.status_updated_at>=? OR strftime('%Y-%m-%dT%H:%M:%fZ',t.status_updated_at) IS NULL)`, id, cutoff)
-	if e != nil {
-		errw(w, 500, e.Error())
-		return
-	}
-	defer rows.Close()
 	byID := map[string]ticket{}
-	for rows.Next() {
-		tt, scanErr := scanTicket(rows)
-		if scanErr != nil {
-			errw(w, 500, scanErr.Error())
+	clauses := []string{}
+	args := []any{}
+	classicIDs := []string{}
+	for _, st := range sts {
+		if st.Type == "temporary" {
+			clauses = append(clauses, "(t.status_id=? AND t.status_updated_at>=?)")
+			args = append(args, st.ID, time.Now().UTC().Add(-24*time.Hour).Format("2006-01-02T15:04:05.000Z"))
+		} else {
+			classicIDs = append(classicIDs, st.ID)
+		}
+	}
+	if len(classicIDs) > 0 {
+		placeholders := make([]string, len(classicIDs))
+		for i := range placeholders {
+			placeholders[i] = "?"
+		}
+		clauses = append(clauses, "t.status_id IN ("+strings.Join(placeholders, ",")+")")
+		for _, sid := range classicIDs {
+			args = append(args, sid)
+		}
+	}
+	if len(clauses) > 0 {
+		query := `SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id FROM ticket t WHERE ` + strings.Join(clauses, " OR ")
+		rows, queryErr := s.db.Query(query, args...)
+		if queryErr != nil {
+			errw(w, 500, queryErr.Error())
 			return
 		}
-		if tt.StatusID == nil {
-			errw(w, 500, "ticket has no status")
-			return
-		}
-		statusID := *tt.StatusID
-		if _, active := temporary[statusID]; !active {
-			continue
-		}
-		if temporary[statusID] {
-			isRecent, parseErr := recent(tt.StatusUpdated)
-			if parseErr != nil {
-				errw(w, 500, parseErr.Error())
+		defer rows.Close()
+		for rows.Next() {
+			tt, scanErr := scanTicket(rows)
+			if scanErr != nil {
+				errw(w, 500, scanErr.Error())
 				return
 			}
-			if !isRecent {
-				continue
+			if temporary[*tt.StatusID] {
+				if _, parseErr := time.Parse("2006-01-02T15:04:05.000Z", *tt.StatusUpdated); parseErr != nil {
+					errw(w, 500, parseErr.Error())
+					return
+				}
 			}
+			byID[tt.ID] = tt
 		}
-		byID[tt.ID] = tt
-	}
-	if e = rows.Err(); e != nil {
-		errw(w, 500, e.Error())
-		return
+		if e = rows.Err(); e != nil {
+			errw(w, 500, e.Error())
+			return
+		}
 	}
 	for sid, tids := range ticketOrders {
 		for _, tid := range tids {
@@ -385,17 +396,6 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, out)
 }
-func recent(v *string) (bool, error) {
-	if v == nil {
-		return false, nil
-	}
-	t, e := time.Parse("2006-01-02T15:04:05.000Z", *v)
-	if e != nil {
-		return false, e
-	}
-	return time.Since(t) < 24*time.Hour, nil
-}
-
 func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name string `json:"name"`
