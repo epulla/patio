@@ -135,7 +135,7 @@ func TestTicketNumberingIndependentPerBoard(t *testing.T) {
 
 func TestMoveAcrossColumnsAuditsAndOrders(t *testing.T) {
 	database, handler := newAPI(t)
-	b := createBoard(t, handler, "MOVE", []string{"Todo", "Done"})
+	b := createBoard(t, handler, "MOVE", []string{"To Do", "In Progress"})
 	statuses := boardStatuses(t, handler, b.ID)
 	first := createTicket(t, handler, b.ID, statuses[0].ID)
 	second := createTicket(t, handler, b.ID, statuses[0].ID)
@@ -156,6 +156,13 @@ func TestMoveAcrossColumnsAuditsAndOrders(t *testing.T) {
 	}
 	if transitions != 1 || histories-beforeHistory != 1 {
 		t.Fatalf("move audit counts = transition %d, history delta %d", transitions, histories-beforeHistory)
+	}
+	var history string
+	if err := database.QueryRow("SELECT content FROM ticket_history WHERE ticket_id=? ORDER BY created_at DESC LIMIT 1", second.ID).Scan(&history); err != nil {
+		t.Fatal(err)
+	}
+	if history != "Status changed from To Do to In Progress" {
+		t.Fatalf("move history = %q", history)
 	}
 	assertOrder(t, database, statuses[0].ID, []string{first.ID})
 	assertOrder(t, database, statuses[1].ID, []string{second.ID})

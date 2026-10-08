@@ -325,7 +325,14 @@ func moveTx(tx *sql.Tx, t ticket, id, target string, index int, audit bool) erro
 		return e
 	}
 	if audit {
-		if e := historyTx(tx, id, "Status changed", tm); e != nil {
+		var fromName, toName string
+		if e := tx.QueryRow(`SELECT name FROM status WHERE id=?`, *t.StatusID).Scan(&fromName); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(`SELECT name FROM status WHERE id=?`, target).Scan(&toName); e != nil {
+			return e
+		}
+		if e := historyTx(tx, id, fmt.Sprintf("Status changed from %s to %s", fromName, toName), tm); e != nil {
 			return e
 		}
 		return transitionTx(tx, id, *t.BoardID, *t.StatusID, target, tm)
