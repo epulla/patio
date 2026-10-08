@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-func TestDataDir(t *testing.T) {
+func TestDBPath(t *testing.T) {
 	tests := []struct {
 		name    string
+		flag    string
 		goos    string
 		env     map[string]string
 		home    string
@@ -18,7 +19,7 @@ func TestDataDir(t *testing.T) {
 			name: "windows set",
 			goos: "windows",
 			env:  map[string]string{"LOCALAPPDATA": `C:\Users\test\AppData\Local`},
-			want: filepath.Join(`C:\Users\test\AppData\Local`, "my-tickets"),
+			want: filepath.Join(`C:\Users\test\AppData\Local`, "my-tickets", "my-tickets.db"),
 		},
 		{
 			name:    "windows unset",
@@ -29,47 +30,66 @@ func TestDataDir(t *testing.T) {
 			name: "darwin",
 			goos: "darwin",
 			home: "/Users/test",
-			want: filepath.Join("/Users/test", "Library", "Application Support", "my-tickets"),
+			want: filepath.Join("/Users/test", "Library", "Application Support", "my-tickets", "my-tickets.db"),
 		},
 		{
 			name: "linux XDG absolute",
 			goos: "linux",
 			env:  map[string]string{"XDG_DATA_HOME": "/tmp/data"},
 			home: "/home/test",
-			want: filepath.Join("/tmp/data", "my-tickets"),
+			want: filepath.Join("/tmp/data", "my-tickets", "my-tickets.db"),
 		},
 		{
 			name: "linux XDG relative",
 			goos: "linux",
 			env:  map[string]string{"XDG_DATA_HOME": "relative/data"},
 			home: "/home/test",
-			want: filepath.Join("/home/test", ".local", "share", "my-tickets"),
+			want: filepath.Join("/home/test", ".local", "share", "my-tickets", "my-tickets.db"),
 		},
 		{
 			name: "linux unset",
 			goos: "linux",
 			home: "/home/test",
-			want: filepath.Join("/home/test", ".local", "share", "my-tickets"),
+			want: filepath.Join("/home/test", ".local", "share", "my-tickets", "my-tickets.db"),
+		},
+		{
+			name: "absolute flag",
+			flag: "/tmp/custom.db",
+			goos: "windows",
+			want: "/tmp/custom.db",
+		},
+		{
+			name: "relative flag",
+			flag: "custom.db",
+			want: mustAbs("custom.db"),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := dataDir(test.goos, func(key string) string {
+			got, err := dbPath(test.flag, test.goos, func(key string) string {
 				return test.env[key]
 			}, test.home)
 			if test.wantErr {
 				if err == nil {
-					t.Fatal("dataDir() error = nil, want error")
+					t.Fatal("dbPath() error = nil, want error")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("dataDir() error = %v", err)
+				t.Fatalf("dbPath() error = %v", err)
 			}
 			if got != test.want {
-				t.Errorf("dataDir() = %q, want %q", got, test.want)
+				t.Errorf("dbPath() = %q, want %q", got, test.want)
 			}
 		})
 	}
+}
+
+func mustAbs(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		panic(err)
+	}
+	return abs
 }

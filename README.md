@@ -26,6 +26,7 @@ Flags:
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `-port` | `0` (random) | HTTP port, bound to 127.0.0.1 only |
+| `-d` | per-OS data directory | Database file path (see Data) |
 | `-no-browser` | `false` | Do not open the browser |
 | `-show-hidden` | `false` | Show comments and assignee in the UI |
 
@@ -34,6 +35,8 @@ Stop it with `pkill -f bin/my-tickets` (macOS/Linux) or Ctrl+C.
 ## Data
 
 The database is `my-tickets.db` in the OS data directory:
+
+Override with `-d path/to/file.db`.
 
 - macOS: `~/Library/Application Support/my-tickets/`
 - Linux: `$XDG_DATA_HOME/my-tickets/` or `~/.local/share/my-tickets/`

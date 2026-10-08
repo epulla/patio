@@ -23,21 +23,26 @@ import (
 
 func main() {
 	port := flag.Int("port", 0, "HTTP port, or 0 for a random free port")
+	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
 	noBrowser := flag.Bool("no-browser", false, "do not open browser")
 	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
 	flag.Parse()
-	home, err := os.UserHomeDir()
+	home := ""
+	if *dbFile == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	path, err := dbPath(*dbFile, runtime.GOOS, os.Getenv, home)
 	if err != nil {
 		log.Fatal(err)
 	}
-	dir, err := dataDir(runtime.GOOS, os.Getenv, home)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		log.Fatal(err)
-	}
-	database, err := db.Open(filepath.Join(dir, "my-tickets.db"))
+	database, err := db.Open(path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,6 +68,7 @@ func main() {
 	}
 	url := "http://" + listener.Addr().String()
 	log.Printf("listening at %s", url)
+	log.Printf("database at %s", path)
 	if !*noBrowser {
 		openBrowser(url)
 	}
@@ -71,7 +77,11 @@ func main() {
 	}
 }
 
-func dataDir(goos string, getenv func(string) string, home string) (string, error) {
+func dbPath(flagValue, goos string, getenv func(string) string, home string) (string, error) {
+	if flagValue != "" {
+		return filepath.Abs(flagValue)
+	}
+
 	switch goos {
 	case "windows":
 		local := getenv("LOCALAPPDATA")
@@ -79,15 +89,15 @@ func dataDir(goos string, getenv func(string) string, home string) (string, erro
 			return "", fmt.Errorf("LOCALAPPDATA is not set")
 		}
 		// Use Local instead of Roaming because SQLite WAL breaks on redirected or network Roaming profiles.
-		return filepath.Join(local, "my-tickets"), nil
+		return filepath.Join(local, "my-tickets", "my-tickets.db"), nil
 	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "my-tickets"), nil
+		return filepath.Join(home, "Library", "Application Support", "my-tickets", "my-tickets.db"), nil
 	default:
 		xdg := getenv("XDG_DATA_HOME")
 		if filepath.IsAbs(xdg) {
-			return filepath.Join(xdg, "my-tickets"), nil
+			return filepath.Join(xdg, "my-tickets", "my-tickets.db"), nil
 		}
-		return filepath.Join(home, ".local", "share", "my-tickets"), nil
+		return filepath.Join(home, ".local", "share", "my-tickets", "my-tickets.db"), nil
 	}
 }
 
