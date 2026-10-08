@@ -22,11 +22,12 @@ type boardArgs struct {
 type createBoardArgs struct {
 	Name      string              `json:"name" jsonschema:"Board name"`
 	ShortName string              `json:"short_name" jsonschema:"Short board code"`
-	Statuses  []createBoardStatus `json:"statuses,omitempty" jsonschema:"Optional columns; set hide_after_days to make a column temporary, or omit it for a classic column"`
+	Statuses  []createBoardStatus `json:"statuses,omitempty" jsonschema:"Optional columns; type may be classic or temporary. Without type, hide_after_days makes column temporary; otherwise classic. Temporary columns default to 1 hide_after_days."`
 }
 type createBoardStatus struct {
-	Name          string `json:"name" jsonschema:"Column name"`
-	HideAfterDays *int   `json:"hide_after_days,omitempty" jsonschema:"Set to make this a temporary column: tickets auto-hide N days after entering it. Omit for a classic column."`
+	Name          string  `json:"name" jsonschema:"Column name"`
+	Type          *string `json:"type,omitempty" jsonschema:"Optional column type: classic or temporary. If omitted, hide_after_days selects temporary; otherwise classic."`
+	HideAfterDays *int    `json:"hide_after_days,omitempty" jsonschema:"Days before tickets auto-hide; when type is omitted, setting this makes column temporary. Temporary defaults to 1 day."`
 }
 type createBoardStatusBody struct {
 	Name          string `json:"name"`
@@ -114,13 +115,15 @@ func NewServer(h http.Handler) *sdk.Server {
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
 	})
-	addGeneric(s, "create_board", "Create a board; set hide_after_days for temporary columns that auto-hide tickets after entering them, or omit it for classic columns", h, func(a createBoardArgs) request {
+	addGeneric(s, "create_board", "Create a board. Column type may be classic or temporary; without type, hide_after_days selects temporary, otherwise classic. Temporary columns default to 1 hide_after_days.", h, func(a createBoardArgs) request {
 		body := createBoardBody{Name: a.Name, ShortName: a.ShortName}
 		if a.Statuses != nil {
 			body.Statuses = make([]createBoardStatusBody, len(a.Statuses))
 			for i, status := range a.Statuses {
 				typeName := "classic"
-				if status.HideAfterDays != nil {
+				if status.Type != nil {
+					typeName = *status.Type
+				} else if status.HideAfterDays != nil {
 					typeName = "temporary"
 				}
 				body.Statuses[i] = createBoardStatusBody{status.Name, typeName, status.HideAfterDays}

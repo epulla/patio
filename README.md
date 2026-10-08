@@ -6,7 +6,7 @@ Port of the prod-tickets schema, plus a `ticket_status_transition` table that re
 
 ## Features
 
-- Boards: create, rename, change short name (old ticket codes still resolve), delete.
+- Boards: new boards default to To Do, In Progress (classic), and Done (temporary; tickets hide after 1 day); create, rename, change short name (old ticket codes still resolve), delete.
 - Kanban: drag tickets within and between columns, reorder columns (drag or left/right buttons), add columns, temporary columns (tickets hide after 1 day), search by title or code.
 - Tickets: rich-text description, ticket types, due date, status, history ("Status changed from X to Y"), status transitions.
 - Export: board as Excel, CSV, or JSON backup; ticket as JSON or Markdown.
@@ -54,6 +54,8 @@ On macOS, install Xcode command line tools. Linux also needs GTK 3 and WebKit2GT
 ## AI access (MCP)
 
 MCP runs as `my-tickets mcp` over stdio and shares database with desktop app. It acts as Martin, the AI persona shown with an AI badge in app. Use `-d path` after `mcp` if database is not at default location.
+
+- `create_board` accepts optional `statuses`: `[{"name":"...","type?":"classic"|"temporary","hide_after_days?":1}]`. Setting `hide_after_days` without `type` implies `temporary`; omitting both implies `classic`.
 
 Configure client with installed executable path:
 

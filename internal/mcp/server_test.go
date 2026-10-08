@@ -75,6 +75,25 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if doneStatus.Name != "Done" || doneStatus.Type != "temporary" || doneStatus.HideAfterDays == nil || *doneStatus.HideAfterDays != 2 {
 		t.Fatalf("Done status = %#v, want temporary column hiding after 2 days", doneStatus)
 	}
+	defaultDaysBoard := callTool(t, session, "create_board", map[string]any{
+		"name": "Temporary Board", "short_name": "TMP",
+		"statuses": []map[string]any{{"name": "Done", "type": "temporary"}},
+	})
+	var temporaryBoard struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, defaultDaysBoard, &temporaryBoard)
+	decodeText(t, callTool(t, session, "get_board", map[string]any{"board_id": temporaryBoard.ID}), &boardData)
+	if len(boardData.Statuses) != 1 || boardData.Statuses[0].Type != "temporary" || boardData.Statuses[0].HideAfterDays == nil || *boardData.Statuses[0].HideAfterDays != 1 {
+		t.Fatalf("temporary status = %#v, want 1-day temporary column", boardData.Statuses)
+	}
+	invalidType := callTool(t, session, "create_board", map[string]any{
+		"name": "Invalid Board", "short_name": "BAD",
+		"statuses": []map[string]any{{"name": "Done", "type": "other"}},
+	})
+	if !invalidType.IsError {
+		t.Fatal("invalid column type did not return tool error")
+	}
 	ticketResult := callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "MCP ticket", "due_date": "2026-10-10"})
 	var ticket struct {
 		ID string `json:"id"`

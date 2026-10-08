@@ -95,7 +95,12 @@ func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
 		HideAfterDays *int   `json:"hide_after_days"`
 		Additional    string
 	}
-	statuses := []boardStatus{{Name: "To Do"}, {Name: "In Progress"}, {Name: "Done"}}
+	defaultHideAfterDays := 1
+	statuses := []boardStatus{
+		{Name: "To Do", Type: "classic"},
+		{Name: "In Progress", Type: "classic"},
+		{Name: "Done", Type: "temporary", HideAfterDays: &defaultHideAfterDays},
+	}
 	if raw, ok := m["statuses"]; ok {
 		var elements []json.RawMessage
 		if json.Unmarshal(raw, &elements) != nil || len(elements) == 0 {

@@ -697,6 +697,33 @@ func TestCreateBoardTemporaryStatuses(t *testing.T) {
 	}
 }
 
+func TestCreateBoardDefaultStatuses(t *testing.T) {
+	_, handler := newAPI(t)
+	b := createBoard(t, handler, "DEFAULT", nil)
+	var data struct {
+		Statuses []struct {
+			Name          string `json:"name"`
+			Type          string `json:"type"`
+			HideAfterDays int    `json:"hide_after_days"`
+		} `json:"statuses"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/boards/"+b.ID+"/data", nil, &data); code != http.StatusOK {
+		t.Fatalf("board data status = %d", code)
+	}
+	want := []struct {
+		name, typ string
+		days      int
+	}{{"To Do", "classic", 1}, {"In Progress", "classic", 1}, {"Done", "temporary", 1}}
+	if len(data.Statuses) != len(want) {
+		t.Fatalf("default statuses = %#v", data.Statuses)
+	}
+	for i, status := range data.Statuses {
+		if status.Name != want[i].name || status.Type != want[i].typ || status.HideAfterDays != want[i].days {
+			t.Errorf("status %d = %#v, want %#v", i, status, want[i])
+		}
+	}
+}
+
 func assertOrder(t *testing.T, database *sql.DB, statusID string, want []string) {
 	t.Helper()
 	var raw string
