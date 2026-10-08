@@ -36,18 +36,10 @@ type transferTicket struct {
 	AssigneeID    *string `json:"assignee_id"`
 }
 type transferStatus struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Type      string   `json:"type"`
-	BoardID   string   `json:"board_id"`
+	status
 	TicketIDs []string `json:"ticket_ids"`
 }
-type transferType struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Color   string `json:"color"`
-	BoardID string `json:"board_id"`
-}
+type transferType = ticketType
 type transferUser struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -263,25 +255,16 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	return b, nil
 }
 func scanTransferTicket(r interface{ Scan(...any) error }) (transferTicket, error) {
-	var t transferTicket
-	var d, st, ty, re, as sql.NullString
-	e := r.Scan(&t.ID, &t.Title, &t.Description, &t.Number, &t.Code, &t.Created, &t.Updated, &d, &st, &t.StatusID, &t.BoardID, &ty, &re, &as)
-	if d.Valid {
-		t.DueDate = &d.String
+	t, e := scanTicket(r)
+	if e != nil {
+		return transferTicket{}, e
 	}
-	if st.Valid {
-		t.StatusUpdated = &st.String
-	}
-	if ty.Valid {
-		t.TicketTypeID = &ty.String
-	}
-	if re.Valid {
-		t.ReporterID = &re.String
-	}
-	if as.Valid {
-		t.AssigneeID = &as.String
-	}
-	return t, e
+	return transferTicket{
+		ID: t.ID, Title: t.Title, Description: t.Description, Number: t.Number,
+		Code: t.Code, Created: t.Created, Updated: t.Updated, DueDate: t.DueDate,
+		StatusUpdated: t.StatusUpdated, StatusID: *t.StatusID, BoardID: *t.BoardID,
+		TicketTypeID: t.TicketTypeID, ReporterID: t.ReporterID, AssigneeID: t.AssigneeID,
+	}, nil
 }
 func rowsForExport(b boardBackup) [][]string {
 	names := map[string]string{}
