@@ -71,6 +71,8 @@ Example client config:
 
 For a separate database, append `"-d", "path/to/file.db"` to `args`.
 
+App's MCP page (sidebar "MCP") shows this config with running executable path and self-tests server every 30 seconds.
+
 ## Development and tests
 
 ```sh
