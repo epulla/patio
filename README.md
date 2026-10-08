@@ -44,6 +44,16 @@ Override with `-d path/to/file.db`.
 
 Back up a board with its JSON export, or copy the `.db` file while the app is stopped.
 
+## AI access (MCP)
+
+Configure an MCP client to spawn the stdio server:
+
+```json
+{"mcpServers":{"my-tickets":{"command":"/path/to/my-tickets","args":["mcp"]}}}
+```
+
+It shares database with app. Use `-d path` when database is not at default location.
+
 ## Development
 
 ```sh

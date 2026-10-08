@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,12 +17,18 @@ import (
 	"runtime"
 	"strings"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"my-tickets/internal/api"
 	"my-tickets/internal/db"
+	mcpserver "my-tickets/internal/mcp"
 	"my-tickets/web"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		runMCP(os.Args[2:])
+		return
+	}
 	port := flag.Int("port", 0, "HTTP port, or 0 for a random free port")
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
 	noBrowser := flag.Bool("no-browser", false, "do not open browser")
@@ -73,6 +80,42 @@ func main() {
 		openBrowser(url)
 	}
 	if err := http.Serve(listener, mux); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runMCP(args []string) {
+	flags := flag.NewFlagSet("mcp", flag.ExitOnError)
+	dbFile := flags.String("d", "", "database file path (default: per-OS data directory)")
+	if err := flags.Parse(args); err != nil {
+		log.Fatal(err)
+	}
+	home := ""
+	if *dbFile == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	dbFilePath, err := dbPath(*dbFile, runtime.GOOS, os.Getenv, home)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dbFilePath), 0o700); err != nil {
+		log.Fatal(err)
+	}
+	database, err := db.Open(dbFilePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err := database.Close(); err != nil {
+			log.Printf("close database: %v", err)
+		}
+	}()
+	server := mcpserver.NewServer(api.New(database, "ai", true))
+	if err := server.Run(context.Background(), &sdk.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}
 }
