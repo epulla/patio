@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -50,6 +51,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		log.Fatal(err)
 	}
@@ -65,6 +70,34 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
 			log.Printf("write health response: %v", err)
+		}
+	})
+	mux.HandleFunc("GET /api/mcp", func(w http.ResponseWriter, r *http.Request) {
+		args := []string{"mcp"}
+		if *dbFile != "" {
+			args = append(args, "-d", path)
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		tools, latency, checkErr := mcpserver.Check(ctx, &sdk.CommandTransport{Command: exec.CommandContext(ctx, exe, "mcp", "-d", path)})
+		result := struct {
+			Command   string              `json:"command"`
+			Args      []string            `json:"args"`
+			OK        bool                `json:"ok"`
+			Error     string              `json:"error"`
+			Tools     []map[string]string `json:"tools"`
+			LatencyMS int64               `json:"latency_ms"`
+		}{Command: exe, Args: args, OK: checkErr == nil, Tools: []map[string]string{}, LatencyMS: latency.Milliseconds()}
+		if checkErr != nil {
+			result.Error = checkErr.Error()
+		} else {
+			for _, tool := range tools {
+				result.Tools = append(result.Tools, map[string]string{"name": tool.Name, "description": tool.Description})
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			log.Printf("write MCP response: %v", err)
 		}
 	})
 	var appCtx context.Context
