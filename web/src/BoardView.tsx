@@ -262,9 +262,10 @@ function Column({
       onError(error);
     }
   }
+  const tempTip = `Temporary column: tickets hide ${status.hide_after_days} day${status.hide_after_days === 1 ? "" : "s"} after entering it. They are not deleted.`;
   return (
     <section
-      className={`column ${over ? "drop" : ""}`}
+      className={`column ${status.type === "temporary" ? "temporary" : ""} ${over ? "drop" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         setOver(true);
@@ -282,10 +283,13 @@ function Column({
           <span className="count">{status.tickets.length}</span>
           {status.type === "temporary" && (
             <span
-              className="badge warning"
-              title={`Tickets hide after ${status.hide_after_days} day${status.hide_after_days === 1 ? "" : "s"}`}
+              className="help-tip tip-wide"
+              role="img"
+              tabIndex={0}
+              aria-label={tempTip}
+              data-tip={tempTip}
             >
-              Temporary
+              ?
             </span>
           )}
         </div>

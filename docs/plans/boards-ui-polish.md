@@ -26,6 +26,6 @@
 
 - [x] API + MCP: default Done temporary (decision 5); MCP `{name, type?, hide_after_days?}` (decision 6). Check: Go tests for default columns and MCP explicit type, inferred type, invalid type; `go vet ./... && go test ./... -count=1`.
 - [x] Settings polish: `data-tip` tooltips on hover+focus for any element (decision 9), icon Save/Delete (decision 2), non-shifting days control (decision 3), remove settings `title`s. Check: `pnpm --dir web build`; smoke: toggling Classic/Temporary doesn't move other controls, tooltips show on Tab focus.
-- [ ] Board columns: "?" tooltip replacing badge (decision 7), dashed temp border (decision 8). Check: `pnpm --dir web build`; smoke: hover + Tab on "?" shows tooltip, dashed border visible, drag highlight still works.
+- [x] Board columns: "?" tooltip replacing badge (decision 7), dashed temp border (decision 8). Check: `pnpm --dir web build`; smoke: hover + Tab on "?" shows tooltip, dashed border visible, drag highlight still works.
 - [ ] Export dropdown (decision 10). Check: `pnpm --dir web build`; smoke: each item downloads, Esc/outside click close, arrow keys move, focus returns.
 - [ ] Boards page: header buttons, create modal with callout + Done temporary default, Import button (decisions 1, 3, 4). Check: `pnpm --dir web build`; smoke: create board via modal, Done column is temporary 1 day; import JSON backup works.

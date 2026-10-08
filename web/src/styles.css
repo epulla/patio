@@ -387,22 +387,6 @@ a:has(> .svg-icon) {
   left: calc(100% + 8px);
   transform: translateY(-50%);
 }
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: 12px;
-  font-weight: 600;
-}
-.badge.warning {
-  background: var(--warning);
-  color: var(--warning-content);
-  border-color: var(--warning);
-}
 .error {
   color: var(--content);
   background: color-mix(in oklch, var(--error) 14%, var(--base-100));
@@ -634,6 +618,9 @@ a:has(> .svg-icon) {
   padding: 8px;
   transition: 0.15s;
 }
+.column.temporary {
+  border: 1px dashed color-mix(in oklch, var(--content) 22%, transparent);
+}
 .column.drop {
   background: var(--base-300);
   border-color: color-mix(in oklch, var(--primary) 60%, transparent);
@@ -656,6 +643,26 @@ a:has(> .svg-icon) {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+.help-tip {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font: 600 11px var(--font);
+  cursor: help;
+}
+.help-tip:hover,
+.help-tip:focus-visible {
+  color: var(--content);
+  border-color: var(--muted);
+}
+.help-tip[data-tip]::after {
+  left: 0;
+  transform: none;
 }
 .count {
   color: var(--muted);
