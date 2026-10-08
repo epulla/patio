@@ -109,7 +109,10 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		if e := tx.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&order); e != nil {
 			return e
 		}
-		a, _ := parseList(order)
+		a, e := parseList(order)
+		if e != nil {
+			return e
+		}
 		a = append(a, id)
 		if _, e := tx.Exec(`UPDATE ticket_order SET ticket_ids=? WHERE status_id=?`, listJSON(a), sid); e != nil {
 			return e
@@ -249,7 +252,12 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 				return errors.New("invalid status_id")
 			}
 			if out.StatusID == nil || z != *out.StatusID {
-				if e = moveTx(tx, out, id, z, lenMust(tx, z), true); e != nil {
+				var index int
+				index, e = lenMust(tx, z)
+				if e == nil {
+					e = moveTx(tx, out, id, z, index, true)
+				}
+				if e != nil {
 					return e
 				}
 				out.StatusID = &z
@@ -276,13 +284,13 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, out)
 }
-func lenMust(tx *sql.Tx, sid string) int {
+func lenMust(tx *sql.Tx, sid string) (int, error) {
 	var x string
-	if tx.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&x) != nil {
-		return 0
+	if e := tx.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&x); e != nil {
+		return 0, e
 	}
-	a, _ := parseList(x)
-	return len(a)
+	a, e := parseList(x)
+	return len(a), e
 }
 func moveTx(tx *sql.Tx, t ticket, id, target string, index int, audit bool) error {
 	if t.StatusID != nil && *t.StatusID == target {
@@ -302,8 +310,14 @@ func moveTx(tx *sql.Tx, t ticket, id, target string, index int, audit bool) erro
 	if e := tx.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, target).Scan(&newraw); e != nil {
 		return e
 	}
-	oa, _ := parseList(old)
-	na, _ := parseList(newraw)
+	oa, e := parseList(old)
+	if e != nil {
+		return e
+	}
+	na, e := parseList(newraw)
+	if e != nil {
+		return e
+	}
 	oa = remove(oa, id)
 	if index < 0 {
 		index = 0
@@ -344,7 +358,10 @@ func reorderTx(tx *sql.Tx, sid, id string, index int) error {
 	if e := tx.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&raw); e != nil {
 		return e
 	}
-	a, _ := parseList(raw)
+	a, e := parseList(raw)
+	if e != nil {
+		return e
+	}
 	if !contains(a, id) {
 		return errors.New("ticket not in status")
 	}
@@ -358,7 +375,7 @@ func reorderTx(tx *sql.Tx, sid, id string, index int) error {
 	a = append(a, "")
 	copy(a[index+1:], a[index:])
 	a[index] = id
-	_, e := tx.Exec(`UPDATE ticket_order SET ticket_ids=? WHERE status_id=?`, listJSON(a), sid)
+	_, e = tx.Exec(`UPDATE ticket_order SET ticket_ids=? WHERE status_id=?`, listJSON(a), sid)
 	return e
 }
 func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
@@ -406,12 +423,15 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 		if e := tx.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&raw); e != nil {
 			return e
 		}
-		a, _ := parseList(raw)
+		a, e := parseList(raw)
+		if e != nil {
+			return e
+		}
 		a = remove(a, id)
 		if _, e := tx.Exec(`UPDATE ticket_order SET ticket_ids=? WHERE status_id=?`, listJSON(a), sid); e != nil {
 			return e
 		}
-		_, e := tx.Exec(`DELETE FROM ticket WHERE id=?`, id)
+		_, e = tx.Exec(`DELETE FROM ticket WHERE id=?`, id)
 		return e
 	})
 	if e == sql.ErrNoRows {

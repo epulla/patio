@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"regexp"
 	"sort"
@@ -666,7 +667,8 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	if e != nil {
-		errw(w, 400, e.Error())
+		log.Printf("import failed: %v", e)
+		errw(w, 500, "import failed")
 		return
 	}
 	write(w, 201, out)

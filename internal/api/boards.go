@@ -259,13 +259,21 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, e.Error())
 		return
 	}
-	ids, _ := parseList(order)
+	ids, e := parseList(order)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
 	var typesOrder string
 	if e = s.db.QueryRow(`SELECT ticket_type_ids FROM ticket_type_order WHERE board_id=?`, id).Scan(&typesOrder); e != nil {
 		errw(w, 500, e.Error())
 		return
 	}
-	typeids, _ := parseList(typesOrder)
+	typeids, e := parseList(typesOrder)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
 	sts := []status{}
 	tickets := map[string][]ticket{}
 	for _, sid := range ids {
@@ -368,7 +376,10 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 		if e := tx.QueryRow(`SELECT status_ids FROM status_order WHERE board_id=?`, bid).Scan(&x); e != nil {
 			return e
 		}
-		a, _ := parseList(x)
+		a, e := parseList(x)
+		if e != nil {
+			return e
+		}
 		a = append(a, id)
 		if _, e := tx.Exec(`INSERT INTO status(id,name,type,board_id) VALUES(?,?,?,?)`, id, in.Name, in.Type, bid); e != nil {
 			return e
@@ -376,7 +387,7 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 		if _, e := tx.Exec(`INSERT INTO ticket_order(id,status_id) VALUES(?,?)`, uid(), id); e != nil {
 			return e
 		}
-		_, e := tx.Exec(`UPDATE status_order SET status_ids=? WHERE board_id=?`, listJSON(a), bid)
+		_, e = tx.Exec(`UPDATE status_order SET status_ids=? WHERE board_id=?`, listJSON(a), bid)
 		out = status{id, in.Name, in.Type, bid}
 		return e
 	})
@@ -491,12 +502,15 @@ func (s *Server) createType(w http.ResponseWriter, r *http.Request) {
 		if e := tx.QueryRow(`SELECT ticket_type_ids FROM ticket_type_order WHERE board_id=?`, bid).Scan(&x); e != nil {
 			return e
 		}
-		a, _ := parseList(x)
+		a, e := parseList(x)
+		if e != nil {
+			return e
+		}
 		a = append(a, id)
 		if _, e := tx.Exec(`INSERT INTO ticket_type(id,name,color,board_id) VALUES(?,?,?,?)`, id, in.Name, in.Color, bid); e != nil {
 			return e
 		}
-		_, e := tx.Exec(`UPDATE ticket_type_order SET ticket_type_ids=? WHERE board_id=?`, listJSON(a), bid)
+		_, e = tx.Exec(`UPDATE ticket_type_order SET ticket_type_ids=? WHERE board_id=?`, listJSON(a), bid)
 		o = ticketType{id, in.Name, in.Color, bid}
 		return e
 	})

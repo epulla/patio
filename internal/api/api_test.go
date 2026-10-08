@@ -242,6 +242,18 @@ func TestDeleteStatusWithTicketsConflicts(t *testing.T) {
 	}
 }
 
+func TestBoardDataRejectsCorruptTicketOrder(t *testing.T) {
+	database, handler := newAPI(t)
+	b := createBoard(t, handler, "CORRUPT", []string{"Todo"})
+	statusID := boardStatuses(t, handler, b.ID)[0].ID
+	if _, err := database.Exec("UPDATE ticket_order SET ticket_ids=? WHERE status_id=?", "not json", statusID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/boards/"+b.ID+"/data", nil, nil); code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", code)
+	}
+}
+
 func assertOrder(t *testing.T, database *sql.DB, statusID string, want []string) {
 	t.Helper()
 	var raw string
