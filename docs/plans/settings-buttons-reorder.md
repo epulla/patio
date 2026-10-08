@@ -10,7 +10,7 @@
 ## Decisions
 
 1. `IconButton` becomes a rounded square (input corner radius, 40x40) with border and background like other buttons, app-wide. Check: normal color. Trash (`danger-text`): red icon, red-tinted border, not ghost.
-2. Ghost stays where it reads better (assumed): board column move arrows, dialog/modal Close X buttons, sidebar collapse + theme toggle, calendar day add button. Calendar prev/next arrows stay bordered because they sit in a joined group with "Today". Everything else bordered.
+2. Ghost stays where it reads better (assumed): board column move arrows, dialog/modal Close X and new-column Cancel X buttons, sidebar collapse + theme toggle, calendar day add button. Calendar prev/next arrows stay bordered because they sit in a joined group with "Today". Everything else bordered.
 3. Export button: download icon + "Export" text + chevron, no tooltip.
 4. Settings Columns section gets a preview strip at the bottom: small column cards (name, dashed border if temporary) with left/right buttons under each; first left / last right disabled; click saves via `PUT /api/boards/{id}/status-order`.
 5. After a reorder, settings column rows reset to saved values (unsaved edits discarded).

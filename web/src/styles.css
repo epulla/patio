@@ -861,6 +861,39 @@ a:has(> .svg-icon) {
 .type-row > input:first-child {
   flex: 1;
 }
+.preview-title {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.column-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 120px;
+  padding: 10px 8px 6px;
+  background: var(--base-200);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+}
+.preview-card.temporary {
+  border: 1px dashed color-mix(in oklch, var(--content) 22%, transparent);
+}
+.preview-card .icon {
+  width: 28px;
+  height: 28px;
+}
 label.days-field {
   display: inline-flex;
   flex-direction: row;
@@ -1107,7 +1140,6 @@ label.days-field {
   width: 24px;
   height: 24px;
   padding: 0;
-  border-radius: 999px;
   color: var(--primary-text);
   opacity: 0.35;
 }
