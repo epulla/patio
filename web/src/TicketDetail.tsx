@@ -93,15 +93,6 @@ export default function TicketDetail({
       setError(reason);
     }
   }
-  async function remove() {
-    if (!ticket || !confirm("Delete this ticket?")) return;
-    try {
-      await api.delete(`/api/tickets/${ticket.id}`);
-      navigate(`/boards/${ticket.board_id}`);
-    } catch (reason) {
-      setError(reason);
-    }
-  }
   if (!ticket)
     return (
       <div className="loading">
@@ -239,9 +230,6 @@ export default function TicketDetail({
                 <dd>{formatDate(ticket.updated_at)}</dd>
               </dl>
             </div>
-            <button className="danger-text" onClick={remove}>
-              Delete ticket
-            </button>
           </aside>
         </div>
         <div className="tabs" role="tablist">

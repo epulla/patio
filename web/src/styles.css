@@ -777,9 +777,6 @@ button[aria-pressed="true"] {
 .ticket-details dd {
   margin: 0;
 }
-.ticket-side .danger-text {
-  align-self: flex-start;
-}
 .tabs {
   display: flex;
   gap: 4px;
