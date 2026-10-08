@@ -5,11 +5,10 @@ import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Mcp from "./Mcp";
-import { api, type Board } from "./api";
+import { api, type Board, type Config } from "./api";
+export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
 import { Icon, IconButton } from "./icons";
-
-export type Config = { show_hidden: boolean };
 
 export function navigate(path: string) {
   history.pushState({}, "", path);
@@ -31,7 +30,7 @@ export function formatDate(value: string | null) {
 
 export default function App() {
   const [path, setPath] = useState(location.pathname);
-  const [config, setConfig] = useState<Config>({ show_hidden: false });
+  const [config, setConfig] = useState<Config>({ show_hidden: false, version: "" });
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
   const [collapsed, setCollapsed] = useState(
@@ -139,6 +138,7 @@ export default function App() {
         </div>
       </aside>
       <main>{page}</main>
+      {config.version && <span className="app-version">{config.version}</span>}
     </div>
   );
 }

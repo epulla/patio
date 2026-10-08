@@ -159,6 +159,14 @@ a {
 .sidebar.collapsed .nav-label {
   display: none;
 }
+.app-version {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  color: var(--muted);
+  font: 11px var(--mono);
+  pointer-events: none;
+}
 .sidebar.collapsed .sidebar-head {
   justify-content: center;
 }
@@ -1461,6 +1469,9 @@ label.days-field {
     color: #000;
   }
   .sidebar {
+    display: none;
+  }
+  .app-version {
     display: none;
   }
   main {

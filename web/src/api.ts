@@ -6,6 +6,7 @@ export type Board = {
   created_at: string;
   updated_at: string;
 };
+export type Config = { show_hidden: boolean; version: string };
 export type Status = {
   id: string;
   name: string;
