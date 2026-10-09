@@ -33,7 +33,6 @@ type Options struct {
 	findClaude     func() (string, error)
 	findCodex      func() (string, error)
 	codexStart     func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error)
-	executable     func() (string, error)
 	version        string
 	findCopilot    func() (string, error)
 	mcpExecutable  string

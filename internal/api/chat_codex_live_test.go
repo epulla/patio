@@ -42,10 +42,10 @@ func TestCodexLive(t *testing.T) {
 	var fallbackCalls int
 	events := make(chan map[string]any, 64)
 	server := New(database, "local", false, "live", root, Options{
-		DBPath:     filepath.Join(root, "test.db"),
-		Emit:       func(_ string, data any) { events <- data.(map[string]any) },
-		findCodex:  func() (string, error) { return codexPath, nil },
-		executable: func() (string, error) { return binary, nil },
+		DBPath:        filepath.Join(root, "test.db"),
+		Emit:          func(_ string, data any) { events <- data.(map[string]any) },
+		findCodex:     func() (string, error) { return codexPath, nil },
+		mcpExecutable: binary,
 		codexStart: func(ctx context.Context, path string, env []string, isolated bool, version, cwd string, overrides ...string) (codexClient, error) {
 			if len(overrides) != 0 {
 				fallbackCalls++

@@ -234,12 +234,8 @@ func connectorEnv(kind, configDir string) []string {
 func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
 	exe := m.mcpExecutable
 	if exe == "" {
-		finder := m.options.executable
-		if finder == nil {
-			finder = os.Executable
-		}
 		var err error
-		exe, err = finder()
+		exe, err = os.Executable()
 		if err != nil {
 			return nil, err
 		}

@@ -336,13 +336,13 @@ func TestChatModelChangeClosesIdleProcessAndRestartsWithNewModel(t *testing.T) {
 func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := uid()
-	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'copilot','Copilot',?)`, connectorID, now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'unsupported','Unsupported',?)`, connectorID, now()); err != nil {
 		t.Fatal(err)
 	}
 	chatID := createDriverTestChat(t, database, connectorID, root)
 	server := New(database, "local", false, "dev", root)
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "hello"}, nil); code != http.StatusBadRequest {
-		t.Fatalf("non-Claude send status = %d", code)
+		t.Fatalf("unsupported driver send status = %d", code)
 	}
 	var count int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=?`, chatID).Scan(&count); err != nil || count != 0 {
