@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type McpServer, type McpServerCheck } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+import Switch from "./Switch";
 
 export default function McpServers({ refresh }: { refresh: number }) {
   const [servers, setServers] = useState<McpServer[]>([]);
@@ -212,10 +213,7 @@ function ServerCard({
       <ErrorText error={error} />
 
       <div className="connector-buttons">
-        <label className="switch">
-          <input type="checkbox" checked={server.enabled} onChange={toggle} />
-          {server.enabled ? "Enabled in chats" : "Disabled"}
-        </label>
+        <Switch checked={server.enabled} onChange={toggle} label="Enabled in chats" />
         {server.auth === "oauth" && (
           <button onClick={signIn}>{server.has_oauth_token ? "Sign in again" : "Sign in"}</button>
         )}

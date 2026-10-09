@@ -16,9 +16,10 @@ Builds on `docs/plans/ai-shell.md` (decision 11) and `docs/plans/ai-mcp.md` (dec
 6. No starter skills ship. The empty page shows a short example.
 7. Local AI (b2c) inherits the skill tools through `my-tickets mcp`.
 8. Commits use the caveman-commit style.
+9. Feedback round (user-approved): Skills is a list page (rows open /ai/skills/<id>), not a two-pane editor; enable/disable uses a shared Switch everywhere (Skills, MCP servers); each row has a ⋯ menu (Enable/Disable, Edit, divider, Remove); list sorts by most recent by default with a custom sort dropdown (Most recent / Alphabetical) persisted in localStorage; creating a skill returns to the list. Pagination skipped for now.
 
 ## Tasks
 
 - [x] Storage and API: migration plus `/api/skills` list/get/create/update/delete, with `POST /api/skills/import` (raw `SKILL.md` text → parsed skill) and `GET /api/skills/{id}/export` (`SKILL.md` text). Check: Go tests covering validation (name pattern, length caps, unique), front-matter parse (quoted values, missing fields → 400, CRLF), and an export → import round-trip; `make release`.
 - [x] MCP tools: `list_skills` and `load_skill` in `my-tickets mcp`, with the enabled list in `load_skill`'s description. Check: Go test with an in-process MCP server confirming the tool description lists enabled skills only, `load_skill` returns the body, an unknown or disabled name errors, and the existing tool list is otherwise unchanged; one live Claude prompt loads a skill.
-- [ ] Skills page UI (main agent): list, editor with preview, import/export, delete; the Markdown renderer moves to a shared module used by Chats and Skills. Check: `pnpm --dir web build`; `wails build`; smoke test: import a `SKILL.md`, edit it, and a new chat asked to use it calls `load_skill`.
+- [x] Skills page UI (main agent): list, editor with preview, import/export, delete; the Markdown renderer moves to a shared module used by Chats and Skills. Check: `pnpm --dir web build`; `wails build`; smoke test: import a `SKILL.md`, edit it, and a new chat asked to use it calls `load_skill`.

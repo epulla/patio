@@ -7,6 +7,7 @@ import Calendar from "./Calendar";
 import Connectors from "./Connectors";
 import Chats from "./Chats";
 import McpServers from "./McpServers";
+import Skills from "./Skills";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import { api, type Board, type Config } from "./api";
@@ -93,7 +94,6 @@ export default function App() {
   const isCalendar = path === "/calendar";
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
-    "/ai/skills": "Skills",
   };
   let page: ReactNode = <BoardList refresh={refresh} />;
   if (boardMatch)
@@ -121,6 +121,9 @@ export default function App() {
     page = (
       <Chats id={chatMatch[1] && decodeURIComponent(chatMatch[1])} refresh={refresh} />
     );
+  const skillMatch = path.match(/^\/ai\/skills(?:\/([^/]+))?$/);
+  if (skillMatch)
+    page = <Skills id={skillMatch[1] && decodeURIComponent(skillMatch[1])} refresh={refresh} />;
   if (path === "/ai/mcp") page = <McpServers refresh={refresh} />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
@@ -168,7 +171,7 @@ export default function App() {
               path === "/ai/connectors",
             )}
             {navItem("/ai/chats", "Chats", <Icon name="chat" />, !!chatMatch)}
-            {navItem("/ai/skills", "Skills", <Icon name="sparkles" />, path === "/ai/skills")}
+            {navItem("/ai/skills", "Skills", <Icon name="sparkles" />, !!skillMatch)}
             {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp")}
           </div>
           {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
