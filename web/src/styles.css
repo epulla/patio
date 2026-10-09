@@ -159,6 +159,11 @@ a {
 .sidebar.collapsed .nav-label {
   display: none;
 }
+.sidebar.collapsed .ai-nav-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
 .app-version {
   position: fixed;
   right: 8px;

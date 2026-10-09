@@ -28,6 +28,17 @@ export function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Never";
 }
 
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div className="stack">
+      <div className="page-heading">
+        <div><h1>{title}</h1></div>
+      </div>
+      <p>Coming soon.</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [path, setPath] = useState(location.pathname);
   const [config, setConfig] = useState<Config>({ show_hidden: false, version: "" });
@@ -69,6 +80,13 @@ export default function App() {
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
   const isCalendar = path === "/calendar";
   const isMcp = path === "/mcp";
+  const isTickets = path === "/tickets";
+  const aiPages: Record<string, string> = {
+    "/ai/connectors": "Connectors",
+    "/ai/chats": "Chats",
+    "/ai/skills": "Skills",
+    "/ai/mcp": "MCP",
+  };
   let page: ReactNode = <BoardList refresh={refresh} />;
   if (boardMatch)
     page = (
@@ -89,11 +107,15 @@ export default function App() {
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
   if (isMcp) page = <Mcp />;
+  if (isTickets) page = <ComingSoon title="Tickets" />;
+  if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
+  if (path === "/settings") page = <ComingSoon title="Settings" />;
 
   const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (
     <button
       key={to}
       className="nav-item"
+      aria-label={label}
       aria-current={active ? "page" : undefined}
       title={label}
       onClick={() => navigate(to)}
@@ -121,8 +143,20 @@ export default function App() {
         </div>
         <nav>
           {navItem("/", "Boards", <Icon name="boards" />, path === "/")}
+          {navItem("/tickets", "Tickets", <Icon name="ticket" />, isTickets)}
           {navItem("/calendar", "Calendar", <Icon name="calendar" />, isCalendar)}
-          {navItem("/mcp", "MCP", <Icon name="plug" />, isMcp)}
+          <div className="ai-nav-group">
+            <p className="sidebar-label nav-label">AI</p>
+            {navItem(
+              "/ai/connectors",
+              "Connectors",
+              <Icon name="connector" />,
+              path === "/ai/connectors",
+            )}
+            {navItem("/ai/chats", "Chats", <Icon name="chat" />, path === "/ai/chats")}
+            {navItem("/ai/skills", "Skills", <Icon name="sparkles" />, path === "/ai/skills")}
+            {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp")}
+          </div>
           {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
           {boards.map((board) =>
             navItem(
@@ -135,6 +169,13 @@ export default function App() {
         </nav>
         <div className="sidebar-foot">
           <ThemeToggle />
+          <IconButton
+            className="ghost"
+            icon="gear"
+            label="Settings"
+            aria-current={path === "/settings" ? "page" : undefined}
+            onClick={() => navigate("/settings")}
+          />
         </div>
       </aside>
       <main>{page}</main>
