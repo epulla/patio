@@ -1,6 +1,88 @@
-import { useEffect, useState } from "react";
-import { api, type McpStatus } from "./api";
+import { useEffect, useState, type FormEvent } from "react";
+import { api, type AllowedFolder, type McpStatus } from "./api";
 import { ErrorText } from "./App";
+import { Icon, IconButton } from "./icons";
+
+function AllowedFolders() {
+  const [folders, setFolders] = useState<AllowedFolder[]>([]);
+  const [path, setPath] = useState("");
+  const [error, setError] = useState<unknown>();
+
+  const load = () =>
+    api
+      .get<AllowedFolder[]>("/api/settings/folders")
+      .then(setFolders)
+      .catch(setError);
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function add(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await api.post("/api/settings/folders", { path: path.trim() });
+      setPath("");
+      setError(undefined);
+      await load();
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  async function remove(folder: AllowedFolder) {
+    try {
+      await api.delete(`/api/settings/folders/${folder.id}`);
+      setError(undefined);
+      await load();
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <h2>Allowed folders</h2>
+      <p className="muted">
+        Chats can work inside these folders. A chat without a folder gets an empty folder of its own.
+      </p>
+      <section className="panel stack folder-panel">
+        {folders.length > 0 ? (
+          <ul className="folder-list">
+            {folders.map((folder) => (
+              <li key={folder.id}>
+                <code>{folder.path}</code>
+                <IconButton
+                  className="danger-text"
+                  icon="trash"
+                  label={`Remove ${folder.path}`}
+                  onClick={() => remove(folder)}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No folders yet.</p>
+        )}
+        <form className="inline-form" onSubmit={add}>
+          <label className="grow">
+            Folder path
+            <input
+              required
+              placeholder="/Users/you/projects/app"
+              value={path}
+              onChange={(event) => setPath(event.target.value)}
+            />
+          </label>
+          <button>
+            <Icon name="plus" /> Add folder
+          </button>
+        </form>
+        <ErrorText error={error} />
+      </section>
+    </section>
+  );
+}
 
 export default function Settings() {
   const [status, setStatus] = useState<McpStatus>();
@@ -72,6 +154,9 @@ export default function Settings() {
         <h2>General</h2>
         <p>Hello!</p>
       </section>
+
+      <AllowedFolders />
+
 
       <section className="stack">
         <h2>MCP status</h2>

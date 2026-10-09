@@ -132,6 +132,35 @@ export type ConnectorQuota = {
   updated_at: string | null;
 };
 
+export type AllowedFolder = { id: string; path: string; created_at: string };
+export type Chat = {
+  id: string;
+  connector_id: string | null;
+  title: string;
+  model: string;
+  folder: string | null;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+  workdir: string;
+};
+export type ChatMessage = {
+  id: string;
+  chat_id: string;
+  role: "user" | "assistant" | "tool" | "error";
+  content: string;
+  created_at: string;
+};
+export type ChatApproval = {
+  id: string;
+  chat_id: string;
+  tool_name: string;
+  input_json: string;
+  status: "pending" | "allowed" | "denied" | "expired";
+  created_at: string;
+  answered_at: string | null;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
