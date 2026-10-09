@@ -1499,7 +1499,38 @@ label.days-field {
   font-size: 13px;
   max-width: 280px;
 }
+.label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--content);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
 .folder-chip {
+  height: 30px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: normal;
+  text-align: left;
   display: inline-flex;
   align-items: center;
   gap: 6px;

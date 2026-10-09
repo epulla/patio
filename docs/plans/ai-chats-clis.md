@@ -27,6 +27,7 @@ Phase (b2b) after `docs/plans/ai-chats.md` (b2a). The Chats page, storage, event
 7. Live checks: up to 3 tiny prompts per CLI ("reply OK", one approval allowed, one denied). opencode uses a provider that `opencode auth list` shows as signed in.
 8. Commits use the caveman-commit style (Conventional Commits, for example `feat(chat): add codex driver`).
 9. Stop: Codex `turn/interrupt`, Copilot `session/cancel`, opencode `POST /session/{id}/abort`.
+10. Feedback round (user-approved): file links in replies (absolute, relative, file://) reveal the file in the OS file manager through `POST /api/chats/{id}/reveal`, restricted to the chat workdir; the header folder button opens the chat folder; no auto-open on file creation (user chose click-to-open). Model lists load per connector with a spinner, ignore stale responses, and are cached for the session.
 
 ## Tasks
 
@@ -34,4 +35,4 @@ Phase (b2b) after `docs/plans/ai-chats.md` (b2a). The Chats page, storage, event
 - [x] Codex driver: app-server initialize → thread/start or thread/resume → turn/start, mapping deltas, items, approvals, errors, turn/completed, and rate-limit updates (decisions 1–6, 9). Check: Go tests over recorded JSON-RPC fixtures via fake pipes; live: "reply OK" streams, a file write raises an approval card that is allowed and then denied, and resume works after a process restart.
 - [x] Copilot driver: ACP initialize → session/new or session/load → session/prompt, mapping agent_message_chunk, tool_call, request_permission, and cancel (decisions 1–5, 9). Check: Go tests over recorded ACP fixtures; live checks the same as Codex.
 - [x] opencode driver: a per-connector serve with a password, session per chat, prompt_async, `/event` SSE mapping of text deltas, tool parts, permission.asked and session.idle, plus abort (decisions 1–5, 9). Check: Go tests with an `httptest` fake server (SSE); live checks the same as Codex.
-- [ ] Chats UI: allow every kind except `local` in the New chat dialog, drop "coming soon", and update the empty-state copy. Check: `pnpm --dir web build`; `wails build`; smoke test: one chat per CLI streams a reply and shows an approval card.
+- [x] Chats UI: allow every kind except `local` in the New chat dialog, drop "coming soon", and update the empty-state copy. Check: `pnpm --dir web build`; `wails build`; smoke test: one chat per CLI streams a reply and shows an approval card.

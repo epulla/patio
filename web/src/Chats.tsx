@@ -17,23 +17,42 @@ type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "tool"; message: ChatMessage }
   | { type: "done"; message?: ChatMessage }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "approval" };
+
+const canChat = (connector: Connector) => connector.kind !== "local";
 
 type ModelOption = { id: string; label: string; description?: string };
 
+const fallbackModels: ModelOption[] = [{ id: "", label: "Default" }];
+const modelCache = new Map<string, ModelOption[]>();
+
 function useModels(connectorID: string | null | undefined) {
-  const [models, setModels] = useState<ModelOption[]>([{ id: "", label: "Default" }]);
+  const cached = connectorID ? modelCache.get(connectorID) : fallbackModels;
+  const [state, setState] = useState({ id: connectorID, models: cached ?? fallbackModels, loading: !cached });
   useEffect(() => {
-    if (!connectorID) return;
+    if (!connectorID) return setState({ id: connectorID, models: fallbackModels, loading: false });
+    const hit = modelCache.get(connectorID);
+    if (hit) return setState({ id: connectorID, models: hit, loading: false });
+    let active = true;
+    setState({ id: connectorID, models: fallbackModels, loading: true });
     api
       .get<{ models: ModelOption[] }>(`/api/connectors/${connectorID}/models`)
-      .then((result) => setModels(result.models.length ? result.models : [{ id: "", label: "Default" }]))
-      .catch(() => setModels([{ id: "", label: "Default" }]));
+      .then((result) => {
+        const models = result.models.length ? result.models : fallbackModels;
+        modelCache.set(connectorID, models);
+        if (active) setState({ id: connectorID, models, loading: false });
+      })
+      .catch(() => active && setState({ id: connectorID, models: fallbackModels, loading: false }));
+    return () => {
+      active = false;
+    };
   }, [connectorID]);
-  return models;
+  return state.id === connectorID ? state : { models: fallbackModels, loading: true };
 }
 
-function ModelOptions({ models, current }: { models: ModelOption[]; current: string }) {
+function ModelOptions({ models, current, loading }: { models: ModelOption[]; current: string; loading: boolean }) {
+  if (loading) return <option value={current}>Loading models…</option>;
   return (
     <>
       {models.map((m) => (
@@ -98,11 +117,11 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
         <section className="chat-empty">
           <h1>Chats</h1>
           <p className="muted">
-            {connectors.some((c) => c.kind === "claude")
+            {connectors.some(canChat)
               ? "Pick a chat or start a new one."
-              : "Add a Claude Code connector first, then start a chat."}
+              : "Add a Claude Code, Codex, Copilot, or opencode connector first, then start a chat."}
           </p>
-          {!connectors.some((c) => c.kind === "claude") && (
+          {!connectors.some(canChat) && (
             <button onClick={() => navigate("/ai/connectors")}>Go to Connectors</button>
           )}
         </section>
@@ -141,7 +160,7 @@ function Conversation({
   const [missing, setMissing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const end = useRef<HTMLDivElement>(null);
-  const models = useModels(detail?.chat.connector_id);
+  const { models, loading: modelsLoading } = useModels(detail?.chat.connector_id);
 
   const load = () =>
     api
@@ -163,6 +182,7 @@ function Conversation({
   useEffect(() => {
     const unsubscribe = window.runtime?.EventsOn(`chat:${id}`, (data) => {
       const event = data as ChatEvent;
+      if (event.type === "approval") void load();
       if (event.type === "delta") setStreaming((current) => current + event.text);
       if (event.type === "tool" || event.type === "done") {
         if (event.type === "done") {
@@ -254,6 +274,15 @@ function Conversation({
     }
   }
 
+  async function reveal(path: string) {
+    try {
+      await api.post(`/api/chats/${id}/reveal`, { path });
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
   async function remove() {
     if (!confirm(`Delete chat "${detail?.chat.title}"?`)) return;
     try {
@@ -287,7 +316,12 @@ function Conversation({
         <p className="muted">This chat no longer exists.</p>
       </section>
     );
-  if (!detail) return <section className="chat-empty" aria-busy="true" />;
+  if (!detail)
+    return (
+      <section className="chat-empty" aria-busy="true" aria-label="Loading chat">
+        <p role="status">Loading chat…</p>
+      </section>
+    );
 
   const connector = connectors.find((c) => c.id === detail.chat.connector_id);
 
@@ -311,19 +345,23 @@ function Conversation({
               <span className="sr-only">Model</span>
               <select
                 value={detail.chat.model}
-                disabled={!connector || running}
+                disabled={!connector || running || modelsLoading}
+                aria-busy={modelsLoading}
                 title={running ? "Stop the reply to change the model" : "Model"}
                 onChange={(event) => changeModel(event.target.value)}
               >
-                <ModelOptions models={models} current={detail.chat.model} />
+                <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
               </select>
+              {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
             </label>
-            <span
+            <button
+              type="button"
               className="folder-chip"
-              title={detail.chat.folder ? detail.chat.workdir : `Empty folder only this chat can use: ${detail.chat.workdir}`}
+              title={`Open in file manager: ${detail.chat.workdir}`}
+              onClick={() => reveal(detail.chat.workdir)}
             >
               <Icon name="folder" /> {detail.chat.folder ?? "Scratch folder (no files shared)"}
-            </span>
+            </button>
           </div>
         </div>
         <IconButton className="danger-text" icon="trash" label="Delete chat" onClick={remove} />
@@ -346,13 +384,13 @@ function Conversation({
             </p>
           ) : (
             <div key={message.id} className={`message ${message.role}`}>
-              {message.role === "assistant" ? <Markdown text={message.content} /> : message.content}
+              {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
             </div>
           ),
         )}
         {streaming && (
           <div className="message assistant">
-            <Markdown text={streaming} />
+            <Markdown text={streaming} onFile={reveal} />
           </div>
         )}
         {running && !streaming && <p className="muted typing">Thinking…</p>}
@@ -390,7 +428,10 @@ function Conversation({
   );
 }
 
-function Markdown({ text }: { text: string }) {
+const appRoute =
+  /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
+
+function Markdown({ text, onFile }: { text: string; onFile: (path: string) => void }) {
   const html = DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), {
     FORBID_TAGS: ["img"],
   });
@@ -399,10 +440,25 @@ function Markdown({ text }: { text: string }) {
     const href = link?.getAttribute("href");
     if (!href) return;
     event.preventDefault();
-    if (href.startsWith("/") && !href.startsWith("//")) navigate(href);
+    const route = href.split(/[?#]/, 1)[0];
+    if (route === "/" || appRoute.test(route)) navigate(href);
     else if (/^https?:\/\//i.test(href)) {
       if (window.runtime) window.runtime.BrowserOpenURL(href);
       else window.open(href, "_blank", "noopener");
+    } else if (/^file:\/\//i.test(href)) {
+      onFile(href.split("#", 1)[0]);
+    } else if (
+      !href.startsWith("//") &&
+      !href.startsWith("#") &&
+      !href.startsWith("?") &&
+      (!/^[a-z][a-z0-9+.-]*:/i.test(href) || /^[a-z]:[\\/]/i.test(href))
+    ) {
+      const path = href.split(/[?#]/, 1)[0];
+      try {
+        onFile(decodeURIComponent(path));
+      } catch {
+        onFile(path);
+      }
     }
   }
   return <div className="markdown" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
@@ -440,10 +496,10 @@ function NewChatDialog({
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
-  const supported = connectors.filter((c) => c.kind === "claude");
+  const supported = connectors.filter(canChat);
   const [connectorID, setConnectorID] = useState(supported[0]?.id ?? "");
   const [model, setModel] = useState("");
-  const models = useModels(connectorID);
+  const { models, loading: modelsLoading } = useModels(connectorID);
   const [folder, setFolder] = useState("");
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [error, setError] = useState<unknown>();
@@ -482,19 +538,25 @@ function NewChatDialog({
                 setConnectorID(event.target.value);
                 setModel("");
               }}>
-              {supported.length === 0 && <option value="">No Claude Code connector</option>}
+              {supported.length === 0 && <option value="">No chat connector</option>}
               {connectors.map((c) => (
-                <option key={c.id} value={c.id} disabled={c.kind !== "claude"}>
-                  {c.name}
-                  {c.kind !== "claude" ? " (coming soon)" : ""}
+                <option key={c.id} value={c.id} disabled={!canChat(c)}>
+                  {c.name} · {c.kind}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Model
-            <select value={model} onChange={(event) => setModel(event.target.value)}>
-              <ModelOptions models={models} current={model} />
+            <span className="label-row">
+              Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
+            </span>
+            <select
+              value={model}
+              disabled={modelsLoading}
+              aria-busy={modelsLoading}
+              onChange={(event) => setModel(event.target.value)}
+            >
+              <ModelOptions models={models} current={model} loading={modelsLoading} />
             </select>
           </label>
           <label className="wide">
