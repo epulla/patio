@@ -47,7 +47,7 @@ export default function Tickets({ refresh }: { refresh: number }) {
       <div className="cards">
         {results.map((ticket) => (
           <button className="ticket-card ticket-search-result" key={ticket.id} onClick={() => navigate(`/tickets/${ticket.id}`)}>
-            <h4><span className="ticket-code">{ticket.code}</span> {ticket.title}</h4>
+            <strong><span className="ticket-code">{ticket.code}</span> {ticket.title}</strong>
             <span className="ticket-meta">{ticket.board_name} · {ticket.status_name}</span>
           </button>
         ))}

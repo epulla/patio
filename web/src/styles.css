@@ -793,7 +793,7 @@ a:has(> .svg-icon) {
 .ticket-card:hover {
   border-color: color-mix(in oklch, var(--primary) 60%, transparent);
 }
-.ticket-card h4 {
+.ticket-card > strong {
   margin: 0;
   font-size: 14px;
   font-weight: 500;
