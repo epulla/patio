@@ -4,6 +4,7 @@ import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
+import Connectors from "./Connectors";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import { api, type Board, type Config } from "./api";
@@ -90,7 +91,6 @@ export default function App() {
   const isCalendar = path === "/calendar";
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
-    "/ai/connectors": "Connectors",
     "/ai/chats": "Chats",
     "/ai/skills": "Skills",
     "/ai/mcp": "MCP",
@@ -115,6 +115,7 @@ export default function App() {
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
   if (isTickets) page = <Tickets refresh={refresh} />;
+  if (path === "/ai/connectors") page = <Connectors refresh={refresh} />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
 

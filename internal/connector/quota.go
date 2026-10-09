@@ -137,7 +137,6 @@ func parseCodexQuota(raw []byte) ([]Window, error) {
 		}
 		window := Window{Label: codexWindowLabel(rate.WindowDurationMins), UsedPercent: rate.UsedPercent}
 		if rate.ResetsAt != nil {
-			// burnedout: assumed resetsAt is epoch seconds
 			reset := time.Unix(*rate.ResetsAt, 0).UTC().Format(time.RFC3339)
 			window.ResetsAt = &reset
 		}

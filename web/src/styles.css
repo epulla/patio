@@ -1402,6 +1402,110 @@ label.days-field {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.connector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.connector-card {
+  --state: var(--neutral);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+.connector-card.up {
+  --state: oklch(72% 0.19 150);
+}
+.connector-card.down {
+  --state: var(--error);
+}
+.connector-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.connector-head h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+.connector-actions,
+.connector-buttons {
+  display: flex;
+  gap: 8px;
+}
+.connector-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+}
+.connector-state small {
+  margin-left: auto;
+  font: 12px var(--mono);
+}
+.state-dot {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--state);
+}
+.connector-url,
+.connector-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.connector-install p {
+  margin: 0 0 6px;
+}
+.connector-install pre {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.connector-card .error,
+.connector-card .muted {
+  margin: 0;
+}
+.quota {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.quota-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.quota-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--base-300);
+  overflow: hidden;
+}
+.quota-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.quota-bar > span[data-high] {
+  background: var(--error);
+}
+.create label.check-row {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 500;
+}
+.create form .wide {
+  grid-column: 1 / -1;
+}
 .mcp-section-head {
   display: flex;
   justify-content: space-between;

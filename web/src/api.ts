@@ -101,6 +101,37 @@ export type Comment = {
   user_is_ai: boolean;
 };
 
+export type ConnectorKind = "claude" | "codex" | "opencode" | "copilot" | "local";
+export type Connector = {
+  id: string;
+  kind: ConnectorKind;
+  name: string;
+  config_dir: string | null;
+  base_url: string;
+  model: string;
+  created_at: string;
+  has_secret: boolean;
+};
+export type ConnectorStatus = {
+  kind: ConnectorKind;
+  installed: boolean | null;
+  path: string;
+  version: string;
+  logged_in: boolean | null;
+  account: string;
+  plan: string;
+  note: string;
+  install: { command: string; url: string } | null;
+};
+export type ConnectorQuota = {
+  kind: ConnectorKind;
+  windows: { label: string; used_percent: number | null; resets_at: string | null }[] | null;
+  requests: number | null;
+  tokens: { input: number; output: number; cost: number } | null;
+  note: string;
+  updated_at: string | null;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
