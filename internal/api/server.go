@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -30,6 +31,10 @@ type Options struct {
 	processFactory chatProcessFactory
 	commandBuilder chatCommandBuilder
 	findClaude     func() (string, error)
+	findCodex      func() (string, error)
+	codexStart     func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error)
+	executable     func() (string, error)
+	version        string
 }
 
 func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {
@@ -38,6 +43,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 		opts = options[0]
 	}
 	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir)}
+	opts.version = version
 	s.chats = newChatManager(db, opts)
 	s.chats.dbDir = s.dbDir
 	m := http.NewServeMux()

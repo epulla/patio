@@ -17,6 +17,12 @@ type Notification struct {
 	Params json.RawMessage `json:"params"`
 }
 
+type Request struct {
+	ID     json.RawMessage `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
+}
+
 type Model struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
@@ -48,16 +54,23 @@ type Client struct {
 	nextID        uint64
 	pending       map[string]chan rpcResult
 	notifications chan Notification
+	requests      chan Request
 	readErr       error
 }
 
 func newClient(in io.Reader, out io.Writer, closeProcess func() error) *Client {
-	c := &Client{in: in, out: out, closeProcess: closeProcess, pending: make(map[string]chan rpcResult), notifications: make(chan Notification, 16)}
+	c := &Client{in: in, out: out, closeProcess: closeProcess, pending: make(map[string]chan rpcResult), notifications: make(chan Notification, 16), requests: make(chan Request, 16)}
 	go c.readLoop()
 	return c
 }
 
 func (c *Client) Notifications() <-chan Notification { return c.notifications }
+
+func (c *Client) Requests() <-chan Request { return c.requests }
+
+func NewClientForIO(in io.Reader, out io.Writer, closeProcess func() error) *Client {
+	return newClient(in, out, closeProcess)
+}
 
 func (c *Client) Initialize(ctx context.Context, version string) error {
 	if version == "" {
@@ -115,6 +128,16 @@ func (c *Client) Notify(method string, params any) error {
 	}{method, params})
 }
 
+func (c *Client) Respond(id json.RawMessage, result any) error {
+	if len(id) == 0 || !json.Valid(id) {
+		return fmt.Errorf("invalid app-server request id")
+	}
+	return c.write(struct {
+		ID     json.RawMessage `json:"id"`
+		Result any             `json:"result"`
+	}{id, result})
+}
+
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	var response struct {
 		Data []struct {
@@ -164,6 +187,7 @@ func (c *Client) removePending(id string) {
 
 func (c *Client) readLoop() {
 	defer close(c.notifications)
+	defer close(c.requests)
 	scanner := bufio.NewScanner(c.in)
 	scanner.Buffer(make([]byte, 4096), 4<<20)
 	for scanner.Scan() {
@@ -172,8 +196,10 @@ func (c *Client) readLoop() {
 			c.fail(fmt.Errorf("decode app-server response: %w", err))
 			return
 		}
-		if len(message.ID) == 0 {
-			if message.Method != "" {
+		if message.Method != "" {
+			if len(message.ID) != 0 {
+				c.requests <- Request{ID: message.ID, Method: message.Method, Params: message.Params}
+			} else {
 				select {
 				case c.notifications <- Notification{Method: message.Method, Params: message.Params}:
 				default:
@@ -184,6 +210,9 @@ func (c *Client) readLoop() {
 					c.notifications <- Notification{Method: message.Method, Params: message.Params}
 				}
 			}
+			continue
+		}
+		if len(message.ID) == 0 {
 			continue
 		}
 		var id string
@@ -229,7 +258,16 @@ func (c *Client) Close() error {
 }
 
 func StartCodex(ctx context.Context, path string, env []string, isolated bool, version string) (*Client, error) {
-	cmd := exec.CommandContext(ctx, path, codexArgs(isolated)...)
+	return StartCodexInDir(ctx, path, env, isolated, version, "")
+}
+
+func StartCodexInDir(ctx context.Context, path string, env []string, isolated bool, version, cwd string, overrides ...string) (*Client, error) {
+	args := codexArgs(isolated)
+	if len(overrides) != 0 {
+		args = append(args[:len(args)-1], append(flattenOverrides(overrides), args[len(args)-1])...)
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Dir = cwd
 	cmd.Env = env
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -248,11 +286,20 @@ func StartCodex(ctx context.Context, path string, env []string, isolated bool, v
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		return cmd.Wait()
+		_ = cmd.Wait()
+		return nil
 	})
 	if err := client.Initialize(ctx, version); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
 	return client, nil
+}
+
+func flattenOverrides(overrides []string) []string {
+	args := make([]string, 0, len(overrides)*2)
+	for _, override := range overrides {
+		args = append(args, "-c", override)
+	}
+	return args
 }

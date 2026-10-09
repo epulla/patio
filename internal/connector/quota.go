@@ -145,6 +145,8 @@ func parseCodexQuota(raw []byte) ([]Window, error) {
 	return windows, nil
 }
 
+func ParseCodexQuota(raw []byte) ([]Window, error) { return parseCodexQuota(raw) }
+
 type codexRateWindow struct {
 	UsedPercent        *float64 `json:"usedPercent"`
 	WindowDurationMins int      `json:"windowDurationMins"`
