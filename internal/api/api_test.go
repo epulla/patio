@@ -4,14 +4,19 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/zalando/go-keyring"
 	"my-tickets/internal/db"
 )
 
@@ -59,7 +64,8 @@ func newAPI(t *testing.T) (*sql.DB, http.Handler) {
 
 func newAPIAs(t *testing.T, userID string) (*sql.DB, http.Handler) {
 	t.Helper()
-	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,11 +74,12 @@ func newAPIAs(t *testing.T, userID string) (*sql.DB, http.Handler) {
 			t.Error(err)
 		}
 	})
-	return database, New(database, userID, false, "dev")
+	return database, New(database, userID, false, "dev", filepath.Dir(dbPath))
 }
 
 func TestConfigReturnsVersion(t *testing.T) {
-	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +88,7 @@ func TestConfigReturnsVersion(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	handler := New(database, "local", false, "v1.2.3")
+	handler := New(database, "local", false, "v1.2.3", filepath.Dir(dbPath))
 	var config struct {
 		Version string `json:"version"`
 	}
@@ -117,6 +124,204 @@ func requestJSON(t *testing.T, handler http.Handler, method, path string, body a
 		}
 	}
 	return res.Code
+}
+
+func requestRaw(t *testing.T, handler http.Handler, method, path string, body any) (int, string) {
+	t.Helper()
+	var input bytes.Buffer
+	if body != nil {
+		if err := json.NewEncoder(&input).Encode(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	req := httptest.NewRequest(method, path, &input)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	return res.Code, res.Body.String()
+}
+
+func TestConnectorCreatePathsAndListOrder(t *testing.T) {
+	keyring.MockInit()
+	database, handler := newAPI(t)
+	tests := []struct {
+		name, kind  string
+		body        map[string]any
+		dir, secret bool
+		status      int
+	}{
+		{"claude existing", "claude", map[string]any{"kind": "claude", "name": "Claude", "use_existing_login": true}, false, false, 201},
+		{"codex isolated", "codex", map[string]any{"kind": "codex", "name": "Codex"}, true, false, 201},
+		{"opencode isolated", "opencode", map[string]any{"kind": "opencode", "name": "OpenCode"}, true, false, 201},
+		{"copilot PAT", "copilot", map[string]any{"kind": "copilot", "name": "Copilot PAT", "secret": "copilot-pat"}, true, true, 201},
+		{"copilot existing", "copilot", map[string]any{"kind": "copilot", "name": "Copilot login", "use_existing_login": true}, false, false, 201},
+		{"local key", "local", map[string]any{"kind": "local", "name": "Local", "base_url": "http://localhost:11434/v1", "secret": "local-key"}, false, true, 201},
+	}
+	ids := make([]string, 0, len(tests))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.kind == "opencode" && runtime.GOOS == "windows" {
+				tc.status, tc.dir = 400, false
+			}
+			var got connector
+			code, raw := requestRaw(t, handler, http.MethodPost, "/api/connectors", tc.body)
+			if code != tc.status {
+				t.Fatalf("create status = %d, want %d", code, tc.status)
+			}
+			if code != http.StatusCreated {
+				return
+			}
+			if err := json.Unmarshal([]byte(raw), &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Kind != tc.kind || got.HasSecret != tc.secret || (got.ConfigDir != nil) != tc.dir {
+				t.Fatalf("created connector = %#v", got)
+			}
+			if got.ConfigDir != nil {
+				info, err := os.Stat(*got.ConfigDir)
+				if err != nil || !info.IsDir() || runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+					t.Fatalf("config dir stat = %v, %v", info, err)
+				}
+			}
+			ids = append(ids, got.ID)
+		})
+	}
+	if _, err := database.Exec(`UPDATE connector SET created_at='same'`); err != nil {
+		t.Fatal(err)
+	}
+	var listed []connector
+	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors", nil, &listed); code != http.StatusOK {
+		t.Fatalf("list status = %d", code)
+	}
+	if len(listed) != len(ids) {
+		t.Fatalf("listed connectors = %d", len(listed))
+	}
+	for i := range ids {
+		if listed[i].ID != ids[i] {
+			t.Fatalf("list order = %v, want %v", listed, ids)
+		}
+	}
+}
+
+func TestConnectorCreateValidationAndExistingLoginUniqueness(t *testing.T) {
+	keyring.MockInit()
+	_, handler := newAPI(t)
+	body := map[string]any{"kind": "claude", "name": "Claude", "use_existing_login": true}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/connectors", body, nil); code != http.StatusCreated {
+		t.Fatalf("first existing login status = %d", code)
+	}
+	tests := []struct {
+		name string
+		body map[string]any
+	}{
+		{"duplicate existing login", body},
+		{"unknown kind", map[string]any{"kind": "unknown", "name": "Connector"}},
+		{"empty name", map[string]any{"kind": "claude", "name": "  "}},
+		{"copilot PAT required", map[string]any{"kind": "copilot", "name": "Copilot"}},
+		{"local URL required", map[string]any{"kind": "local", "name": "Local"}},
+		{"local URL scheme", map[string]any{"kind": "local", "name": "Local", "base_url": "ftp://localhost/api"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if code := requestJSON(t, handler, http.MethodPost, "/api/connectors", tc.body, nil); code != http.StatusBadRequest {
+				t.Fatalf("create status = %d, want 400", code)
+			}
+		})
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/connectors", strings.NewReader("{"))
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("malformed JSON status = %d, want 400", res.Code)
+	}
+}
+
+func TestConnectorUpdateSecretAndDelete(t *testing.T) {
+	keyring.MockInit()
+	database, handler := newAPI(t)
+	var created connector
+	if code, raw := requestRaw(t, handler, http.MethodPost, "/api/connectors", map[string]any{"kind": "copilot", "name": "Copilot", "secret": "first-secret"}); code != http.StatusCreated || strings.Contains(raw, "first-secret") {
+		t.Fatalf("create response status/body = %d %s", code, raw)
+	} else if err := json.Unmarshal([]byte(raw), &created); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := keyring.Get(connectorService, connectorSecret(created.ID)); err != nil || value != "first-secret" {
+		t.Fatalf("initial keyring value = %q, %v", value, err)
+	}
+	var stored string
+	if err := database.QueryRow(`SELECT id||kind||name||coalesce(config_dir,'')||base_url||model||coalesce(quota_json,'')||created_at FROM connector WHERE id=?`, created.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stored, "first-secret") {
+		t.Fatalf("connector row contains secret: %q", stored)
+	}
+	if code, raw := requestRaw(t, handler, http.MethodGet, "/api/connectors", nil); code != http.StatusOK || strings.Contains(raw, "first-secret") {
+		t.Fatalf("list response status/body = %d %s", code, raw)
+	}
+	for _, tc := range []struct {
+		name    string
+		body    map[string]any
+		secret  string
+		present bool
+	}{
+		{"keep", map[string]any{"name": "Renamed"}, "first-secret", true},
+		{"replace", map[string]any{"secret": "second-secret"}, "second-secret", true},
+		{"delete", map[string]any{"secret": ""}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, raw := requestRaw(t, handler, http.MethodPut, "/api/connectors/"+created.ID, tc.body)
+			if code != http.StatusOK || strings.Contains(raw, "first-secret") || strings.Contains(raw, "second-secret") {
+				t.Fatalf("update response status/body = %d %s", code, raw)
+			}
+			var got connector
+			if err := json.Unmarshal([]byte(raw), &got); err != nil || got.HasSecret != tc.present {
+				t.Fatalf("updated connector = %#v, %v", got, err)
+			}
+			value, err := keyring.Get(connectorService, connectorSecret(created.ID))
+			if tc.present && (err != nil || value != tc.secret) || !tc.present && !errors.Is(err, keyring.ErrNotFound) {
+				t.Fatalf("keyring after %s = %q, %v", tc.name, value, err)
+			}
+		})
+	}
+	var isolated connector
+	if code := requestJSON(t, handler, http.MethodPost, "/api/connectors", map[string]any{"kind": "codex", "name": "Codex"}, &isolated); code != http.StatusCreated {
+		t.Fatalf("create isolated = %d", code)
+	}
+	var pat connector
+	if code := requestJSON(t, handler, http.MethodPost, "/api/connectors", map[string]any{"kind": "copilot", "name": "PAT", "secret": "delete-me"}, &pat); code != http.StatusCreated {
+		t.Fatalf("create PAT = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/connectors/"+pat.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete connector = %d", code)
+	}
+	if _, err := os.Stat(*pat.ConfigDir); !os.IsNotExist(err) {
+		t.Fatalf("connector dir remains: %v", err)
+	}
+	if _, err := keyring.Get(connectorService, connectorSecret(pat.ID)); !errors.Is(err, keyring.ErrNotFound) {
+		t.Fatalf("deleted connector secret remains: %v", err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM connector WHERE id=?`, pat.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("deleted connector count = %d, %v", count, err)
+	}
+
+	outside := filepath.Join(filepath.Dir(filepath.Dir(*isolated.ConfigDir)), "outside")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(outside, "keep")
+	if err := os.WriteFile(marker, []byte("safe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	traversal := filepath.Join(filepath.Dir(*isolated.ConfigDir), "..", "outside")
+	if _, err := database.Exec(`UPDATE connector SET config_dir=? WHERE id=?`, traversal, isolated.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/connectors/"+isolated.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete traversal connector = %d", code)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("delete removed path outside connector prefix: %v", err)
+	}
 }
 
 func createBoard(t *testing.T, handler http.Handler, short string, statuses []string) testBoard {

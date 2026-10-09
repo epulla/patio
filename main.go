@@ -67,7 +67,7 @@ func main() {
 	mime.AddExtensionType(".js", "text/javascript")
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/", api.New(database, "local", *showHidden, version))
+	mux.Handle("/api/", api.New(database, "local", *showHidden, version, filepath.Dir(path)))
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
@@ -184,7 +184,7 @@ func runMCP(args []string) {
 			log.Printf("close database: %v", err)
 		}
 	}()
-	server := mcpserver.NewServer(api.New(database, "ai", true, version), version)
+	server := mcpserver.NewServer(api.New(database, "ai", true, version, filepath.Dir(dbFilePath)), version)
 	if err := server.Run(context.Background(), &sdk.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}

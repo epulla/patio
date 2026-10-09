@@ -18,7 +18,7 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 			t.Errorf("close first database: %v", err)
 		}
 	})
-	tables := []string{"user", "board", "status", "ticket_type", "ticket", "ticket_history", "ticket_comment", "status_order", "ticket_order", "ticket_type_order", "board_counter", "old_ticket_code", "ticket_status_transition", "calendar_item"}
+	tables := []string{"user", "board", "status", "ticket_type", "ticket", "ticket_history", "ticket_comment", "status_order", "ticket_order", "ticket_type_order", "board_counter", "old_ticket_code", "ticket_status_transition", "calendar_item", "connector"}
 	for _, table := range tables {
 		t.Run(table, func(t *testing.T) {
 			var count int
@@ -43,8 +43,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 5 {
-		t.Fatalf("migration count = %d, want 5", migrations)
+	if migrations != 6 {
+		t.Fatalf("migration count = %d, want 6", migrations)
 	}
 }
 

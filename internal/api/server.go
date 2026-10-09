@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -17,12 +18,17 @@ type Server struct {
 	userID     string
 	showHidden bool
 	version    string
+	dbDir      string
 }
 
-func New(db *sql.DB, userID string, showHidden bool, version string) http.Handler {
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version}
+func New(db *sql.DB, userID string, showHidden bool, version, dbDir string) http.Handler {
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir)}
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
+	m.HandleFunc("GET /api/connectors", s.listConnectors)
+	m.HandleFunc("POST /api/connectors", s.createConnector)
+	m.HandleFunc("PUT /api/connectors/{id}", s.updateConnector)
+	m.HandleFunc("DELETE /api/connectors/{id}", s.deleteConnector)
 	m.HandleFunc("GET /api/users", s.users)
 	m.HandleFunc("GET /api/boards", s.boards)
 	m.HandleFunc("POST /api/boards", s.createBoard)

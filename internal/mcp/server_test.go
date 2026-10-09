@@ -13,7 +13,8 @@ import (
 )
 
 func TestMCPToolsAndAudit(t *testing.T) {
-	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +23,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server := NewServer(api.New(database, "ai", true, "dev"), "dev")
+	server := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev")
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	ctx := context.Background()
 	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
@@ -225,7 +226,8 @@ func TestMCPInstructions(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
-	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +236,7 @@ func TestCheck(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server := NewServer(api.New(database, "ai", true, "dev"), "dev")
+	server := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev")
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
 		t.Fatal(err)
