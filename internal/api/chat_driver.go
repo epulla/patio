@@ -18,6 +18,7 @@ import (
 )
 
 const chatApprovalTimeout = 10 * time.Minute
+const defaultChatIdleTimeout = 10 * time.Minute
 
 type chatProcess interface {
 	Stdin() io.WriteCloser
@@ -49,8 +50,11 @@ type chatManager struct {
 	options              Options
 	approvalTimeout      time.Duration
 	approvalPollInterval time.Duration
-	mu                   sync.Mutex
-	chats                map[string]*chatRuntime
+	// burnedout: assumed 10-minute idle timeout for all chat kinds
+	idleTimeout time.Duration
+	mu          sync.Mutex
+	chats       map[string]*chatRuntime
+	closed      bool
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
@@ -95,6 +99,8 @@ type chatRuntime struct {
 	changingModel bool
 	stopDone      chan struct{}
 	connectorID   string
+	lastActivity  time.Time
+	idleTimer     *time.Timer
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -105,7 +111,8 @@ func newChatManager(database *sql.DB, options Options) *chatManager {
 	return &chatManager{
 		db: database, dbPath: options.DBPath, mcpExecutable: options.mcpExecutable, emitEvent: emit, options: options,
 		approvalTimeout: chatApprovalTimeout, approvalPollInterval: 300 * time.Millisecond,
-		chats: make(map[string]*chatRuntime),
+		idleTimeout: defaultChatIdleTimeout,
+		chats:       make(map[string]*chatRuntime),
 	}
 }
 
@@ -133,8 +140,18 @@ func (m *chatManager) Running(id string) bool {
 }
 
 func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, error) {
-	rt := m.runtime(c.ID)
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return ChatMessage{}, errChatManagerClosed
+	}
+	rt := m.chats[c.ID]
+	if rt == nil {
+		rt = &chatRuntime{}
+		m.chats[c.ID] = rt
+	}
 	rt.mu.Lock()
+	m.mu.Unlock()
 	defer rt.mu.Unlock()
 	if rt.busy || rt.stopping {
 		return ChatMessage{}, errChatTurnRunning
@@ -171,8 +188,10 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 	}
 	if err := rt.driver.send(text); err != nil {
 		rt.busy = false
+		m.markRuntimeActiveLocked(c.ID, rt)
 		return message, fmt.Errorf("send chat message: %w", err)
 	}
+	m.markRuntimeActiveLocked(c.ID, rt)
 	return message, nil
 }
 
@@ -198,6 +217,7 @@ var (
 	errChatModelChangeBusy  = errors.New("Stop the reply before changing the model")
 	errChatUnsupported      = errors.New("not supported yet")
 	errChatConnectorMissing = errors.New("chat has no connector")
+	errChatManagerClosed    = errors.New("chat manager is closed")
 )
 
 func (m *chatManager) emit(id string, data any) { m.emitEvent("chat:"+id, data) }
@@ -221,9 +241,10 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		role, content = "error", turnErr.Error()
 	}
 	message, err := InsertChatMessage(m.db, id, role, content)
-	if rt := m.runtime(id); rt != nil {
+	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
 		rt.busy = false
+		m.markRuntimeActiveLocked(id, rt)
 		rt.mu.Unlock()
 	}
 	if err != nil {
@@ -348,6 +369,7 @@ func (m *chatManager) Stop(id string) error {
 	rt.stopping = true
 	rt.stopDone = make(chan struct{})
 	done := rt.stopDone
+	m.stopRuntimeTimerLocked(rt)
 	rt.mu.Unlock()
 	err := driver.stop()
 	rt.mu.Lock()
@@ -380,6 +402,9 @@ func (m *chatManager) ChangeModel(id string, update func() error) error {
 		return nil
 	}
 	rt.stopping, rt.changingModel = true, true
+	rt.stopDone = make(chan struct{})
+	done := rt.stopDone
+	m.stopRuntimeTimerLocked(rt)
 	rt.mu.Unlock()
 	err := driver.close()
 	rt.mu.Lock()
@@ -388,6 +413,8 @@ func (m *chatManager) ChangeModel(id string, update func() error) error {
 		rt.busy = false
 	}
 	rt.stopping, rt.changingModel = false, false
+	rt.stopDone = nil
+	close(done)
 	rt.mu.Unlock()
 	return err
 }
@@ -425,13 +452,24 @@ func (m *chatManager) closeRuntime(id string) error {
 		return nil
 	}
 	rt.mu.Lock()
+	if rt.stopping {
+		done := rt.stopDone
+		rt.mu.Unlock()
+		if done != nil {
+			<-done
+		}
+		return nil
+	}
 	driver := rt.driver
+	m.stopRuntimeTimerLocked(rt)
 	if driver == nil {
 		rt.busy = false
 		rt.mu.Unlock()
 		return nil
 	}
 	rt.stopping = true
+	rt.stopDone = make(chan struct{})
+	done := rt.stopDone
 	rt.mu.Unlock()
 	err := driver.close()
 	rt.mu.Lock()
@@ -440,12 +478,82 @@ func (m *chatManager) closeRuntime(id string) error {
 		rt.busy = false
 	}
 	rt.stopping = false
+	rt.stopDone = nil
+	close(done)
 	rt.mu.Unlock()
 	return err
 }
 
+func (m *chatManager) closeIdleRuntime(id string, rt *chatRuntime) error {
+	rt.mu.Lock()
+	if rt.driver == nil || rt.busy || rt.stopping {
+		rt.mu.Unlock()
+		return nil
+	}
+	remaining := m.idleTimeout - time.Since(rt.lastActivity)
+	if remaining > 0 {
+		m.resetRuntimeTimerLocked(id, rt, remaining)
+		rt.mu.Unlock()
+		return nil
+	}
+	var pending bool
+	err := m.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chat_approval WHERE chat_id=? AND status='pending')`, id).Scan(&pending)
+	if err != nil || pending {
+		m.resetRuntimeTimerLocked(id, rt, m.idleTimeout)
+		rt.mu.Unlock()
+		if err != nil {
+			m.emit(id, map[string]any{"type": "error", "message": "check pending chat approvals: " + err.Error()})
+		}
+		return nil
+	}
+	driver := rt.driver
+	rt.stopping = true
+	rt.stopDone = make(chan struct{})
+	done := rt.stopDone
+	m.stopRuntimeTimerLocked(rt)
+	rt.mu.Unlock()
+	err = driver.close()
+	rt.mu.Lock()
+	if rt.driver == driver {
+		rt.driver = nil
+		rt.busy = false
+	}
+	rt.stopping = false
+	rt.stopDone = nil
+	close(done)
+	rt.mu.Unlock()
+	return err
+}
+
+func (m *chatManager) markRuntimeActiveLocked(id string, rt *chatRuntime) {
+	if rt.driver == nil || rt.stopping {
+		return
+	}
+	rt.lastActivity = time.Now()
+	m.resetRuntimeTimerLocked(id, rt, m.idleTimeout)
+}
+
+func (m *chatManager) resetRuntimeTimerLocked(id string, rt *chatRuntime, delay time.Duration) {
+	if rt.idleTimer != nil {
+		rt.idleTimer.Stop()
+	}
+	rt.idleTimer = time.AfterFunc(delay, func() {
+		if err := m.closeIdleRuntime(id, rt); err != nil {
+			m.emit(id, map[string]any{"type": "error", "message": "close idle chat runtime: " + err.Error()})
+		}
+	})
+}
+
+func (m *chatManager) stopRuntimeTimerLocked(rt *chatRuntime) {
+	if rt.idleTimer != nil {
+		rt.idleTimer.Stop()
+		rt.idleTimer = nil
+	}
+}
+
 func (m *chatManager) Close() error {
 	m.mu.Lock()
+	m.closed = true
 	ids := make([]string, 0, len(m.chats))
 	for id := range m.chats {
 		ids = append(ids, id)

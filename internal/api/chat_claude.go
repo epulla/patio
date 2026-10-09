@@ -186,7 +186,7 @@ func (d *claudeRuntime) watch() {
 	if d.runtime.driver == d {
 		d.runtime.driver = nil
 		d.runtime.busy = false
-		if !d.runtime.changingModel {
+		if !d.runtime.changingModel && d.runtime.stopDone == nil {
 			d.runtime.stopping = false
 		}
 	}
