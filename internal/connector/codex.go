@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -14,6 +15,12 @@ import (
 type Notification struct {
 	Method string          `json:"method"`
 	Params json.RawMessage `json:"params"`
+}
+
+type Model struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
 }
 
 type rpcMessage struct {
@@ -106,6 +113,34 @@ func (c *Client) Notify(method string, params any) error {
 		Method string `json:"method"`
 		Params any    `json:"params"`
 	}{method, params})
+}
+
+func (c *Client) Models(ctx context.Context) ([]Model, error) {
+	var response struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"displayName"`
+			Description string `json:"description"`
+			IsDefault   bool   `json:"isDefault"`
+			Hidden      bool   `json:"hidden"`
+		} `json:"data"`
+	}
+	if err := c.Call(ctx, "model/list", map[string]any{}, &response); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(response.Data, func(i, j int) bool { return response.Data[i].IsDefault && !response.Data[j].IsDefault })
+	models := make([]Model, 0, len(response.Data))
+	for _, model := range response.Data {
+		if model.Hidden || model.ID == "" {
+			continue
+		}
+		label := model.DisplayName
+		if label == "" {
+			label = model.ID
+		}
+		models = append(models, Model{ID: model.ID, Label: label, Description: model.Description})
+	}
+	return models, nil
 }
 
 func (c *Client) write(value any) error {

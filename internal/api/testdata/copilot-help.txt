@@ -1,0 +1,3 @@
+      --model <model>
+          Set the AI model to use (use 'auto' to let Copilot pick
+          automatically)

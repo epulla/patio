@@ -425,19 +425,34 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		model = *in.Model
 	}
 	updated := now()
-	res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,updated_at=? WHERE id=?`, title, model, updated, id)
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
+	update := func() error {
+		res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,updated_at=? WHERE id=?`, title, model, updated, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		errw(w, 500, err.Error())
-	} else if n == 0 {
-		errw(w, 404, "chat not found")
+	if in.Model != nil && model != c.Model {
+		err = s.chats.ChangeModel(id, update)
+	} else {
+		err = update()
+	}
+	if errors.Is(err, errChatModelChangeBusy) {
+		errw(w, http.StatusConflict, err.Error())
+	} else if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "chat not found")
+	} else if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
 		c.Title, c.Model, c.UpdatedAt = title, model, updated
-		write(w, 200, c)
+		write(w, http.StatusOK, c)
 	}
 }
 

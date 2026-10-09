@@ -132,6 +132,9 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "hello"}, nil); code != http.StatusAccepted {
 		t.Fatalf("send status = %d", code)
 	}
+	if code, body := requestRaw(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"model": "opus"}); code != http.StatusConflict || !strings.Contains(body, "Stop the reply before changing the model") {
+		t.Fatalf("busy model change = %d %s", code, body)
+	}
 	var line string
 	select {
 	case line = <-fake.input:
@@ -177,6 +180,62 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 	}
 	if server.chats.Running(chatID) {
 		t.Fatal("chat remains running after stop")
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChatModelChangeClosesIdleProcessAndRestartsWithNewModel(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET model='sonnet' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
+	var models []string
+	launch := 0
+	server := New(database, "local", false, "dev", root, Options{
+		findClaude:     func() (string, error) { return "claude-test", nil },
+		commandBuilder: func(_, _, _, model, _ string) ([]string, error) { return []string{model}, nil },
+		processFactory: func(_ string, args, _ []string, _ string) (chatProcess, error) {
+			models = append(models, args[0])
+			p := processes[launch]
+			launch++
+			return p, nil
+		},
+	})
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "first"}, nil); code != http.StatusAccepted {
+		t.Fatalf("first send = %d", code)
+	}
+	select {
+	case <-processes[0].input:
+	case <-time.After(time.Second):
+		t.Fatal("first process did not receive message")
+	}
+	if _, err := io.WriteString(processes[0].stdoutW, `{"type":"result","result":"done"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"model": "opus"}, nil); code != http.StatusOK {
+		t.Fatalf("idle model change = %d", code)
+	}
+	select {
+	case <-processes[0].done:
+	case <-time.After(time.Second):
+		t.Fatal("idle Claude process was not closed")
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "second"}, nil); code != http.StatusAccepted {
+		t.Fatalf("second send = %d", code)
+	}
+	select {
+	case <-processes[1].input:
+	case <-time.After(time.Second):
+		t.Fatal("restarted process did not receive message")
+	}
+	if !reflect.DeepEqual(models, []string{"sonnet", "opus"}) {
+		t.Fatalf("process models = %v", models)
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)

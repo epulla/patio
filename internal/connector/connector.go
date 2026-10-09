@@ -60,22 +60,21 @@ func cliName(kind string) string {
 
 func Env(kind, configDir, secret string) []string {
 	env := os.Environ()
-	if configDir == "" {
-		return env
-	}
 	var extra []string
-	switch kind {
-	case "claude":
-		extra = append(extra, "CLAUDE_CONFIG_DIR="+configDir)
-	case "codex":
-		extra = append(extra, "CODEX_HOME="+configDir)
-	case "opencode":
-		extra = append(extra, "XDG_DATA_HOME="+filepath.Join(configDir, "data"), "XDG_CONFIG_HOME="+filepath.Join(configDir, "config"))
-	case "copilot":
-		extra = append(extra, "COPILOT_HOME="+configDir)
-		if secret != "" {
-			extra = append(extra, "COPILOT_GITHUB_TOKEN="+secret)
+	if configDir != "" {
+		switch kind {
+		case "claude":
+			extra = append(extra, "CLAUDE_CONFIG_DIR="+configDir)
+		case "codex":
+			extra = append(extra, "CODEX_HOME="+configDir)
+		case "opencode":
+			extra = append(extra, "XDG_DATA_HOME="+filepath.Join(configDir, "data"), "XDG_CONFIG_HOME="+filepath.Join(configDir, "config"))
+		case "copilot":
+			extra = append(extra, "COPILOT_HOME="+configDir)
 		}
+	}
+	if kind == "copilot" && secret != "" {
+		extra = append(extra, "COPILOT_GITHUB_TOKEN="+secret)
 	}
 	return replaceEnv(env, extra)
 }

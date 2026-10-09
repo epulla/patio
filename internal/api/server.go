@@ -44,6 +44,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("GET /api/connectors", s.listConnectors)
 	m.HandleFunc("GET /api/connectors/{id}/status", s.connectorStatus)
 	m.HandleFunc("GET /api/connectors/{id}/quota", s.connectorQuota)
+	m.HandleFunc("GET /api/connectors/{id}/models", s.connectorModels)
 	m.HandleFunc("POST /api/connectors/local-models", s.localModels)
 	m.HandleFunc("POST /api/connectors/{id}/login", s.connectorLogin)
 	m.HandleFunc("POST /api/connectors", s.createConnector)

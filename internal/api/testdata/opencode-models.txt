@@ -1,0 +1,3 @@
+opencode/big-pickle
+opencode/exo-free
+opencode/ling-3.0-flash-fin-free

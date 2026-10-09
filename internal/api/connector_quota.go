@@ -117,25 +117,37 @@ func (s *Server) localModels(w http.ResponseWriter, r *http.Request) {
 	if in.Secret != nil {
 		secret = *in.Secret
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/models"
-	u.RawPath = ""
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	models, err := fetchLocalModelIDs(ctx, u, secret)
+	if err != nil {
+		status := http.StatusBadGateway
+		if err.Error() == "invalid base_url" {
+			status = http.StatusBadRequest
+		}
+		errw(w, status, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string][]string{"models": models})
+}
+
+func fetchLocalModelIDs(ctx context.Context, base *url.URL, secret string) ([]string, error) {
+	u := *base
+	u.Path = strings.TrimRight(u.Path, "/") + "/models"
+	u.RawPath = ""
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		errw(w, http.StatusBadRequest, "invalid base_url")
-		return
+		return nil, errors.New("invalid base_url")
 	}
 	if secret != "" {
 		req.Header.Set("Authorization", "Bearer "+secret)
 	}
 	client := *http.DefaultClient
-	client.Timeout = 5 * time.Second
+	client.Timeout = 10 * time.Second
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
-		errw(w, http.StatusBadGateway, safeUpstreamMessage(err.Error(), secret))
-		return
+		return nil, errors.New(safeUpstreamMessage(err.Error(), secret))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -144,13 +156,11 @@ func (s *Server) localModels(w http.ResponseWriter, r *http.Request) {
 		if detail == "" {
 			detail = resp.Status
 		}
-		errw(w, http.StatusBadGateway, safeUpstreamMessage(fmt.Sprintf("model endpoint returned %s: %s", resp.Status, detail), secret))
-		return
+		return nil, errors.New(safeUpstreamMessage(fmt.Sprintf("model endpoint returned %s: %s", resp.Status, detail), secret))
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || len(body) > 1<<20 {
-		errw(w, http.StatusBadGateway, "model response too large or unreadable")
-		return
+		return nil, errors.New("model response too large or unreadable")
 	}
 	var result struct {
 		Data []struct {
@@ -158,15 +168,14 @@ func (s *Server) localModels(w http.ResponseWriter, r *http.Request) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		errw(w, http.StatusBadGateway, "invalid model response")
-		return
+		return nil, errors.New("invalid model response")
 	}
 	models := make([]string, 0, len(result.Data))
 	for _, model := range result.Data {
 		models = append(models, safeUpstreamMessage(model.ID, secret))
 	}
 	sort.Strings(models)
-	write(w, http.StatusOK, map[string][]string{"models": models})
+	return models, nil
 }
 
 func safeUpstreamMessage(message, secret string) string {

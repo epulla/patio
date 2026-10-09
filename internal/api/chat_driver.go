@@ -49,13 +49,14 @@ type chatManager struct {
 }
 
 type chatRuntime struct {
-	mu          sync.Mutex
-	process     chatProcess
-	processDone chan struct{}
-	busy        bool
-	stopping    bool
-	connectorID string
-	assistant   strings.Builder
+	mu            sync.Mutex
+	process       chatProcess
+	processDone   chan struct{}
+	busy          bool
+	stopping      bool
+	changingModel bool
+	connectorID   string
+	assistant     strings.Builder
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -108,6 +109,9 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 	if rt.busy || rt.stopping {
 		return ChatMessage{}, errChatTurnRunning
 	}
+	if err := m.db.QueryRow(`SELECT model FROM chat WHERE id=?`, c.ID).Scan(&c.Model); err != nil {
+		return ChatMessage{}, err
+	}
 	if kind != "claude" {
 		return ChatMessage{}, errChatUnsupported
 	}
@@ -147,6 +151,7 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 
 var (
 	errChatTurnRunning      = errors.New("chat turn already running")
+	errChatModelChangeBusy  = errors.New("Stop the reply before changing the model")
 	errChatUnsupported      = errors.New("not supported yet")
 	errChatConnectorMissing = errors.New("chat has no connector")
 )
@@ -269,7 +274,9 @@ func (m *chatManager) watch(id string, rt *chatRuntime, p chatProcess, done chan
 	if rt.process == p {
 		rt.process = nil
 		rt.busy = false
-		rt.stopping = false
+		if !rt.changingModel {
+			rt.stopping = false
+		}
 	}
 	rt.mu.Unlock()
 	close(done)
@@ -569,6 +576,36 @@ func (m *chatManager) Stop(id string) error {
 	}
 	rt.mu.Unlock()
 	m.emit(id, map[string]any{"type": "done"})
+	return nil
+}
+
+func (m *chatManager) ChangeModel(id string, update func() error) error {
+	rt := m.runtime(id)
+	rt.mu.Lock()
+	if rt.busy || rt.stopping {
+		rt.mu.Unlock()
+		return errChatModelChangeBusy
+	}
+	if err := update(); err != nil {
+		rt.mu.Unlock()
+		return err
+	}
+	p, done := rt.process, rt.processDone
+	if p == nil {
+		rt.mu.Unlock()
+		return nil
+	}
+	rt.stopping, rt.changingModel = true, true
+	rt.mu.Unlock()
+	_ = p.Kill()
+	<-done
+	rt.mu.Lock()
+	if rt.process == p {
+		rt.process = nil
+		rt.busy = false
+	}
+	rt.stopping, rt.changingModel = false, false
+	rt.mu.Unlock()
 	return nil
 }
 

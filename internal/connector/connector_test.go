@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,6 +30,15 @@ func TestParseClaude(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCopilotEnvIncludesStoredSecretWithoutConfigDir(t *testing.T) {
+	for _, entry := range Env("copilot", "", "saved-pat") {
+		if entry == "COPILOT_GITHUB_TOKEN=saved-pat" {
+			return
+		}
+	}
+	t.Fatal("Copilot environment omitted stored token")
 }
 
 func TestParseOpenCodeAuth(t *testing.T) {
@@ -201,6 +211,69 @@ func TestCodexRPCMatchesIDsAndSurfacesErrors(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("notification stream did not close after server exit")
+	}
+}
+
+func TestCodexModelListOverFakeAppServerPipes(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "codex-model-list.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientToServerR, clientToServerW := io.Pipe()
+	serverToClientR, serverToClientW := io.Pipe()
+	defer clientToServerR.Close()
+	defer clientToServerW.Close()
+	defer serverToClientR.Close()
+	defer serverToClientW.Close()
+	serverErr := make(chan error, 1)
+	go func() {
+		reader := bufio.NewReader(clientToServerR)
+		for _, method := range []string{"initialize", "initialized", "model/list"} {
+			request, err := reader.ReadString('\n')
+			if err != nil {
+				serverErr <- err
+				return
+			}
+			if method == "initialized" {
+				if !strings.Contains(request, `"method":"initialized"`) {
+					serverErr <- io.ErrUnexpectedEOF
+					return
+				}
+				continue
+			}
+			var message map[string]any
+			wantID := float64(0)
+			if method == "model/list" {
+				wantID = 1
+			}
+			if err := json.Unmarshal([]byte(request), &message); err != nil || message["method"] != method || message["id"] != wantID {
+				serverErr <- io.ErrUnexpectedEOF
+				return
+			}
+			if method == "initialize" {
+				_, err = io.WriteString(serverToClientW, `{"id":0,"result":{}}`+"\n")
+			} else {
+				_, err = io.WriteString(serverToClientW, `{"id":1,"result":`+strings.TrimSpace(string(fixture))+"}\n")
+			}
+			if err != nil {
+				serverErr <- err
+				return
+			}
+		}
+		serverErr <- nil
+	}()
+	client := newClient(serverToClientR, clientToServerW, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := client.Initialize(ctx, "test"); err != nil {
+		t.Fatal(err)
+	}
+	models, err := client.Models(ctx)
+	if err != nil || len(models) != 2 || models[0].ID != "gpt-5-codex" || models[0].Label != "GPT-5 Codex" || models[1].ID != "gpt-4.1" {
+		t.Fatalf("models = %#v, %v", models, err)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatal(err)
 	}
 }
 
