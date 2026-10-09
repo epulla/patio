@@ -87,10 +87,12 @@ func TestRequestApproval(t *testing.T) {
 		name      string
 		allow     bool
 		answer    bool
+		cancel    bool
 		wantState string
 	}{
 		{name: "allow", allow: true, answer: true, wantState: "allowed"},
 		{name: "deny", answer: true, wantState: "denied"},
+		{name: "context cancel", cancel: true, wantState: "expired"},
 		{name: "timeout", wantState: "expired"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -105,12 +107,14 @@ func TestRequestApproval(t *testing.T) {
 			}})
 			server.chats.approvalPollInterval = time.Millisecond
 			server.chats.approvalTimeout = 30 * time.Millisecond
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 			result := make(chan struct {
 				allowed bool
 				err     error
 			}, 1)
 			go func() {
-				allowed, err := server.chats.requestApproval(context.Background(), chatID, "write_file", json.RawMessage(`{"path":"x"}`))
+				allowed, err := server.chats.requestApproval(ctx, chatID, "write_file", json.RawMessage(`{"path":"x"}`))
 				result <- struct {
 					allowed bool
 					err     error
@@ -138,6 +142,9 @@ func TestRequestApproval(t *testing.T) {
 				}
 			case <-time.After(time.Second):
 				t.Fatal("approval event was not emitted")
+			}
+			if test.cancel {
+				cancel()
 			}
 			if test.answer {
 				if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": test.allow}, nil); code != http.StatusOK {

@@ -271,6 +271,9 @@ func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName stri
 			if status == "denied" {
 				return false, nil
 			}
+			if status == "expired" {
+				return false, nil
+			}
 			return false, ctx.Err()
 		case <-timer.C:
 			status, err := ExpireChatApproval(m.db, chatID, id)
