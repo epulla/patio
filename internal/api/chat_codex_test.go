@@ -62,7 +62,7 @@ func TestCodexTurnOverPipes(t *testing.T) {
 						if err := json.Unmarshal(request.Params, &params); err != nil {
 							return err
 						}
-						if params["cwd"] != cwd || params["approvalPolicy"] != "on-request" || params["sandbox"] != "workspace-write" || params["model"] != nil {
+						if params["cwd"] != cwd || params["approvalPolicy"] != "on-request" || params["sandbox"] != "read-only" || params["model"] != nil {
 							return fmt.Errorf("thread/start params = %#v", params)
 						}
 						config, _ := params["config"].(map[string]any)
@@ -226,7 +226,7 @@ func TestCodexThreadResumeWithoutPrompt(t *testing.T) {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
 				return err
 			}
-			if params["threadId"] != "resume-thread" {
+			if params["threadId"] != "resume-thread" || params["approvalPolicy"] != "on-request" || params["sandbox"] != "read-only" {
 				return fmt.Errorf("resume params = %#v", params)
 			}
 			if err := writeCodexResponse(write, request.ID, map[string]any{"thread": map[string]string{"id": "resume-thread"}}); err != nil {

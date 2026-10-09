@@ -11,7 +11,7 @@ Phase (b2b) after `docs/plans/ai-chats.md` (b2a). The Chats page, storage, event
 ## Decisions
 
 1. Approvals are in-process: the driver inserts a `chat_approval` row, waits for the API answer (same 10-minute timeout = deny), and replies to the CLI.
-   - Codex: `approvalPolicy: "on-request"`, sandbox `workspace-write` (writes confined to the chat workdir, no network). `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` are answered with `accept` or `decline`.
+   - Codex: `approvalPolicy: "on-request"`, sandbox `read-only` (patch writes and commands needing write access ask; read-only commands auto-run). `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` are answered with `accept` or `decline`.
    - Copilot: `session/request_permission`. Allow once picks the `allow_once` option and Deny picks `reject_once`; if an option is missing, the closest `kind` is used.
    - opencode: `{"permission":{"*":"ask","edit":"ask","bash":"ask","webfetch":"ask"}}`. `permission.asked` is answered with `once` or `reject`.
 2. Ticket tools: `my-tickets mcp -d <db>` for every CLI (no `-approve-chat`). Codex gets it through thread/start `config.mcp_servers`, with a fallback to `-c mcp_servers...` at app-server launch if the per-thread route fails live. Copilot gets it through `session/new` `mcpServers`, and opencode through `OPENCODE_CONFIG_CONTENT` `mcp`. Ticket tool calls are auto-allowed.

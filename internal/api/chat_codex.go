@@ -66,7 +66,9 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.threadID = *c.SessionID
 		var result json.RawMessage
-		err = client.Call(ctx, "thread/resume", map[string]any{"threadId": driver.threadID}, &result)
+		err = client.Call(ctx, "thread/resume", map[string]any{
+			"threadId": driver.threadID, "approvalPolicy": "on-request", "sandbox": "read-only",
+		}, &result)
 	} else {
 		var spec map[string]any
 		spec, err = m.ticketMCPServerSpec()
@@ -77,7 +79,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 				} `json:"thread"`
 			}
 			params := map[string]any{
-				"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "workspace-write",
+				"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "read-only",
 				"config": map[string]any{"mcp_servers": map[string]any{"my-tickets": spec}},
 			}
 			if c.Model != "" {
