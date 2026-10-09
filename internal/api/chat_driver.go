@@ -20,7 +20,10 @@ import (
 	connectorcli "my-tickets/internal/connector"
 )
 
-const chatLineLimit = 10 << 20
+const (
+	chatLineLimit    = 10 << 20
+	chatSystemPrompt = "You are chatting inside the my-tickets desktop app. Reply in Markdown. When you mention a ticket or board you read, created, or changed with the my-tickets tools, link it with an app path: tickets as [CODE: Title](/tickets/<ticket id>) and boards as [Board name](/boards/<board id>), using the ids returned by the tools. Never invent ids."
+)
 
 type chatProcess interface {
 	Stdin() io.WriteCloser
@@ -187,7 +190,7 @@ func buildClaudeArgs(exe, dbPath, chatID, model, sessionID string) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	args := []string{"-p", "--append-system-prompt", chatSystemPrompt, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}

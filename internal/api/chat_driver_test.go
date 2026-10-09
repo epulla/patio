@@ -85,10 +85,14 @@ func TestBuildClaudeArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"-p", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__my-tickets__approve", "--resume session-id"} {
+	for _, want := range []string{"-p", "--append-system-prompt", "/tickets/<ticket id>", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__my-tickets__approve", "--resume session-id"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("Claude args %q missing %q", joined, want)
 		}
+	}
+	promptIndex := slices.Index(args, "--append-system-prompt")
+	if promptIndex < 0 || promptIndex+1 == len(args) || !strings.Contains(args[promptIndex+1], "/tickets/<ticket id>") {
+		t.Fatalf("system prompt args = %v", args)
 	}
 	index := slices.Index(args, "--mcp-config")
 	if index < 0 || index+1 == len(args) {
