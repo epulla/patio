@@ -26,6 +26,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string) http
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/connectors", s.listConnectors)
+	m.HandleFunc("GET /api/connectors/{id}/status", s.connectorStatus)
 	m.HandleFunc("POST /api/connectors", s.createConnector)
 	m.HandleFunc("PUT /api/connectors/{id}", s.updateConnector)
 	m.HandleFunc("DELETE /api/connectors/{id}", s.deleteConnector)

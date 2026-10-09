@@ -202,6 +202,31 @@ func TestConnectorCreatePathsAndListOrder(t *testing.T) {
 	}
 }
 
+func TestLocalConnectorStatus(t *testing.T) {
+	_, handler := newAPI(t)
+	var created connector
+	if code := requestJSON(t, handler, http.MethodPost, "/api/connectors", map[string]any{"kind": "local", "name": "Local", "base_url": "http://localhost:11434/v1"}, &created); code != http.StatusCreated {
+		t.Fatalf("create status = %d", code)
+	}
+	code, raw := requestRaw(t, handler, http.MethodGet, "/api/connectors/"+created.ID+"/status", nil)
+	if code != http.StatusOK || strings.TrimSpace(raw) != `{"kind":"local","installed":null,"path":"","version":"","logged_in":null,"account":"","plan":"","note":"","install":null}` {
+		t.Fatalf("local status = %d %s", code, raw)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/missing/status", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("missing status = %d", code)
+	}
+}
+
+func TestConnectorStatusDatabaseError(t *testing.T) {
+	database, handler := newAPI(t)
+	if _, err := database.Exec(`DROP TABLE connector`); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/id/status", nil, nil); code != http.StatusInternalServerError {
+		t.Fatalf("status with database error = %d", code)
+	}
+}
+
 func TestConnectorCreateValidationAndExistingLoginUniqueness(t *testing.T) {
 	keyring.MockInit()
 	_, handler := newAPI(t)
