@@ -90,7 +90,11 @@ func TestMCPServerCheckHTTPAuthAndDisabled(t *testing.T) {
 	}
 	withoutToken := insertMCPCheckServer(t, database, "http", "", "[]", "[]", httpServer.URL, "bearer", false)
 	oauthToken := insertMCPCheckServer(t, database, "http", "", "[]", "[]", httpServer.URL, "oauth", false)
-	if err := keyring.Set(connectorService, mcpServerSecret(oauthToken, "oauth"), `{"access_token":"x"}`); err != nil {
+	oauthCredential, err := json.Marshal(mcpOAuthCredential{AccessToken: "x", ClientID: "client", TokenURL: "https://oauth.test/token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := keyring.Set(connectorService, mcpServerSecret(oauthToken, "oauth"), string(oauthCredential)); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

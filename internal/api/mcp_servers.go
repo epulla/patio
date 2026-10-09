@@ -722,7 +722,7 @@ func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	spec, err := s.mcpServerCheckSpec(server)
+	spec, err := s.mcpServerCheckSpec(r.Context(), server)
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
@@ -759,7 +759,7 @@ func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, check)
 }
 
-func (s *Server) mcpServerCheckSpec(server mcpServer) (mcpServerSpec, error) {
+func (s *Server) mcpServerCheckSpec(ctx context.Context, server mcpServer) (mcpServerSpec, error) {
 	spec := mcpServerSpec{
 		Kind: server.Kind, Command: server.Command, Args: server.Args, URL: server.URL,
 		Env: map[string]string{}, Headers: map[string]string{}, Auth: server.Auth,
@@ -783,22 +783,11 @@ func (s *Server) mcpServerCheckSpec(server mcpServer) (mcpServerSpec, error) {
 			spec.Headers["Authorization"] = "Bearer " + token
 		}
 	case "oauth":
-		stored, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth"))
-		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		header, err := s.oauthHeaderIfPresent(ctx, server)
+		if err != nil {
 			return spec, err
 		}
-		if err == nil {
-			var token struct {
-				AccessToken string `json:"access_token"`
-			}
-			if err := json.Unmarshal([]byte(stored), &token); err != nil {
-				return spec, fmt.Errorf("decode MCP OAuth token: %w", err)
-			}
-			if token.AccessToken != "" {
-				header := "Bearer " + token.AccessToken
-				spec.OAuthHeader = &header
-			}
-		}
+		spec.OAuthHeader = header
 	}
 	return spec, nil
 }
