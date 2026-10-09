@@ -628,7 +628,7 @@ a:has(> .svg-icon) {
 .callout {
   margin: 0;
   padding: 10px 12px;
-  border-left: 3px solid color-mix(in oklch, var(--primary) 70%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-field);
   background: var(--base-200);
   font-size: 13px;
