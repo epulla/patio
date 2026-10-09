@@ -344,22 +344,17 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, errChatConnectorMissing.Error())
 		return
 	}
-	var kind string
-	var configDir sql.NullString
-	if err := s.db.QueryRow(`SELECT kind,config_dir FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &configDir); errors.Is(err, sql.ErrNoRows) {
+	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
+	if errors.Is(err, errChatConnectorMissing) {
 		errw(w, http.StatusBadRequest, errChatConnectorMissing.Error())
 		return
 	} else if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if kind != "claude" {
+	if _, ok := runtimes[kind]; !ok {
 		errw(w, http.StatusBadRequest, errChatUnsupported.Error())
 		return
-	}
-	dir := ""
-	if configDir.Valid {
-		dir = configDir.String
 	}
 	message, err := s.chats.Send(c, kind, dir, in.Text)
 	if errors.Is(err, errChatTurnRunning) {

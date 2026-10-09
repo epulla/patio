@@ -39,6 +39,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	}
 	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir)}
 	s.chats = newChatManager(db, opts)
+	s.chats.dbDir = s.dbDir
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/connectors", s.listConnectors)

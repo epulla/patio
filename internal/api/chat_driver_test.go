@@ -2,8 +2,10 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"math"
 	"net/http"
@@ -23,14 +25,15 @@ func TestClaudeStreamFixture(t *testing.T) {
 	chatID := createDriverTestChat(t, database, connectorID, root)
 	events := []map[string]any{}
 	manager := newChatManager(database, Options{Emit: func(_ string, event any) { events = append(events, event.(map[string]any)) }})
-	runtime := &chatRuntime{}
+	runtime := &claudeRuntime{manager: manager, chatID: chatID, runtime: manager.runtime(chatID)}
+	runtime.runtime.connectorID = connectorID
 	data, err := os.ReadFile(filepath.Join("testdata", "claude-stream.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
-		if err := manager.parseLine(chatID, runtime, scanner.Bytes()); err != nil {
+		if err := runtime.parseLine(scanner.Bytes()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -76,6 +79,87 @@ func TestClaudeStreamFixture(t *testing.T) {
 	}
 	if len(events) != 5 || events[0]["type"] != "delta" || events[1]["type"] != "delta" || events[2]["type"] != "tool" || events[3]["type"] != "done" || events[4]["type"] != "done" {
 		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestRequestApproval(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		allow     bool
+		answer    bool
+		wantState string
+	}{
+		{name: "allow", allow: true, answer: true, wantState: "allowed"},
+		{name: "deny", answer: true, wantState: "denied"},
+		{name: "timeout", wantState: "expired"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database, _, root := chatAPI(t)
+			connectorID := createTestConnector(t, database)
+			chatID := createDriverTestChat(t, database, connectorID, root)
+			events := make(chan any, 1)
+			server := New(database, "local", false, "dev", root, Options{Emit: func(name string, event any) {
+				if name == "chat:"+chatID {
+					events <- event
+				}
+			}})
+			server.chats.approvalPollInterval = time.Millisecond
+			server.chats.approvalTimeout = 30 * time.Millisecond
+			result := make(chan struct {
+				allowed bool
+				err     error
+			}, 1)
+			go func() {
+				allowed, err := server.chats.requestApproval(context.Background(), chatID, "write_file", json.RawMessage(`{"path":"x"}`))
+				result <- struct {
+					allowed bool
+					err     error
+				}{allowed, err}
+			}()
+			var approvalID string
+			deadline := time.Now().Add(time.Second)
+			for time.Now().Before(deadline) {
+				err := database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&approvalID)
+				if err == nil {
+					break
+				}
+				if !errors.Is(err, sql.ErrNoRows) {
+					t.Fatal(err)
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if approvalID == "" {
+				t.Fatal("approval row was not inserted")
+			}
+			select {
+			case event := <-events:
+				if event.(map[string]any)["type"] != "approval" {
+					t.Fatalf("approval event = %#v", event)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("approval event was not emitted")
+			}
+			if test.answer {
+				if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": test.allow}, nil); code != http.StatusOK {
+					t.Fatalf("answer status = %d", code)
+				}
+			}
+			select {
+			case got := <-result:
+				if got.err != nil || got.allowed != test.allow {
+					t.Fatalf("requestApproval = (%v, %v), want (%v, nil)", got.allowed, got.err, test.allow)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("approval waiter did not return")
+			}
+			var status string
+			if err := database.QueryRow(`SELECT status FROM chat_approval WHERE id=?`, approvalID).Scan(&status); err != nil || status != test.wantState {
+				t.Fatalf("approval status = %q, %v; want %q", status, err, test.wantState)
+			}
+			if err := server.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
