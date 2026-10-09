@@ -118,6 +118,24 @@ function ConnectorCard({
     };
   }, [connector.id, connector.config_dir, connector.has_secret, check]);
 
+  useEffect(() => {
+    let fetchedAt = Date.now();
+    const onFocus = () => {
+      if (document.visibilityState !== "visible" || Date.now() - fetchedAt < 60_000) return;
+      fetchedAt = Date.now();
+      api
+        .get<ConnectorQuota>(`/api/connectors/${connector.id}/quota`)
+        .then(setQuota)
+        .catch(() => undefined);
+    };
+    addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [connector.id]);
+
   async function login() {
     setError(undefined);
     try {
@@ -258,6 +276,15 @@ function ConnectorCard({
   );
 }
 
+function formatAgo(value: string) {
+  const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return new Date(value).toLocaleDateString();
+}
+
 function Quota({ quota }: { quota: ConnectorQuota }) {
   const windows = quota.windows ?? [];
   return (
@@ -292,6 +319,12 @@ function Quota({ quota }: { quota: ConnectorQuota }) {
         </p>
       )}
       {quota.note && <p className="muted">{quota.note}</p>}
+      {quota.updated_at && windows.length > 0 && (
+        <small title={new Date(quota.updated_at).toLocaleString()}>
+          Updated {formatAgo(quota.updated_at)}
+          {quota.kind === "claude" && " · Claude reports usage after the first reply of each chat"}
+        </small>
+      )}
     </div>
   );
 }
