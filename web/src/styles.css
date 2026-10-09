@@ -1499,6 +1499,23 @@ label.days-field {
   font-size: 13px;
   max-width: 280px;
 }
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mcp-tool-list summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.mcp-tool-list .mcp-tools {
+  margin-top: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
 .label-row {
   display: inline-flex;
   align-items: center;

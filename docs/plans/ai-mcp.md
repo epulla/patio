@@ -25,6 +25,7 @@ Builds on `docs/plans/ai-shell.md` (decision 12), the connectors in `docs/plans/
 7. Health check uses go-sdk `mcp.CommandTransport` (stdio) and `mcp.StreamableClientTransport` (http, with a bearer header or the stored OAuth token) under a 15-second timeout.
 8. Carried to c2 (skills): stored in the DB (name, description, Markdown body, enabled), with an editor and preview plus import of a `SKILL.md` file (body only, no resource folders). Delivered to every CLI through `my-tickets mcp` tools `list_skills` and `load_skill`, whose description lists each skill's name and description. The CLIs' native skill folders are left untouched.
 9. Commits use the caveman-commit style.
+10. Feedback round (user-approved): the add dialog defaults to Remote URL (HTTP). Claude quota stays per-process (no per-message restart); cards show "Updated X ago" and refetch on window focus at most once a minute.
 
 ## Tasks
 
@@ -32,4 +33,4 @@ Builds on `docs/plans/ai-shell.md` (decision 12), the connectors in `docs/plans/
 - [x] Health and tools: `GET /api/mcp-servers/{id}/check` returns `{ok, latency_ms, tools:[{name,description}], error}`. Check: Go tests against an in-process stdio server (`my-tickets mcp` test binary or go-sdk in-memory) and an `httptest` streamable server requiring a bearer header.
 - [x] OAuth sign-in: `POST /api/mcp-servers/{id}/login` runs the go-sdk handler with a loopback callback and the browser, stores tokens, and provides a refresh helper used before chats. Check: an end-to-end Go test with a fake authorization server and protected MCP server (`httptest`): DCR, PKCE, code exchange, refresh, and 401 retry. A live attempt on a real OAuth server is optional and marked unverified.
 - [x] Inject into chats: all 4 drivers add enabled servers with fresh tokens (decision 4). Check: Go tests assert each driver's args/config; one live Claude chat prompt uses a stdio test server's tool.
-- [ ] MCP page UI (main agent). Check: `pnpm --dir web build`; `wails build`; smoke test: add a stdio server, Test shows its tools, toggling it off removes it from new chats.
+- [x] MCP page UI (main agent). Check: `pnpm --dir web build`; `wails build`; smoke test: add a stdio server, Test shows its tools, toggling it off removes it from new chats.

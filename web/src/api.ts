@@ -162,6 +162,27 @@ export type ChatApproval = {
   answered_at: string | null;
 };
 
+export type McpServer = {
+  id: string;
+  name: string;
+  kind: "stdio" | "http";
+  command: string;
+  args: string[];
+  env_keys: string[];
+  url: string;
+  auth: "none" | "bearer" | "oauth";
+  enabled: boolean;
+  has_bearer_token: boolean;
+  has_oauth_token: boolean;
+  created_at: string;
+};
+export type McpServerCheck = {
+  ok: boolean;
+  latency_ms: number;
+  tools: { name: string; description: string }[];
+  error: string;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {

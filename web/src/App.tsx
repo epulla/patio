@@ -6,6 +6,7 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
 import Chats from "./Chats";
+import McpServers from "./McpServers";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import { api, type Board, type Config } from "./api";
@@ -93,7 +94,6 @@ export default function App() {
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
     "/ai/skills": "Skills",
-    "/ai/mcp": "MCP",
   };
   let page: ReactNode = <BoardList refresh={refresh} />;
   if (boardMatch)
@@ -121,6 +121,7 @@ export default function App() {
     page = (
       <Chats id={chatMatch[1] && decodeURIComponent(chatMatch[1])} refresh={refresh} />
     );
+  if (path === "/ai/mcp") page = <McpServers refresh={refresh} />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
 
