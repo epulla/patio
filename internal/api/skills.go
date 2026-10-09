@@ -55,8 +55,7 @@ func validateSkill(config skillConfig) error {
 	if !segment {
 		return errors.New("name must match [a-z0-9]+(-[a-z0-9]+)* and be at most 64 characters")
 	}
-	description := strings.TrimSpace(config.Description)
-	if n := utf8.RuneCountInString(description); n < 1 || n > 1024 {
+	if n := utf8.RuneCountInString(config.Description); n < 1 || n > 1024 || strings.TrimSpace(config.Description) == "" {
 		return errors.New("description must be 1 to 1024 characters")
 	}
 	if len(config.Body) > maxSkillBody {

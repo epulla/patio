@@ -27,6 +27,7 @@ func TestSkillValidation(t *testing.T) {
 		{"empty trimmed description", func() skillConfig { c := valid; c.Description = " \t\n"; return c }(), false},
 		{"1024 character description", func() skillConfig { c := valid; c.Description = strings.Repeat("é", 1024); return c }(), true},
 		{"1025 character description", func() skillConfig { c := valid; c.Description = strings.Repeat("é", 1025); return c }(), false},
+		{"description whitespace counts toward limit", func() skillConfig { c := valid; c.Description = strings.Repeat("x", 1024) + " "; return c }(), false},
 		{"64 KB body", func() skillConfig { c := valid; c.Body = strings.Repeat("x", maxSkillBody); return c }(), true},
 		{"over 64 KB body", func() skillConfig { c := valid; c.Body = strings.Repeat("x", maxSkillBody+1); return c }(), false},
 	}
