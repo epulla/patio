@@ -28,14 +28,16 @@ type Options struct {
 	DBPath string
 	Emit   func(string, any)
 
-	processFactory chatProcessFactory
-	commandBuilder chatCommandBuilder
-	findClaude     func() (string, error)
-	findCodex      func() (string, error)
-	codexStart     func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error)
-	version        string
-	findCopilot    func() (string, error)
-	mcpExecutable  string
+	processFactory  chatProcessFactory
+	commandBuilder  chatCommandBuilder
+	findClaude      func() (string, error)
+	findCodex       func() (string, error)
+	codexStart      func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error)
+	version         string
+	findCopilot     func() (string, error)
+	mcpExecutable   string
+	opencodeStarter opencodeProcessStarter
+	findOpencode    func() (string, error)
 }
 
 func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {

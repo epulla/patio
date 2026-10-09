@@ -1,0 +1,443 @@
+package api
+
+import (
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+func TestOpenCodeChatServerAndEvents(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	if _, err := database.Exec(`UPDATE connector SET kind='opencode' WHERE id=?`, connectorID); err != nil {
+		t.Fatal(err)
+	}
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET model='openai/gpt-4.1-nano' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	reusedID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET session_id='resume-session' WHERE id=?`, reusedID); err != nil {
+		t.Fatal(err)
+	}
+	fake := newOpenCodeFake(t)
+	var emittedMu sync.Mutex
+	var emitted []map[string]any
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath: filepath.Join(root, "test.db"),
+		Emit: func(_ string, event any) {
+			emittedMu.Lock()
+			emitted = append(emitted, event.(map[string]any))
+			emittedMu.Unlock()
+		},
+		findOpencode: func() (string, error) { return "opencode-test", nil },
+		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
+			return fake.start(args, env)
+		},
+	})
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "first prompt"}, nil); code != http.StatusAccepted {
+		t.Fatalf("new session send status = %d", code)
+	}
+	firstSession := fake.waitSession(t, 0)
+	if firstSession != "session-1" {
+		t.Fatalf("created session = %q", firstSession)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+reusedID+"/messages", map[string]string{"text": "resume prompt"}, nil); code != http.StatusAccepted {
+		t.Fatalf("reused session send status = %d", code)
+	}
+	fake.waitEvents(t)
+	fake.mu.Lock()
+	if fake.sessions != 1 || fake.serverStarts != 1 || fake.eventStreams != 1 {
+		t.Fatalf("sessions=%d server starts=%d event streams=%d", fake.sessions, fake.serverStarts, fake.eventStreams)
+	}
+	if !slices.Contains(fake.promptSessions, "resume-session") {
+		t.Fatalf("reused session was not prompted: %v", fake.promptSessions)
+	}
+	if len(fake.directories) < 3 {
+		t.Fatalf("directory query missing from session calls: %v", fake.directories)
+	}
+	for _, directory := range fake.directories {
+		if directory == "" {
+			t.Fatalf("empty directory query: %v", fake.directories)
+		}
+	}
+	if fake.promptModels[0] != "openai/gpt-4.1-nano" {
+		t.Fatalf("prompt model = %#v", fake.promptModels)
+	}
+	fake.mu.Unlock()
+	var savedSession string
+	if err := database.QueryRow(`SELECT session_id FROM chat WHERE id=?`, chatID).Scan(&savedSession); err != nil || savedSession != firstSession {
+		t.Fatalf("saved session = %q, %v", savedSession, err)
+	}
+
+	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "assistant-1", "role": "assistant"}}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "text-1", "messageID": "assistant-1", "type": "text"}}})
+	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "assistant-1", "partID": "text-1", "field": "text", "delta": "Hello "}})
+	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "assistant-1", "partID": "text-1", "field": "text", "delta": "there"}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "reasoning-1", "messageID": "assistant-1", "type": "reasoning"}}})
+	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "assistant-1", "partID": "reasoning-1", "field": "text", "delta": "hidden reasoning"}})
+	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "user-1", "role": "user"}}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "user-text", "messageID": "user-1", "type": "text"}}})
+	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "user-1", "partID": "user-text", "field": "text", "delta": "echo must not appear"}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{
+		"sessionID": firstSession, "part": map[string]any{"id": "tool-1", "messageID": "assistant-1", "type": "tool", "tool": "write", "state": map[string]any{"status": "completed", "input": map[string]any{"path": "hello.txt"}}},
+	}})
+	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	var assistant, tool string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "Hello there" {
+		t.Fatalf("assistant stored as %q, %v", assistant, err)
+	}
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
+		t.Fatalf("tool summary = %q, %v", tool, err)
+	}
+	emittedMu.Lock()
+	var deltaCount, toolCount, doneCount int
+	for _, event := range emitted {
+		switch event["type"] {
+		case "delta":
+			deltaCount++
+		case "tool":
+			toolCount++
+		case "done":
+			doneCount++
+		}
+	}
+	emittedMu.Unlock()
+	if deltaCount != 2 || toolCount != 1 || doneCount != 1 {
+		t.Fatalf("stream events delta=%d tool=%d done=%d", deltaCount, toolCount, doneCount)
+	}
+	fake.mu.Lock()
+	for _, prompt := range fake.prompts {
+		if strings.Contains(prompt, "echo must not appear") {
+			t.Fatal("user prompt echoed as assistant delta")
+		}
+	}
+	fake.mu.Unlock()
+
+	for _, answer := range []struct {
+		id       string
+		allow    bool
+		response string
+	}{{"per-once", true, "once"}, {"per-reject", false, "reject"}} {
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "permission test"}, nil); code != http.StatusAccepted {
+			t.Fatalf("permission turn send status = %d", code)
+		}
+		fake.publish(t, map[string]any{"type": "permission.asked", "properties": map[string]any{
+			"sessionID": firstSession, "id": answer.id, "permission": "edit", "patterns": []string{"hello.txt"}, "metadata": map[string]any{"filepath": "hello.txt"}, "always": []string{"*"}, "tool": map[string]any{"messageID": "assistant-1", "callID": "call-1"},
+		}})
+		approvalID := fake.waitApproval(t, database, chatID)
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": answer.allow}, nil); code != http.StatusOK {
+			t.Fatalf("answer approval status = %d", code)
+		}
+		fake.waitPermission(t, answer.id, answer.response)
+		var toolName, approvalInput string
+		if err := database.QueryRow(`SELECT tool_name,input_json FROM chat_approval WHERE id=?`, approvalID).Scan(&toolName, &approvalInput); err != nil || toolName != "edit" || !strings.Contains(approvalInput, "hello.txt") {
+			t.Fatalf("stored approval = (%q, %q), %v", toolName, approvalInput, err)
+		}
+		fake.publish(t, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": firstSession, "status": map[string]any{"type": "idle"}}})
+		waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	}
+
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "abort me"}, nil); code != http.StatusAccepted {
+		t.Fatalf("abort turn send status = %d", code)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/stop", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("stop status = %d", code)
+	}
+	fake.mu.Lock()
+	if fake.aborts != 1 {
+		t.Fatalf("abort calls = %d", fake.aborts)
+	}
+	fake.mu.Unlock()
+	if err := server.chats.CloseChat(reusedID); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	if fake.kills != 1 {
+		t.Fatalf("shared server process kills = %d; want 1 after last chat closes", fake.kills)
+	}
+	fake.mu.Unlock()
+}
+
+type openCodeFake struct {
+	t              *testing.T
+	mu             sync.Mutex
+	events         chan []byte
+	password       string
+	sessions       int
+	serverStarts   int
+	eventStreams   int
+	kills          int
+	aborts         int
+	directories    []string
+	prompts        []string
+	promptSessions []string
+	promptModels   []string
+	permissions    map[string]string
+	permissionDone chan string
+}
+
+func newOpenCodeFake(t *testing.T) *openCodeFake {
+	return &openCodeFake{t: t, events: make(chan []byte, 64), permissions: make(map[string]string), permissionDone: make(chan string, 4)}
+}
+
+func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
+	var port string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--port" {
+			port = args[i+1]
+		}
+	}
+	var configRaw string
+	for _, item := range env {
+		if strings.HasPrefix(item, "OPENCODE_SERVER_PASSWORD=") {
+			f.password = strings.TrimPrefix(item, "OPENCODE_SERVER_PASSWORD=")
+		}
+		if strings.HasPrefix(item, "OPENCODE_CONFIG_CONTENT=") {
+			configRaw = strings.TrimPrefix(item, "OPENCODE_CONFIG_CONTENT=")
+		}
+	}
+	secret, decodeErr := hex.DecodeString(f.password)
+	var config struct {
+		Permission map[string]string `json:"permission"`
+		MCP        map[string]struct {
+			Type    string   `json:"type"`
+			Command []string `json:"command"`
+			Enabled bool     `json:"enabled"`
+		} `json:"mcp"`
+	}
+	if port == "" || decodeErr != nil || len(secret) != 32 || json.Unmarshal([]byte(configRaw), &config) != nil {
+		return nil, fmt.Errorf("missing port or server password")
+	}
+	if config.Permission["*"] != "ask" || config.Permission["edit"] != "ask" || config.Permission["bash"] != "ask" || config.Permission["webfetch"] != "ask" {
+		return nil, fmt.Errorf("unexpected permission config: %#v", config.Permission)
+	}
+	mcp := config.MCP["my-tickets"]
+	if mcp.Type != "local" || !mcp.Enabled || len(mcp.Command) != 4 || mcp.Command[1] != "mcp" || mcp.Command[2] != "-d" || mcp.Command[3] == "" {
+		return nil, fmt.Errorf("unexpected ticket MCP config: %#v", mcp)
+	}
+	f.mu.Lock()
+	f.serverStarts++
+	f.mu.Unlock()
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", port))
+	if err != nil {
+		return nil, err
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/doc", func(w http.ResponseWriter, r *http.Request) {
+		if f.auth(w, r) {
+			w.WriteHeader(http.StatusOK)
+		}
+	})
+	mux.HandleFunc("/global/event", func(w http.ResponseWriter, r *http.Request) {
+		if !f.auth(w, r) {
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		f.mu.Lock()
+		f.eventStreams++
+		f.mu.Unlock()
+		flusher := w.(http.Flusher)
+		flusher.Flush()
+		for {
+			select {
+			case data := <-f.events:
+				payload, err := json.Marshal(map[string]any{"directory": "/tmp", "payload": json.RawMessage(data)})
+				if err != nil {
+					f.t.Errorf("encode global event: %v", err)
+					return
+				}
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+				flusher.Flush()
+			case <-r.Context().Done():
+				return
+			}
+		}
+	})
+	mux.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
+		if !f.auth(w, r) {
+			return
+		}
+		f.recordDirectory(r)
+		f.mu.Lock()
+		f.sessions++
+		id := fmt.Sprintf("session-%d", f.sessions)
+		f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
+	})
+	mux.HandleFunc("/session/", func(w http.ResponseWriter, r *http.Request) {
+		if !f.auth(w, r) {
+			return
+		}
+		f.recordDirectory(r)
+		path := strings.TrimPrefix(r.URL.Path, "/session/")
+		if strings.HasSuffix(path, "/prompt_async") {
+			var body struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+				Model struct {
+					Provider string `json:"providerID"`
+					Model    string `json:"modelID"`
+				} `json:"model"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				f.t.Errorf("decode prompt body: %v", err)
+			}
+			f.mu.Lock()
+			f.promptSessions = append(f.promptSessions, strings.TrimSuffix(path, "/prompt_async"))
+			if len(body.Parts) > 0 {
+				f.prompts = append(f.prompts, body.Parts[0].Text)
+			}
+			if body.Model.Provider != "" {
+				f.promptModels = append(f.promptModels, body.Model.Provider+"/"+body.Model.Model)
+			}
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if strings.HasSuffix(path, "/abort") {
+			f.mu.Lock()
+			f.aborts++
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if strings.Contains(path, "/permissions/") {
+			var body struct {
+				Response string `json:"response"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				f.t.Errorf("decode permission response: %v", err)
+			}
+			permissionID := path[strings.LastIndex(path, "/")+1:]
+			f.mu.Lock()
+			f.permissions[permissionID] = body.Response
+			f.mu.Unlock()
+			f.permissionDone <- permissionID
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r)
+	})}
+	proc := &openCodeFakeProcess{server: srv, done: make(chan struct{}), fake: f}
+	go func() {
+		defer close(proc.done)
+		_ = srv.Serve(listener)
+	}()
+	return proc, nil
+}
+
+func (f *openCodeFake) auth(w http.ResponseWriter, r *http.Request) bool {
+	user, password, ok := r.BasicAuth()
+	if !ok || user != "opencode" || password != f.password {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+func (f *openCodeFake) recordDirectory(r *http.Request) {
+	f.mu.Lock()
+	f.directories = append(f.directories, r.URL.Query().Get("directory"))
+	f.mu.Unlock()
+}
+
+func (f *openCodeFake) publish(t *testing.T, event map[string]any) {
+	t.Helper()
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case f.events <- data:
+	case <-time.After(time.Second):
+		t.Fatal("SSE event not consumed")
+	}
+}
+
+func (f *openCodeFake) waitSession(t *testing.T, count int) string {
+	t.Helper()
+	waitFor(t, func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.sessions > count
+	})
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return fmt.Sprintf("session-%d", f.sessions)
+}
+
+func (f *openCodeFake) waitEvents(t *testing.T) {
+	t.Helper()
+	waitFor(t, func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.eventStreams > 0
+	})
+}
+
+func (f *openCodeFake) waitApproval(t *testing.T, database *sql.DB, chatID string) string {
+	t.Helper()
+	var id string
+	waitFor(t, func() bool {
+		return database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&id) == nil
+	})
+	return id
+}
+
+func (f *openCodeFake) waitPermission(t *testing.T, id, response string) {
+	t.Helper()
+	select {
+	case got := <-f.permissionDone:
+		if got != id {
+			t.Fatalf("permission id = %q; want %q", got, id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("permission response not received")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.permissions[id] != response {
+		t.Fatalf("permission response = %q; want %q", f.permissions[id], response)
+	}
+}
+
+type openCodeFakeProcess struct {
+	server *http.Server
+	done   chan struct{}
+	fake   *openCodeFake
+	once   sync.Once
+}
+
+func (p *openCodeFakeProcess) Kill() error {
+	p.once.Do(func() {
+		_ = p.server.Close()
+		<-p.done
+		p.fake.mu.Lock()
+		p.fake.kills++
+		p.fake.mu.Unlock()
+	})
+	return nil
+}
+
+func (p *openCodeFakeProcess) Wait() error { <-p.done; return nil }
