@@ -15,14 +15,16 @@ import (
 )
 
 type Server struct {
-	db         *sql.DB
-	userID     string
-	showHidden bool
-	version    string
-	dbDir      string
-	chats      *chatManager
-	revealFile func(string) error
-	handler    http.Handler
+	db              *sql.DB
+	userID          string
+	showHidden      bool
+	version         string
+	dbDir           string
+	chats           *chatManager
+	revealFile      func(string) error
+	handler         http.Handler
+	mcpCheckTimeout time.Duration
+	mcpConnect      mcpConnector
 }
 
 type Options struct {
@@ -39,6 +41,8 @@ type Options struct {
 	mcpExecutable   string
 	opencodeStarter opencodeProcessStarter
 	findOpencode    func() (string, error)
+	mcpCheckTimeout time.Duration
+	mcpConnect      mcpConnector
 }
 
 func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {
@@ -46,7 +50,13 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if len(options) > 0 {
 		opts = options[0]
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), revealFile: openInFileManager}
+	if opts.mcpCheckTimeout <= 0 {
+		opts.mcpCheckTimeout = 15 * time.Second
+	}
+	if opts.mcpConnect == nil {
+		opts.mcpConnect = connectMCP
+	}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect}
 	opts.version = version
 	s.chats = newChatManager(db, opts)
 	s.chats.dbDir = s.dbDir
@@ -62,6 +72,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("PUT /api/connectors/{id}", s.updateConnector)
 	m.HandleFunc("DELETE /api/connectors/{id}", s.deleteConnector)
 	m.HandleFunc("GET /api/mcp-servers", s.listMCPServers)
+	m.HandleFunc("GET /api/mcp-servers/{id}/check", s.checkMCPServer)
 	m.HandleFunc("POST /api/mcp-servers", s.createMCPServer)
 	m.HandleFunc("PUT /api/mcp-servers/{id}", s.updateMCPServer)
 	m.HandleFunc("DELETE /api/mcp-servers/{id}", s.deleteMCPServer)

@@ -1,18 +1,23 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
 )
 
@@ -43,7 +48,10 @@ type mcpServerSpec struct {
 	Headers     map[string]string
 	Auth        string
 	OAuthHeader *string
+	stderr      *mcpStderr
 }
+
+type mcpConnector func(context.Context, mcpServerSpec) (*mcp.ClientSession, func(), error)
 
 func mcpServerSecret(id, suffix string) string { return "mcp:" + id + ":" + suffix }
 
@@ -667,4 +675,259 @@ func (s *Server) enabledMCPServers() ([]mcpServerSpec, error) {
 		return nil, err
 	}
 	return specs, nil
+}
+
+type mcpServerTool struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type mcpServerCheck struct {
+	OK        bool            `json:"ok"`
+	LatencyMS int64           `json:"latency_ms"`
+	Tools     []mcpServerTool `json:"tools"`
+	Error     string          `json:"error"`
+}
+
+func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	check := mcpServerCheck{Tools: []mcpServerTool{}}
+	server, err := s.loadMCPServer(idParam(r, "id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "MCP server not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	spec, err := s.mcpServerCheckSpec(server)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if spec.Auth == "oauth" && spec.OAuthHeader == nil {
+		check.Error = "Sign in first"
+		check.LatencyMS = time.Since(started).Milliseconds()
+		write(w, http.StatusOK, check)
+		return
+	}
+	if spec.Kind == "stdio" {
+		spec.stderr = &mcpStderr{}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.mcpCheckTimeout)
+	defer cancel()
+	session, cleanup, err := s.mcpConnect(ctx, spec)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err != nil {
+		check.Error = withMCPStderr(err, spec.stderr).Error()
+		check.LatencyMS = time.Since(started).Milliseconds()
+		write(w, http.StatusOK, check)
+		return
+	}
+	tools, err := listMCPTools(ctx, session)
+	if err != nil {
+		check.Error = withMCPStderr(err, spec.stderr).Error()
+	} else {
+		check.OK = true
+		check.Tools = tools
+	}
+	check.LatencyMS = time.Since(started).Milliseconds()
+	write(w, http.StatusOK, check)
+}
+
+func (s *Server) mcpServerCheckSpec(server mcpServer) (mcpServerSpec, error) {
+	spec := mcpServerSpec{
+		Kind: server.Kind, Command: server.Command, Args: server.Args, URL: server.URL,
+		Env: map[string]string{}, Headers: map[string]string{}, Auth: server.Auth,
+	}
+	if len(server.EnvKeys) > 0 {
+		stored, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "env"))
+		if err != nil {
+			return spec, err
+		}
+		if err := json.Unmarshal([]byte(stored), &spec.Env); err != nil {
+			return spec, fmt.Errorf("decode MCP server environment: %w", err)
+		}
+	}
+	switch server.Auth {
+	case "bearer":
+		token, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "bearer"))
+		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return spec, err
+		}
+		if err == nil {
+			spec.Headers["Authorization"] = "Bearer " + token
+		}
+	case "oauth":
+		stored, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth"))
+		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return spec, err
+		}
+		if err == nil {
+			var token struct {
+				AccessToken string `json:"access_token"`
+			}
+			if err := json.Unmarshal([]byte(stored), &token); err != nil {
+				return spec, fmt.Errorf("decode MCP OAuth token: %w", err)
+			}
+			if token.AccessToken != "" {
+				header := "Bearer " + token.AccessToken
+				spec.OAuthHeader = &header
+			}
+		}
+	}
+	return spec, nil
+}
+
+func connectMCP(ctx context.Context, spec mcpServerSpec) (*mcp.ClientSession, func(), error) {
+	client := mcp.NewClient(&mcp.Implementation{Name: "my-tickets-health-check", Version: "1"}, nil)
+	var transport mcp.Transport
+	var cmd *exec.Cmd
+	var httpClient *http.Client
+	switch spec.Kind {
+	case "stdio":
+		cmd = exec.Command(spec.Command, spec.Args...)
+		cmd.Env = append(os.Environ(), mcpEnvironment(spec.Env)...)
+		if spec.stderr == nil {
+			spec.stderr = &mcpStderr{}
+		}
+		cmd.Stderr = spec.stderr
+		transport = &mcp.CommandTransport{Command: cmd, TerminateDuration: 250 * time.Millisecond}
+	case "http":
+		headers := make(http.Header)
+		for name, value := range spec.Headers {
+			headers.Set(name, value)
+		}
+		if spec.OAuthHeader != nil {
+			headers.Set("Authorization", *spec.OAuthHeader)
+		}
+		base := http.DefaultTransport
+		if defaultTransport, ok := base.(*http.Transport); ok {
+			base = defaultTransport.Clone()
+		}
+		httpClient = &http.Client{Transport: mcpHeaderTransport{base: base, headers: headers}}
+		transport = &mcp.StreamableClientTransport{Endpoint: spec.URL, HTTPClient: httpClient, DisableStandaloneSSE: true, MaxRetries: -1}
+	default:
+		return nil, nil, fmt.Errorf("unsupported MCP server kind %q", spec.Kind)
+	}
+	session, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		if cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+		if httpClient != nil {
+			httpClient.CloseIdleConnections()
+		}
+		return nil, nil, err
+	}
+	return session, func() {
+		_ = session.Close()
+		if httpClient != nil {
+			httpClient.CloseIdleConnections()
+		}
+	}, nil
+}
+
+func listMCPTools(ctx context.Context, session *mcp.ClientSession) ([]mcpServerTool, error) {
+	tools := make([]mcpServerTool, 0)
+	cursor := ""
+	seen := map[string]bool{}
+	for len(tools) < 500 {
+		result, err := session.ListTools(ctx, &mcp.ListToolsParams{Cursor: cursor})
+		if err != nil {
+			return tools, err
+		}
+		for _, tool := range result.Tools {
+			if tool == nil {
+				continue
+			}
+			tools = append(tools, mcpServerTool{Name: tool.Name, Description: tool.Description})
+			if len(tools) == 500 {
+				break
+			}
+		}
+		if result.NextCursor == "" || len(tools) == 500 {
+			break
+		}
+		if seen[result.NextCursor] {
+			return tools, errors.New("MCP server repeated tools pagination cursor")
+		}
+		seen[result.NextCursor] = true
+		cursor = result.NextCursor
+	}
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
+	return tools, nil
+}
+
+func mcpEnvironment(env map[string]string) []string {
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, key+"="+env[key])
+	}
+	return out
+}
+
+type mcpHeaderTransport struct {
+	base    http.RoundTripper
+	headers http.Header
+}
+
+func (t mcpHeaderTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	clone := request.Clone(request.Context())
+	clone.Header = request.Header.Clone()
+	for name, values := range t.headers {
+		for _, value := range values {
+			clone.Header.Set(name, value)
+		}
+	}
+	return t.base.RoundTrip(clone)
+}
+
+func (t mcpHeaderTransport) CloseIdleConnections() {
+	if closer, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
+type mcpStderr struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (s *mcpStderr) Write(data []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	remaining := 4096 - len(s.data)
+	if remaining > 0 {
+		if len(data) < remaining {
+			remaining = len(data)
+		}
+		s.data = append(s.data, data[:remaining]...)
+	}
+	return len(data), nil
+}
+
+func (s *mcpStderr) String() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.TrimSpace(string(s.data))
+}
+
+func withMCPStderr(err error, stderr *mcpStderr) error {
+	if message := stderr.String(); message != "" {
+		return fmt.Errorf("%w: %s", err, message)
+	}
+	return err
 }
