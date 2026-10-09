@@ -18,11 +18,19 @@ func TestMCPServerValidation(t *testing.T) {
 	if err := os.WriteFile(executable, []byte("#!/bin/sh\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	nonExecutable := filepath.Join(root, "not-executable")
+	if err := os.WriteFile(nonExecutable, []byte("#!/bin/sh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	pathDir := filepath.Join(root, "path")
 	if err := os.Mkdir(pathDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(pathDir, "found-command"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(root, "directory")
+	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", pathDir)
@@ -41,6 +49,8 @@ func TestMCPServerValidation(t *testing.T) {
 		{"long name", func() mcpServerConfig { c := validStdio; c.Name = strings.Repeat("a", 65); return c }(), false},
 		{"reserved sanitized name", func() mcpServerConfig { c := validStdio; c.Name = "My Tickets"; return c }(), false},
 		{"missing command", func() mcpServerConfig { c := validStdio; c.Command = ""; return c }(), false},
+		{"absolute directory command", func() mcpServerConfig { c := validStdio; c.Command = directory; return c }(), false},
+		{"absolute non-executable command", func() mcpServerConfig { c := validStdio; c.Command = nonExecutable; return c }(), false},
 		{"relative command path", func() mcpServerConfig { c := validStdio; c.Command = "./test-command"; return c }(), false},
 		{"unresolved bare command", func() mcpServerConfig { c := validStdio; c.Command = "not-installed"; return c }(), false},
 		{"stdio auth", func() mcpServerConfig { c := validStdio; c.Auth = "bearer"; return c }(), false},

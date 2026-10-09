@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -178,7 +177,7 @@ func validMCPCommand(command string) bool {
 		return false
 	}
 	if filepath.IsAbs(command) {
-		_, err := os.Stat(command)
+		_, err := exec.LookPath(command)
 		return err == nil
 	}
 	if strings.ContainsAny(command, `/\\`) {
