@@ -120,6 +120,7 @@ type ticket struct {
 	Number                                                                          int
 	Code, Created, Updated                                                          string
 	DueDate, StatusUpdated, StatusID, BoardID, TicketTypeID, ReporterID, AssigneeID *string
+	BoardName, StatusName                                                           *string
 }
 
 func (t ticket) MarshalJSON() ([]byte, error) {
@@ -138,7 +139,9 @@ func (t ticket) MarshalJSON() ([]byte, error) {
 		TicketTypeID  *string `json:"ticket_type_id"`
 		ReporterID    *string `json:"reporter_id"`
 		AssigneeID    *string `json:"assignee_id"`
-	}{t.ID, t.Title, t.Description, t.Number, t.Code, t.Created, t.Updated, t.DueDate, t.StatusUpdated, t.StatusID, t.BoardID, t.TicketTypeID, t.ReporterID, t.AssigneeID})
+		BoardName     *string `json:"board_name,omitempty"`
+		StatusName    *string `json:"status_name,omitempty"`
+	}{t.ID, t.Title, t.Description, t.Number, t.Code, t.Created, t.Updated, t.DueDate, t.StatusUpdated, t.StatusID, t.BoardID, t.TicketTypeID, t.ReporterID, t.AssigneeID, t.BoardName, t.StatusName})
 }
 
 type history struct {

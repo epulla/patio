@@ -28,6 +28,8 @@ type testTicket struct {
 	Code       string  `json:"code"`
 	Title      string  `json:"title"`
 	ReporterID *string `json:"reporter_id"`
+	BoardName  string  `json:"board_name"`
+	StatusName string  `json:"status_name"`
 }
 type testCalendarItem struct {
 	ID            string  `json:"id"`
@@ -319,6 +321,13 @@ func TestSearchTickets(t *testing.T) {
 		if code := requestJSON(t, handler, http.MethodGet, test.path, nil, &got); code != http.StatusOK || len(got) != test.want {
 			t.Fatalf("search %q = status %d, %#v", test.path, code, got)
 		}
+	}
+	var result []testTicket
+	if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/search?q=partial", nil, &result); code != http.StatusOK || len(result) != 1 {
+		t.Fatalf("search result status = %d, %#v", code, result)
+	}
+	if result[0].BoardName != "SEA" || result[0].StatusName != "Todo" {
+		t.Fatalf("search result board/status = %q/%q", result[0].BoardName, result[0].StatusName)
 	}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/search?q=%20", nil, nil); code != http.StatusBadRequest {
 		t.Fatalf("empty search status = %d", code)

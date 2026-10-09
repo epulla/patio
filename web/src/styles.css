@@ -776,6 +776,14 @@ a:has(> .svg-icon) {
   cursor: grab;
   transition: border-color 0.15s;
 }
+.ticket-search-result {
+  width: 100%;
+  height: auto;
+  align-items: flex-start;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
 .ticket-card:focus-visible {
   border-color: var(--primary);
 }

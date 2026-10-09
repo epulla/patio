@@ -37,6 +37,7 @@ export type Ticket = {
   reporter_id: string | null;
   assignee_id: string | null;
 };
+export type SearchTicket = Ticket & { board_name: string; status_name: string };
 export type CalendarItem = {
   id: string;
   kind: "event" | "reminder";

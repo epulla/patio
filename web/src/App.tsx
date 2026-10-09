@@ -5,6 +5,7 @@ import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Settings from "./Settings";
+import Tickets from "./Tickets";
 import { api, type Board, type Config } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
@@ -113,7 +114,7 @@ export default function App() {
     );
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
-  if (isTickets) page = <ComingSoon title="Tickets" />;
+  if (isTickets) page = <Tickets refresh={refresh} />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
 

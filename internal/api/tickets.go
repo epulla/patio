@@ -9,10 +9,11 @@ import (
 	"strings"
 )
 
-func scanTicket(row interface{ Scan(...any) error }) (ticket, error) {
+func scanTicket(row interface{ Scan(...any) error }, extra ...any) (ticket, error) {
 	var t ticket
 	var d, st, ty, as sql.NullString
-	e := row.Scan(&t.ID, &t.Title, &t.Description, &t.Number, &t.Code, &t.Created, &t.Updated, &d, &st, &t.StatusID, &t.BoardID, &ty, &t.ReporterID, &as)
+	args := []any{&t.ID, &t.Title, &t.Description, &t.Number, &t.Code, &t.Created, &t.Updated, &d, &st, &t.StatusID, &t.BoardID, &ty, &t.ReporterID, &as}
+	e := row.Scan(append(args, extra...)...)
 	if d.Valid {
 		t.DueDate = &d.String
 	}
@@ -127,7 +128,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		if e := s.transitionTx(tx, id, bid, "", sid, t); e != nil {
 			return e
 		}
-		out = ticket{id, title, desc, num, code, t, t, nullable(due, dset), &t, &sid, &bid, nullable(tt, ttset), ptr(s.userID), nullable(ass, aset)}
+		out = ticket{ID: id, Title: title, Description: desc, Number: num, Code: code, Created: t, Updated: t, DueDate: nullable(due, dset), StatusUpdated: &t, StatusID: &sid, BoardID: &bid, TicketTypeID: nullable(tt, ttset), ReporterID: ptr(s.userID), AssigneeID: nullable(ass, aset)}
 		return nil
 	})
 	if e != nil {
@@ -179,8 +180,8 @@ func (s *Server) searchTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(q)
-	query := `SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id
-		FROM ticket t JOIN board b ON b.id=t.board_id
+	query := `SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id,b.name,st.name
+		FROM ticket t JOIN board b ON b.id=t.board_id JOIN status st ON st.id=t.status_id
 		WHERE b.deleted_at IS NULL AND (t.title LIKE '%' || ? || '%' ESCAPE '\' OR t.code LIKE '%' || ? || '%' ESCAPE '\')`
 	args := []any{q, q}
 	if boardID := strings.TrimSpace(r.URL.Query().Get("board_id")); boardID != "" {
@@ -196,11 +197,13 @@ func (s *Server) searchTickets(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []ticket{}
 	for rows.Next() {
-		t, err := scanTicket(rows)
+		var boardName, statusName string
+		t, err := scanTicket(rows, &boardName, &statusName)
 		if err != nil {
 			errw(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		t.BoardName, t.StatusName = &boardName, &statusName
 		out = append(out, t)
 	}
 	if e = rows.Err(); e != nil {
