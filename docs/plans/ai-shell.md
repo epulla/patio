@@ -34,5 +34,5 @@ Carried to phases (b) and (c):
 ## Tasks
 
 - [x] Sidebar restructure (decisions 1, 2, 5) with placeholder AI pages and the settings gear pinned to the bottom. Check: `pnpm --dir web build`; smoke-test that every nav item routes and that collapsed mode shows the AI icons.
-- [ ] `/settings` page with General and MCP status sections, plus the `/mcp` redirect (decision 3). Check: `pnpm --dir web build`; `go vet ./... && go test ./... -count=1`; smoke-test that MCP status shows Healthy.
+- [x] `/settings` page with General and MCP status sections, plus the `/mcp` redirect (decision 3). Check: `pnpm --dir web build`; `go vet ./... && go test ./... -count=1`; smoke-test that MCP status shows Healthy.
 - [ ] `/tickets` search page across all boards (decision 4). Check: `pnpm --dir web build`; smoke-test that a search returns tickets from 2 boards and a click opens the ticket.

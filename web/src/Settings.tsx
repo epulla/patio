@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type McpStatus } from "./api";
 import { ErrorText } from "./App";
 
-export default function Mcp() {
+export default function Settings() {
   const [status, setStatus] = useState<McpStatus>();
   const [error, setError] = useState<unknown>();
   const [copyError, setCopyError] = useState<unknown>();
@@ -64,60 +64,67 @@ export default function Mcp() {
     <div className="stack mcp-page">
       <div className="page-heading">
         <div>
-          <h1>MCP</h1>
-          <p className="muted">
-            AI clients launch this app as an MCP server over stdio. It shares this app's database and acts as
-            Martin.
-          </p>
+          <h1>Settings</h1>
         </div>
       </div>
 
-      <section className={`panel mcp-status ${state}`}>
-        <span className="status-dot" aria-hidden="true" />
-        <div className="mcp-status-text" role="status" aria-live="polite">
-          <strong>{label}</strong>
-          {detail && <span className="muted">{detail}</span>}
-          <small>Last checked {checked ? checked.toLocaleTimeString() : "never"} · rechecks every 30 s</small>
-        </div>
-        <button type="button" onClick={() => setRefresh((value) => value + 1)}>
-          Check again
-        </button>
+      <section>
+        <h2>General</h2>
+        <p>Hello!</p>
       </section>
-      <ErrorText error={error} />
 
-      <section className="panel">
-        <div className="mcp-section-head">
-          <div>
-            <h2>Connect an AI client</h2>
-            <p className="muted">Add this to your client's MCP config (Claude Desktop, Cursor, Claude Code…).</p>
+      <section className="stack">
+        <h2>MCP status</h2>
+        <p className="muted">
+          AI clients launch this app as an MCP server over stdio. It shares this app's database and acts as Martin.
+        </p>
+        <section className={`panel mcp-status ${state}`}>
+          <span className="status-dot" aria-hidden="true" />
+          <div className="mcp-status-text" role="status" aria-live="polite">
+            <strong>{label}</strong>
+            {detail && <span className="muted">{detail}</span>}
+            <small>Last checked {checked ? checked.toLocaleTimeString() : "never"} · rechecks every 30 s</small>
           </div>
-          <button type="button" onClick={copyConfig} disabled={!status}>
-            {copied ? "Copied" : "Copy"}
+          <button type="button" onClick={() => setRefresh((value) => value + 1)}>
+            Check again
           </button>
-        </div>
-        <pre className="mcp-config">
-          <code>{config}</code>
-        </pre>
-        <ErrorText error={copyError} />
-      </section>
-
-      {status?.ok && (
-        <section className="panel">
-          <h2>
-            Tools <small>{status.tools.length}</small>
-          </h2>
-          <dl className="mcp-tools">
-            {status.tools.map((tool) => (
-              <div key={tool.name}>
-                <dt>
-                  <code>{tool.name}</code>
-                </dt>
-                <dd>{tool.description}</dd>
-              </div>
-            ))}
-          </dl>
         </section>
-      )}
+        <ErrorText error={error} />
+
+        <section className="panel">
+          <div className="mcp-section-head">
+            <div>
+              <h3>Connect an AI client</h3>
+              <p className="muted">Add this to your client's MCP config (Claude Desktop, Cursor, Claude Code…).</p>
+            </div>
+            <button type="button" onClick={copyConfig} disabled={!status}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <pre className="mcp-config">
+            <code>{config}</code>
+          </pre>
+          <ErrorText error={copyError} />
+        </section>
+
+        {status?.ok && (
+          <section className="panel">
+            <h3>
+              Tools <small>{status.tools.length}</small>
+            </h3>
+            <dl className="mcp-tools">
+              {status.tools.map((tool) => (
+                <div key={tool.name}>
+                  <dt>
+                    <code>{tool.name}</code>
+                  </dt>
+                  <dd>{tool.description}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
+      </section>
     </div>
   );
 }

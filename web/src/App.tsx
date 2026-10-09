@@ -4,7 +4,7 @@ import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
-import Mcp from "./Mcp";
+import Settings from "./Settings";
 import { api, type Board, type Config } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
@@ -28,6 +28,14 @@ export function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Never";
 }
 
+function currentPath() {
+  if (location.pathname === "/mcp") {
+    history.replaceState({}, "", "/settings");
+    return "/settings";
+  }
+  return location.pathname;
+}
+
 function ComingSoon({ title }: { title: string }) {
   return (
     <div className="stack">
@@ -40,7 +48,7 @@ function ComingSoon({ title }: { title: string }) {
 }
 
 export default function App() {
-  const [path, setPath] = useState(location.pathname);
+  const [path, setPath] = useState(currentPath);
   const [config, setConfig] = useState<Config>({ show_hidden: false, version: "" });
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -56,7 +64,7 @@ export default function App() {
   }, [path, refresh]);
 
   useEffect(() => {
-    const onPopState = () => setPath(location.pathname);
+    const onPopState = () => setPath(currentPath());
     addEventListener("popstate", onPopState);
     return () => removeEventListener("popstate", onPopState);
   }, []);
@@ -79,7 +87,6 @@ export default function App() {
   const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
   const isCalendar = path === "/calendar";
-  const isMcp = path === "/mcp";
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
     "/ai/connectors": "Connectors",
@@ -106,10 +113,9 @@ export default function App() {
     );
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
-  if (isMcp) page = <Mcp />;
   if (isTickets) page = <ComingSoon title="Tickets" />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
-  if (path === "/settings") page = <ComingSoon title="Settings" />;
+  if (path === "/settings") page = <Settings />;
 
   const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (
     <button

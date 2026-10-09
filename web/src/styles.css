@@ -421,7 +421,8 @@ a:has(> .svg-icon) {
   padding: 24px;
   box-shadow: var(--shadow);
 }
-.panel h2 {
+.panel h2,
+.mcp-page .panel h3 {
   margin: 0 0 12px;
   font-size: 18px;
 }
@@ -1380,7 +1381,8 @@ label.days-field {
   gap: 16px;
   margin-bottom: 16px;
 }
-.mcp-section-head h2 {
+.mcp-section-head h2,
+.mcp-section-head h3 {
   margin: 0;
 }
 .mcp-config {
