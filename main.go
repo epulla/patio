@@ -215,11 +215,14 @@ func runMCP(args []string) {
 		if !exists {
 			log.Fatalf("approval chat %q not found", *approveChat)
 		}
-		server = mcpserver.NewServerWithApproval(handler, version, mcpserver.ApprovalOptions{
+		server, err = mcpserver.NewServerWithApproval(handler, version, mcpserver.ApprovalOptions{
 			DB: database, ChatID: *approveChat, Timeout: 10 * time.Minute, PollInterval: 300 * time.Millisecond,
 		})
 	} else {
-		server = mcpserver.NewServer(handler, version)
+		server, err = mcpserver.NewServer(handler, version, database)
+	}
+	if err != nil {
+		log.Fatalf("create MCP server: %v", err)
 	}
 	if err := server.Run(context.Background(), &sdk.StdioTransport{}); err != nil {
 		log.Fatal(err)

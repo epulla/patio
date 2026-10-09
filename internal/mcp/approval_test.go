@@ -26,10 +26,23 @@ func TestApprovalTool(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, chatID, "Test", "now", "now"); err != nil {
 		t.Fatal(err)
 	}
+	allowed, _, err := approvalHandler(context.Background(), &ApprovalOptions{DB: database, ChatID: chatID}, approveArgs{
+		ToolName: "mcp__my-tickets__load_skill", Input: json.RawMessage(`{"name":"pirate-voice"}`),
+	})
+	if err != nil || allowed.Content[0].(*sdk.TextContent).Text != `{"behavior":"allow","updatedInput":{"name":"pirate-voice"}}` {
+		t.Fatalf("skill approval result = %#v, %v", allowed, err)
+	}
+	var skillApprovals int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_approval WHERE chat_id=?`, chatID).Scan(&skillApprovals); err != nil || skillApprovals != 0 {
+		t.Fatalf("skill approval rows = %d, %v", skillApprovals, err)
+	}
 	h := api.New(database, "local", false, "dev", t.TempDir())
 	call := func(timeout time.Duration) (*sdk.ClientSession, func()) {
 		t.Helper()
-		server := NewServerWithApproval(h, "dev", ApprovalOptions{DB: database, ChatID: chatID, Timeout: timeout, PollInterval: time.Millisecond})
+		server, err := NewServerWithApproval(h, "dev", ApprovalOptions{DB: database, ChatID: chatID, Timeout: timeout, PollInterval: time.Millisecond})
+		if err != nil {
+			t.Fatal(err)
+		}
 		st, ct := sdk.NewInMemoryTransports()
 		if _, err := server.Connect(context.Background(), st, nil); err != nil {
 			t.Fatal(err)

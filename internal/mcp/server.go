@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -51,6 +52,9 @@ type createTicketArgs struct {
 }
 type ticketIDArgs struct {
 	ID string `json:"id" jsonschema:"Ticket UUID or code"`
+}
+type skillArgs struct {
+	Name string `json:"name" jsonschema:"Skill name"`
 }
 type updateTicketArgs struct {
 	ID           string  `json:"id" jsonschema:"Ticket UUID"`
@@ -124,16 +128,28 @@ type ApprovalOptions struct {
 	PollInterval time.Duration
 }
 
-func NewServer(h http.Handler, version string) *sdk.Server {
-	return newServer(h, version, nil)
+func NewServer(h http.Handler, version string, database *sql.DB) (*sdk.Server, error) {
+	return newServer(h, version, database, nil)
 }
 
-func NewServerWithApproval(h http.Handler, version string, options ApprovalOptions) *sdk.Server {
-	return newServer(h, version, &options)
+func NewServerWithApproval(h http.Handler, version string, options ApprovalOptions) (*sdk.Server, error) {
+	return newServer(h, version, options.DB, &options)
 }
 
-func newServer(h http.Handler, version string, approval *ApprovalOptions) *sdk.Server {
-	s := sdk.NewServer(&sdk.Implementation{Name: "my-tickets", Version: version}, &sdk.ServerOptions{Instructions: "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"})
+func newServer(h http.Handler, version string, database *sql.DB, approval *ApprovalOptions) (*sdk.Server, error) {
+	var skills []api.Skill
+	if database != nil {
+		var err error
+		skills, err = api.EnabledSkills(database)
+		if err != nil {
+			return nil, fmt.Errorf("load enabled skills: %w", err)
+		}
+	}
+	instructions := "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"
+	if len(skills) > 0 {
+		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
+	}
+	s := sdk.NewServer(&sdk.Implementation{Name: "my-tickets", Version: version}, &sdk.ServerOptions{Instructions: instructions})
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
@@ -195,6 +211,7 @@ func newServer(h http.Handler, version string, approval *ApprovalOptions) *sdk.S
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
+	addSkillTools(s, database, skills)
 	if approval != nil {
 		if approval.Timeout == 0 {
 			approval.Timeout = 10 * time.Minute
@@ -212,7 +229,56 @@ func newServer(h http.Handler, version string, approval *ApprovalOptions) *sdk.S
 			return approvalHandler(ctx, approval, in)
 		})
 	}
-	return s
+	return s, nil
+}
+
+func addSkillTools(s *sdk.Server, database *sql.DB, skills []api.Skill) {
+	description := "No skills are enabled."
+	if len(skills) > 0 {
+		var available strings.Builder
+		available.WriteString("Load a skill's instructions before doing a task it covers. Available skills:")
+		for _, skill := range skills {
+			fmt.Fprintf(&available, "\n- %s: %s", skill.Name, skill.Description)
+		}
+		description = available.String()
+	}
+	sdk.AddTool[struct{}, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills"}, func(_ context.Context, _ *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, any, error) {
+		if database == nil {
+			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
+		}
+		enabled, err := api.EnabledSkills(database)
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		result := make([]struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		}, 0, len(enabled))
+		for _, skill := range enabled {
+			result = append(result, struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}{skill.Name, skill.Description})
+		}
+		data, err := json.Marshal(result)
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil, nil
+	})
+	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "load_skill", Description: description}, func(_ context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
+		if database == nil {
+			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
+		}
+		skill, err := api.SkillByName(database, in.Name)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && !skill.Enabled {
+			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
+		}
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
+	})
 }
 
 func approvalHandler(ctx context.Context, options *ApprovalOptions, in approveArgs) (*sdk.CallToolResult, any, error) {
@@ -225,6 +291,10 @@ func approvalHandler(ctx context.Context, options *ApprovalOptions, in approveAr
 	}
 	if input == nil {
 		return nil, nil, fmt.Errorf("input must be an object")
+	}
+	toolName := strings.TrimPrefix(in.ToolName, "mcp__my-tickets__")
+	if toolName == "list_skills" || toolName == "load_skill" {
+		return approvalAllowResult(in.Input)
 	}
 	id, err := api.CreateChatApproval(options.DB, options.ChatID, in.ToolName, in.Input)
 	if err != nil {

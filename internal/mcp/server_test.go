@@ -23,7 +23,10 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev")
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	if err != nil {
+		t.Fatal(err)
+	}
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	ctx := context.Background()
 	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
@@ -40,6 +43,13 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		}
 	}()
 
+	expectedTools := map[string]bool{
+		"list_boards": true, "get_board": true, "create_board": true, "create_ticket": true,
+		"get_ticket": true, "update_ticket": true, "move_ticket": true, "search_tickets": true,
+		"add_comment": true, "list_calendar": true, "create_calendar_item": true,
+		"update_calendar_item": true, "delete_calendar_item": true,
+		"list_skills": true, "load_skill": true,
+	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
@@ -49,11 +59,18 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			if tool.Name == "approve" {
 				t.Fatal("approve tool registered without flag")
 			}
+			if !expectedTools[tool.Name] {
+				t.Fatalf("unexpected tool %q", tool.Name)
+			}
+			delete(expectedTools, tool.Name)
 			count++
 		}
 	}
-	if count != 13 {
-		t.Fatalf("tool count = %d, want 13", count)
+	if count != 15 {
+		t.Fatalf("tool count = %d, want 15", count)
+	}
+	if len(expectedTools) != 0 {
+		t.Fatalf("missing tools: %#v", expectedTools)
 	}
 
 	boardResult := callTool(t, session, "create_board", map[string]any{
@@ -206,8 +223,80 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	}
 }
 
+func TestMCPSkillTools(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "skills.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := database.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, skill := range []struct {
+		id, name, description, body string
+		enabled                     int
+	}{
+		{"skill-enabled", "pirate-voice", "Use when the user asks for a pirate greeting.", "Always answer in pirate speak and end with 'Arrr!'", 1},
+		{"skill-disabled", "hidden-skill", "Disabled skill description.", "Hidden body", 0},
+	} {
+		if _, err := database.Exec(`INSERT INTO skill(id,name,description,body,enabled,created_at,updated_at) VALUES(?,?,?,?,?,'now','now')`, skill.id, skill.name, skill.description, skill.body, skill.enabled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	ctx := context.Background()
+	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := session.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	tools, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loadDescription string
+	for _, tool := range tools.Tools {
+		if tool.Name == "load_skill" {
+			loadDescription = tool.Description
+		}
+	}
+	wantDescription := "Load a skill's instructions before doing a task it covers. Available skills:\n- pirate-voice: Use when the user asks for a pirate greeting."
+	if loadDescription != wantDescription {
+		t.Fatalf("load_skill description = %q, want %q", loadDescription, wantDescription)
+	}
+	listed := callTool(t, session, "list_skills", map[string]any{})
+	if listed.IsError || len(listed.Content) != 1 || listed.Content[0].(*sdk.TextContent).Text != `[{"name":"pirate-voice","description":"Use when the user asks for a pirate greeting."}]` {
+		t.Fatalf("list_skills result = %#v", listed)
+	}
+	loaded := callTool(t, session, "load_skill", map[string]any{"name": "pirate-voice"})
+	if loaded.IsError || len(loaded.Content) != 1 || loaded.Content[0].(*sdk.TextContent).Text != "# pirate-voice\n\nAlways answer in pirate speak and end with 'Arrr!'" {
+		t.Fatalf("load_skill result = %#v", loaded)
+	}
+	for _, name := range []string{"hidden-skill", "missing-skill"} {
+		result := callTool(t, session, "load_skill", map[string]any{"name": name})
+		if !result.IsError || len(result.Content) != 1 || result.Content[0].(*sdk.TextContent).Text != "skill not found: "+name {
+			t.Fatalf("load_skill(%q) = %#v, want tool error", name, result)
+		}
+	}
+}
+
 func TestMCPInstructions(t *testing.T) {
-	server := NewServer(nil, "dev")
+	server, err := NewServer(nil, "dev", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
 		t.Fatal(err)
@@ -239,7 +328,10 @@ func TestCheck(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev")
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	if err != nil {
+		t.Fatal(err)
+	}
 	serverTransport, clientTransport := sdk.NewInMemoryTransports()
 	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
 		t.Fatal(err)
