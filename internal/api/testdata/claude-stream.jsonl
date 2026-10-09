@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","session_id":"session-fixture"}
+{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hel"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"lo"}}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"},{"type":"tool_use","id":"tool-1","name":"Write","input":{"file_path":"hello.txt","content":"hi"}}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"Hello"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791568200,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"out_of_credits","isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.14,"resetsAt":1791568200},"seven_day":{"utilization":0.09,"resetsAt":1791658800}}},"uuid":"[redacted]","session_id":"[redacted]"}
+{"type":"result","subtype":"error","is_error":true,"errors":[{"message":"denied"}]}

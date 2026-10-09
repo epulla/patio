@@ -329,6 +329,10 @@ func (s *Server) deleteConnector(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if err := s.chats.CloseConnector(id); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if c.ConfigDir != nil {
 		root := filepath.Join(s.dbDir, "connectors")
 		if insideConnectorDir(root, *c.ConfigDir) {

@@ -66,8 +66,15 @@ func main() {
 	}
 	mime.AddExtensionType(".js", "text/javascript")
 
+	var appCtx context.Context
 	mux := http.NewServeMux()
-	mux.Handle("/api/", api.New(database, "local", *showHidden, version, filepath.Dir(path)))
+	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
+		DBPath: path,
+		Emit: func(event string, data any) {
+			wruntime.EventsEmit(appCtx, event, data)
+		},
+	})
+	mux.Handle("/api/", apiServer)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
@@ -102,7 +109,6 @@ func main() {
 			log.Printf("write MCP response: %v", err)
 		}
 	})
-	var appCtx context.Context
 	var stopBackground context.CancelFunc
 	var background sync.WaitGroup
 	// WKWebView ignores window.print(); Wails exposes native printing only from Go.
@@ -137,6 +143,11 @@ func main() {
 					log.Printf("run reminders: %v", err)
 				}
 			}()
+		},
+		OnShutdown: func(context.Context) {
+			if err := apiServer.Close(); err != nil {
+				log.Printf("close chat processes: %v", err)
+			}
 		},
 		AssetServer: &assetserver.Options{
 			Handler: mux,

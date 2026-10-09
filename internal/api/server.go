@@ -19,10 +19,26 @@ type Server struct {
 	showHidden bool
 	version    string
 	dbDir      string
+	chats      *chatManager
+	handler    http.Handler
 }
 
-func New(db *sql.DB, userID string, showHidden bool, version, dbDir string) http.Handler {
+type Options struct {
+	DBPath string
+	Emit   func(string, any)
+
+	processFactory chatProcessFactory
+	commandBuilder chatCommandBuilder
+	findClaude     func() (string, error)
+}
+
+func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {
+	var opts Options
+	if len(options) > 0 {
+		opts = options[0]
+	}
 	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir)}
+	s.chats = newChatManager(db, opts)
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/connectors", s.listConnectors)
@@ -42,6 +58,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string) http
 	m.HandleFunc("PUT /api/chats/{id}", s.updateChat)
 	m.HandleFunc("DELETE /api/chats/{id}", s.deleteChat)
 	m.HandleFunc("POST /api/chats/{id}/approvals/{approval_id}", s.answerChatApproval)
+	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
+	m.HandleFunc("POST /api/chats/{id}/stop", s.stopChat)
 	m.HandleFunc("GET /api/users", s.users)
 	m.HandleFunc("GET /api/boards", s.boards)
 	m.HandleFunc("POST /api/boards", s.createBoard)
@@ -73,8 +91,15 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string) http
 	m.HandleFunc("GET /api/boards/{id}/export", s.exportBoard)
 	m.HandleFunc("GET /api/tickets/{id}/export", s.exportTicket)
 	m.HandleFunc("POST /api/import", s.importBoard)
-	return m
+	s.handler = m
+	return s
 }
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
+
+func (s *Server) Close() error { return s.chats.Close() }
+
+var _ http.Handler = (*Server)(nil)
 
 type board struct {
 	ID       string `json:"id"`

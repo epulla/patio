@@ -26,6 +26,7 @@ type chat struct {
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
 	Workdir     string  `json:"workdir"`
+	Running     bool    `json:"running"`
 }
 
 type ChatMessage struct {
@@ -273,6 +274,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
+	c.Running = s.chats.Running(c.ID)
 	messages := []ChatMessage{}
 	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
@@ -318,6 +320,78 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals})
+}
+
+func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Text string `json:"text"`
+	}
+	if decode(r, &in) != nil {
+		errw(w, http.StatusBadRequest, "valid text required")
+		return
+	}
+	id := idParam(r, "id")
+	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "chat not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if c.ConnectorID == nil {
+		errw(w, http.StatusBadRequest, errChatConnectorMissing.Error())
+		return
+	}
+	var kind string
+	var configDir sql.NullString
+	if err := s.db.QueryRow(`SELECT kind,config_dir FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &configDir); errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusBadRequest, errChatConnectorMissing.Error())
+		return
+	} else if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if kind != "claude" {
+		errw(w, http.StatusBadRequest, errChatUnsupported.Error())
+		return
+	}
+	dir := ""
+	if configDir.Valid {
+		dir = configDir.String
+	}
+	message, err := s.chats.Send(c, kind, dir, in.Text)
+	if errors.Is(err, errChatTurnRunning) {
+		errw(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		if errors.Is(err, errChatUnsupported) || errors.Is(err, errChatConnectorMissing) {
+			errw(w, http.StatusBadRequest, err.Error())
+		} else {
+			errw(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	write(w, http.StatusAccepted, message)
+}
+
+func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	var exists int
+	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, id).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "chat not found")
+		return
+	} else if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.chats.Stop(id); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	noContent(w)
 }
 
 func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +465,10 @@ func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		errw(w, 500, err.Error())
+		return
+	}
+	if err := s.chats.CloseChat(id); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !folder.Valid {
