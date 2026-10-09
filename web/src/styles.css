@@ -135,6 +135,13 @@ a {
   font: 600 11px var(--mono);
   text-transform: uppercase;
 }
+.nav-mark:has(> .svg-icon) {
+  background: transparent;
+  color: var(--muted);
+}
+.nav-item[aria-current="page"] .nav-mark:has(> .svg-icon) {
+  color: inherit;
+}
 .nav-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -142,22 +149,34 @@ a {
 .sidebar-label {
   margin: 16px 8px 4px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .sidebar-foot {
   display: flex;
-  padding: 8px 4px 0;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 0;
   border-top: 1px solid var(--border);
 }
+.sidebar-foot .nav-item {
+  flex: 1;
+}
 .sidebar.collapsed .sidebar-foot {
-  justify-content: center;
+  flex-direction: column;
 }
 .sidebar.collapsed {
   width: auto;
 }
 .sidebar.collapsed .nav-label {
   display: none;
+}
+.ai-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .sidebar.collapsed .ai-nav-group {
   margin-top: 8px;
@@ -793,6 +812,7 @@ a:has(> .svg-icon) {
 .ticket-card:hover {
   border-color: color-mix(in oklch, var(--primary) 60%, transparent);
 }
+.ticket-card h4,
 .ticket-card > strong {
   margin: 0;
   font-size: 14px;

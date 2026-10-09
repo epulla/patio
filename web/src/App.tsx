@@ -175,14 +175,8 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-foot">
+          {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
           <ThemeToggle />
-          <IconButton
-            className="ghost"
-            icon="gear"
-            label="Settings"
-            aria-current={path === "/settings" ? "page" : undefined}
-            onClick={() => navigate("/settings")}
-          />
         </div>
       </aside>
       <main>{page}</main>
