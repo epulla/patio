@@ -43,6 +43,7 @@ type chatManager struct {
 	db                   *sql.DB
 	dbPath               string
 	dbDir                string
+	mcpExecutable        string
 	emitEvent            func(string, any)
 	options              Options
 	approvalTimeout      time.Duration
@@ -67,7 +68,7 @@ func newChatManager(database *sql.DB, options Options) *chatManager {
 		emit = func(string, any) {}
 	}
 	return &chatManager{
-		db: database, dbPath: options.DBPath, emitEvent: emit, options: options,
+		db: database, dbPath: options.DBPath, mcpExecutable: options.mcpExecutable, emitEvent: emit, options: options,
 		approvalTimeout: chatApprovalTimeout, approvalPollInterval: 300 * time.Millisecond,
 		chats: make(map[string]*chatRuntime),
 	}
@@ -231,13 +232,17 @@ func connectorEnv(kind, configDir string) []string {
 }
 
 func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
-	finder := m.options.executable
-	if finder == nil {
-		finder = os.Executable
-	}
-	exe, err := finder()
-	if err != nil {
-		return nil, err
+	exe := m.mcpExecutable
+	if exe == "" {
+		finder := m.options.executable
+		if finder == nil {
+			finder = os.Executable
+		}
+		var err error
+		exe, err = finder()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return map[string]any{"command": exe, "args": []string{"mcp", "-d", m.dbPath}}, nil
 }
