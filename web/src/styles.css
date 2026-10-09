@@ -1402,6 +1402,258 @@ label.days-field {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.chats {
+  display: grid;
+  grid-template-columns: clamp(180px, 22%, 260px) minmax(0, 1fr);
+  gap: 24px;
+  height: calc(100vh - 112px);
+  min-height: 420px;
+}
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.chat-list nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.chat-link {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  height: auto;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 500;
+}
+.chat-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-link:hover {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+.chat-link[aria-current="page"] {
+  background: var(--base-300);
+}
+.chat-empty {
+  align-self: center;
+  justify-self: center;
+  text-align: center;
+}
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.conversation-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.conversation-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.conversation-title input {
+  border-color: transparent;
+  background: transparent;
+  padding: 0 8px;
+  margin-left: -8px;
+  font-size: 22px;
+  font-weight: 700;
+}
+.conversation-title input:hover {
+  border-color: var(--border);
+}
+.conversation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.conversation-meta select {
+  height: 30px;
+  padding: 0 8px;
+  font-size: 13px;
+  max-width: 280px;
+}
+.folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.folder-chip .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 2px;
+}
+.message {
+  max-width: 760px;
+  padding: 10px 14px;
+  border-radius: var(--radius-box);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+.message.user {
+  align-self: flex-end;
+  background: var(--base-300);
+}
+.message.assistant {
+  align-self: flex-start;
+  white-space: normal;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote,
+.markdown table {
+  margin: 0 0 10px;
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 22px;
+}
+.markdown a {
+  color: var(--primary-text);
+}
+.markdown code {
+  font: 13px var(--mono);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--base-300);
+}
+.markdown pre {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--base-200);
+  overflow-x: auto;
+}
+.markdown pre code {
+  padding: 0;
+  background: none;
+}
+.markdown blockquote {
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  color: var(--muted);
+}
+.markdown table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.markdown th,
+.markdown td {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+}
+.message.error {
+  align-self: flex-start;
+  border: 1px solid color-mix(in oklch, var(--error) 45%, transparent);
+  background: color-mix(in oklch, var(--error) 10%, var(--base-100));
+}
+.tool-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.tool-line code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-hint,
+.typing {
+  margin: 0;
+}
+.approval {
+  align-self: stretch;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.approval p,
+.approval pre {
+  margin: 0;
+}
+.approval pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.composer {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+}
+@media (max-width: 760px) {
+  .chats {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .chat-list nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .chat-link {
+    flex: 0 0 auto;
+    max-width: 200px;
+  }
+}
 .folder-panel {
   gap: 16px;
 }

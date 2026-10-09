@@ -143,6 +143,7 @@ export type Chat = {
   created_at: string;
   updated_at: string;
   workdir: string;
+  running: boolean;
 };
 export type ChatMessage = {
   id: string;

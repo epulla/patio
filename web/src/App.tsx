@@ -5,6 +5,7 @@ import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
+import Chats from "./Chats";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import { api, type Board, type Config } from "./api";
@@ -91,7 +92,6 @@ export default function App() {
   const isCalendar = path === "/calendar";
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
-    "/ai/chats": "Chats",
     "/ai/skills": "Skills",
     "/ai/mcp": "MCP",
   };
@@ -116,6 +116,11 @@ export default function App() {
   if (isCalendar) page = <Calendar refresh={refresh} />;
   if (isTickets) page = <Tickets refresh={refresh} />;
   if (path === "/ai/connectors") page = <Connectors refresh={refresh} />;
+  const chatMatch = path.match(/^\/ai\/chats(?:\/([^/]+))?$/);
+  if (chatMatch)
+    page = (
+      <Chats id={chatMatch[1] && decodeURIComponent(chatMatch[1])} refresh={refresh} />
+    );
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
 
@@ -161,7 +166,7 @@ export default function App() {
               <Icon name="connector" />,
               path === "/ai/connectors",
             )}
-            {navItem("/ai/chats", "Chats", <Icon name="chat" />, path === "/ai/chats")}
+            {navItem("/ai/chats", "Chats", <Icon name="chat" />, !!chatMatch)}
             {navItem("/ai/skills", "Skills", <Icon name="sparkles" />, path === "/ai/skills")}
             {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp")}
           </div>
