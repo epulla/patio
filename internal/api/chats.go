@@ -4,9 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -320,6 +324,119 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals})
+}
+
+func (s *Server) revealChatFile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if decode(r, &in) != nil || in.Path == "" {
+		errw(w, http.StatusBadRequest, "path required")
+		return
+	}
+	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, idParam(r, "id")))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "chat not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	path, err := revealPath(c.Workdir, in.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		errw(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if errors.Is(err, errInvalidRevealPath) {
+		errw(w, http.StatusBadRequest, errInvalidRevealPath.Error())
+		return
+	}
+	if err != nil {
+		if errors.Is(err, errPathOutsideWorkdir) {
+			errw(w, http.StatusBadRequest, errPathOutsideWorkdir.Error())
+		} else {
+			errw(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	if err := s.revealFile(path); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	noContent(w)
+}
+
+var errPathOutsideWorkdir = errors.New("path is outside this chat's folder")
+var errInvalidRevealPath = errors.New("valid path required")
+
+func revealPath(workdir, path string) (string, error) {
+	if strings.HasPrefix(strings.ToLower(path), "file://") {
+		parsed, err := url.Parse(path)
+		if err != nil || parsed.Scheme != "file" || parsed.Path == "" || parsed.Host != "" && parsed.Host != "localhost" {
+			return "", errInvalidRevealPath
+		}
+		path = parsed.Path
+		if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+			path = path[1:]
+		}
+		path = filepath.FromSlash(path)
+	}
+	workdir, err := filepath.Abs(workdir)
+	if err != nil {
+		return "", err
+	}
+	workdir, err = filepath.EvalSymlinks(filepath.Clean(workdir))
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(workdir, path)
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	path, err = filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(workdir, path)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", errPathOutsideWorkdir
+	}
+	return path, nil
+}
+
+func openInFileManager(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	var name string
+	var args []string
+	switch runtime.GOOS {
+	case "darwin":
+		name, args = "open", []string{"-R", path}
+	case "windows":
+		name, args = "explorer", []string{"/select," + path}
+	case "linux":
+		dir := path
+		if !info.IsDir() {
+			dir = filepath.Dir(path)
+		}
+		name, args = "xdg-open", []string{dir}
+	default:
+		return fmt.Errorf("unsupported operating system %q", runtime.GOOS)
+	}
+	cmd := exec.Command(name, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }
 
 func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {

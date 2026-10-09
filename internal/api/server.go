@@ -21,6 +21,7 @@ type Server struct {
 	version    string
 	dbDir      string
 	chats      *chatManager
+	revealFile func(string) error
 	handler    http.Handler
 }
 
@@ -45,7 +46,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if len(options) > 0 {
 		opts = options[0]
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir)}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), revealFile: openInFileManager}
 	opts.version = version
 	s.chats = newChatManager(db, opts)
 	s.chats.dbDir = s.dbDir
@@ -69,6 +70,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("PUT /api/chats/{id}", s.updateChat)
 	m.HandleFunc("DELETE /api/chats/{id}", s.deleteChat)
 	m.HandleFunc("POST /api/chats/{id}/approvals/{approval_id}", s.answerChatApproval)
+	m.HandleFunc("POST /api/chats/{id}/reveal", s.revealChatFile)
 	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
 	m.HandleFunc("POST /api/chats/{id}/stop", s.stopChat)
 	m.HandleFunc("GET /api/users", s.users)
