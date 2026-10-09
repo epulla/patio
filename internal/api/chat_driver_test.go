@@ -336,7 +336,7 @@ func TestChatModelChangeClosesIdleProcessAndRestartsWithNewModel(t *testing.T) {
 func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := uid()
-	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'unsupported','Unsupported',?)`, connectorID, now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'local','Local',?)`, connectorID, now()); err != nil {
 		t.Fatal(err)
 	}
 	chatID := createDriverTestChat(t, database, connectorID, root)
