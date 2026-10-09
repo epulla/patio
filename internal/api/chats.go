@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -439,6 +440,35 @@ func (s *Server) answerChatApproval(w http.ResponseWriter, r *http.Request) {
 	} else {
 		errw(w, 409, "approval already answered")
 	}
+}
+
+func ChatExists(database *sql.DB, id string) (bool, error) {
+	var exists int
+	err := database.QueryRow(`SELECT 1 FROM chat WHERE id=?`, id).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func CreateChatApproval(database *sql.DB, chatID, toolName string, input json.RawMessage) (string, error) {
+	id := uid()
+	_, err := database.Exec(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,created_at) VALUES(?,?,?,?,?)`, id, chatID, toolName, string(input), now())
+	return id, err
+}
+
+func ChatApprovalStatus(database *sql.DB, chatID, approvalID string) (string, error) {
+	var status string
+	err := database.QueryRow(`SELECT status FROM chat_approval WHERE id=? AND chat_id=?`, approvalID, chatID).Scan(&status)
+	return status, err
+}
+
+func ExpireChatApproval(database *sql.DB, chatID, approvalID string) (string, error) {
+	_, err := database.Exec(`UPDATE chat_approval SET status='expired',answered_at=? WHERE id=? AND chat_id=? AND status='pending'`, now(), approvalID, chatID)
+	if err != nil {
+		return "", err
+	}
+	return ChatApprovalStatus(database, chatID, approvalID)
 }
 
 func InsertChatMessage(database *sql.DB, chatID, role, content string) (ChatMessage, error) {

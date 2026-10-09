@@ -46,6 +46,9 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Fatal(err)
 		}
 		if tool != nil {
+			if tool.Name == "approve" {
+				t.Fatal("approve tool registered without flag")
+			}
 			count++
 		}
 	}

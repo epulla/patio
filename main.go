@@ -157,9 +157,16 @@ func main() {
 func runMCP(args []string) {
 	flags := flag.NewFlagSet("mcp", flag.ExitOnError)
 	dbFile := flags.String("d", "", "database file path (default: per-OS data directory)")
+	approveChat := flags.String("approve-chat", "", "enable Claude approval tool for chat ID")
 	if err := flags.Parse(args); err != nil {
 		log.Fatal(err)
 	}
+	approveEnabled := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "approve-chat" {
+			approveEnabled = true
+		}
+	})
 	home := ""
 	if *dbFile == "" {
 		var err error
@@ -184,7 +191,25 @@ func runMCP(args []string) {
 			log.Printf("close database: %v", err)
 		}
 	}()
-	server := mcpserver.NewServer(api.New(database, "ai", true, version, filepath.Dir(dbFilePath)), version)
+	handler := api.New(database, "ai", true, version, filepath.Dir(dbFilePath))
+	var server *sdk.Server
+	if approveEnabled {
+		if *approveChat == "" {
+			log.Fatal("-approve-chat requires a chat ID")
+		}
+		exists, err := api.ChatExists(database, *approveChat)
+		if err != nil {
+			log.Fatalf("validate approval chat %q: %v", *approveChat, err)
+		}
+		if !exists {
+			log.Fatalf("approval chat %q not found", *approveChat)
+		}
+		server = mcpserver.NewServerWithApproval(handler, version, mcpserver.ApprovalOptions{
+			DB: database, ChatID: *approveChat, Timeout: 10 * time.Minute, PollInterval: 300 * time.Millisecond,
+		})
+	} else {
+		server = mcpserver.NewServer(handler, version)
+	}
 	if err := server.Run(context.Background(), &sdk.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}

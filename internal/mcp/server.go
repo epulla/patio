@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"my-tickets/internal/api"
 )
 
 type boardArgs struct {
@@ -109,7 +111,28 @@ type calendarItemIDArgs struct {
 	ID string `json:"id" jsonschema:"Calendar item UUID"`
 }
 
+type approveArgs struct {
+	ToolName  string          `json:"tool_name"`
+	Input     json.RawMessage `json:"input"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+}
+
+type ApprovalOptions struct {
+	DB           *sql.DB
+	ChatID       string
+	Timeout      time.Duration
+	PollInterval time.Duration
+}
+
 func NewServer(h http.Handler, version string) *sdk.Server {
+	return newServer(h, version, nil)
+}
+
+func NewServerWithApproval(h http.Handler, version string, options ApprovalOptions) *sdk.Server {
+	return newServer(h, version, &options)
+}
+
+func newServer(h http.Handler, version string, approval *ApprovalOptions) *sdk.Server {
 	s := sdk.NewServer(&sdk.Implementation{Name: "my-tickets", Version: version}, &sdk.ServerOptions{Instructions: "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"})
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
@@ -172,7 +195,95 @@ func NewServer(h http.Handler, version string) *sdk.Server {
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
+	if approval != nil {
+		if approval.Timeout == 0 {
+			approval.Timeout = 10 * time.Minute
+		}
+		if approval.PollInterval == 0 {
+			approval.PollInterval = 300 * time.Millisecond
+		}
+		sdk.AddTool[approveArgs, any](s, &sdk.Tool{
+			Name: "approve", Description: "Request user approval for a Claude tool call",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{
+				"tool_name": map[string]any{"type": "string"}, "input": map[string]any{"type": "object"},
+				"tool_use_id": map[string]any{"type": "string"},
+			}, "required": []string{"tool_name", "input"}, "additionalProperties": true},
+		}, func(ctx context.Context, _ *sdk.CallToolRequest, in approveArgs) (*sdk.CallToolResult, any, error) {
+			return approvalHandler(ctx, approval, in)
+		})
+	}
 	return s
+}
+
+func approvalHandler(ctx context.Context, options *ApprovalOptions, in approveArgs) (*sdk.CallToolResult, any, error) {
+	if in.ToolName == "" {
+		return nil, nil, fmt.Errorf("tool_name required")
+	}
+	var input map[string]json.RawMessage
+	if err := json.Unmarshal(in.Input, &input); err != nil {
+		return nil, nil, fmt.Errorf("input must be an object: %w", err)
+	}
+	if input == nil {
+		return nil, nil, fmt.Errorf("input must be an object")
+	}
+	id, err := api.CreateChatApproval(options.DB, options.ChatID, in.ToolName, in.Input)
+	if err != nil {
+		return nil, nil, err
+	}
+	timer := time.NewTimer(options.Timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(options.PollInterval)
+	defer ticker.Stop()
+	for {
+		status, err := api.ChatApprovalStatus(options.DB, options.ChatID, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		switch status {
+		case "allowed":
+			return approvalAllowResult(in.Input)
+		case "denied":
+			return approvalResult([]byte(`{"behavior":"deny","message":"Denied by user"}`)), nil, nil
+		case "expired":
+			return approvalResult([]byte(`{"behavior":"deny","message":"Approval timed out"}`)), nil, nil
+		}
+		select {
+		case <-ctx.Done():
+			status, err := api.ExpireChatApproval(options.DB, options.ChatID, id)
+			if err != nil {
+				return nil, nil, err
+			}
+			if status == "allowed" {
+				return approvalAllowResult(in.Input)
+			}
+			return approvalResult([]byte(`{"behavior":"deny","message":"Denied by user"}`)), nil, nil
+		case <-timer.C:
+			status, err := api.ExpireChatApproval(options.DB, options.ChatID, id)
+			if err != nil {
+				return nil, nil, err
+			}
+			if status == "allowed" {
+				return approvalAllowResult(in.Input)
+			}
+			if status == "denied" {
+				return approvalResult([]byte(`{"behavior":"deny","message":"Denied by user"}`)), nil, nil
+			}
+			return approvalResult([]byte(`{"behavior":"deny","message":"Approval timed out"}`)), nil, nil
+		case <-ticker.C:
+		}
+	}
+}
+
+func approvalAllowResult(input json.RawMessage) (*sdk.CallToolResult, any, error) {
+	data, err := json.Marshal(struct {
+		Behavior     string          `json:"behavior"`
+		UpdatedInput json.RawMessage `json:"updatedInput"`
+	}{"allow", input})
+	return approvalResult(data), nil, err
+}
+
+func approvalResult(data []byte) *sdk.CallToolResult {
+	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}
 }
 
 func Check(ctx context.Context, t sdk.Transport) ([]*sdk.Tool, time.Duration, error) {
