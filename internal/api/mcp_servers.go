@@ -509,13 +509,18 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	oauthClient, hasOAuthClient, err := snapshotMCPSecret(id, "oauth-client")
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	envSecret, hasEnv, err := snapshotMCPSecret(id, "env")
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	previous := map[string]string{"env": envSecret, "bearer": bearer, "oauth": oauth}
-	present := map[string]bool{"env": hasEnv, "bearer": hasBearer, "oauth": hasOAuth}
+	previous := map[string]string{"env": envSecret, "bearer": bearer, "oauth": oauth, "oauth-client": oauthClient}
+	present := map[string]bool{"env": hasEnv, "bearer": hasBearer, "oauth": hasOAuth, "oauth-client": hasOAuthClient}
 	changed := []string{}
 	if len(in.Env) > 0 {
 		if err := applyMCPSecret(id, "env", envJSON, len(env) > 0); err != nil {
@@ -553,6 +558,16 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		changed = append(changed, "oauth")
+	}
+	if config.Auth != "oauth" && present["oauth-client"] {
+		if err := applyMCPSecret(id, "oauth-client", "", false); err != nil {
+			if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
+				err = fmt.Errorf("%w; restore secrets: %v", err, restoreErr)
+			}
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		changed = append(changed, "oauth-client")
 	}
 	argsJSON, err := json.Marshal(config.Args)
 	if err != nil {
@@ -593,7 +608,7 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 	previous := map[string]string{}
 	present := map[string]bool{}
-	for _, suffix := range []string{"env", "bearer", "oauth"} {
+	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client"} {
 		value, exists, err := snapshotMCPSecret(id, suffix)
 		if err != nil {
 			errw(w, http.StatusInternalServerError, err.Error())
@@ -602,7 +617,7 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		previous[suffix], present[suffix] = value, exists
 	}
 	changed := []string{}
-	for _, suffix := range []string{"env", "bearer", "oauth"} {
+	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client"} {
 		if !present[suffix] {
 			continue
 		}
@@ -667,6 +682,12 @@ func (s *Server) enabledMCPServers() ([]mcpServerSpec, error) {
 			}
 			if err == nil {
 				spec.Headers["Authorization"] = "Bearer " + token
+			}
+		}
+		if server.Auth == "oauth" {
+			spec.OAuthHeader, err = s.oauthHeaderIfPresent(context.Background(), server)
+			if err != nil {
+				return nil, err
 			}
 		}
 		specs = append(specs, spec)

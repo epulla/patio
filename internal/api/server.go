@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,9 @@ type Server struct {
 	dbDir           string
 	chats           *chatManager
 	revealFile      func(string) error
+	openOAuthURL    func(string) error
+	oauthMu         sync.Mutex
+	oauthLogins     map[string]bool
 	handler         http.Handler
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
@@ -43,6 +47,7 @@ type Options struct {
 	findOpencode    func() (string, error)
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
+	openOAuthURL    func(string) error
 }
 
 func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {
@@ -56,7 +61,10 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if opts.mcpConnect == nil {
 		opts.mcpConnect = connectMCP
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, oauthLogins: make(map[string]bool)}
+	if s.openOAuthURL == nil {
+		s.openOAuthURL = openLoginURL
+	}
 	opts.version = version
 	s.chats = newChatManager(db, opts)
 	s.chats.dbDir = s.dbDir
@@ -73,6 +81,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("DELETE /api/connectors/{id}", s.deleteConnector)
 	m.HandleFunc("GET /api/mcp-servers", s.listMCPServers)
 	m.HandleFunc("GET /api/mcp-servers/{id}/check", s.checkMCPServer)
+	m.HandleFunc("POST /api/mcp-servers/{id}/login", s.mcpServerLogin)
 	m.HandleFunc("POST /api/mcp-servers", s.createMCPServer)
 	m.HandleFunc("PUT /api/mcp-servers/{id}", s.updateMCPServer)
 	m.HandleFunc("DELETE /api/mcp-servers/{id}", s.deleteMCPServer)
