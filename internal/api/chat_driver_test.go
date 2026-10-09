@@ -171,10 +171,13 @@ func TestRequestApproval(t *testing.T) {
 }
 
 func TestBuildClaudeArgs(t *testing.T) {
-	args, err := buildClaudeArgs("/app/mt", "/data/board.db", "chat-id", "sonnet", "session-id")
+	configPath, err := writeClaudeMCPConfig(t.TempDir(), map[string]any{"my-tickets": map[string]any{
+		"type": "stdio", "command": "/app/mt", "args": []string{"mcp", "-d", "/data/board.db", "-approve-chat", "chat-id"},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	args := buildClaudeArgsWithConfig("sonnet", "session-id", configPath)
 	joined := strings.Join(args, " ")
 	for _, want := range []string{"-p", "--append-system-prompt", "/tickets/<ticket id>", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__my-tickets__approve", "--resume session-id"} {
 		if !strings.Contains(joined, want) {
@@ -186,8 +189,15 @@ func TestBuildClaudeArgs(t *testing.T) {
 		t.Fatalf("system prompt args = %v", args)
 	}
 	index := slices.Index(args, "--mcp-config")
-	if index < 0 || index+1 == len(args) {
+	if index < 0 || index+1 == len(args) || args[index+1] != configPath {
 		t.Fatalf("missing MCP config args: %v", args)
+	}
+	if strings.Contains(joined, "approve-chat") || strings.Contains(joined, "/data/board.db") {
+		t.Fatalf("Claude config leaked in argv: %q", joined)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 	var config struct {
 		Servers map[string]struct {
@@ -195,7 +205,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 			Args    []string `json:"args"`
 		} `json:"mcpServers"`
 	}
-	if err := json.Unmarshal([]byte(args[index+1]), &config); err != nil {
+	if err := json.Unmarshal(data, &config); err != nil {
 		t.Fatal(err)
 	}
 	server := config.Servers["my-tickets"]

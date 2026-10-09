@@ -42,6 +42,10 @@ func TestCopilotACPDriver(t *testing.T) {
 		},
 		Emit: func(_ string, event any) { events <- event },
 	})
+	addChatMCPTestServers(t, server)
+	if err := keyring.Set(connectorService, connectorSecret(connectorID), "copilot-test-secret"); err != nil {
+		t.Fatal(err)
+	}
 	defer server.Close()
 	server.chats.approvalPollInterval = time.Millisecond
 	for i, process := range processes {
@@ -216,7 +220,17 @@ func serveCopilotFake(process *pipeChatProcess, method func(acpMessage), process
 			var params map[string]any
 			_ = json.Unmarshal(request.Params, &params)
 			servers, ok := params["mcpServers"].([]any)
-			if !ok || len(servers) != 1 || servers[0].(map[string]any)["name"] != "my-tickets" || len(servers[0].(map[string]any)["env"].([]any)) != 0 {
+			if !ok || len(servers) != 3 || servers[0].(map[string]any)["name"] != "my-tickets" || len(servers[0].(map[string]any)["env"].([]any)) != 0 {
+				return
+			}
+			stdio := servers[1].(map[string]any)
+			stdioEnv := stdio["env"].([]any)
+			if stdio["name"] != "stdio-test" || stdioEnv[0].(map[string]any)["name"] != "TOKEN" || stdioEnv[0].(map[string]any)["value"] != "stdio-secret" {
+				return
+			}
+			httpServer := servers[2].(map[string]any)
+			headers := httpServer["headers"].([]any)
+			if httpServer["type"] != "http" || httpServer["name"] != "http-test" || headers[0].(map[string]any)["name"] != "Authorization" || headers[0].(map[string]any)["value"] != "Bearer http-secret" {
 				return
 			}
 			if request.Method == "session/load" && params["sessionId"] != "session-copilot" {

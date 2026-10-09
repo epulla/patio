@@ -47,6 +47,15 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	if err != nil {
 		return nil, fmt.Errorf("find codex: %w", err)
 	}
+	external, err := m.chatMCPServers(c.ID)
+	if err != nil {
+		return nil, err
+	}
+	ticket, err := m.ticketMCPServerSpec()
+	if err != nil {
+		return nil, err
+	}
+	servers := codexMCPServers(ticket, external)
 	factory := m.options.codexStart
 	if factory == nil {
 		factory = func(ctx context.Context, path string, env []string, isolated bool, version, cwd string, overrides ...string) (codexClient, error) {
@@ -68,43 +77,40 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		var result json.RawMessage
 		err = client.Call(ctx, "thread/resume", map[string]any{
 			"threadId": driver.threadID, "approvalPolicy": "on-request", "sandbox": "read-only",
+			"config": map[string]any{"mcp_servers": servers},
 		}, &result)
 	} else {
-		var spec map[string]any
-		spec, err = m.ticketMCPServerSpec()
-		if err == nil {
-			var result struct {
-				Thread struct {
-					ID string `json:"id"`
-				} `json:"thread"`
+		var result struct {
+			Thread struct {
+				ID string `json:"id"`
+			} `json:"thread"`
+		}
+		params := map[string]any{
+			"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "read-only",
+			"config": map[string]any{"mcp_servers": servers},
+		}
+		if c.Model != "" {
+			params["model"] = c.Model
+		}
+		err = client.Call(ctx, "thread/start", params, &result)
+		if err != nil {
+			_ = client.Close()
+			overrides, overrideErr := codexMCPOverrides(ticket)
+			if overrideErr != nil {
+				cancel()
+				return nil, overrideErr
 			}
-			params := map[string]any{
-				"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "read-only",
-				"config": map[string]any{"mcp_servers": map[string]any{"my-tickets": spec}},
-			}
-			if c.Model != "" {
-				params["model"] = c.Model
-			}
-			err = client.Call(ctx, "thread/start", params, &result)
-			if err != nil {
-				_ = client.Close()
-				overrides, overrideErr := codexMCPOverrides(spec)
-				if overrideErr != nil {
-					cancel()
-					return nil, overrideErr
-				}
-				client, err = start(overrides...)
-				if err == nil {
-					driver.client = client
-					params["config"] = map[string]any{}
-					err = client.Call(ctx, "thread/start", params, &result)
-				}
-			}
+			client, err = start(overrides...)
 			if err == nil {
-				driver.threadID = result.Thread.ID
-				if driver.threadID == "" {
-					err = errors.New("Codex thread/start returned no thread id")
-				}
+				driver.client = client
+				params["config"] = map[string]any{"mcp_servers": codexExternalMCPServers(external)}
+				err = client.Call(ctx, "thread/start", params, &result)
+			}
+		}
+		if err == nil {
+			driver.threadID = result.Thread.ID
+			if driver.threadID == "" {
+				err = errors.New("Codex thread/start returned no thread id")
 			}
 		}
 	}
@@ -119,6 +125,18 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	rt.driver = driver
 	go driver.watch()
 	return driver, nil
+}
+
+func codexExternalMCPServers(external []mcpServerSpec) map[string]any {
+	servers := make(map[string]any, len(external))
+	for _, spec := range external {
+		if spec.Kind == "stdio" {
+			servers[spec.Name] = map[string]any{"command": spec.Command, "args": spec.Args, "env": nonNilMap(spec.Env)}
+			continue
+		}
+		servers[spec.Name] = map[string]any{"url": spec.URL, "http_headers": mcpSpecHeaders(spec)}
+	}
+	return servers
 }
 
 func codexMCPOverrides(spec map[string]any) ([]string, error) {

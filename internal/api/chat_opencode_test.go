@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -44,6 +45,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 			return fake.start(args, env)
 		},
 	})
+	addChatMCPTestServers(t, server)
 	t.Cleanup(func() {
 		if err := server.Close(); err != nil {
 			t.Error(err)
@@ -216,9 +218,12 @@ func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
 	var config struct {
 		Permission map[string]string `json:"permission"`
 		MCP        map[string]struct {
-			Type    string   `json:"type"`
-			Command []string `json:"command"`
-			Enabled bool     `json:"enabled"`
+			Type        string            `json:"type"`
+			Command     []string          `json:"command"`
+			Environment map[string]string `json:"environment"`
+			URL         string            `json:"url"`
+			Headers     map[string]string `json:"headers"`
+			Enabled     bool              `json:"enabled"`
 		} `json:"mcp"`
 	}
 	if port == "" || decodeErr != nil || len(secret) != 32 || json.Unmarshal([]byte(configRaw), &config) != nil {
@@ -228,8 +233,16 @@ func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
 		return nil, fmt.Errorf("unexpected permission config: %#v", config.Permission)
 	}
 	mcp := config.MCP["my-tickets"]
-	if mcp.Type != "local" || !mcp.Enabled || len(mcp.Command) != 4 || mcp.Command[1] != "mcp" || mcp.Command[2] != "-d" || mcp.Command[3] == "" {
+	if len(config.MCP) != 3 || config.MCP["disabled-test"].Type != "" || mcp.Type != "local" || !mcp.Enabled || len(mcp.Command) != 4 || mcp.Command[1] != "mcp" || mcp.Command[2] != "-d" || mcp.Command[3] == "" {
 		return nil, fmt.Errorf("unexpected ticket MCP config: %#v", mcp)
+	}
+	stdio := config.MCP["stdio-test"]
+	if stdio.Type != "local" || !reflect.DeepEqual(stdio.Command[1:], []string{"--fixture"}) || stdio.Environment["TOKEN"] != "stdio-secret" {
+		return nil, fmt.Errorf("unexpected external stdio MCP config: %#v", stdio)
+	}
+	httpServer := config.MCP["http-test"]
+	if httpServer.Type != "remote" || httpServer.URL != "https://mcp.example.test/mcp" || httpServer.Headers["Authorization"] != "Bearer http-secret" {
+		return nil, fmt.Errorf("unexpected external HTTP MCP config: %#v", httpServer)
 	}
 	f.mu.Lock()
 	f.serverStarts++

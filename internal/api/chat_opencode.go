@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -44,6 +45,7 @@ func (p *opencodeCommand) Wait() error {
 
 type opencodeServer struct {
 	connectorID string
+	registryKey string
 	baseURL     string
 	password    string
 	client      *http.Client
@@ -92,7 +94,11 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 	if kind != "opencode" {
 		return nil, errChatUnsupported
 	}
-	server, err := acquireOpenCodeServer(m, *c.ConnectorID, actualConfigDir)
+	external, err := m.chatMCPServers(c.ID)
+	if err != nil {
+		return nil, err
+	}
+	server, err := acquireOpenCodeServer(m, *c.ConnectorID, actualConfigDir, external)
 	if err != nil {
 		return nil, err
 	}
@@ -111,13 +117,7 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 	return driver, nil
 }
 
-func acquireOpenCodeServer(m *chatManager, connectorID, configDir string) (*opencodeServer, error) {
-	opencodeServers.Lock()
-	defer opencodeServers.Unlock()
-	if server := opencodeServers.byConnector[connectorID]; server != nil {
-		server.refs++
-		return server, nil
-	}
+func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, external []mcpServerSpec) (*opencodeServer, error) {
 	finder := m.options.findOpencode
 	if finder == nil {
 		finder = func() (string, error) { return connectorcli.Find("opencode") }
@@ -153,10 +153,18 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string) (*open
 	}
 	config, err := json.Marshal(map[string]any{
 		"permission": map[string]string{"*": "ask", "edit": "ask", "bash": "ask", "webfetch": "ask"},
-		"mcp":        map[string]any{"my-tickets": map[string]any{"type": "local", "command": append([]string{exe}, mcpArgs...), "enabled": true}},
+		"mcp":        opencodeMCPServers(exe, mcpArgs, external),
 	})
 	if err != nil {
 		return nil, err
+	}
+	keyHash := sha256.Sum256(config)
+	registryKey := connectorID + ":" + fmt.Sprintf("%x", keyHash[:])
+	opencodeServers.Lock()
+	defer opencodeServers.Unlock()
+	if server := opencodeServers.byConnector[registryKey]; server != nil {
+		server.refs++
+		return server, nil
 	}
 	starter := m.options.opencodeStarter
 	if starter == nil {
@@ -171,7 +179,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string) (*open
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
-	server := &opencodeServer{connectorID: connectorID, baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
+	server := &opencodeServer{connectorID: connectorID, registryKey: registryKey, baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), chats: make(map[string]*opencodeRuntime), refs: 1}
 	if err := server.ready(); err != nil {
 		cancel()
@@ -179,7 +187,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string) (*open
 		_ = process.Wait()
 		return nil, err
 	}
-	opencodeServers.byConnector[connectorID] = server
+	opencodeServers.byConnector[registryKey] = server
 	go server.events()
 	return server, nil
 }
@@ -342,8 +350,8 @@ func (d *opencodeRuntime) releaseServer() {
 		opencodeServers.Lock()
 		s.refs--
 		last := s.refs == 0
-		if last && opencodeServers.byConnector[s.connectorID] == s {
-			delete(opencodeServers.byConnector, s.connectorID)
+		if last && opencodeServers.byConnector[s.registryKey] == s {
+			delete(opencodeServers.byConnector, s.registryKey)
 		}
 		opencodeServers.Unlock()
 		if last {

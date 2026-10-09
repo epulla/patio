@@ -286,6 +286,18 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 	if _, err := server.oauthHeader(t.Context(), created.ID); err == nil || err.Error() != "Sign in again" {
 		t.Fatalf("refresh failure = %v, want Sign in again", err)
 	}
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if specs, err := server.enabledMCPServers(); err != nil || len(specs) != 1 || specs[0].AuthError == nil {
+		t.Fatalf("enabled specs after refresh failure = %#v, %v", specs, err)
+	}
+	if specs, err := server.chats.chatMCPServers(chatID); err != nil || len(specs) != 0 {
+		t.Fatalf("chat MCP specs after refresh failure = %#v, %v", specs, err)
+	}
+	var role, content string
+	if err := database.QueryRow(`SELECT role,content FROM chat_message WHERE chat_id=?`, chatID).Scan(&role, &content); err != nil || role != "error" || content != "MCP server protected-oauth skipped: sign in again" {
+		t.Fatalf("refresh failure note = %q %q, %v", role, content, err)
+	}
 
 	state.mu.Lock()
 	state.failRefresh, state.badState = false, true

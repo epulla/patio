@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -31,6 +32,8 @@ type claudeRuntime struct {
 	runtime     *chatRuntime
 	process     chatProcess
 	processDone chan struct{}
+	configFile  string
+	configOnce  sync.Once
 	assistant   strings.Builder
 }
 
@@ -45,17 +48,31 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 	if err != nil {
 		return nil, fmt.Errorf("find claude: %w", err)
 	}
-	exe, err := os.Executable()
+	external, err := m.chatMCPServers(c.ID)
 	if err != nil {
 		return nil, err
 	}
-	builder := m.options.commandBuilder
-	if builder == nil {
-		builder = buildClaudeArgs
+	exe := m.mcpExecutable
+	if exe == "" {
+		exe, err = os.Executable()
+		if err != nil {
+			return nil, err
+		}
 	}
-	args, err := builder(exe, m.dbPath, c.ID, c.Model, stringValue(c.SessionID))
-	if err != nil {
-		return nil, err
+	var args []string
+	configPath := ""
+	if m.options.commandBuilder == nil {
+		ticket := map[string]any{"type": "stdio", "command": exe, "args": []string{"mcp", "-d", m.dbPath, "-approve-chat", c.ID}}
+		configPath, err = writeClaudeMCPConfig(m.dbDir, claudeMCPServers(ticket, external))
+		if err != nil {
+			return nil, err
+		}
+		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath)
+	} else {
+		args, err = m.options.commandBuilder(exe, m.dbPath, c.ID, c.Model, stringValue(c.SessionID))
+		if err != nil {
+			return nil, err
+		}
 	}
 	factory := m.options.processFactory
 	if factory == nil {
@@ -63,9 +80,12 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 	}
 	process, err := factory(path, args, connectorEnv("claude", configDir), c.Workdir)
 	if err != nil {
+		if configPath != "" {
+			_ = os.Remove(configPath)
+		}
 		return nil, fmt.Errorf("start claude: %w", err)
 	}
-	driver := &claudeRuntime{manager: m, chatID: c.ID, runtime: rt, process: process, processDone: make(chan struct{})}
+	driver := &claudeRuntime{manager: m, chatID: c.ID, runtime: rt, process: process, processDone: make(chan struct{}), configFile: configPath}
 	rt.driver = driver
 	go driver.watch()
 	return driver, nil
@@ -78,22 +98,53 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func buildClaudeArgs(exe, dbPath, chatID, model, sessionID string) ([]string, error) {
-	config, err := json.Marshal(map[string]any{"mcpServers": map[string]any{"my-tickets": map[string]any{
-		"type": "stdio", "command": exe, "args": []string{"mcp", "-d", dbPath, "-approve-chat", chatID},
-	}}})
-	if err != nil {
-		return nil, err
-	}
+func buildClaudeArgsWithConfig(model, sessionID, configPath string) []string {
 	args := []string{"-p", "--append-system-prompt", chatSystemPrompt, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
-	args = append(args, "--mcp-config", string(config), "--strict-mcp-config", "--permission-prompt-tool", "mcp__my-tickets__approve")
+	args = append(args, "--mcp-config", configPath, "--strict-mcp-config", "--permission-prompt-tool", "mcp__my-tickets__approve")
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
-	return args, nil
+	return args
+}
+
+func writeClaudeMCPConfig(dbDir string, servers map[string]any) (string, error) {
+	config, err := json.Marshal(map[string]any{"mcpServers": servers})
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(dbDir, "chats", ".tmp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp(dir, "claude-mcp-*.json")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	if _, err := file.Write(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	return path, nil
+}
+
+func (d *claudeRuntime) removeConfig() {
+	d.configOnce.Do(func() {
+		if d.configFile != "" {
+			_ = os.Remove(d.configFile)
+		}
+	})
 }
 
 func (d *claudeRuntime) send(text string) error {
@@ -141,6 +192,7 @@ func (d *claudeRuntime) watch() {
 	}
 	d.runtime.mu.Unlock()
 	close(d.processDone)
+	d.removeConfig()
 	if !expected && (unfinished || waitErr != nil || scanErr != nil || stderr.String() != "") {
 		parts := []string{stderr.String()}
 		if scanErr != nil {
@@ -165,12 +217,14 @@ func (d *claudeRuntime) stop() error {
 		_ = d.process.Kill()
 		<-d.processDone
 	}
+	d.removeConfig()
 	return nil
 }
 
 func (d *claudeRuntime) close() error {
 	_ = d.process.Kill()
 	<-d.processDone
+	d.removeConfig()
 	return nil
 }
 

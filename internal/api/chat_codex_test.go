@@ -67,8 +67,18 @@ func TestCodexTurnOverPipes(t *testing.T) {
 						}
 						config, _ := params["config"].(map[string]any)
 						servers, _ := config["mcp_servers"].(map[string]any)
-						if servers["my-tickets"] == nil {
+						if len(servers) != 3 || servers["my-tickets"] == nil || servers["disabled-test"] != nil {
 							return fmt.Errorf("thread/start missing MCP config: %#v", config)
+						}
+						stdio, _ := servers["stdio-test"].(map[string]any)
+						stdioEnv, _ := stdio["env"].(map[string]any)
+						if stdio["command"] == nil || stdioEnv["TOKEN"] != "stdio-secret" {
+							return fmt.Errorf("Codex stdio config = %#v", stdio)
+						}
+						httpServer, _ := servers["http-test"].(map[string]any)
+						headers, _ := httpServer["http_headers"].(map[string]any)
+						if httpServer["url"] != "https://mcp.example.test/mcp" || headers["Authorization"] != "Bearer http-secret" {
+							return fmt.Errorf("Codex HTTP config = %#v", httpServer)
 						}
 						if err := writeCodexResponse(write, request.ID, map[string]any{"thread": map[string]string{"id": "thread-fixture"}}); err != nil {
 							return err
@@ -126,6 +136,7 @@ func TestCodexTurnOverPipes(t *testing.T) {
 					return client.client, nil
 				},
 			})
+			addChatMCPTestServers(t, server)
 			server.chats.approvalPollInterval = time.Millisecond
 			if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "make file"}, nil); code != http.StatusAccepted {
 				t.Fatalf("send status = %d", code)

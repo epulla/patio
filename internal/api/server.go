@@ -68,6 +68,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	opts.version = version
 	s.chats = newChatManager(db, opts)
 	s.chats.dbDir = s.dbDir
+	s.chats.enabledMCPServers = s.enabledMCPServers
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/connectors", s.listConnectors)

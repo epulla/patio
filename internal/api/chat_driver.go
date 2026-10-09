@@ -44,12 +44,47 @@ type chatManager struct {
 	dbPath               string
 	dbDir                string
 	mcpExecutable        string
+	enabledMCPServers    func() ([]mcpServerSpec, error)
 	emitEvent            func(string, any)
 	options              Options
 	approvalTimeout      time.Duration
 	approvalPollInterval time.Duration
 	mu                   sync.Mutex
 	chats                map[string]*chatRuntime
+}
+
+func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
+	if m.enabledMCPServers == nil {
+		return nil, nil
+	}
+	specs, err := m.enabledMCPServers()
+	if err != nil {
+		return nil, err
+	}
+	servers := make([]mcpServerSpec, 0, len(specs))
+	for _, spec := range specs {
+		if spec.AuthError != nil || spec.Auth == "oauth" && spec.OAuthHeader == nil {
+			message := "MCP server " + spec.Name + " skipped: sign in again"
+			if _, err := InsertChatMessage(m.db, chatID, "error", message); err != nil {
+				return nil, err
+			}
+			m.emit(chatID, map[string]any{"type": "error", "message": message})
+			continue
+		}
+		servers = append(servers, spec)
+	}
+	return servers, nil
+}
+
+func mcpSpecHeaders(spec mcpServerSpec) map[string]string {
+	headers := make(map[string]string, len(spec.Headers)+1)
+	for name, value := range spec.Headers {
+		headers[name] = value
+	}
+	if spec.OAuthHeader != nil {
+		headers["Authorization"] = *spec.OAuthHeader
+	}
+	return headers
 }
 
 type chatRuntime struct {

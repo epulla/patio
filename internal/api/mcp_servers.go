@@ -48,6 +48,7 @@ type mcpServerSpec struct {
 	Headers     map[string]string
 	Auth        string
 	OAuthHeader *string
+	AuthError   error
 	stderr      *mcpStderr
 }
 
@@ -685,9 +686,10 @@ func (s *Server) enabledMCPServers() ([]mcpServerSpec, error) {
 			}
 		}
 		if server.Auth == "oauth" {
-			spec.OAuthHeader, err = s.oauthHeaderIfPresent(context.Background(), server)
-			if err != nil {
-				return nil, err
+			if !server.HasOAuthToken {
+				spec.AuthError = errors.New("Sign in again")
+			} else {
+				spec.OAuthHeader, spec.AuthError = s.oauthHeaderIfPresent(context.Background(), server)
 			}
 		}
 		specs = append(specs, spec)

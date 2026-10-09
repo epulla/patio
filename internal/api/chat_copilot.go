@@ -38,6 +38,7 @@ type copilotRuntime struct {
 	stopped     atomic.Bool
 	closing     atomic.Bool
 	authFailed  bool
+	external    []mcpServerSpec
 }
 
 func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (chatRuntimeDriver, error) {
@@ -48,6 +49,10 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	path, err := finder()
 	if err != nil {
 		return nil, fmt.Errorf("find copilot: %w", err)
+	}
+	external, err := m.chatMCPServers(c.ID)
+	if err != nil {
+		return nil, err
 	}
 	secret, err := keyring.Get(connectorService, connectorSecret(*c.ConnectorID))
 	if errors.Is(err, keyring.ErrNotFound) {
@@ -65,7 +70,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 		return nil, fmt.Errorf("start copilot: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &copilotRuntime{manager: m, chatID: c.ID, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel}
+	d := &copilotRuntime{manager: m, chatID: c.ID, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external}
 	d.client = newACPClient(process.Stdin(), process.Stdout(), d.handleMessage)
 	go d.watch()
 	if err := d.initialize(c); err != nil {
@@ -90,11 +95,10 @@ func (d *copilotRuntime) initialize(c chat) error {
 	if err != nil {
 		return err
 	}
-	server := map[string]any{"name": "my-tickets", "command": mcp["command"], "args": mcp["args"], "env": []any{}}
 	d.replaying.Store(true)
 	var session json.RawMessage
 	method := "session/new"
-	params := map[string]any{"cwd": c.Workdir, "mcpServers": []any{server}}
+	params := map[string]any{"cwd": c.Workdir, "mcpServers": copilotMCPServers(mcp, d.external)}
 	if c.SessionID != nil && *c.SessionID != "" {
 		method = "session/load"
 		params["sessionId"] = *c.SessionID
