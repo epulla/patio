@@ -1,6 +1,6 @@
 # my-tickets
 
-Local kanban ticket desktop app built with Go, Wails, React, and SQLite. MCP stdio subcommand gives AI clients access to same database.
+Local kanban ticket desktop app built with Go, Wails, React, and SQLite. Chat with AI coding CLIs you already use (Claude Code, Codex, GitHub Copilot, opencode) from inside the app, and give any AI client access to your tickets through an MCP stdio subcommand.
 
 Port of the prod-tickets schema, plus a `ticket_status_transition` table that records every status change for future reporting.
 
@@ -12,7 +12,20 @@ Port of the prod-tickets schema, plus a `ticket_status_transition` table that re
 - Export: board as Excel, CSV, or JSON backup; ticket as JSON or Markdown.
 - Import: a board JSON backup imports as a new board, e.g. on another computer. A colliding short name gets a suffix (`NB` -> `NB2`).
 - Print: clean printable page with history and transitions.
+- Ticket search: find tickets by title or code across all boards.
+- Calendar: calendar items plus tickets with due dates.
 - Hidden: comments and assignee work in the API; the UI shows them only with `-show-hidden`.
+
+## AI
+
+The **AI** section in the sidebar has four pages. Settings (gear at the bottom of the sidebar) has allowed folders and MCP status.
+
+- **Connectors**: connect the official CLIs installed on your computer, signed in with your own account: Claude Code (`claude`), Codex (`codex`), GitHub Copilot (`copilot`), and opencode (v1 and v2). CLI cards show sign-in status, plan, and usage quota where the CLI or provider reports it, a **Log in** button, and an install command when the CLI is missing. Add more than one account per CLI through a separate config directory (not supported for opencode on Windows); extra Copilot accounts use a fine-grained GitHub token with the "Copilot Requests" permission. Their providers' terms apply. A Local AI connector (Ollama, LM Studio, llama.cpp) can be saved and tested; chatting with it is not built yet.
+- **Chats**: streaming chats through any CLI connector, with a model picker and saved history. Replies render as Markdown; tickets and boards the AI touches are linked, and file links open in Finder/Explorer. Every write or command the CLI wants to run shows an approval card (Allow once / Deny); Codex runs external MCP tools without asking. A chat works inside an allowed folder you pick, or an empty scratch folder of its own. Idle chat processes close after 10 minutes.
+- **MCP**: add external MCP servers, as a local command (stdio) or a remote URL (HTTP, with a token or OAuth sign-in). Each card shows health and tools; enabled servers are offered to every chat.
+- **Skills**: write or import `SKILL.md` skills (name, description, Markdown instructions). Enabled skills reach every chat through the `list_skills` and `load_skill` MCP tools.
+
+Secrets (API keys, tokens, OAuth tokens, MCP env values) are stored in the OS keychain, never in the database.
 
 ## Install and run
 
@@ -38,7 +51,9 @@ Override with `-d path/to/file.db`.
 - Linux: `$XDG_DATA_HOME/my-tickets/` or `~/.local/share/my-tickets/`
 - Windows: `%LOCALAPPDATA%\my-tickets\`
 
-Back up a board with its JSON export, or copy the `.db` file while the app is stopped.
+Chat scratch folders and extra connector accounts live in `chats/` and `connectors/` next to the database file.
+
+Back up a board with its JSON export, or copy the `.db` file while the app is stopped. Secrets in the keychain are not part of the backup.
 
 ## Build from source
 
@@ -55,6 +70,7 @@ On macOS, install Xcode command line tools. Linux also needs GTK 3 and WebKit2GT
 
 MCP runs as `my-tickets mcp` over stdio and shares database with desktop app. It acts as Martin, the AI persona shown with an AI badge in app. Use `-d path` after `mcp` if database is not at default location.
 
+- Tools cover boards, tickets, comments, calendar items, and skills (`list_skills`, `load_skill`).
 - `create_board` accepts optional `statuses`: `[{"name":"...","type?":"classic"|"temporary","hide_after_days?":1}]`. Setting `hide_after_days` without `type` implies `temporary`; omitting both implies `classic`.
 
 Configure client with installed executable path:
@@ -89,3 +105,6 @@ make test
 3. Reorder columns by dragging and with the left/right buttons.
 4. Open a ticket, click **Print**, check the print preview.
 5. Export the board as JSON, import it from the boards list, check the copy gets a new short name.
+6. Connectors: add a Claude Code (or other CLI) connector on the existing login; the card shows account and plan.
+7. Chats: start a chat, ask for a reply, then ask it to create a file; allow once, then deny on a second try.
+8. MCP: add a server, check it turns healthy; Skills: create a skill, start a new chat, check it is used.
