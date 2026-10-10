@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -33,6 +34,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake := newOpenCodeFake(t)
+	var versionChecks atomic.Int32
 	var emittedMu sync.Mutex
 	var emitted []map[string]any
 	server := New(database, "local", false, "dev", root, Options{
@@ -42,8 +44,11 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 			emitted = append(emitted, event.(map[string]any))
 			emittedMu.Unlock()
 		},
-		findOpencode:  func() (string, error) { return "opencode-test", nil },
-		opencodeMajor: func(context.Context, string, []string) (int, error) { return 1, nil },
+		findOpencode: func() (string, error) { return "opencode-test", nil },
+		opencodeMajor: func(context.Context, string, []string) (int, error) {
+			versionChecks.Add(1)
+			return 1, nil
+		},
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
 			return fake.start(args, env)
 		},
@@ -68,6 +73,9 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	fake.mu.Lock()
 	if fake.sessions != 1 || fake.serverStarts != 1 || fake.eventStreams != 1 {
 		t.Fatalf("sessions=%d server starts=%d event streams=%d", fake.sessions, fake.serverStarts, fake.eventStreams)
+	}
+	if got := versionChecks.Load(); got != 1 {
+		t.Fatalf("version checks = %d; want one per server start", got)
 	}
 	if !slices.Contains(fake.promptSessions, "resume-session") {
 		t.Fatalf("reused session was not prompted: %v", fake.promptSessions)
@@ -473,10 +481,14 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake := newOpenCodeV2Fake(t)
+	var versionChecks atomic.Int32
 	server := New(database, "local", false, "dev", root, Options{
-		DBPath:        filepath.Join(root, "test.db"),
-		findOpencode:  func() (string, error) { return "opencode-v2-test", nil },
-		opencodeMajor: func(context.Context, string, []string) (int, error) { return 2, nil },
+		DBPath:       filepath.Join(root, "test.db"),
+		findOpencode: func() (string, error) { return "opencode-v2-test", nil },
+		opencodeMajor: func(context.Context, string, []string) (int, error) {
+			versionChecks.Add(1)
+			return 2, nil
+		},
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
 			return fake.start(args, env)
 		},
@@ -542,6 +554,9 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	}
 	if fake.model != "opencode/big-pickle" || fake.directory == "" || !fake.configParsed {
 		t.Fatalf("v2 create model=%q directory=%q config parsed=%v", fake.model, fake.directory, fake.configParsed)
+	}
+	if got := versionChecks.Load(); got != 1 {
+		t.Fatalf("version checks = %d; want one per server start", got)
 	}
 }
 
