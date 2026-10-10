@@ -69,7 +69,8 @@ func TestParseOpenCodeAuthJSON(t *testing.T) {
 		logged             bool
 		wantErr            bool
 	}{
-		{"v2 logged out fixture", string(fixture), "", false, false},
+		{"v2 logged in fixture", string(fixture), "OpenAI", true, false},
+		{"v2 logged out", `[]`, "", false, false},
 		{"v2 non-empty list", `[{"provider":"openai"}]`, "openai", true, false},
 		{"v2 account field", `[{"email":"user@example.com"}]`, "user@example.com", true, false},
 		{"invalid JSON", "not json", "", false, true},

@@ -1,8 +1,12 @@
+data: {"type":"session.execution.started","data":{"sessionID":"<SESSION>"}}
+
 data: {"type":"session.text.started","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0}}
 
 data: {"type":"session.text.delta","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"delta":"Hello "}}
 
 data: {"type":"session.text.delta","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"delta":"there"}}
+
+data: {"type":"session.text.ended","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"text":"Hello there"}}
 
 data: {"type":"session.tool.called","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","id":"<CALL>","name":"write","input":{"path":"hello.txt"},"executed":true}}
 

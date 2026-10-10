@@ -29,7 +29,7 @@ Runs before b2c (`docs/plans/ai-local.md`). Builds on `docs/plans/ai-connectors.
 
    Config uses v2-native `permissions` and `mcp.servers` when the version is 2.
 5. The install hint becomes `curl -fsSL https://opencode.ai/v2/install | bash`. v2 installs to the same `~/.opencode/bin/opencode` path as v1 (plus an `opencode2` shim) and uses the same XDG data and config dirs, so an upgrade replaces v1 and detection needs no new directory.
-6. Live checks run against an isolated v2 sandbox (`$TMPDIR/opencode/v2-sandbox`, own HOME and XDG dirs, installed with `--no-modify-path`; the user's v1 and shell rc files were verified untouched). Recordings live in `$SB/recordings/`. Prompts use a free logged-out model (`opencode/big-pickle` or another `opencode/*` free id), so no credentials or quota are used: at most 3 tiny prompts (reply OK, approval allow, approval deny). v1 stays live-testable with the user's real install until they migrate.
+6. Live checks run against an isolated v2 sandbox (`$TMPDIR/opencode/v2-sandbox`, own HOME and XDG dirs, installed with `--no-modify-path`; the user's v1 and shell rc files were verified untouched). Recordings live in `$SB/recordings/`. Logged-in checks use the smallest model listed by `opencode models` for the `openai` provider and at most 4 tiny prompts (reply OK, approval allow, approval deny, plus one diagnostic prompt only if needed). v1 stays live-testable with the user's real install until they migrate. Live-verified 2026-10-09 on 2.0.26 with a ChatGPT login: reply, approval allow, approval deny through the driver.
 7. Commits use the caveman-commit style.
 
 ## Tasks
