@@ -54,6 +54,22 @@ func opencodeMCPServers(exe string, ticketArgs []string, external []mcpServerSpe
 	return servers
 }
 
+func opencodeV2MCPServers(exe string, ticketArgs []string, external []mcpServerSpec) map[string]any {
+	servers := map[string]any{"my-tickets": map[string]any{
+		"type": "local", "command": append([]string{exe}, ticketArgs...), "disabled": false,
+	}}
+	for _, spec := range external {
+		if spec.Kind == "stdio" {
+			servers[spec.Name] = map[string]any{
+				"type": "local", "command": append([]string{spec.Command}, spec.Args...), "environment": nonNilMap(spec.Env),
+			}
+			continue
+		}
+		servers[spec.Name] = map[string]any{"type": "remote", "url": spec.URL, "headers": mcpSpecHeaders(spec)}
+	}
+	return map[string]any{"servers": servers}
+}
+
 func nonNilMap(values map[string]string) map[string]string {
 	if values == nil {
 		return map[string]string{}

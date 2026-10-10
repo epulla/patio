@@ -80,6 +80,19 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	if opencodeHTTP["type"] != "remote" || opencodeHTTP["url"] != httpServer.URL || opencodeHTTP["headers"].(map[string]string)["Authorization"] != token {
 		t.Fatalf("opencode HTTP config = %#v", opencodeHTTP)
 	}
+	opencodeV2 := opencodeV2MCPServers("/app/my-tickets", ticket["args"].([]string), external)["servers"].(map[string]any)
+	opencodeV2Ticket := opencodeV2["my-tickets"].(map[string]any)
+	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/my-tickets", "mcp", "-d", "/data/test.db"}) {
+		t.Fatalf("opencode v2 ticket config = %#v", opencodeV2Ticket)
+	}
+	opencodeV2Stdio := opencodeV2["stdio-test"].(map[string]any)
+	if opencodeV2Stdio["type"] != "local" || !reflect.DeepEqual(opencodeV2Stdio["command"], []string{"/bin/test", "--fixture"}) || !reflect.DeepEqual(opencodeV2Stdio["environment"], stdio.Env) {
+		t.Fatalf("opencode v2 stdio config = %#v", opencodeV2Stdio)
+	}
+	opencodeV2HTTP := opencodeV2["http-test"].(map[string]any)
+	if opencodeV2HTTP["type"] != "remote" || opencodeV2HTTP["url"] != httpServer.URL || opencodeV2HTTP["headers"].(map[string]string)["Authorization"] != token {
+		t.Fatalf("opencode v2 HTTP config = %#v", opencodeV2HTTP)
+	}
 }
 
 func TestClaudeMCPConfigIsPrivateAndRemoved(t *testing.T) {

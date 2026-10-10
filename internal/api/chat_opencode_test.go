@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -40,7 +42,8 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 			emitted = append(emitted, event.(map[string]any))
 			emittedMu.Unlock()
 		},
-		findOpencode: func() (string, error) { return "opencode-test", nil },
+		findOpencode:  func() (string, error) { return "opencode-test", nil },
+		opencodeMajor: func(context.Context, string, []string) (int, error) { return 1, nil },
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
 			return fake.start(args, env)
 		},
@@ -454,3 +457,362 @@ func (p *openCodeFakeProcess) Kill() error {
 }
 
 func (p *openCodeFakeProcess) Wait() error { <-p.done; return nil }
+
+func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	if _, err := database.Exec(`UPDATE connector SET kind='opencode' WHERE id=?`, connectorID); err != nil {
+		t.Fatal(err)
+	}
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET model='opencode/big-pickle' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	resumeID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET session_id='missing-session',model='opencode/big-pickle' WHERE id=?`, resumeID); err != nil {
+		t.Fatal(err)
+	}
+	fake := newOpenCodeV2Fake(t)
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath:        filepath.Join(root, "test.db"),
+		findOpencode:  func() (string, error) { return "opencode-v2-test", nil },
+		opencodeMajor: func(context.Context, string, []string) (int, error) { return 2, nil },
+		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
+			return fake.start(args, env)
+		},
+	})
+	addChatMCPTestServers(t, server)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "stream"}, nil); code != http.StatusAccepted {
+		t.Fatalf("new v2 chat send status = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	var assistant, tool string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "Hello there" {
+		t.Fatalf("v2 assistant = %q, %v", assistant, err)
+	}
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
+		t.Fatalf("v2 tool summary = %q, %v", tool, err)
+	}
+
+	for _, answer := range []struct {
+		text  string
+		allow bool
+		want  string
+	}{{"permission-once", true, "once"}, {"permission-reject", false, "reject"}} {
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": answer.text}, nil); code != http.StatusAccepted {
+			t.Fatalf("v2 permission send status = %d", code)
+		}
+		approvalID := fake.waitApproval(t, database, chatID)
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": answer.allow}, nil); code != http.StatusOK {
+			t.Fatalf("v2 approval answer status = %d", code)
+		}
+		fake.waitPermission(t, answer.want)
+		waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	}
+
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+resumeID+"/messages", map[string]string{"text": "resume prompt"}, nil); code != http.StatusAccepted {
+		t.Fatalf("v2 resumed chat send status = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(resumeID) })
+	var savedSession string
+	if err := database.QueryRow(`SELECT session_id FROM chat WHERE id=?`, resumeID).Scan(&savedSession); err != nil || savedSession != "ses-v2-2" {
+		t.Fatalf("fallback session = %q, %v", savedSession, err)
+	}
+	var noteCount int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, resumeID, "opencode was upgraded; earlier context was not carried over.").Scan(&noteCount); err != nil || noteCount != 1 {
+		t.Fatalf("upgrade note count = %d, %v", noteCount, err)
+	}
+
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "interrupt"}, nil); code != http.StatusAccepted {
+		t.Fatalf("v2 interrupt send status = %d", code)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/stop", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("v2 interrupt status = %d", code)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if fake.creates != 2 || !slices.Contains(fake.promptSessions, "missing-session") || fake.interrupts != 1 {
+		t.Fatalf("v2 creates=%d prompt sessions=%v interrupts=%d", fake.creates, fake.promptSessions, fake.interrupts)
+	}
+	if fake.model != "opencode/big-pickle" || fake.directory == "" || !fake.configParsed {
+		t.Fatalf("v2 create model=%q directory=%q config parsed=%v", fake.model, fake.directory, fake.configParsed)
+	}
+}
+
+type openCodeV2Fake struct {
+	t              *testing.T
+	mu             sync.Mutex
+	events         chan []byte
+	password       string
+	creates        int
+	directory      string
+	model          string
+	configParsed   bool
+	interrupts     int
+	promptSessions []string
+	permissions    map[string]string
+	permissionDone chan string
+}
+
+func newOpenCodeV2Fake(t *testing.T) *openCodeV2Fake {
+	return &openCodeV2Fake{t: t, events: make(chan []byte, 64), permissions: make(map[string]string), permissionDone: make(chan string, 4)}
+}
+
+func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
+	var port, configRaw string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--port" {
+			port = args[i+1]
+		}
+	}
+	for _, value := range env {
+		switch {
+		case strings.HasPrefix(value, "OPENCODE_SERVER_PASSWORD="):
+			f.password = strings.TrimPrefix(value, "OPENCODE_SERVER_PASSWORD=")
+		case strings.HasPrefix(value, "OPENCODE_CONFIG_CONTENT="):
+			configRaw = strings.TrimPrefix(value, "OPENCODE_CONFIG_CONTENT=")
+		}
+	}
+	var config struct {
+		Permissions []struct {
+			Action   string `json:"action"`
+			Resource string `json:"resource"`
+			Effect   string `json:"effect"`
+		} `json:"permissions"`
+		MCP struct {
+			Servers map[string]struct {
+				Type     string   `json:"type"`
+				Command  []string `json:"command"`
+				Disabled *bool    `json:"disabled"`
+			} `json:"servers"`
+		} `json:"mcp"`
+	}
+	if port == "" || json.Unmarshal([]byte(configRaw), &config) != nil {
+		return nil, fmt.Errorf("invalid v2 config or missing port")
+	}
+	wantPermissions := map[string]bool{"edit": false, "shell": false, "webfetch": false}
+	for _, rule := range config.Permissions {
+		if rule.Resource == "*" && rule.Effect == "ask" {
+			if _, ok := wantPermissions[rule.Action]; ok {
+				wantPermissions[rule.Action] = true
+			}
+		}
+	}
+	ticket := config.MCP.Servers["my-tickets"]
+	if len(config.MCP.Servers) != 3 || !wantPermissions["edit"] || !wantPermissions["shell"] || !wantPermissions["webfetch"] || ticket.Type != "local" || ticket.Disabled == nil || *ticket.Disabled || len(ticket.Command) != 4 {
+		return nil, fmt.Errorf("unexpected v2 opencode config: %#v", config)
+	}
+	f.configParsed = true
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", port))
+	if err != nil {
+		return nil, err
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
+		if f.auth(w, r) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"2.0.26"}`))
+		}
+	})
+	mux.HandleFunc("/api/event", func(w http.ResponseWriter, r *http.Request) {
+		if !f.auth(w, r) {
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		flusher.Flush()
+		for {
+			select {
+			case event := <-f.events:
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", event)
+				flusher.Flush()
+			case <-r.Context().Done():
+				return
+			}
+		}
+	})
+	mux.HandleFunc("/api/session", func(w http.ResponseWriter, r *http.Request) {
+		if !f.auth(w, r) {
+			return
+		}
+		var body struct {
+			Location struct {
+				Directory string `json:"directory"`
+			} `json:"location"`
+			Model struct {
+				ProviderID string `json:"providerID"`
+				ID         string `json:"id"`
+			} `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			f.t.Errorf("decode v2 create body: %v", err)
+		}
+		f.mu.Lock()
+		f.creates++
+		f.directory = body.Location.Directory
+		f.model = body.Model.ProviderID + "/" + body.Model.ID
+		id := fmt.Sprintf("ses-v2-%d", f.creates)
+		f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"id": id}})
+	})
+	mux.HandleFunc("/api/session/", func(w http.ResponseWriter, r *http.Request) {
+		if !f.auth(w, r) {
+			return
+		}
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/session/"), "/")
+		sid := parts[0]
+		if len(parts) == 2 && parts[1] == "prompt" {
+			var body struct {
+				Text string `json:"text"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				f.t.Errorf("decode v2 prompt body: %v", err)
+			}
+			f.mu.Lock()
+			f.promptSessions = append(f.promptSessions, sid)
+			f.mu.Unlock()
+			if sid == "missing-session" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"_tag":"SessionNotFoundError","message":"Session not found"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"id":"msg-test"}}`))
+			fixture := "opencode-v2-chat.sse"
+			switch body.Text {
+			case "permission-once":
+				fixture = "opencode-v2-permission-once.sse"
+			case "permission-reject":
+				fixture = "opencode-v2-permission-reject.sse"
+			case "interrupt":
+				return
+			}
+			f.publishFixture(fixture, sid)
+			return
+		}
+		if len(parts) == 4 && parts[1] == "permission" && parts[3] == "reply" {
+			var body struct {
+				Decision string `json:"decision"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				f.t.Errorf("decode v2 permission reply: %v", err)
+			}
+			f.mu.Lock()
+			f.permissions[parts[2]] = body.Decision
+			f.mu.Unlock()
+			f.permissionDone <- parts[2]
+			typeName := "session.execution.succeeded"
+			if body.Decision == "reject" {
+				typeName = "session.execution.interrupted"
+			}
+			f.publish(map[string]any{"type": typeName, "data": map[string]string{"sessionID": sid}})
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if len(parts) == 2 && parts[1] == "interrupt" {
+			if r.URL.Query().Get("resume") != "false" {
+				f.t.Errorf("v2 interrupt resume query = %q", r.URL.Query().Get("resume"))
+			}
+			f.mu.Lock()
+			f.interrupts++
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	srv := &http.Server{Handler: mux}
+	proc := &openCodeV2FakeProcess{server: srv, done: make(chan struct{}), fake: f}
+	go func() {
+		defer close(proc.done)
+		_ = srv.Serve(listener)
+	}()
+	return proc, nil
+}
+
+func (f *openCodeV2Fake) auth(w http.ResponseWriter, r *http.Request) bool {
+	user, password, ok := r.BasicAuth()
+	if !ok || user != "opencode" || password != f.password {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+func (f *openCodeV2Fake) publish(event any) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		f.t.Errorf("encode v2 event: %v", err)
+		return
+	}
+	f.events <- data
+}
+
+func (f *openCodeV2Fake) publishFixture(name, sessionID string) {
+	f.t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		f.t.Errorf("read v2 fixture %s: %v", name, err)
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		line = strings.ReplaceAll(strings.TrimPrefix(line, "data: "), "<SESSION>", sessionID)
+		line = strings.ReplaceAll(line, "<MESSAGE>", "msg-fixture")
+		line = strings.ReplaceAll(line, "<CALL>", "call-fixture")
+		f.events <- []byte(line)
+	}
+}
+
+func (f *openCodeV2Fake) waitApproval(t *testing.T, database *sql.DB, chatID string) string {
+	t.Helper()
+	var id string
+	waitFor(t, func() bool {
+		return database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&id) == nil
+	})
+	return id
+}
+
+func (f *openCodeV2Fake) waitPermission(t *testing.T, want string) {
+	t.Helper()
+	select {
+	case id := <-f.permissionDone:
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if got := f.permissions[id]; got != want {
+			t.Fatalf("v2 permission decision = %q; want %q", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("v2 permission reply not received")
+	}
+}
+
+type openCodeV2FakeProcess struct {
+	server *http.Server
+	done   chan struct{}
+	fake   *openCodeV2Fake
+	once   sync.Once
+}
+
+func (p *openCodeV2FakeProcess) Kill() error {
+	p.once.Do(func() {
+		_ = p.server.Close()
+		<-p.done
+	})
+	return nil
+}
+
+func (p *openCodeV2FakeProcess) Wait() error { <-p.done; return nil }

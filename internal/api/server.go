@@ -45,6 +45,7 @@ type Options struct {
 	mcpExecutable   string
 	opencodeStarter opencodeProcessStarter
 	findOpencode    func() (string, error)
+	opencodeMajor   func(context.Context, string, []string) (int, error)
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
 	openOAuthURL    func(string) error

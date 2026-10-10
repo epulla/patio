@@ -1,0 +1,3 @@
+data: {"type":"session.tool.called","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","id":"<CALL>","name":"write","input":{"path":"hello.txt","content":"hi"},"executed":false}}
+
+data: {"type":"permission.asked","data":{"id":"per-reject","sessionID":"<SESSION>","action":"edit","resources":["hello.txt"],"save":["*"],"metadata":{"files":[{"file":"hello.txt","status":"added"}]},"source":{"type":"tool","messageID":"<MESSAGE>","id":"<CALL>"}}}

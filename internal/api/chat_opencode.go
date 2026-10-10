@@ -46,6 +46,7 @@ func (p *opencodeCommand) Wait() error {
 type opencodeServer struct {
 	connectorID string
 	registryKey string
+	major       int
 	baseURL     string
 	password    string
 	client      *http.Client
@@ -59,21 +60,22 @@ type opencodeServer struct {
 }
 
 type opencodeRuntime struct {
-	manager   *chatManager
-	chatID    string
-	server    *opencodeServer
-	session   string
-	directory string
-	model     string
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mu        sync.Mutex
-	text      strings.Builder
-	roles     map[string]string
-	parts     map[string]string
-	active    bool
-	closed    bool
-	release   sync.Once
+	manager       *chatManager
+	chatID        string
+	server        *opencodeServer
+	session       string
+	directory     string
+	model         string
+	storedSession bool
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	text          strings.Builder
+	roles         map[string]string
+	parts         map[string]string
+	active        bool
+	closed        bool
+	release       sync.Once
 }
 
 var opencodeServers = struct {
@@ -107,6 +109,7 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 		roles: make(map[string]string), parts: make(map[string]string)}
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.session = *c.SessionID
+		driver.storedSession = true
 	} else if err := driver.createSession(); err != nil {
 		driver.releaseServer()
 		return nil, err
@@ -125,6 +128,15 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	path, err := finder()
 	if err != nil {
 		return nil, fmt.Errorf("find opencode: %w", err)
+	}
+	env := connectorEnv("opencode", configDir)
+	majorDetector := m.options.opencodeMajor
+	if majorDetector == nil {
+		majorDetector = connectorcli.OpencodeMajor
+	}
+	major, err := majorDetector(context.Background(), path, env)
+	if err != nil {
+		return nil, fmt.Errorf("detect opencode version: %w", err)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -151,10 +163,21 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	if !ok {
 		return nil, errors.New("ticket MCP spec has no args")
 	}
-	config, err := json.Marshal(map[string]any{
+	configValue := map[string]any{
 		"permission": map[string]string{"*": "ask", "edit": "ask", "bash": "ask", "webfetch": "ask"},
 		"mcp":        opencodeMCPServers(exe, mcpArgs, external),
-	})
+	}
+	if major >= 2 {
+		configValue = map[string]any{
+			"permissions": []map[string]string{
+				{"action": "edit", "resource": "*", "effect": "ask"},
+				{"action": "shell", "resource": "*", "effect": "ask"},
+				{"action": "webfetch", "resource": "*", "effect": "ask"},
+			},
+			"mcp": opencodeV2MCPServers(exe, mcpArgs, external),
+		}
+	}
+	config, err := json.Marshal(configValue)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +194,6 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 		starter = startOpenCodeProcess
 	}
 	args := []string{"serve", "--hostname", "127.0.0.1", "--port", strconv.Itoa(port)}
-	env := connectorEnv("opencode", configDir)
 	env = opencodeEnv(env, "OPENCODE_SERVER_PASSWORD="+password, "OPENCODE_CONFIG_CONTENT="+string(config))
 	process, err := starter(path, args, env)
 	if err != nil {
@@ -179,7 +201,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
-	server := &opencodeServer{connectorID: connectorID, registryKey: registryKey, baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
+	server := &opencodeServer{connectorID: connectorID, registryKey: registryKey, major: major, baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), chats: make(map[string]*opencodeRuntime), refs: 1}
 	if err := server.ready(); err != nil {
 		cancel()
@@ -243,7 +265,11 @@ func (s *opencodeServer) ready() error {
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		resp, err := s.request(ctx, http.MethodGet, "/doc", nil)
+		endpoint := "/doc"
+		if s.major >= 2 {
+			endpoint = "/api/info"
+		}
+		resp, err := s.request(ctx, http.MethodGet, endpoint, nil)
 		cancel()
 		if err == nil {
 			_ = resp.Body.Close()
@@ -261,12 +287,24 @@ func (s *opencodeServer) ready() error {
 }
 
 func (d *opencodeRuntime) endpoint(path string) string {
+	if d.server.major >= 2 {
+		return path
+	}
 	query := url.Values{"directory": []string{d.directory}}
 	return path + "?" + query.Encode()
 }
 
 func (d *opencodeRuntime) createSession() error {
-	resp, err := d.server.request(context.Background(), http.MethodPost, d.endpoint("/session"), map[string]any{})
+	endpoint := d.endpoint("/session")
+	body := map[string]any{}
+	if d.server.major >= 2 {
+		endpoint = "/api/session"
+		body["location"] = map[string]string{"directory": d.directory}
+		if provider, modelID, ok := strings.Cut(d.model, "/"); ok && provider != "" && modelID != "" {
+			body["model"] = map[string]string{"providerID": provider, "id": modelID}
+		}
+	}
+	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)
 	if err != nil {
 		return err
 	}
@@ -275,10 +313,16 @@ func (d *opencodeRuntime) createSession() error {
 		return fmt.Errorf("opencode create session returned %s", resp.Status)
 	}
 	var session struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&session); err != nil {
 		return err
+	}
+	if d.server.major >= 2 {
+		session.ID = session.Data.ID
 	}
 	if session.ID == "" {
 		return errors.New("opencode create session returned no id")
@@ -300,17 +344,43 @@ func (d *opencodeRuntime) send(text string) error {
 	if provider, modelID, ok := strings.Cut(d.model, "/"); ok && provider != "" && modelID != "" {
 		model = map[string]string{"providerID": provider, "modelID": modelID}
 	}
+	endpoint := d.endpoint("/session/" + url.PathEscape(d.session) + "/prompt_async")
 	body := map[string]any{"parts": []any{map[string]string{"type": "text", "text": text}}}
-	if model != nil {
+	if d.server.major >= 2 {
+		endpoint = "/api/session/" + url.PathEscape(d.session) + "/prompt"
+		body = map[string]any{"text": text}
+	} else if model != nil {
 		body["model"] = model
 	}
-	resp, err := d.server.request(context.Background(), http.MethodPost, d.endpoint("/session/"+url.PathEscape(d.session)+"/prompt_async"), body)
+	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)
 	if err != nil {
 		d.discardTurn()
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if d.server.major >= 2 && d.storedSession && resp.StatusCode == http.StatusNotFound && opencodeSessionNotFound(resp) {
+			_ = resp.Body.Close()
+			oldSession := d.session
+			if err := d.createSession(); err != nil {
+				d.discardTurn()
+				return err
+			}
+			d.server.mu.Lock()
+			if d.server.chats[oldSession] == d {
+				delete(d.server.chats, oldSession)
+			}
+			d.server.chats[d.session] = d
+			d.server.mu.Unlock()
+			d.storedSession = false
+			const note = "opencode was upgraded; earlier context was not carried over."
+			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err != nil {
+				d.discardTurn()
+				return err
+			}
+			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
+			return d.send(text)
+		}
 		err := fmt.Errorf("opencode prompt returned %s", resp.Status)
 		d.discardTurn()
 		return err
@@ -319,11 +389,21 @@ func (d *opencodeRuntime) send(text string) error {
 }
 
 func (d *opencodeRuntime) stop() error {
-	resp, err := d.server.request(context.Background(), http.MethodPost, d.endpoint("/session/"+url.PathEscape(d.session)+"/abort"), map[string]any{})
+	endpoint := d.endpoint("/session/" + url.PathEscape(d.session) + "/abort")
+	var body any = map[string]any{}
+	if d.server.major >= 2 {
+		endpoint = "/api/session/" + url.PathEscape(d.session) + "/interrupt?resume=false"
+		body = nil
+	}
+	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)
 	if err == nil {
 		_ = resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			err = fmt.Errorf("opencode abort returned %s", resp.Status)
+			operation := "abort"
+			if d.server.major >= 2 {
+				operation = "interrupt"
+			}
+			err = fmt.Errorf("opencode %s returned %s", operation, resp.Status)
 		}
 	}
 	d.releaseServer()
@@ -371,7 +451,11 @@ func (s *opencodeServer) events() {
 	defer close(s.done)
 	wait := 100 * time.Millisecond
 	for s.ctx.Err() == nil {
-		resp, err := s.request(s.ctx, http.MethodGet, "/global/event", nil)
+		endpoint := "/global/event"
+		if s.major >= 2 {
+			endpoint = "/api/event"
+		}
+		resp, err := s.request(s.ctx, http.MethodGet, endpoint, nil)
 		if err == nil {
 			if resp.StatusCode == http.StatusOK {
 				if err := s.readEvents(resp.Body); err != nil && s.ctx.Err() == nil {
@@ -426,7 +510,11 @@ func (s *opencodeServer) failEvent(event map[string]json.RawMessage, cause error
 	var properties struct {
 		SessionID string `json:"sessionID"`
 	}
-	if json.Unmarshal(event["properties"], &properties) != nil || properties.SessionID == "" {
+	field := event["properties"]
+	if s.major >= 2 {
+		field = event["data"]
+	}
+	if json.Unmarshal(field, &properties) != nil || properties.SessionID == "" {
 		return
 	}
 	s.mu.Lock()
@@ -442,6 +530,9 @@ func (s *opencodeServer) failEvent(event map[string]json.RawMessage, cause error
 }
 
 func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
+	if s.major >= 2 {
+		return s.dispatchV2(event)
+	}
 	var typ string
 	if err := json.Unmarshal(event["type"], &typ); err != nil {
 		return err
@@ -639,6 +730,120 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			return err
 		}
 		return driver.finish(fmt.Errorf("opencode session error: %v", failure.Error))
+	}
+	return nil
+}
+
+func opencodeSessionNotFound(resp *http.Response) bool {
+	var failure struct {
+		Tag string `json:"_tag"`
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(data, &failure) == nil && failure.Tag == "SessionNotFoundError"
+}
+
+func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
+	var typ string
+	if err := json.Unmarshal(event["type"], &typ); err != nil {
+		return err
+	}
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(event["data"], &data); err != nil {
+		return err
+	}
+	var sid string
+	if err := json.Unmarshal(data["sessionID"], &sid); err != nil {
+		return err
+	}
+	if sid == "" {
+		return nil
+	}
+	s.mu.Lock()
+	driver := s.chats[sid]
+	s.mu.Unlock()
+	if driver == nil {
+		return nil
+	}
+	switch typ {
+	case "session.text.delta":
+		var delta struct {
+			Text string `json:"delta"`
+		}
+		if err := json.Unmarshal(event["data"], &delta); err != nil {
+			return err
+		}
+		driver.mu.Lock()
+		if driver.active {
+			driver.text.WriteString(delta.Text)
+			driver.manager.emitDelta(driver.chatID, delta.Text)
+		}
+		driver.mu.Unlock()
+	case "session.tool.called":
+		var tool struct {
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
+		}
+		if err := json.Unmarshal(event["data"], &tool); err != nil {
+			return err
+		}
+		input, err := compactJSON(tool.Input)
+		if err != nil {
+			return err
+		}
+		if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(tool.Name+" "+shortText(input, 180))); err != nil {
+			return err
+		}
+	case "permission.asked":
+		var permission struct {
+			ID     string `json:"id"`
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(event["data"], &permission); err != nil {
+			return err
+		}
+		if permission.ID == "" || permission.Action == "" {
+			return errors.New("opencode permission event missing id or action")
+		}
+		go func() {
+			allowed, err := driver.manager.requestApproval(driver.ctx, driver.chatID, permission.Action, json.RawMessage(event["data"]))
+			if err != nil {
+				if driver.ctx.Err() == nil {
+					driver.fail(fmt.Errorf("request opencode permission approval: %w", err))
+				}
+				return
+			}
+			decision := "reject"
+			if allowed {
+				decision = "once"
+			}
+			endpoint := "/api/session/" + url.PathEscape(sid) + "/permission/" + url.PathEscape(permission.ID) + "/reply"
+			resp, err := s.request(driver.ctx, http.MethodPost, endpoint, map[string]string{"decision": decision})
+			if err != nil {
+				if driver.ctx.Err() == nil {
+					driver.fail(fmt.Errorf("answer opencode permission: %w", err))
+				}
+				return
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				driver.fail(fmt.Errorf("answer opencode permission returned %s", resp.Status))
+			}
+		}()
+	case "session.execution.succeeded", "session.execution.interrupted":
+		return driver.finish(nil)
+	case "session.execution.failed":
+		var failure struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(event["data"], &failure); err != nil {
+			return err
+		}
+		return driver.finish(fmt.Errorf("opencode session error: %s", failure.Error.Message))
 	}
 	return nil
 }

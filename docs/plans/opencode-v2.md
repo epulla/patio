@@ -25,6 +25,7 @@ Runs before b2c (`docs/plans/ai-local.md`). Builds on `docs/plans/ai-connectors.
    - Approvals: `POST /api/session/{id}/permission/{requestID}/reply` `{decision:"once"|"reject"}` → 204. The OpenAPI spec uses `decision`, while the docs page says `reply`; the spec wins.
    - Stop: `POST /api/session/{id}/interrupt?resume=false`.
    - Verified in a sandbox on 2.0.26: Basic auth with user `opencode` and `OPENCODE_SERVER_PASSWORD` (401 without it); `OPENCODE_CONFIG_CONTENT` is honored (visible in `GET /api/config`); create and list sessions work. Not in the spec: event payload schemas (text deltas, tool parts, permission asked, idle/error) and where the model is set. Both get recorded with live prompts in task 2.
+   - Live probe confirmed events `session.text.started`, `session.text.delta`, `session.text.ended`, `session.tool.input.started`, `session.tool.input.ended`, `session.tool.called`, `permission.asked`, `permission.replied`, `session.execution.started`, `session.execution.succeeded`, and `session.execution.interrupted`; model selected in create body's `model:{providerID,id}`.
 
    Config uses v2-native `permissions` and `mcp.servers` when the version is 2.
 5. The install hint becomes `curl -fsSL https://opencode.ai/v2/install | bash`. v2 installs to the same `~/.opencode/bin/opencode` path as v1 (plus an `opencode2` shim) and uses the same XDG data and config dirs, so an upgrade replaces v1 and detection needs no new directory.
@@ -34,4 +35,4 @@ Runs before b2c (`docs/plans/ai-local.md`). Builds on `docs/plans/ai-connectors.
 ## Tasks
 
 - [x] v2 CLI: version detection helper, v2 install hint and install directory, `auth list --format json` status, `stats --json` quota, `models` output check. Check: Go tests over recorded v2 output plus existing v1 fixtures; manual check after the user installs v2.
-- [ ] v2 chat driver: protocol switch by major version inside `chat_opencode.go` (decision 4), v2-native config, and the resume fallback (decision 2). Check: Go tests with an `httptest` fake v2 server (SSE, approvals, interrupt, missing-session fallback); existing v1 tests unchanged; live: reply streams, one approval allowed, one denied.
+- [x] v2 chat driver: protocol switch by major version inside `chat_opencode.go` (decision 4), v2-native config, and the resume fallback (decision 2). Check: Go tests with an `httptest` fake v2 server (SSE, approvals, interrupt, missing-session fallback); existing v1 tests unchanged; live: reply streams, one approval allowed, one denied.
