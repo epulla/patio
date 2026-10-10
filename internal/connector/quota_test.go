@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -76,11 +77,7 @@ func TestParseCodexQuotaNullableAndLabels(t *testing.T) {
 	}
 }
 
-func TestParseOpenCodeStatsByVersion(t *testing.T) {
-	fixture, err := os.ReadFile(filepath.Join("testdata", "opencode-v2-stats.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestParseOpenCodeStatsV1(t *testing.T) {
 	const v1 = `┌────────────────────────────────────────────────────────┐
 │                       OVERVIEW                         │
 ├────────────────────────────────────────────────────────┤
@@ -97,35 +94,36 @@ func TestParseOpenCodeStatsByVersion(t *testing.T) {
 │Output                                            27.3M │
 │Cache Read                                      3877.6M │
 └────────────────────────────────────────────────────────┘`
-	for _, tc := range []struct {
-		name, raw, note string
-		major           int
-		input, output   int64
-		cost            float64
-	}{
-		{"v1 recorded text", v1, "", 1, 118900000, 27300000, 2884.52},
-		{"v2 recorded JSON", string(fixture), "", 2, 0, 0, 0},
-		{"v2 missing total", `{"tokens":{"input":7},"cost":0.5}`, "OpenCode stats omitted output tokens", 2, 7, 0, 0.5},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var got TokenTotals
-			var note string
-			var err error
-			if tc.major >= 2 {
-				got, note, err = parseOpenCodeStatsJSON(tc.raw)
-			} else {
-				got, err = parseOpenCodeStats(tc.raw)
-			}
-			if err != nil || note != tc.note || got.Input != tc.input || got.Output != tc.output || got.Cost != tc.cost {
-				t.Fatalf("stats = %#v, %q, %v", got, note, err)
-			}
-		})
+	got, err := parseOpenCodeStats(v1)
+	if err != nil || got.Input != 118900000 || got.Output != 27300000 || got.Cost != 2884.52 {
+		t.Fatalf("stats = %#v, %v", got, err)
 	}
 	if _, err := parseOpenCodeStats("unsupported stats format"); err == nil {
 		t.Fatal("unsupported v1 output parsed without error")
 	}
-	if _, _, err := parseOpenCodeStatsJSON("not json"); err == nil {
-		t.Fatal("invalid v2 JSON parsed without error")
+}
+
+func TestReadOpencodeV2QuotaSkipsStats(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test executable script requires a POSIX shell")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opencode")
+	record := filepath.Join(dir, "args")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + shellQuote(record) + "\nif [ \"$1\" = --version ]; then echo 'opencode v2.0.26'; fi\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	got := ReadQuota(context.Background(), Options{Kind: "opencode", Path: path})
+	args, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Note != "Usage not available for opencode v2." || got.Tokens != nil || got.UpdatedAt != nil {
+		t.Fatalf("quota = %#v", got)
+	}
+	if string(args) != "--version\n" {
+		t.Fatalf("CLI args = %q", args)
 	}
 }
 

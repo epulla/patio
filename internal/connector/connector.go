@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -42,6 +43,50 @@ type Options struct {
 	Version       string
 	GitHubBaseURL string
 	HTTPClient    *http.Client
+}
+
+var opencodeCommandMu sync.Mutex
+
+func lockOpencodeCommand(ctx context.Context) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if opencodeCommandMu.TryLock() {
+			return nil
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func OpencodeCommandOutput(ctx context.Context, path string, args []string, env []string) (string, error) {
+	if err := lockOpencodeCommand(ctx); err != nil {
+		return "", err
+	}
+	defer opencodeCommandMu.Unlock()
+	return commandOutput(ctx, path, args, env)
+}
+
+func OpencodeCommandCombinedOutput(ctx context.Context, path string, args []string, env []string) ([]byte, error) {
+	if err := lockOpencodeCommand(ctx); err != nil {
+		return nil, err
+	}
+	defer opencodeCommandMu.Unlock()
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = env
+	configureCommandCancel(cmd)
+	return cmd.CombinedOutput()
 }
 
 func cliName(kind string) string {
@@ -227,7 +272,11 @@ func Check(ctx context.Context, opts Options) (out Status) {
 	}
 	installed = true
 	out.Path = opts.Path
-	version, err := commandOutput(ctx, opts.Path, []string{"--version"}, Env(opts.Kind, opts.ConfigDir, opts.Secret))
+	run := commandOutput
+	if opts.Kind == "opencode" {
+		run = OpencodeCommandOutput
+	}
+	version, err := run(ctx, opts.Path, []string{"--version"}, Env(opts.Kind, opts.ConfigDir, opts.Secret))
 	if err != nil {
 		out.Note = "version: " + err.Error()
 		return out
@@ -272,7 +321,7 @@ func parseOpencodeMajor(version string) (int, error) {
 }
 
 func opencodeMajor(ctx context.Context, path string, env []string) (int, error) {
-	version, err := commandOutput(ctx, path, []string{"--version"}, env)
+	version, err := OpencodeCommandOutput(ctx, path, []string{"--version"}, env)
 	if err != nil {
 		return 0, err
 	}
@@ -286,6 +335,7 @@ func OpencodeMajor(ctx context.Context, path string, env []string) (int, error) 
 func commandOutput(ctx context.Context, path string, args []string, env []string) (string, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = env
+	configureCommandCancel(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return string(out), err
@@ -371,7 +421,7 @@ func openCodeStatus(ctx context.Context, out *Status, opts Options, major int) e
 	if major >= 2 {
 		args = append(args, "--format", "json")
 	}
-	raw, err := commandOutput(ctx, opts.Path, args, Env(opts.Kind, opts.ConfigDir, opts.Secret))
+	raw, err := OpencodeCommandOutput(ctx, opts.Path, args, Env(opts.Kind, opts.ConfigDir, opts.Secret))
 	if err != nil {
 		return err
 	}

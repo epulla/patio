@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -112,6 +114,121 @@ func TestParseOpencodeMajor(t *testing.T) {
 	}
 	if got, err := OpencodeMajor(context.Background(), path, []string{}); err != nil || got != 2 {
 		t.Fatalf("OpencodeMajor = %d, %v", got, err)
+	}
+}
+
+func TestOpencodeCommandsSerialize(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test executable script requires a POSIX shell")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opencode")
+	lock := filepath.Join(dir, "running")
+	overlap := filepath.Join(dir, "overlap")
+	script := "#!/bin/sh\nif ! mkdir \"$LOCK_DIR\" 2>/dev/null; then touch \"$OVERLAP_FILE\"; fi\nsleep 0.2\nrmdir \"$LOCK_DIR\"\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := replaceEnv(os.Environ(), []string{"LOCK_DIR=" + lock, "OVERLAP_FILE=" + overlap})
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := OpencodeCommandOutput(context.Background(), path, []string{"models"}, env)
+			errs <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(overlap); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("commands overlapped: %v", err)
+	}
+}
+
+func TestOpencodeCommandWaitHonorsContext(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test executable script requires a POSIX shell")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opencode")
+	started := filepath.Join(dir, "started")
+	script := "#!/bin/sh\ntouch \"$STARTED_FILE\"\nsleep 0.3\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := replaceEnv(os.Environ(), []string{"STARTED_FILE=" + started})
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := OpencodeCommandOutput(context.Background(), path, []string{"models"}, env)
+		firstDone <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first command did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	_, err := OpencodeCommandOutput(ctx, path, []string{"models"}, env)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("waiting command error = %v", err)
+	}
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCommandOutputSendsTermOnCancellation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX signal behavior")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opencode")
+	marker := filepath.Join(dir, "term")
+	started := filepath.Join(dir, "started")
+	script := "#!/bin/sh\ntrap 'printf term > \"$TERM_FILE\"; exit 0' TERM\ntouch \"$STARTED_FILE\"\nwhile :; do sleep 0.05; done\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := commandOutput(ctx, path, nil, replaceEnv(os.Environ(), []string{"TERM_FILE=" + marker, "STARTED_FILE=" + started}))
+		done <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("command did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	err := <-done
+	if err == nil {
+		t.Fatal("command unexpectedly succeeded")
+	}
+	got, readErr := os.ReadFile(marker)
+	if readErr != nil || string(got) != "term" {
+		t.Fatalf("TERM marker = %q, %v", got, readErr)
 	}
 }
 

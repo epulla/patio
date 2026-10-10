@@ -88,9 +88,15 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 			}
 		}
 		env := connectorcli.Env(kind, configDir, secret)
-		cmd := exec.CommandContext(ctx, path, args...)
-		cmd.Env = env
-		output, runErr := cmd.CombinedOutput()
+		var output []byte
+		var runErr error
+		if kind == "opencode" {
+			output, runErr = connectorcli.OpencodeCommandCombinedOutput(ctx, path, args, env)
+		} else {
+			cmd := exec.CommandContext(ctx, path, args...)
+			cmd.Env = env
+			output, runErr = cmd.CombinedOutput()
+		}
 		if runErr != nil {
 			return nil, runErr
 		}
