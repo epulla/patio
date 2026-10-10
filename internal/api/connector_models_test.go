@@ -23,13 +23,24 @@ func TestConnectorModelsAndRecordedCLIParsers(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/missing/models", nil, nil); code != http.StatusNotFound {
 		t.Fatalf("missing connector status = %d", code)
 	}
-	openCode, err := os.ReadFile(filepath.Join("testdata", "opencode-models.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	models := parseOpenCodeModels(string(openCode))
-	if len(models) != 3 || models[0].ID != "opencode/big-pickle" || models[0].Label != models[0].ID {
-		t.Fatalf("OpenCode fixture models = %#v", models)
+	for _, tc := range []struct {
+		name  string
+		file  string
+		count int
+	}{
+		{"v1", "opencode-models.txt", 3},
+		{"v2", "opencode-v2-models.txt", 11},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			openCode, err := os.ReadFile(filepath.Join("testdata", tc.file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			models := parseOpenCodeModels(string(openCode))
+			if len(models) != tc.count || models[0].ID != "opencode/big-pickle" || models[0].Label != models[0].ID {
+				t.Fatalf("OpenCode fixture models = %#v", models)
+			}
+		})
 	}
 	copilotHelp, err := os.ReadFile(filepath.Join("testdata", "copilot-help.txt"))
 	if err != nil {

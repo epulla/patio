@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -190,7 +191,7 @@ func installHint(kind, goos string) *Install {
 	commands := map[string][2]string{
 		"claude":   {"curl -fsSL https://claude.ai/install.sh | bash", "irm https://claude.ai/install.ps1 | iex"},
 		"codex":    {"curl -fsSL https://chatgpt.com/codex/install.sh | sh", "irm https://chatgpt.com/codex/install.ps1 | iex"},
-		"opencode": {"curl -fsSL https://opencode.ai/install | bash", ""},
+		"opencode": {"curl -fsSL https://opencode.ai/v2/install | bash", ""},
 		"copilot":  {"curl -fsSL https://gh.io/copilot-install | bash", "winget install GitHub.Copilot"},
 	}
 	docs := map[string]string{
@@ -239,7 +240,12 @@ func Check(ctx context.Context, opts Options) (out Status) {
 	case "codex":
 		statusErr = codexStatus(ctx, &out, opts)
 	case "opencode":
-		statusErr = openCodeStatus(ctx, &out, opts)
+		major, err := parseOpencodeMajor(version)
+		if err != nil {
+			out.Note = "version: " + err.Error()
+			return out
+		}
+		statusErr = openCodeStatus(ctx, &out, opts, major)
 	case "copilot":
 		statusErr = copilotStatus(ctx, &out, opts)
 	default:
@@ -249,6 +255,32 @@ func Check(ctx context.Context, opts Options) (out Status) {
 		out.Note = statusErr.Error()
 	}
 	return out
+}
+
+var opencodeVersion = regexp.MustCompile(`(?:^|[^0-9])v?([0-9]+)\.[0-9]+(?:\.[0-9]+)?`)
+
+func parseOpencodeMajor(version string) (int, error) {
+	match := opencodeVersion.FindStringSubmatch(strings.TrimSpace(version))
+	if len(match) != 2 {
+		return 0, fmt.Errorf("could not parse opencode version %q", strings.TrimSpace(version))
+	}
+	major, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, err
+	}
+	return major, nil
+}
+
+func opencodeMajor(ctx context.Context, path string, env []string) (int, error) {
+	version, err := commandOutput(ctx, path, []string{"--version"}, env)
+	if err != nil {
+		return 0, err
+	}
+	return parseOpencodeMajor(version)
+}
+
+func OpencodeMajor(ctx context.Context, path string, env []string) (int, error) {
+	return opencodeMajor(ctx, path, env)
 }
 
 func commandOutput(ctx context.Context, path string, args []string, env []string) (string, error) {
@@ -311,12 +343,52 @@ func parseOpenCodeAuth(raw string) bool {
 	return strings.Contains(strings.ToLower(text), "credentials") && !strings.Contains(strings.ToLower(text), "no credentials")
 }
 
-func openCodeStatus(ctx context.Context, out *Status, opts Options) error {
-	raw, err := commandOutput(ctx, opts.Path, []string{"auth", "list"}, Env(opts.Kind, opts.ConfigDir, opts.Secret))
+func parseOpenCodeAuthJSON(raw string) (bool, string, error) {
+	var entries []json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+		return false, "", err
+	}
+	if entries == nil && strings.TrimSpace(raw) != "[]" {
+		return false, "", errors.New("expected an auth list array")
+	}
+	for _, entry := range entries {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(entry, &fields); err != nil || fields == nil {
+			continue
+		}
+		for _, key := range []string{"name", "email", "account", "provider"} {
+			var value string
+			if json.Unmarshal(fields[key], &value) == nil && strings.TrimSpace(value) != "" {
+				return true, value, nil
+			}
+		}
+	}
+	return len(entries) > 0, "", nil
+}
+
+func openCodeStatus(ctx context.Context, out *Status, opts Options, major int) error {
+	args := []string{"auth", "list"}
+	if major >= 2 {
+		args = append(args, "--format", "json")
+	}
+	raw, err := commandOutput(ctx, opts.Path, args, Env(opts.Kind, opts.ConfigDir, opts.Secret))
 	if err != nil {
 		return err
 	}
-	logged := parseOpenCodeAuth(raw)
+	logged := false
+	if major >= 2 {
+		var account string
+		logged, account, err = parseOpenCodeAuthJSON(raw)
+		if err != nil {
+			return fmt.Errorf("parse auth list: %w", err)
+		}
+		out.Account = account
+		if !logged {
+			out.Note = "Free opencode models only. Run opencode auth login for other providers."
+		}
+	} else {
+		logged = parseOpenCodeAuth(raw)
+	}
 	out.LoggedIn = &logged
 	return nil
 }

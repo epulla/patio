@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,13 +59,68 @@ func TestParseOpenCodeAuth(t *testing.T) {
 	}
 }
 
+func TestParseOpenCodeAuthJSON(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "opencode-v2-auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, raw, account string
+		logged             bool
+		wantErr            bool
+	}{
+		{"v2 logged out fixture", string(fixture), "", false, false},
+		{"v2 non-empty list", `[{"provider":"openai"}]`, "openai", true, false},
+		{"v2 account field", `[{"email":"user@example.com"}]`, "user@example.com", true, false},
+		{"invalid JSON", "not json", "", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logged, account, err := parseOpenCodeAuthJSON(tc.raw)
+			if (err != nil) != tc.wantErr || logged != tc.logged || account != tc.account {
+				t.Fatalf("auth = %v, %q, %v", logged, account, err)
+			}
+		})
+	}
+}
+
+func TestParseOpencodeMajor(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		major   int
+		wantErr bool
+	}{
+		{"1.18.35", 1, false},
+		{"v1.18.35", 1, false},
+		{"opencode v2.0.26", 2, false},
+		{"2.0.26", 2, false},
+		{"unknown", 0, true},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			got, err := parseOpencodeMajor(tc.version)
+			if (err != nil) != tc.wantErr || got != tc.major {
+				t.Fatalf("major = %d, %v", got, err)
+			}
+		})
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("test executable script requires a POSIX shell")
+	}
+	path := filepath.Join(t.TempDir(), "opencode")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s\\n' 'opencode v2.0.26'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := OpencodeMajor(context.Background(), path, []string{}); err != nil || got != 2 {
+		t.Fatalf("OpencodeMajor = %d, %v", got, err)
+	}
+}
+
 func TestInstallHint(t *testing.T) {
 	tests := []struct {
 		name, goos, kind, command, url string
 	}{
 		{"macOS Claude", "darwin", "claude", "curl -fsSL https://claude.ai/install.sh | bash", "https://code.claude.com/docs/en/setup"},
 		{"Linux Codex", "linux", "codex", "curl -fsSL https://chatgpt.com/codex/install.sh | sh", "https://developers.openai.com/codex/cli"},
-		{"macOS OpenCode", "darwin", "opencode", "curl -fsSL https://opencode.ai/install | bash", "https://opencode.ai/docs/"},
+		{"macOS OpenCode", "darwin", "opencode", "curl -fsSL https://opencode.ai/v2/install | bash", "https://opencode.ai/docs/"},
 		{"Linux Copilot", "linux", "copilot", "curl -fsSL https://gh.io/copilot-install | bash", "https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli"},
 		{"Windows Claude", "windows", "claude", "irm https://claude.ai/install.ps1 | iex", "https://code.claude.com/docs/en/setup"},
 		{"Windows Codex", "windows", "codex", "irm https://chatgpt.com/codex/install.ps1 | iex", "https://developers.openai.com/codex/cli"},

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -74,8 +76,12 @@ func TestParseCodexQuotaNullableAndLabels(t *testing.T) {
 	}
 }
 
-func TestParseOpenCodeStatsRecordedOutput(t *testing.T) {
-	const sample = `┌────────────────────────────────────────────────────────┐
+func TestParseOpenCodeStatsByVersion(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "opencode-v2-stats.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const v1 = `┌────────────────────────────────────────────────────────┐
 │                       OVERVIEW                         │
 ├────────────────────────────────────────────────────────┤
 │Sessions                                          2,533 │
@@ -91,12 +97,35 @@ func TestParseOpenCodeStatsRecordedOutput(t *testing.T) {
 │Output                                            27.3M │
 │Cache Read                                      3877.6M │
 └────────────────────────────────────────────────────────┘`
-	got, err := parseOpenCodeStats(sample)
-	if err != nil || got.Input != 118900000 || got.Output != 27300000 || got.Cost != 2884.52 {
-		t.Fatalf("stats = %#v, %v", got, err)
+	for _, tc := range []struct {
+		name, raw, note string
+		major           int
+		input, output   int64
+		cost            float64
+	}{
+		{"v1 recorded text", v1, "", 1, 118900000, 27300000, 2884.52},
+		{"v2 recorded JSON", string(fixture), "", 2, 0, 0, 0},
+		{"v2 missing total", `{"tokens":{"input":7},"cost":0.5}`, "OpenCode stats omitted output tokens", 2, 7, 0, 0.5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got TokenTotals
+			var note string
+			var err error
+			if tc.major >= 2 {
+				got, note, err = parseOpenCodeStatsJSON(tc.raw)
+			} else {
+				got, err = parseOpenCodeStats(tc.raw)
+			}
+			if err != nil || note != tc.note || got.Input != tc.input || got.Output != tc.output || got.Cost != tc.cost {
+				t.Fatalf("stats = %#v, %q, %v", got, note, err)
+			}
+		})
 	}
 	if _, err := parseOpenCodeStats("unsupported stats format"); err == nil {
-		t.Fatal("unsupported output parsed without error")
+		t.Fatal("unsupported v1 output parsed without error")
+	}
+	if _, _, err := parseOpenCodeStatsJSON("not json"); err == nil {
+		t.Fatal("invalid v2 JSON parsed without error")
 	}
 }
 

@@ -33,5 +33,5 @@ Runs before b2c (`docs/plans/ai-local.md`). Builds on `docs/plans/ai-connectors.
 
 ## Tasks
 
-- [ ] v2 CLI: version detection helper, v2 install hint and install directory, `auth list --format json` status, `stats --json` quota, `models` output check. Check: Go tests over recorded v2 output plus existing v1 fixtures; manual check after the user installs v2.
+- [x] v2 CLI: version detection helper, v2 install hint and install directory, `auth list --format json` status, `stats --json` quota, `models` output check. Check: Go tests over recorded v2 output plus existing v1 fixtures; manual check after the user installs v2.
 - [ ] v2 chat driver: protocol switch by major version inside `chat_opencode.go` (decision 4), v2-native config, and the resume fallback (decision 2). Check: Go tests with an `httptest` fake v2 server (SSE, approvals, interrupt, missing-session fallback); existing v1 tests unchanged; live: reply streams, one approval allowed, one denied.

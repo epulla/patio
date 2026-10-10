@@ -70,12 +70,27 @@ func ReadQuota(ctx context.Context, opts Options) Quota {
 				return out
 			}
 		}
-		text, err := commandOutput(ctx, opts.Path, []string{"stats"}, Env(opts.Kind, opts.ConfigDir, opts.Secret))
+		env := Env(opts.Kind, opts.ConfigDir, opts.Secret)
+		major, err := opencodeMajor(ctx, opts.Path, env)
 		if err != nil {
 			out.Note = err.Error()
 			return out
 		}
-		totals, err := parseOpenCodeStats(text)
+		args := []string{"stats"}
+		if major >= 2 {
+			args = append(args, "--json")
+		}
+		text, err := commandOutput(ctx, opts.Path, args, env)
+		if err != nil {
+			out.Note = err.Error()
+			return out
+		}
+		totals := TokenTotals{}
+		if major >= 2 {
+			totals, out.Note, err = parseOpenCodeStatsJSON(text)
+		} else {
+			totals, err = parseOpenCodeStats(text)
+		}
 		if err != nil {
 			out.Note = err.Error()
 			return out
@@ -102,6 +117,40 @@ func ReadQuota(ctx context.Context, opts Options) Quota {
 		out.Note = "unknown connector kind"
 	}
 	return out
+}
+
+func parseOpenCodeStatsJSON(raw string) (TokenTotals, string, error) {
+	var stats struct {
+		Tokens *struct {
+			Input  *int64 `json:"input"`
+			Output *int64 `json:"output"`
+		} `json:"tokens"`
+		Cost *float64 `json:"cost"`
+	}
+	if err := json.Unmarshal([]byte(raw), &stats); err != nil {
+		return TokenTotals{}, "", err
+	}
+	totals := TokenTotals{}
+	var missing []string
+	if stats.Tokens == nil || stats.Tokens.Input == nil {
+		missing = append(missing, "input tokens")
+	} else {
+		totals.Input = *stats.Tokens.Input
+	}
+	if stats.Tokens == nil || stats.Tokens.Output == nil {
+		missing = append(missing, "output tokens")
+	} else {
+		totals.Output = *stats.Tokens.Output
+	}
+	if stats.Cost == nil {
+		missing = append(missing, "cost")
+	} else {
+		totals.Cost = *stats.Cost
+	}
+	if len(missing) == 0 {
+		return totals, "", nil
+	}
+	return totals, "OpenCode stats omitted " + strings.Join(missing, ", "), nil
 }
 
 func readCodexQuota(ctx context.Context, client *Client) ([]Window, error) {
