@@ -304,12 +304,16 @@ function Conversation({
   }
 
   function onDragLeave(event: DragEvent) {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+    const box = event.currentTarget.getBoundingClientRect();
+    const inside =
+      event.clientX > box.left && event.clientX < box.right && event.clientY > box.top && event.clientY < box.bottom;
+    if (!inside) setDragging(false);
   }
 
   function onDrop(event: DragEvent) {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
+    event.stopPropagation();
     setDragging(false);
     if (connector) void attach(Array.from(event.dataTransfer.files));
   }
@@ -626,6 +630,8 @@ function Conversation({
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
         />
         {running ? (
           <button type="button" onClick={stop}>
