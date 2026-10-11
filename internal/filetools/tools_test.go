@@ -3,6 +3,7 @@ package filetools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,48 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestResolveForgivesRootPaths(t *testing.T) {
+	root := t.TempDir()
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"", "/", "~", ".", "./", "~/"} {
+		t.Run(fmt.Sprintf("root_%q", path), func(t *testing.T) {
+			got, gotRoot, err := resolve(root, path)
+			if err != nil || got != rootReal || gotRoot != rootReal {
+				t.Fatalf("resolve(%q) = %q, %q, %v; want root %q", path, got, gotRoot, err, rootReal)
+			}
+		})
+	}
+	t.Run("tilde child", func(t *testing.T) {
+		got, _, err := resolve(root, "~/child")
+		if err != nil || got != filepath.Join(rootReal, "child") {
+			t.Fatalf("resolve(~/child) = %q, %v", got, err)
+		}
+	})
+	t.Run("absolute path inside root", func(t *testing.T) {
+		absolute := filepath.Join(root, "inside.txt")
+		if err := os.WriteFile(absolute, []byte("inside"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, _, err := resolve(root, absolute)
+		if err != nil || got != filepath.Join(rootReal, "inside.txt") {
+			t.Fatalf("resolve(%q) = %q, %v", absolute, got, err)
+		}
+	})
+	t.Run("absolute outside path is rooted", func(t *testing.T) {
+		got, _, err := resolve(root, "/etc/passwd")
+		want := filepath.Join(rootReal, "etc", "passwd")
+		if err != nil || got != want {
+			t.Fatalf("resolve(/etc/passwd) = %q, %v; want %q", got, err, want)
+		}
+		if _, err := os.Stat(got); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("rooted path stat = %v; real /etc/passwd must not be used", err)
+		}
+	})
+}
 
 func TestResolveRejectsUnsafePaths(t *testing.T) {
 	t.Run("parent traversal and sibling prefix", func(t *testing.T) {
@@ -26,11 +69,8 @@ func TestResolveRejectsUnsafePaths(t *testing.T) {
 			})
 		}
 	})
-	t.Run("absolute path", func(t *testing.T) {
+	t.Run("Windows absolute path", func(t *testing.T) {
 		root := t.TempDir()
-		if _, _, err := resolve(root, filepath.Join(root, "secret")); err == nil {
-			t.Fatal("absolute path unexpectedly succeeded")
-		}
 		if _, _, err := resolve(root, `C:\secret`); err == nil {
 			t.Fatal("Windows absolute path unexpectedly succeeded")
 		}

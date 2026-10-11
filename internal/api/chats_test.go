@@ -208,7 +208,7 @@ func TestChatThinkingUpdate(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	var created chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Thinking {
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Thinking || !created.Tools {
 		t.Fatalf("create chat = %d, %#v", code, created)
 	}
 	var listed []chat
@@ -242,6 +242,38 @@ func TestChatThinkingUpdate(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.busy = false
 	runtime.mu.Unlock()
+}
+
+func TestChatToolsUpdate(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var created chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || !created.Tools {
+		t.Fatalf("create chat = %d, %#v", code, created)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": false}, &created); code != http.StatusOK || created.Tools {
+		t.Fatalf("disable tools = %d, %#v", code, created)
+	}
+	var listed []chat
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed) != 1 || listed[0].Tools {
+		t.Fatalf("list chat tools = %d, %#v", code, listed)
+	}
+	runtime := handler.(*Server).chats.runtime(created.ID)
+	runtime.mu.Lock()
+	runtime.busy = true
+	runtime.mu.Unlock()
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": false}, nil); code != http.StatusOK {
+		t.Fatalf("unchanged tools while running = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": true}, nil); code != http.StatusConflict {
+		t.Fatalf("tools change while running = %d, want %d", code, http.StatusConflict)
+	}
+	runtime.mu.Lock()
+	runtime.busy = false
+	runtime.mu.Unlock()
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": true}, &created); code != http.StatusOK || !created.Tools {
+		t.Fatalf("enable tools = %d, %#v", code, created)
+	}
 }
 
 func TestDeleteConnectorKeepsChat(t *testing.T) {

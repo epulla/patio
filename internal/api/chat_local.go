@@ -321,12 +321,12 @@ func (d *localRuntime) runTurn(ctx context.Context) {
 }
 
 func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
-	messages, err := d.history()
-	if err != nil {
+	var thinking, toolsEnabled bool
+	if err := d.manager.db.QueryRow(`SELECT thinking,tools FROM chat WHERE id=?`, d.chatID).Scan(&thinking, &toolsEnabled); err != nil {
 		return "", err
 	}
-	var thinking bool
-	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
+	messages, err := d.historyForTools(toolsEnabled)
+	if err != nil {
 		return "", err
 	}
 	toolCalls := 0
@@ -334,7 +334,7 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 	var fullText strings.Builder
 	retriedWithoutTools := false
 	for {
-		withTools := !d.toolsOff && !retriedWithoutTools
+		withTools := toolsEnabled && !d.toolsOff && !retriedWithoutTools
 		response, err := d.stream(ctx, messages, withTools, thinking)
 		if err != nil {
 			return "", err
@@ -351,7 +351,7 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 		}
 		if len(response.calls) == 0 {
 			call, bareJSON, validCall := d.textToolCall(response.text)
-			if validCall {
+			if validCall && withTools {
 				response.calls = []localCall{call}
 				response.text = ""
 			} else if bareJSON || strings.TrimSpace(response.text) == "" {
@@ -463,6 +463,14 @@ func (d *localRuntime) textToolCall(content string) (localCall, bool, bool) {
 }
 
 func (d *localRuntime) history() ([]map[string]any, error) {
+	var toolsEnabled bool
+	if err := d.manager.db.QueryRow(`SELECT tools FROM chat WHERE id=?`, d.chatID).Scan(&toolsEnabled); err != nil {
+		return nil, err
+	}
+	return d.historyForTools(toolsEnabled)
+}
+
+func (d *localRuntime) historyForTools(toolsEnabled bool) ([]map[string]any, error) {
 	rows, err := d.manager.db.Query(`SELECT role,content FROM chat_message WHERE chat_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,rowid DESC LIMIT ?`, d.chatID, localHistoryLimit)
 	if err != nil {
 		return nil, err
@@ -488,10 +496,7 @@ func (d *localRuntime) history() ([]map[string]any, error) {
 	if folderPath.Valid {
 		folder = filepath.Base(filepath.Clean(folderPath.String))
 	}
-	systemPrompt := fmt.Sprintf("Reply normally. Use tools only when user asks about files, this folder (%s), or tickets. Never describe tool calls in text. Today's date (local): %s.", folder, time.Now().In(time.Local).Format("2006-01-02"))
-	if d.toolsOff {
-		systemPrompt += " Tools unavailable; do not claim file or ticket access."
-	}
+	systemPrompt := localSystemPrompt(folder, toolsEnabled && !d.toolsOff)
 	messages := []map[string]any{{"role": "system", "content": systemPrompt}}
 	if len(saved) == 0 {
 		return messages, nil
@@ -509,6 +514,14 @@ func (d *localRuntime) history() ([]map[string]any, error) {
 		messages = append(messages, map[string]any{"role": selected[i].role, "content": selected[i].content})
 	}
 	return messages, nil
+}
+
+func localSystemPrompt(folder string, toolsEnabled bool) string {
+	today := time.Now().In(time.Local).Format("2006-01-02")
+	if !toolsEnabled {
+		return fmt.Sprintf("Reply normally. Tools unavailable; do not claim file or ticket access. Today's date (local): %s.", today)
+	}
+	return fmt.Sprintf("Reply normally. Use tools only when user asks about files, this folder (%s), or tickets. Never describe tool calls in text. Examples: \"Hi\" → \"Hi!\" (no tool); \"list my files\" → call file__list_dir; \"what boards do I have?\" → call ticket__list_boards. Today's date (local): %s.", folder, today)
 }
 
 type localCall struct {

@@ -32,6 +32,7 @@ type chat struct {
 	Workdir     string  `json:"workdir"`
 	Running     bool    `json:"running"`
 	Thinking    bool    `json:"thinking"`
+	Tools       bool    `json:"tools"`
 }
 
 type ChatMessage struct {
@@ -133,7 +134,7 @@ func (s *Server) deleteAllowedFolder(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.Tools); err != nil {
 		return c, err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -147,7 +148,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,tools`
 
 func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 	rows, err := s.db.Query(`SELECT ` + chatColumns + ` FROM chat ORDER BY updated_at DESC,rowid DESC`)
@@ -247,6 +248,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	}
 	id, created := uid(), now()
 	c := chat{ID: id, ConnectorID: &in.ConnectorID, Title: in.Title, Model: in.Model, Folder: in.Folder, CreatedAt: created, UpdatedAt: created}
+	c.Tools = true
 	if in.Folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -512,9 +514,10 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		Title    *string `json:"title"`
 		Model    *string `json:"model"`
 		Thinking *bool   `json:"thinking"`
+		Tools    *bool   `json:"tools"`
 	}
-	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil {
-		errw(w, 400, "title, model, or thinking required")
+	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.Tools == nil {
+		errw(w, 400, "title, model, thinking, or tools required")
 		return
 	}
 	if in.Title != nil && !required(*in.Title) {
@@ -531,7 +534,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	title, model, thinking := c.Title, c.Model, c.Thinking
+	title, model, thinking, tools := c.Title, c.Model, c.Thinking, c.Tools
 	if in.Title != nil {
 		title = *in.Title
 	}
@@ -541,9 +544,12 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	if in.Thinking != nil {
 		thinking = *in.Thinking
 	}
+	if in.Tools != nil {
+		tools = *in.Tools
+	}
 	updated := now()
 	update := func() error {
-		res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,thinking=?,updated_at=? WHERE id=?`, title, model, thinking, updated, id)
+		res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,thinking=?,tools=?,updated_at=? WHERE id=?`, title, model, thinking, tools, updated, id)
 		if err != nil {
 			return err
 		}
@@ -558,7 +564,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Model != nil && model != c.Model {
 		err = s.chats.ChangeModel(id, update)
-	} else if in.Thinking != nil && thinking != c.Thinking {
+	} else if (in.Thinking != nil && thinking != c.Thinking) || (in.Tools != nil && tools != c.Tools) {
 		err = s.chats.UpdateChat(id, update)
 	} else {
 		err = update()
@@ -570,7 +576,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
-		c.Title, c.Model, c.Thinking, c.UpdatedAt = title, model, thinking, updated
+		c.Title, c.Model, c.Thinking, c.Tools, c.UpdatedAt = title, model, thinking, tools, updated
 		write(w, http.StatusOK, c)
 	}
 }

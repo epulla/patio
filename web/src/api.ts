@@ -145,6 +145,7 @@ export type Chat = {
   workdir: string;
   running: boolean;
   thinking: boolean;
+  tools: boolean;
 };
 export type ChatMessage = {
   id: string;

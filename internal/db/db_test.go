@@ -43,8 +43,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 11 {
-		t.Fatalf("migration count = %d, want 11", migrations)
+	if migrations != 12 {
+		t.Fatalf("migration count = %d, want 12", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -55,6 +55,13 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if thinking != 0 {
 		t.Fatalf("new chat thinking = %d, want 0", thinking)
+	}
+	var tools int
+	if err := second.QueryRow(`SELECT tools FROM chat WHERE id='migration-test'`).Scan(&tools); err != nil {
+		t.Fatalf("read chat tools default: %v", err)
+	}
+	if tools != 1 {
+		t.Fatalf("new chat tools = %d, want 1", tools)
 	}
 }
 

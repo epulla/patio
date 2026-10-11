@@ -511,6 +511,67 @@ func TestLocalToolJSONFits4096Context(t *testing.T) {
 	if len(after) >= localToolsMaxBytes {
 		t.Fatalf("local tool JSON = %d bytes, want under %d", len(after), localToolsMaxBytes)
 	}
+	prompt := localSystemPrompt("scratch", true)
+	for _, example := range []string{`"Hi" → "Hi!" (no tool)`, `call file__list_dir`, `call ticket__list_boards`} {
+		if !strings.Contains(prompt, example) {
+			t.Errorf("system prompt missing example %q: %s", example, prompt)
+		}
+	}
+	if len(after)+len(prompt) >= localToolsMaxBytes {
+		t.Fatalf("tool JSON plus prompt = %d bytes, want under %d", len(after)+len(prompt), localToolsMaxBytes)
+	}
+}
+
+func TestLocalChatToolsDisabledOpenAI(t *testing.T) {
+	database, _, chatID, server, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		if _, exists := request["tools"]; exists {
+			t.Error("tools-disabled OpenAI request included tools")
+		}
+		messages, _ := request["messages"].([]any)
+		system, _ := messages[0].(map[string]any)
+		prompt, _ := system["content"].(string)
+		if !strings.Contains(prompt, "Tools unavailable") || strings.Contains(prompt, "call file__list_dir") {
+			t.Errorf("tools-disabled system prompt = %q", prompt)
+		}
+		writeSSE(w, `{"choices":[{"delta":{"content":"Hello"}}]}`)
+	})
+	defer server.Close()
+	var updated chat
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"tools": false}, &updated); code != http.StatusOK || updated.Tools {
+		t.Fatalf("disable tools = %d, %#v", code, updated)
+	}
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if localAssistant(t, database, chatID) != "Hello" {
+		t.Fatal("tools-disabled reply missing")
+	}
+}
+
+func TestLocalChatToolsDisabledOllama(t *testing.T) {
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		if _, exists := request["tools"]; exists {
+			t.Error("tools-disabled Ollama request included tools")
+		}
+		messages, _ := request["messages"].([]any)
+		system, _ := messages[0].(map[string]any)
+		prompt, _ := system["content"].(string)
+		if !strings.Contains(prompt, "Tools unavailable") || strings.Contains(prompt, "call ticket__list_boards") {
+			t.Errorf("tools-disabled system prompt = %q", prompt)
+		}
+		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
+	})
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"tools": false}, nil); code != http.StatusOK {
+		t.Fatalf("disable tools = %d", code)
+	}
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if localAssistant(t, database, chatID) != "Hello" {
+		t.Fatal("tools-disabled reply missing")
+	}
 }
 
 func TestLocalHistoryUsesNewestMessagesWithinBudget(t *testing.T) {

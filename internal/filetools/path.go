@@ -9,9 +9,6 @@ import (
 )
 
 func resolve(root, rel string) (string, string, error) {
-	if filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" || windowsAbsolute(rel) {
-		return "", "", errors.New("path must be relative to the work directory")
-	}
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return "", "", err
@@ -26,6 +23,34 @@ func resolve(root, rel string) (string, string, error) {
 	}
 	if !rootInfo.IsDir() {
 		return "", "", errors.New("work directory is not a directory")
+	}
+	if rel == "~" {
+		rel = "."
+	} else if strings.HasPrefix(rel, "~/") {
+		rel = strings.TrimPrefix(rel, "~/")
+	}
+	if filepath.IsAbs(rel) {
+		absolute, err := filepath.Abs(rel)
+		if err != nil {
+			return "", "", err
+		}
+		if real, err := evalPathWithMissingTail(absolute); err == nil && pathWithin(rootReal, real) {
+			rel, err = filepath.Rel(rootReal, real)
+			if err != nil {
+				return "", "", err
+			}
+		} else if pathWithin(rootReal, absolute) {
+			rel, err = filepath.Rel(rootReal, absolute)
+			if err != nil {
+				return "", "", err
+			}
+		} else if strings.HasPrefix(rel, "/") {
+			rel = strings.TrimLeft(rel, `/\`)
+		} else {
+			return "", "", errors.New("path must be relative to the work directory")
+		}
+	} else if filepath.VolumeName(rel) != "" || windowsAbsolute(rel) {
+		return "", "", errors.New("path must be relative to the work directory")
 	}
 	clean := filepath.Clean(rel)
 	if clean == "" {
@@ -67,6 +92,34 @@ func resolve(root, rel string) (string, string, error) {
 		return "", "", errors.New("path resolves outside the work directory")
 	}
 	return target, rootReal, nil
+}
+
+func evalPathWithMissingTail(path string) (string, error) {
+	ancestor := path
+	var missing []string
+	for {
+		_, err := os.Lstat(ancestor)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(ancestor)
+		if parent == ancestor {
+			return "", fmt.Errorf("no existing ancestor for %q", path)
+		}
+		missing = append(missing, filepath.Base(ancestor))
+		ancestor = parent
+	}
+	resolved, err := filepath.EvalSymlinks(ancestor)
+	if err != nil {
+		return "", err
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		resolved = filepath.Join(resolved, missing[i])
+	}
+	return filepath.Clean(resolved), nil
 }
 
 func windowsAbsolute(path string) bool {
