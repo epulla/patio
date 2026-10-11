@@ -99,6 +99,8 @@ func truncateUTF8(value string, max int) string {
 }
 
 func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
+	s.attachmentsMu.Lock()
+	defer s.attachmentsMu.Unlock()
 	c, ok := s.chatForAttachments(w, r)
 	if !ok {
 		return
@@ -109,8 +111,6 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		writeAttachmentError(w, err)
 		return
 	}
-	s.attachmentsMu.Lock()
-	defer s.attachmentsMu.Unlock()
 	pending := s.attachments[c.ID]
 	if len(pending)+1 > maxChatAttachments {
 		errw(w, http.StatusBadRequest, "at most 10 unsent attachments are allowed")
