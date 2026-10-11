@@ -1,9 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { api, type AllowedFolder, type McpStatus } from "./api";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import {
+  api,
+  type AllowedFolder,
+  type ChatDefaults,
+  type Connector,
+  type McpStatus,
+  type SettingsAbout,
+  type SettingsRevealTarget,
+} from "./api";
 import { ErrorText } from "./App";
 import { Icon, IconButton } from "./icons";
+import Switch from "./Switch";
 
-function AllowedFolders() {
+function AllowedFolders({ onChange }: { onChange: () => void }) {
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [path, setPath] = useState("");
   const [error, setError] = useState<unknown>();
@@ -25,6 +34,7 @@ function AllowedFolders() {
       setPath("");
       setError(undefined);
       await load();
+      onChange();
     } catch (reason) {
       setError(reason);
     }
@@ -35,6 +45,7 @@ function AllowedFolders() {
       await api.delete(`/api/settings/folders/${folder.id}`);
       setError(undefined);
       await load();
+      onChange();
     } catch (reason) {
       setError(reason);
     }
@@ -84,7 +95,218 @@ function AllowedFolders() {
   );
 }
 
+const fileManager: Record<string, string> = { darwin: "Finder", windows: "Explorer" };
+
+function formatBytes(bytes: number) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(unit === 0 || value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function General() {
+  const [about, setAbout] = useState<SettingsAbout>();
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<unknown>();
+
+  useEffect(() => {
+    api.get<SettingsAbout>("/api/settings/about").then(setAbout).catch(setError);
+  }, []);
+
+  async function reveal(target: SettingsRevealTarget) {
+    try {
+      await api.post("/api/settings/reveal", { target });
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  async function copyPath() {
+    if (!about) return;
+    try {
+      await navigator.clipboard.writeText(about.db_path);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  function openRepo(event: MouseEvent<HTMLAnchorElement>) {
+    if (!window.runtime || !about) return;
+    event.preventDefault();
+    window.runtime.BrowserOpenURL(about.repo_url);
+  }
+
+  const manager = fileManager[about?.os ?? ""] ?? "file manager";
+  const counts = about
+    ? [
+        ["boards", about.counts.boards],
+        ["tickets", about.counts.tickets],
+        ["chats", about.counts.chats],
+        ["connectors", about.counts.connectors],
+        ["MCP servers", about.counts.mcp_servers],
+        ["skills", about.counts.skills],
+      ]
+    : [];
+
+  return (
+    <section className="stack">
+      <h2>General</h2>
+      <section className="panel">
+        {about ? (
+          <dl className="about-list">
+            <dt>Version</dt>
+            <dd>
+              <code>{about.version}</code> · {about.os}/{about.arch}
+            </dd>
+            <dt>Database</dt>
+            <dd>
+              <code className="about-path">{about.db_path}</code>
+              <span className="about-actions">
+                <button type="button" onClick={() => reveal("database")}>
+                  Show in {manager}
+                </button>
+                <button type="button" onClick={copyPath}>
+                  {copied ? "Copied" : "Copy path"}
+                </button>
+              </span>
+            </dd>
+            <dt>Data folder</dt>
+            <dd>
+              <code className="about-path">{about.data_dir}</code>
+              <span className="muted">
+                {about.approximate ? "about " : ""}
+                {formatBytes(about.data_dir_bytes)}
+              </span>
+              <span className="about-actions">
+                <button type="button" onClick={() => reveal("data_dir")}>
+                  Open
+                </button>
+              </span>
+            </dd>
+            <dt>Contents</dt>
+            <dd>{counts.map(([label, count]) => `${count} ${label}`).join(" · ")}</dd>
+            <dt>Schema</dt>
+            <dd>Version {about.schema_version}</dd>
+            <dt>Hidden fields</dt>
+            <dd>{about.show_hidden ? "Shown (-show-hidden)" : "Hidden"}</dd>
+            <dt>Secrets</dt>
+            <dd>Stored in {about.secrets_store}, not in the database or backups.</dd>
+            <dt>Source</dt>
+            <dd>
+              <a href={about.repo_url} target="_blank" rel="noreferrer" onClick={openRepo}>
+                {about.repo_url.replace(/^https:\/\//, "")}
+              </a>
+            </dd>
+          </dl>
+        ) : (
+          !error && <p className="muted" role="status">Loading…</p>
+        )}
+        <ErrorText error={error} />
+      </section>
+    </section>
+  );
+}
+
+function Defaults({ foldersVersion }: { foldersVersion: number }) {
+  const [defaults, setDefaults] = useState<ChatDefaults>();
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [folders, setFolders] = useState<AllowedFolder[]>([]);
+  const [error, setError] = useState<unknown>();
+
+  useEffect(() => {
+    Promise.all([
+      api.get<ChatDefaults>("/api/settings/defaults"),
+      api.get<Connector[]>("/api/connectors"),
+      api.get<AllowedFolder[]>("/api/settings/folders"),
+    ])
+      .then(([nextDefaults, nextConnectors, nextFolders]) => {
+        setDefaults(nextDefaults);
+        setConnectors(nextConnectors);
+        setFolders(nextFolders);
+      })
+      .catch(setError);
+  }, [foldersVersion]);
+
+  async function save(change: Partial<ChatDefaults>) {
+    if (!defaults) return;
+    const next = { ...defaults, ...change };
+    try {
+      setDefaults(await api.put<ChatDefaults>("/api/settings/defaults", next));
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <h2>Defaults</h2>
+      <p className="muted">New chats start with these. Each chat can change them afterwards.</p>
+      <section className="panel stack defaults-panel">
+        {defaults ? (
+          <>
+            <div className="defaults-fields">
+              <label>
+                Connector
+                <select
+                  value={defaults.connector_id ?? ""}
+                  onChange={(event) => save({ connector_id: event.target.value || null })}
+                >
+                  <option value="">First connector</option>
+                  {connectors.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} · {c.kind}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Folder
+                <select value={defaults.folder ?? ""} onChange={(event) => save({ folder: event.target.value || null })}>
+                  <option value="">Scratch folder (no files shared)</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.path}>
+                      {f.path}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <Switch
+              className="warning"
+              label="Auto-allow file changes and commands"
+              checked={defaults.auto_allow}
+              onChange={(auto_allow) => save({ auto_allow })}
+            />
+            <Switch
+              label="Tools (Local AI chats)"
+              checked={defaults.tools}
+              onChange={(tools) => save({ tools })}
+            />
+            <Switch
+              label="Thinking (Local AI chats)"
+              checked={defaults.thinking}
+              onChange={(thinking) => save({ thinking })}
+            />
+          </>
+        ) : (
+          !error && <p className="muted" role="status">Loading…</p>
+        )}
+        <ErrorText error={error} />
+      </section>
+    </section>
+  );
+}
+
 export default function Settings() {
+  const [foldersVersion, setFoldersVersion] = useState(0);
   const [status, setStatus] = useState<McpStatus>();
   const [error, setError] = useState<unknown>();
   const [copyError, setCopyError] = useState<unknown>();
@@ -150,13 +372,11 @@ export default function Settings() {
         </div>
       </div>
 
-      <section>
-        <h2>General</h2>
-        <p>Hello!</p>
-      </section>
+      <General />
 
-      <AllowedFolders />
+      <Defaults foldersVersion={foldersVersion} />
 
+      <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
 
       <section className="stack">
         <h2>MCP status</h2>

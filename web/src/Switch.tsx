@@ -5,6 +5,7 @@ export default function Switch({
   showLabel = true,
   disabled,
   title,
+  className,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -12,9 +13,10 @@ export default function Switch({
   showLabel?: boolean;
   disabled?: boolean;
   title?: string;
+  className?: string;
 }) {
   return (
-    <label className="switch" title={title}>
+    <label className={className ? `switch ${className}` : "switch"} title={title}>
       <input
         type="checkbox"
         role="switch"

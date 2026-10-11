@@ -5,6 +5,7 @@ import {
   type AllowedFolder,
   type Chat,
   type ChatApproval,
+  type ChatDefaults,
   type ChatMessage,
   type Connector,
 } from "./api";
@@ -12,7 +13,12 @@ import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 
-type ChatDetail = { chat: Chat; messages: ChatMessage[]; pending_approvals: ChatApproval[] };
+type ChatDetail = {
+  chat: Chat;
+  messages: ChatMessage[];
+  pending_approvals: ChatApproval[];
+  auto_approvals?: ChatApproval[];
+};
 type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "tool"; message: ChatMessage }
@@ -278,7 +284,7 @@ function Conversation({
     }
   }
 
-  async function update(fields: { model: string } | { thinking: boolean } | { tools: boolean }) {
+  async function update(fields: { model: string } | { thinking: boolean } | { tools: boolean } | { auto_allow: boolean }) {
     try {
       await api.put(`/api/chats/${id}`, fields);
       setDetail((current) => current && { ...current, chat: { ...current.chat, ...fields } });
@@ -286,6 +292,12 @@ function Conversation({
     } catch (reason) {
       setError(reason);
     }
+  }
+
+  async function changeAutoAllow(on: boolean) {
+    if (on && !confirm("Allow every file change and command in this chat without asking? You can turn it off anytime.")) return;
+    await update({ auto_allow: on });
+    if (on) void load();
   }
 
   async function reveal(path: string) {
@@ -402,6 +414,17 @@ function Conversation({
             >
               <Icon name="folder" /> {detail.chat.folder ?? "Scratch folder (no files shared)"}
             </button>
+            <Switch
+              className="warning"
+              label="Auto-allow"
+              checked={detail.chat.auto_allow}
+              title={
+                detail.chat.auto_allow
+                  ? "Every file change and command runs without asking"
+                  : "Ask before every file change and command"
+              }
+              onChange={changeAutoAllow}
+            />
           </div>
         </div>
         <IconButton className="danger-text" icon="trash" label="Delete chat" onClick={remove} />
@@ -417,8 +440,13 @@ function Conversation({
             changing anything.
           </p>
         )}
-        {detail.messages.map((message) =>
-          message.role === "tool" ? (
+        {timeline(detail).map((message) =>
+          "tool_name" in message ? (
+            <p key={message.id} className="tool-line">
+              <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
+              <MessageTime iso={message.created_at} />
+            </p>
+          ) : message.role === "tool" ? (
             <p key={message.id} className="tool-line">
               <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
             </p>
@@ -471,6 +499,20 @@ function Conversation({
   );
 }
 
+function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
+  const auto = detail.auto_approvals ?? [];
+  if (!auto.length) return detail.messages;
+  return [...detail.messages, ...auto].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+function approvalSummary(approval: ChatApproval) {
+  let input = approval.input_json;
+  try {
+    input = JSON.stringify(JSON.parse(approval.input_json));
+  } catch {}
+  return `${approval.tool_name} ${input.length > 80 ? `${input.slice(0, 80)}…` : input}`;
+}
+
 function ApprovalCard({ approval, onAnswer }: { approval: ChatApproval; onAnswer: (allow: boolean) => void }) {
   let input = approval.input_json;
   try {
@@ -515,6 +557,16 @@ function NewChatDialog({
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
     api.get<AllowedFolder[]>("/api/settings/folders").then(setFolders).catch(setError);
+    api
+      .get<ChatDefaults>("/api/settings/defaults")
+      .then((defaults) => {
+        if (defaults.connector_id && connectors.some((c) => c.id === defaults.connector_id)) {
+          setConnectorID(defaults.connector_id);
+          setModel(defaultModel(defaults.connector_id));
+        }
+        if (defaults.folder) setFolder(defaults.folder);
+      })
+      .catch(setError);
   }, []);
 
   async function submit(event: FormEvent) {
@@ -523,7 +575,7 @@ function NewChatDialog({
       const chat = await api.post<Chat>("/api/chats", {
         connector_id: connectorID,
         model,
-        ...(folder ? { folder } : {}),
+        folder: folder || null,
       });
       onCreated(chat);
     } catch (reason) {

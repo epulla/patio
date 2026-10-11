@@ -1612,6 +1612,13 @@ label.days-field {
   transform: translateX(16px);
   background: var(--primary-content);
 }
+.switch.warning input:checked + .switch-track {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+.switch.warning input:checked + .switch-track::after {
+  background: var(--warning-content);
+}
 .switch input:focus-visible + .switch-track {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
@@ -2303,4 +2310,51 @@ label.days-field {
 }
 .create .field .label-row label {
   display: inline;
+}
+.about-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px 20px;
+  margin: 0;
+  font-size: 14px;
+}
+.about-list dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+.about-list dd {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.about-path {
+  overflow-wrap: anywhere;
+  font: 13px var(--mono);
+}
+.about-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.about-actions button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.defaults-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.defaults-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.defaults-panel .switch {
+  margin-right: 0;
 }
