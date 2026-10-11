@@ -183,6 +183,29 @@ func TestApprovalTool(t *testing.T) {
 	}
 }
 
+func TestApprovalToolAutoAllowedFromDatabase(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "auto-allow.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	const chatID = "auto-chat"
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at,auto_allow) VALUES(?,?,?, ?,1)`, chatID, "Auto", "now", "now"); err != nil {
+		t.Fatal(err)
+	}
+	result, _, err := approvalHandler(context.Background(), &ApprovalOptions{DB: database, ChatID: chatID, Timeout: time.Second, PollInterval: time.Millisecond}, approveArgs{
+		ToolName: "write_file", Input: json.RawMessage(`{"path":"x"}`),
+	})
+	if err != nil || result.Content[0].(*sdk.TextContent).Text != `{"behavior":"allow","updatedInput":{"path":"x"}}` {
+		t.Fatalf("auto-allowed result = %#v, %v", result, err)
+	}
+	var status string
+	var auto bool
+	if err := database.QueryRow(`SELECT status,auto FROM chat_approval WHERE chat_id=?`, chatID).Scan(&status, &auto); err != nil || status != "allowed" || !auto {
+		t.Fatalf("auto approval = (%q, %v), %v", status, auto, err)
+	}
+}
+
 func pendingApprovalID(t *testing.T, database *sql.DB, chatID string) string {
 	t.Helper()
 	deadline := time.After(time.Second)

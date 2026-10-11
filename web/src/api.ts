@@ -146,6 +146,7 @@ export type Chat = {
   running: boolean;
   thinking: boolean;
   tools: boolean;
+  auto_allow: boolean;
 };
 export type ChatMessage = {
   id: string;
@@ -160,6 +161,7 @@ export type ChatApproval = {
   tool_name: string;
   input_json: string;
   status: "pending" | "allowed" | "denied" | "expired";
+  auto?: boolean;
   created_at: string;
   answered_at: string | null;
 };

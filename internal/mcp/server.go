@@ -296,9 +296,12 @@ func approvalHandler(ctx context.Context, options *ApprovalOptions, in approveAr
 	if toolName == "list_skills" || toolName == "load_skill" {
 		return approvalAllowResult(in.Input)
 	}
-	id, err := api.CreateChatApproval(options.DB, options.ChatID, in.ToolName, in.Input)
+	id, auto, err := api.CreateChatApproval(options.DB, options.ChatID, in.ToolName, in.Input)
 	if err != nil {
 		return nil, nil, err
+	}
+	if auto {
+		return approvalAllowResult(in.Input)
 	}
 	timer := time.NewTimer(options.Timeout)
 	defer timer.Stop()

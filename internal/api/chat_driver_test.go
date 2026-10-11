@@ -170,6 +170,104 @@ func TestRequestApproval(t *testing.T) {
 	}
 }
 
+func TestRequestApprovalAutoAllowed(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET auto_allow=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan any, 1)
+	server := New(database, "local", false, "dev", root, Options{Emit: func(_ string, event any) { events <- event }})
+	defer server.Close()
+	server.chats.approvalTimeout = time.Second
+	allowed, err := server.chats.requestApproval(context.Background(), chatID, "write_file", json.RawMessage(`{"path":"x"}`))
+	if err != nil || !allowed {
+		t.Fatalf("requestApproval = (%v, %v), want (true, nil)", allowed, err)
+	}
+	var status string
+	var auto bool
+	var answeredAt sql.NullString
+	if err := database.QueryRow(`SELECT status,auto,answered_at FROM chat_approval WHERE chat_id=?`, chatID).Scan(&status, &auto, &answeredAt); err != nil {
+		t.Fatal(err)
+	}
+	if status != "allowed" || !auto || !answeredAt.Valid {
+		t.Fatalf("approval = (%q, %v, %v), want allowed, auto, answered", status, auto, answeredAt)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("auto-allowed request emitted event %#v", event)
+	default:
+	}
+}
+
+func TestAutoAllowResolvesPendingApprovalWhileRunning(t *testing.T) {
+	database, handler, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	server := handler.(*Server)
+	server.chats.approvalPollInterval = time.Millisecond
+	server.chats.approvalTimeout = time.Second
+	runtime := server.chats.runtime(chatID)
+	runtime.mu.Lock()
+	runtime.busy = true
+	runtime.mu.Unlock()
+	defer func() {
+		runtime.mu.Lock()
+		runtime.busy = false
+		runtime.mu.Unlock()
+	}()
+	result := make(chan struct {
+		allowed bool
+		err     error
+	}, 1)
+	go func() {
+		allowed, err := server.chats.requestApproval(context.Background(), chatID, "write_file", json.RawMessage(`{"path":"x"}`))
+		result <- struct {
+			allowed bool
+			err     error
+		}{allowed, err}
+	}()
+	var approvalID string
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		err := database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending'`, chatID).Scan(&approvalID)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if approvalID == "" {
+		t.Fatal("pending approval was not inserted")
+	}
+	var updated chat
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"auto_allow": true}, &updated); code != http.StatusOK || !updated.AutoAllow {
+		t.Fatalf("enable auto_allow while running = %d, %#v", code, updated)
+	}
+	select {
+	case got := <-result:
+		if got.err != nil || !got.allowed {
+			t.Fatalf("approval waiter = (%v, %v), want (true, nil)", got.allowed, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending approval waiter did not return")
+	}
+	var status string
+	var auto bool
+	if err := database.QueryRow(`SELECT status,auto FROM chat_approval WHERE id=?`, approvalID).Scan(&status, &auto); err != nil || status != "allowed" || !auto {
+		t.Fatalf("resolved approval = (%q, %v), %v", status, auto, err)
+	}
+	var detail struct {
+		AutoApprovals []chatApproval `json:"auto_approvals"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK || len(detail.AutoApprovals) != 1 || !detail.AutoApprovals[0].Auto {
+		t.Fatalf("auto approvals API = %d, %#v", code, detail)
+	}
+}
+
 func TestBuildClaudeArgs(t *testing.T) {
 	configPath, err := writeClaudeMCPConfig(t.TempDir(), map[string]any{"my-tickets": map[string]any{
 		"type": "stdio", "command": "/app/mt", "args": []string{"mcp", "-d", "/data/board.db", "-approve-chat", "chat-id"},

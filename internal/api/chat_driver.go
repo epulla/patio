@@ -310,9 +310,12 @@ func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
 }
 
 func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName string, input json.RawMessage) (bool, error) {
-	id, err := CreateChatApproval(m.db, chatID, toolName, input)
+	id, auto, err := CreateChatApproval(m.db, chatID, toolName, input)
 	if err != nil {
 		return false, err
+	}
+	if auto {
+		return true, nil
 	}
 	m.emit(chatID, map[string]any{"type": "approval"})
 	timer := time.NewTimer(m.approvalTimeout)

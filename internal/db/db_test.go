@@ -43,8 +43,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 12 {
-		t.Fatalf("migration count = %d, want 12", migrations)
+	if migrations != 13 {
+		t.Fatalf("migration count = %d, want 13", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -62,6 +62,22 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if tools != 1 {
 		t.Fatalf("new chat tools = %d, want 1", tools)
+	}
+	var autoAllow, auto int
+	if err := second.QueryRow(`SELECT auto_allow FROM chat WHERE id='migration-test'`).Scan(&autoAllow); err != nil {
+		t.Fatalf("read chat auto_allow default: %v", err)
+	}
+	if autoAllow != 0 {
+		t.Fatalf("new chat auto_allow = %d, want 0", autoAllow)
+	}
+	if _, err := second.Exec(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,created_at) VALUES('migration-approval','migration-test','write','{}','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.QueryRow(`SELECT auto FROM chat_approval WHERE id='migration-approval'`).Scan(&auto); err != nil {
+		t.Fatalf("read approval auto default: %v", err)
+	}
+	if auto != 0 {
+		t.Fatalf("new approval auto = %d, want 0", auto)
 	}
 }
 

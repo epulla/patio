@@ -33,6 +33,7 @@ type chat struct {
 	Running     bool    `json:"running"`
 	Thinking    bool    `json:"thinking"`
 	Tools       bool    `json:"tools"`
+	AutoAllow   bool    `json:"auto_allow"`
 }
 
 type ChatMessage struct {
@@ -49,6 +50,7 @@ type chatApproval struct {
 	ToolName   string  `json:"tool_name"`
 	InputJSON  string  `json:"input_json"`
 	Status     string  `json:"status"`
+	Auto       bool    `json:"auto"`
 	CreatedAt  string  `json:"created_at"`
 	AnsweredAt *string `json:"answered_at"`
 }
@@ -134,7 +136,7 @@ func (s *Server) deleteAllowedFolder(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.Tools); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.Tools, &c.AutoAllow); err != nil {
 		return c, err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -148,7 +150,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,tools`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,tools,auto_allow`
 
 func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 	rows, err := s.db.Query(`SELECT ` + chatColumns + ` FROM chat ORDER BY updated_at DESC,rowid DESC`)
@@ -179,6 +181,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		Title       string  `json:"title"`
 		Model       string  `json:"model"`
 		Folder      *string `json:"folder"`
+		AutoAllow   bool    `json:"auto_allow"`
 	}
 	if decode(r, &in) != nil || !required(in.ConnectorID) {
 		errw(w, 400, "connector_id required")
@@ -248,7 +251,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	}
 	id, created := uid(), now()
 	c := chat{ID: id, ConnectorID: &in.ConnectorID, Title: in.Title, Model: in.Model, Folder: in.Folder, CreatedAt: created, UpdatedAt: created}
-	c.Tools = true
+	c.Tools, c.AutoAllow = true, in.AutoAllow
 	if in.Folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -260,7 +263,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,auto_allow) VALUES(?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.AutoAllow); err != nil {
 		if in.Folder == nil {
 			err = cleanupConnectorDir(s.chatWorkdir(c), err)
 		}
@@ -308,25 +311,52 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	approvals := []chatApproval{}
-	rows, err = s.db.Query(`SELECT id,chat_id,tool_name,input_json,status,created_at,answered_at FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY created_at,rowid`, c.ID)
+	rows, err = s.db.Query(`SELECT id,chat_id,tool_name,input_json,status,auto,created_at,answered_at FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var a chatApproval
-		if err := rows.Scan(&a.ID, &a.ChatID, &a.ToolName, &a.InputJSON, &a.Status, &a.CreatedAt, &a.AnsweredAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.ChatID, &a.ToolName, &a.InputJSON, &a.Status, &a.Auto, &a.CreatedAt, &a.AnsweredAt); err != nil {
+			_ = rows.Close()
 			errw(w, 500, err.Error())
 			return
 		}
 		approvals = append(approvals, a)
 	}
-	if err := rows.Err(); err != nil {
+	rowsErr = rows.Err()
+	if err := rows.Close(); err != nil {
+		rowsErr = errors.Join(rowsErr, err)
+	}
+	if rowsErr != nil {
+		errw(w, 500, rowsErr.Error())
+		return
+	}
+	autoApprovals := []chatApproval{}
+	rows, err = s.db.Query(`SELECT id,chat_id,tool_name,input_json,status,auto,created_at,answered_at FROM chat_approval WHERE chat_id=? AND auto=1 ORDER BY created_at,rowid`, c.ID)
+	if err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
-	write(w, 200, map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals})
+	for rows.Next() {
+		var a chatApproval
+		if err := rows.Scan(&a.ID, &a.ChatID, &a.ToolName, &a.InputJSON, &a.Status, &a.Auto, &a.CreatedAt, &a.AnsweredAt); err != nil {
+			_ = rows.Close()
+			errw(w, 500, err.Error())
+			return
+		}
+		autoApprovals = append(autoApprovals, a)
+	}
+	rowsErr = rows.Err()
+	if err := rows.Close(); err != nil {
+		rowsErr = errors.Join(rowsErr, err)
+	}
+	if rowsErr != nil {
+		errw(w, 500, rowsErr.Error())
+		return
+	}
+	write(w, 200, map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals, "auto_approvals": autoApprovals})
 }
 
 func (s *Server) revealChatFile(w http.ResponseWriter, r *http.Request) {
@@ -511,13 +541,14 @@ func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Title    *string `json:"title"`
-		Model    *string `json:"model"`
-		Thinking *bool   `json:"thinking"`
-		Tools    *bool   `json:"tools"`
+		Title     *string `json:"title"`
+		Model     *string `json:"model"`
+		Thinking  *bool   `json:"thinking"`
+		Tools     *bool   `json:"tools"`
+		AutoAllow *bool   `json:"auto_allow"`
 	}
-	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.Tools == nil {
-		errw(w, 400, "title, model, thinking, or tools required")
+	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.Tools == nil && in.AutoAllow == nil {
+		errw(w, 400, "title, model, thinking, tools, or auto_allow required")
 		return
 	}
 	if in.Title != nil && !required(*in.Title) {
@@ -534,7 +565,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	title, model, thinking, tools := c.Title, c.Model, c.Thinking, c.Tools
+	title, model, thinking, tools, autoAllow := c.Title, c.Model, c.Thinking, c.Tools, c.AutoAllow
 	if in.Title != nil {
 		title = *in.Title
 	}
@@ -547,9 +578,14 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	if in.Tools != nil {
 		tools = *in.Tools
 	}
+	if in.AutoAllow != nil {
+		autoAllow = *in.AutoAllow
+	}
 	updated := now()
-	update := func() error {
-		res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,thinking=?,tools=?,updated_at=? WHERE id=?`, title, model, thinking, tools, updated, id)
+	writeUpdate := func(exec interface {
+		Exec(string, ...any) (sql.Result, error)
+	}) error {
+		res, err := exec.Exec(`UPDATE chat SET title=?,model=?,thinking=?,tools=?,auto_allow=?,updated_at=? WHERE id=?`, title, model, thinking, tools, autoAllow, updated, id)
 		if err != nil {
 			return err
 		}
@@ -561,6 +597,21 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 			return sql.ErrNoRows
 		}
 		return nil
+	}
+	update := func() error {
+		if in.AutoAllow == nil {
+			return writeUpdate(s.db)
+		}
+		return txrun(s.db, func(tx *sql.Tx) error {
+			if err := writeUpdate(tx); err != nil {
+				return err
+			}
+			if autoAllow {
+				_, err := tx.Exec(`UPDATE chat_approval SET status='allowed',auto=1,answered_at=? WHERE chat_id=? AND status='pending'`, updated, id)
+				return err
+			}
+			return nil
+		})
 	}
 	if in.Model != nil && model != c.Model {
 		err = s.chats.ChangeModel(id, update)
@@ -576,7 +627,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
-		c.Title, c.Model, c.Thinking, c.Tools, c.UpdatedAt = title, model, thinking, tools, updated
+		c.Title, c.Model, c.Thinking, c.Tools, c.AutoAllow, c.UpdatedAt = title, model, thinking, tools, autoAllow, updated
 		write(w, http.StatusOK, c)
 	}
 }
@@ -669,10 +720,14 @@ func ChatExists(database *sql.DB, id string) (bool, error) {
 	return err == nil, err
 }
 
-func CreateChatApproval(database *sql.DB, chatID, toolName string, input json.RawMessage) (string, error) {
+func CreateChatApproval(database *sql.DB, chatID, toolName string, input json.RawMessage) (string, bool, error) {
 	id := uid()
-	_, err := database.Exec(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,created_at) VALUES(?,?,?,?,?)`, id, chatID, toolName, string(input), now())
-	return id, err
+	created := now()
+	var auto bool
+	err := database.QueryRow(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,status,created_at,answered_at,auto)
+		SELECT ?,?,?,?,CASE WHEN auto_allow=1 THEN 'allowed' ELSE 'pending' END,?,CASE WHEN auto_allow=1 THEN ? ELSE NULL END,auto_allow
+		FROM chat WHERE id=? RETURNING auto`, id, chatID, toolName, string(input), created, created, chatID).Scan(&auto)
+	return id, auto, err
 }
 
 func ChatApprovalStatus(database *sql.DB, chatID, approvalID string) (string, error) {
