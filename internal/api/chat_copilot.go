@@ -139,7 +139,7 @@ func (d *copilotRuntime) initialize(c chat) error {
 	return nil
 }
 
-func (d *copilotRuntime) send(text string) error {
+func (d *copilotRuntime) send(request ChatSendRequest) error {
 	if d.authFailed {
 		return nil
 	}
@@ -148,7 +148,7 @@ func (d *copilotRuntime) send(text string) error {
 	d.assistantMu.Unlock()
 	result, err := d.client.callAsync("session/prompt", map[string]any{
 		"sessionId": d.sessionID,
-		"prompt":    []any{map[string]string{"type": "text", "text": text}},
+		"prompt":    []any{map[string]string{"type": "text", "text": request.Text}},
 	})
 	if err != nil {
 		return err

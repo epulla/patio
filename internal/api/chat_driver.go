@@ -34,7 +34,7 @@ type chatProcessFactory func(path string, args, env []string, cwd string) (chatP
 type startFunc func(*chatManager, chat, string, *chatRuntime) (chatRuntimeDriver, error)
 
 type chatRuntimeDriver interface {
-	send(text string) error
+	send(request ChatSendRequest) error
 	stop() error
 	close() error
 }
@@ -141,7 +141,7 @@ func (m *chatManager) Running(id string) bool {
 	return rt.busy
 }
 
-func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, error) {
+func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendRequest) (ChatMessage, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -181,7 +181,7 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 	if err := m.restartThinkingLocked(kind, c, rt); err != nil {
 		return ChatMessage{}, fmt.Errorf("restart chat for thinking change: %w", err)
 	}
-	message, err := InsertChatMessage(m.db, c.ID, "user", text)
+	message, err := InsertChatMessageWithAttachments(m.db, c.ID, "user", request.Text, request.Attachments)
 	if err != nil {
 		return ChatMessage{}, err
 	}
@@ -198,7 +198,7 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 			rt.startedThinking = &thinking
 		}
 	}
-	if err := rt.driver.send(text); err != nil {
+	if err := rt.driver.send(request); err != nil {
 		rt.busy = false
 		m.markRuntimeActiveLocked(c.ID, rt)
 		return message, fmt.Errorf("send chat message: %w", err)

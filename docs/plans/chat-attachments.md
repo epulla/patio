@@ -24,6 +24,6 @@ Answers to the questions: 1 default, 2 "yes, pls create a custom icon for this (
 
 ## Tasks
 
-- [ ] Backend storage: migration for `chat_message.attachments`, upload/delete/serve endpoints, cross-OS name sanitizing, limits and type detection, cleanup of unsent uploads, and attachments on `POST /api/chats/{id}/messages`. Check: Go tests for limits, types, sanitizing (Windows reserved names, separators, clashes), path escapes, serve headers, cleanup; race; `make release` (Windows compile).
+- [x] Backend storage: migration for `chat_message.attachments`, upload/delete/serve endpoints, cross-OS name sanitizing, limits and type detection, cleanup of unsent uploads, and attachments on `POST /api/chats/{id}/messages`. Check: Go tests for limits, types, sanitizing (Windows reserved names, separators, clashes), path escapes, serve headers, cleanup; race; `make release` (Windows compile).
 - [ ] Backend delivery: per-CLI image and text delivery (decision 6), the local vision check and fallback, and the "can't see images" note. Check: Go tests for the exact payload built per runtime with fake processes or servers; race; `make release`; the 4 live prompts from decision 9.
 - [ ] UI: `paperclip` icon, the attach button, drag and drop, paste, pending chips with remove, sent-message chips with reveal and image previews, and the "can't see images" note. Check: `pnpm --dir web build`; `wails build`; user smoke test (attach a `.md` and a screenshot in a Claude chat).

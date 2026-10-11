@@ -346,7 +346,7 @@ func (d *opencodeRuntime) createSession() error {
 	return d.manager.saveSession(d.chatID, session.ID)
 }
 
-func (d *opencodeRuntime) send(text string) error {
+func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
@@ -360,10 +360,10 @@ func (d *opencodeRuntime) send(text string) error {
 		model = map[string]string{"providerID": provider, "modelID": modelID}
 	}
 	endpoint := d.endpoint("/session/" + url.PathEscape(d.session) + "/prompt_async")
-	body := map[string]any{"parts": []any{map[string]string{"type": "text", "text": text}}}
+	body := map[string]any{"parts": []any{map[string]string{"type": "text", "text": request.Text}}}
 	if d.server.major >= 2 {
 		endpoint = "/api/session/" + url.PathEscape(d.session) + "/prompt"
-		body = map[string]any{"text": text}
+		body = map[string]any{"text": request.Text}
 	} else if model != nil {
 		body["model"] = model
 	}
@@ -394,7 +394,7 @@ func (d *opencodeRuntime) send(text string) error {
 				return err
 			}
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
-			return d.send(text)
+			return d.send(request)
 		}
 		err := fmt.Errorf("opencode prompt returned %s", resp.Status)
 		d.discardTurn()

@@ -46,11 +46,12 @@ type thinkingCapability struct {
 }
 
 type ChatMessage struct {
-	ID        string `json:"id"`
-	ChatID    string `json:"chat_id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"created_at"`
+	ID          string           `json:"id"`
+	ChatID      string           `json:"chat_id"`
+	Role        string           `json:"role"`
+	Content     string           `json:"content"`
+	CreatedAt   string           `json:"created_at"`
+	Attachments []ChatAttachment `json:"attachments"`
 }
 
 type chatApproval struct {
@@ -324,14 +325,21 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	}
 	c.Running = s.chats.Running(c.ID)
 	messages := []ChatMessage{}
-	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
+	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+		var rawAttachments string
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments); err == nil {
+			if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
+				_ = rows.Close()
+				errw(w, 500, "invalid chat message attachments: "+err.Error())
+				return
+			}
+		} else {
 			if closeErr := rows.Close(); closeErr != nil {
 				err = errors.Join(err, closeErr)
 			}
@@ -518,10 +526,15 @@ func openInFileManager(path string) error {
 
 func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Text string `json:"text"`
+		Text        string   `json:"text"`
+		Attachments []string `json:"attachments"`
 	}
 	if decode(r, &in) != nil {
 		errw(w, http.StatusBadRequest, "valid text required")
+		return
+	}
+	if len(in.Attachments) > maxChatAttachments {
+		errw(w, http.StatusBadRequest, "at most 10 attachments are allowed")
 		return
 	}
 	id := idParam(r, "id")
@@ -550,7 +563,38 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, errChatUnsupported.Error())
 		return
 	}
-	message, err := s.chats.Send(c, kind, dir, in.Text)
+	s.attachmentsMu.Lock()
+	defer s.attachmentsMu.Unlock()
+	if strings.TrimSpace(in.Text) == "" && len(in.Attachments) == 0 {
+		errw(w, http.StatusBadRequest, "text or attachments required")
+		return
+	}
+	selected := make([]ChatAttachment, 0, len(in.Attachments))
+	seen := make(map[string]bool, len(in.Attachments))
+	for _, name := range in.Attachments {
+		if seen[name] {
+			errw(w, http.StatusBadRequest, "duplicate attachment")
+			return
+		}
+		seen[name] = true
+		attachment, ok := s.attachments[id][name]
+		if !ok {
+			errw(w, http.StatusBadRequest, "attachment is not an unsent upload")
+			return
+		}
+		if _, err := s.attachmentPath(c, name); err != nil {
+			s.writeAttachmentPathError(w, err)
+			return
+		}
+		selected = append(selected, attachment)
+	}
+	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: in.Text, Attachments: selected})
+	if message.ID != "" {
+		if err := s.markChatAttachmentsSent(c, seen); err != nil {
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	if errors.Is(err, errChatTurnRunning) {
 		errw(w, http.StatusConflict, err.Error())
 		return
@@ -702,6 +746,9 @@ func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.attachmentsMu.Lock()
+	delete(s.attachments, id)
+	s.attachmentsMu.Unlock()
 	if !folder.Valid {
 		dir := filepath.Join(s.dbDir, "chats", id)
 		if insideConnectorDir(filepath.Join(s.dbDir, "chats"), dir) {
@@ -785,12 +832,26 @@ func ExpireChatApproval(database *sql.DB, chatID, approvalID string) (string, er
 }
 
 func InsertChatMessage(database *sql.DB, chatID, role, content string) (ChatMessage, error) {
+	return InsertChatMessageWithAttachments(database, chatID, role, content, nil)
+}
+
+func InsertChatMessageWithAttachments(database *sql.DB, chatID, role, content string, attachments []ChatAttachment) (ChatMessage, error) {
 	if role != "user" && role != "assistant" && role != "tool" && role != "error" {
 		return ChatMessage{}, errors.New("invalid chat message role")
 	}
-	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now()}
-	err := txrun(database, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, m.CreatedAt); err != nil {
+	if role != "user" && len(attachments) != 0 {
+		return ChatMessage{}, errors.New("only user messages can have attachments")
+	}
+	if attachments == nil {
+		attachments = []ChatAttachment{}
+	}
+	encoded, err := json.Marshal(attachments)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now(), Attachments: attachments}
+	err = txrun(database, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments) VALUES(?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, m.CreatedAt, string(encoded)); err != nil {
 			return err
 		}
 		res, err := tx.Exec(`UPDATE chat SET updated_at=? WHERE id=?`, m.CreatedAt, chatID)
@@ -810,7 +871,7 @@ func InsertChatMessage(database *sql.DB, chatID, role, content string) (ChatMess
 }
 
 func InsertChatToolMessage(database *sql.DB, chatID, summary, result string) (ChatMessage, error) {
-	m := ChatMessage{ID: uid(), ChatID: chatID, Role: "tool", Content: summary, CreatedAt: now()}
+	m := ChatMessage{ID: uid(), ChatID: chatID, Role: "tool", Content: summary, CreatedAt: now(), Attachments: []ChatAttachment{}}
 	err := txrun(database, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,tool_result,created_at) VALUES(?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, result, m.CreatedAt); err != nil {
 			return err

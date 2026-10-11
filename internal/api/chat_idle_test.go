@@ -9,7 +9,7 @@ import (
 
 func TestChatRuntimeClosesAfterIdleTimeout(t *testing.T) {
 	manager, c, driver := newIdleTestManager(t, 60*time.Millisecond)
-	if _, err := manager.Send(c, "idle-test", "", "first"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.finishTurn(c.ID, "done", nil); err != nil {
@@ -23,7 +23,7 @@ func TestChatRuntimeClosesAfterIdleTimeout(t *testing.T) {
 
 func TestChatRuntimeStaysOpenWhileBusy(t *testing.T) {
 	manager, c, driver := newIdleTestManager(t, 40*time.Millisecond)
-	if _, err := manager.Send(c, "idle-test", "", "first"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -41,7 +41,7 @@ func TestChatRuntimeStaysOpenWhileBusy(t *testing.T) {
 
 func TestChatRuntimeActivityResetsIdleTimer(t *testing.T) {
 	manager, c, first := newIdleTestManager(t, 120*time.Millisecond)
-	if _, err := manager.Send(c, "idle-test", "", "first"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.finishTurn(c.ID, "done", nil); err != nil {
@@ -52,7 +52,7 @@ func TestChatRuntimeActivityResetsIdleTimer(t *testing.T) {
 	case <-first.closed:
 		t.Fatal("runtime closed before idle timeout")
 	}
-	if _, err := manager.Send(c, "idle-test", "", "second"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "second"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.finishTurn(c.ID, "done", nil); err != nil {
@@ -68,14 +68,14 @@ func TestChatRuntimeActivityResetsIdleTimer(t *testing.T) {
 
 func TestChatSendRestartsRuntimeAfterIdleClose(t *testing.T) {
 	manager, c, first := newIdleTestManager(t, 40*time.Millisecond)
-	if _, err := manager.Send(c, "idle-test", "", "first"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.finishTurn(c.ID, "done", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitForDriverClose(t, first)
-	if _, err := manager.Send(c, "idle-test", "", "second"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "second"}); err != nil {
 		t.Fatal(err)
 	}
 	if manager.lookupRuntime(c.ID).driver == first {
@@ -88,7 +88,7 @@ func TestChatSendRestartsRuntimeAfterIdleClose(t *testing.T) {
 
 func TestChatManagerShutdownStopsIdleTimers(t *testing.T) {
 	manager, c, driver := newIdleTestManager(t, 100*time.Millisecond)
-	if _, err := manager.Send(c, "idle-test", "", "first"); err != nil {
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.finishTurn(c.ID, "done", nil); err != nil {
@@ -168,8 +168,8 @@ type idleTestDriver struct {
 	closeCount atomic.Int32
 }
 
-func (d *idleTestDriver) send(string) error { return nil }
-func (d *idleTestDriver) stop() error       { return d.close() }
+func (d *idleTestDriver) send(ChatSendRequest) error { return nil }
+func (d *idleTestDriver) stop() error                { return d.close() }
 func (d *idleTestDriver) close() error {
 	d.closeCount.Add(1)
 	d.closeOnce.Do(func() {

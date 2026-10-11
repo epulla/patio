@@ -176,12 +176,14 @@ export type Chat = {
   auto_allow: boolean;
   capabilities: { thinking: { supported: boolean; reason: string } };
 };
+export type ChatAttachment = { name: string; kind: "text" | "image"; mime: string; size: number };
 export type ChatMessage = {
   id: string;
   chat_id: string;
   role: "user" | "assistant" | "tool" | "error";
   content: string;
   created_at: string;
+  attachments: ChatAttachment[];
 };
 export type ChatApproval = {
   id: string;

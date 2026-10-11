@@ -151,7 +151,7 @@ func (d *claudeRuntime) removeConfig() {
 	})
 }
 
-func (d *claudeRuntime) send(text string) error {
+func (d *claudeRuntime) send(request ChatSendRequest) error {
 	payload, err := json.Marshal(struct {
 		Type            string `json:"type"`
 		Message         any    `json:"message"`
@@ -159,7 +159,7 @@ func (d *claudeRuntime) send(text string) error {
 	}{"user", struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
-	}{"user", text}, nil})
+	}{"user", request.Text}, nil})
 	if err != nil {
 		return err
 	}

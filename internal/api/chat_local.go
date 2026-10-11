@@ -282,7 +282,7 @@ func compactLocalTools(tools []map[string]any) ([]map[string]any, error) {
 	return compact(filtered)
 }
 
-func (d *localRuntime) send(_ string) error {
+func (d *localRuntime) send(_ ChatSendRequest) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed {

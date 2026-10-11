@@ -166,7 +166,7 @@ func codexMCPOverrides(spec map[string]any) ([]string, error) {
 	}, nil
 }
 
-func (d *codexRuntime) send(text string) error {
+func (d *codexRuntime) send(request ChatSendRequest) error {
 	var thinking bool
 	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
 		return err
@@ -191,7 +191,7 @@ func (d *codexRuntime) send(text string) error {
 	}
 	params := map[string]any{
 		"threadId": d.threadID,
-		"input":    []map[string]string{{"type": "text", "text": text}},
+		"input":    []map[string]string{{"type": "text", "text": request.Text}},
 	}
 	if !thinking && d.lowestEffort != "" {
 		params["effort"] = d.lowestEffort

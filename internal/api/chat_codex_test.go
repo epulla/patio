@@ -255,7 +255,7 @@ func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {
 	}
 	client := &effortTestCodexClient{models: []connectorcli.Model{{ID: "other", Efforts: []string{"minimal"}}}}
 	driver := &codexRuntime{manager: newChatManager(database, Options{}), chatID: chatID, client: client, threadID: "thread", ctx: context.Background(), model: "missing"}
-	if err := driver.send("hello"); err != nil {
+	if err := driver.send(ChatSendRequest{Text: "hello"}); err != nil {
 		t.Fatalf("send with unknown model = %v", err)
 	}
 	if _, exists := client.turnParams["effort"]; exists {

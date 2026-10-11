@@ -30,6 +30,8 @@ type Server struct {
 	handler         http.Handler
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
+	attachmentsMu   sync.Mutex
+	attachments     map[string]map[string]ChatAttachment
 }
 
 type Options struct {
@@ -79,7 +81,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, oauthLogins: make(map[string]bool)}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment)}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -125,6 +127,10 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("DELETE /api/chats/{id}", s.deleteChat)
 	m.HandleFunc("POST /api/chats/{id}/approvals/{approval_id}", s.answerChatApproval)
 	m.HandleFunc("POST /api/chats/{id}/reveal", s.revealChatFile)
+	m.HandleFunc("POST /api/chats/{id}/attachments", s.uploadChatAttachments)
+	m.HandleFunc("GET /api/chats/{id}/attachments/{name}", s.getChatAttachment)
+	m.HandleFunc("DELETE /api/chats/{id}/attachments/{name}", s.deleteChatAttachment)
+	m.HandleFunc("POST /api/chats/{id}/attachments/{name}/reveal", s.revealChatAttachment)
 	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
 	m.HandleFunc("POST /api/chats/{id}/stop", s.stopChat)
 	m.HandleFunc("GET /api/users", s.users)
