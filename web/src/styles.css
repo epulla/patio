@@ -1493,6 +1493,13 @@ label.days-field {
   color: var(--muted);
   font-size: 13px;
 }
+.conversation-meta .switch {
+  margin-right: 0;
+}
+.switch:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .conversation-meta select {
   height: 30px;
   padding: 0 8px;
@@ -2284,4 +2291,12 @@ label.days-field {
   tr {
     break-inside: avoid;
   }
+}
+.model-hint {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.model-hint code {
+  font: 12px var(--mono);
 }

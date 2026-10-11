@@ -223,6 +223,7 @@ function ConnectorCard({
         {status?.version && <small>{status.version}</small>}
       </p>
       {local && <small className="connector-url">{connector.base_url}</small>}
+      {local && <ModelHint />}
       {status?.note && <p className="muted connector-note">{status.note}</p>}
 
       {status?.install && (
@@ -521,6 +522,7 @@ function ConnectorDialog({
               <button type="button" onClick={loadModels}>
                 Load models
               </button>
+              <ModelHint />
             </>
           )}
 
@@ -534,5 +536,14 @@ function ConnectorDialog({
         <ErrorText error={error} />
       </section>
     </dialog>
+  );
+}
+
+function ModelHint() {
+  return (
+    <small className="muted wide model-hint">
+      Small and fast on 8 GB: <code>qwen2.5:3b</code> or <code>llama3.2:3b</code> (<code>ollama pull &lt;name&gt;</code>).
+      Both support tools; neither thinks.
+    </small>
   );
 }

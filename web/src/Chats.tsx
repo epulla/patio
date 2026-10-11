@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+import Switch from "./Switch";
 
 type ChatDetail = { chat: Chat; messages: ChatMessage[]; pending_approvals: ChatApproval[] };
 type ChatEvent =
@@ -277,10 +278,10 @@ function Conversation({
     }
   }
 
-  async function changeModel(model: string) {
+  async function update(fields: { model: string } | { thinking: boolean }) {
     try {
-      await api.put(`/api/chats/${id}`, { model });
-      setDetail((current) => current && { ...current, chat: { ...current.chat, model } });
+      await api.put(`/api/chats/${id}`, fields);
+      setDetail((current) => current && { ...current, chat: { ...current.chat, ...fields } });
       setError(undefined);
     } catch (reason) {
       setError(reason);
@@ -361,12 +362,25 @@ function Conversation({
                 disabled={!connector || running || modelsLoading}
                 aria-busy={modelsLoading}
                 title={running ? "Stop the reply to change the model" : "Model"}
-                onChange={(event) => changeModel(event.target.value)}
+                onChange={(event) => update({ model: event.target.value })}
               >
                 <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
               </select>
               {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
             </label>
+            {connector?.kind === "local" && (
+              <Switch
+                label="Thinking"
+                checked={detail.chat.thinking}
+                disabled={running}
+                title={
+                  running
+                    ? "Stop the reply to change thinking"
+                    : "Let models that think reason before answering. Slower; no effect on other models."
+                }
+                onChange={(thinking) => update({ thinking })}
+              />
+            )}
             <button
               type="button"
               className="folder-chip"

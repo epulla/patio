@@ -144,6 +144,7 @@ export type Chat = {
   updated_at: string;
   workdir: string;
   running: boolean;
+  thinking: boolean;
 };
 export type ChatMessage = {
   id: string;
