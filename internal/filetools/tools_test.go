@@ -303,6 +303,13 @@ func TestToolDescriptionsAndSummary(t *testing.T) {
 	}
 }
 
+func TestListDirEmptyFolder(t *testing.T) {
+	got, err := Run(context.Background(), t.TempDir(), "list_dir", json.RawMessage(`{}`))
+	if err != nil || got != "(empty folder)" {
+		t.Fatalf("empty folder result = %q, %v", got, err)
+	}
+}
+
 func rawArgs(t *testing.T, value any) json.RawMessage {
 	t.Helper()
 	raw, err := json.Marshal(value)

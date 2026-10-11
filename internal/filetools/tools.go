@@ -221,6 +221,9 @@ func runListDir(root, rel string) (string, error) {
 	if len(entries) > maxListItems {
 		entries = entries[:maxListItems]
 	}
+	if len(entries) == 0 {
+		return "(empty folder)", nil
+	}
 	lines := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		info, err := entry.Info()

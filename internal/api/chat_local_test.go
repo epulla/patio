@@ -550,6 +550,23 @@ func TestLocalHistoryUsesNewestMessagesWithinBudget(t *testing.T) {
 	}
 }
 
+func TestLocalHistoryPromptNamesSharedFolder(t *testing.T) {
+	database, _, _ := chatAPI(t)
+	chatID := uid()
+	if _, err := database.Exec(`INSERT INTO chat(id,title,folder,created_at,updated_at) VALUES(?,?,?, ?, ?)`, chatID, "History", "/allowed/projects/ProjectFolder", now(), now()); err != nil {
+		t.Fatal(err)
+	}
+	driver := &localRuntime{manager: newChatManager(database, Options{}), chatID: chatID}
+	messages, err := driver.history()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := messages[0]["content"].(string)
+	if !strings.Contains(prompt, "ProjectFolder") || strings.Contains(prompt, "/allowed/projects") {
+		t.Fatalf("shared-folder system prompt = %q", prompt)
+	}
+}
+
 func writeSSE(w http.ResponseWriter, chunks ...string) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
@@ -891,5 +908,171 @@ func TestLocalOllamaNativeWriteApprovalAllowAndDeny(t *testing.T) {
 				t.Fatalf("denied file exists or stat failed: %v", err)
 			}
 		})
+	}
+}
+
+func TestLocalOllamaTextJSONToolCallStoresHiddenCappedResult(t *testing.T) {
+	var calls atomic.Int32
+	database, root, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		switch calls.Add(1) {
+		case 1:
+			writeNDJSON(w, "{\"message\":{\"content\":\"```json\\n{\\\"name\\\":\\\"read_file\\\",\\\"arguments\\\":{\\\"path\\\":\\\"large.txt\\\"}}\\n```\"},\"done\":true}")
+		case 2:
+			messages, _ := request["messages"].([]any)
+			last, _ := messages[len(messages)-1].(map[string]any)
+			if last["role"] != "tool" || last["content"] != strings.Repeat("x", 3000) {
+				t.Errorf("tool result sent to model = %#v", last)
+			}
+			writeNDJSON(w, `{"message":{"content":"Read it"},"done":true}`)
+		default:
+			t.Errorf("unexpected completion request %d", calls.Load())
+			writeNDJSON(w, `{"message":{"content":"unexpected"},"done":true}`)
+		}
+	})
+	if err := os.WriteFile(filepath.Join(root, "chats", chatID, "large.txt"), []byte(strings.Repeat("x", 3000)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := sendLocalMessage(t, server, chatID, "read large.txt"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if got := localAssistant(t, database, chatID); got != "Read it" {
+		t.Fatalf("assistant = %q", got)
+	}
+	var result string
+	if err := database.QueryRow(`SELECT tool_result FROM chat_message WHERE chat_id=? AND role='tool'`, chatID).Scan(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result) > localStoredToolMax || !strings.HasSuffix(result, "[tool result truncated]") {
+		t.Fatalf("stored tool result length/suffix = %d/%q", len(result), result[len(result)-min(len(result), 40):])
+	}
+	var detail map[string]any
+	if code := requestJSON(t, server, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK {
+		t.Fatalf("get chat = %d", code)
+	}
+	encoded, err := json.Marshal(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), strings.Repeat("x", 100)) || strings.Contains(string(encoded), "tool_result") {
+		t.Fatalf("private tool result exposed by chat API: %s", encoded)
+	}
+}
+
+func TestLocalOllamaTextJSONWriteNeedsApproval(t *testing.T) {
+	var calls atomic.Int32
+	database, root, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		if calls.Add(1) == 1 {
+			writeNDJSON(w, `{"message":{"content":"{\"name\":\"file__write_file\",\"parameters\":{\"path\":\"approved.txt\",\"content\":\"ok\"}}"},"done":true}`)
+			return
+		}
+		writeNDJSON(w, `{"message":{"content":"Finished"},"done":true}`)
+	})
+	if code := sendLocalMessage(t, server, chatID, "write approved.txt"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalEvent(t, events, "approval")
+	var approvalID string
+	if err := database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending'`, chatID).Scan(&approvalID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": true}, nil); code != http.StatusOK {
+		t.Fatalf("answer approval = %d", code)
+	}
+	waitLocalDone(t, events)
+	if data, err := os.ReadFile(filepath.Join(root, "chats", chatID, "approved.txt")); err != nil || string(data) != "ok" {
+		t.Fatalf("approved write = %q, %v", data, err)
+	}
+}
+
+func TestLocalOllamaEmptyJSONRetriesWithoutTools(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		if calls.Add(1) == 1 {
+			if _, ok := request["tools"]; !ok {
+				t.Error("first request omitted tools")
+			}
+			writeNDJSON(w, `{"message":{"content":"{}"},"done":true}`)
+			return
+		}
+		if _, ok := request["tools"]; ok {
+			t.Error("retry included tools")
+		}
+		writeNDJSON(w, `{"message":{"content":"Hello from retry"},"done":true}`)
+	})
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 2 || localAssistant(t, database, chatID) != "Hello from retry" {
+		t.Fatalf("requests/reply = %d/%q", calls.Load(), localAssistant(t, database, chatID))
+	}
+	var emptyReplies int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='assistant' AND content='{}'`, chatID).Scan(&emptyReplies); err != nil || emptyReplies != 0 {
+		t.Fatalf("stored empty JSON replies = %d, %v", emptyReplies, err)
+	}
+}
+
+func TestLocalOllamaStillInvalidAfterRetryStoresShortNote(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		calls.Add(1)
+		writeNDJSON(w, `{"message":{"content":"{}"},"done":true}`)
+	})
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 2 || localAssistant(t, database, chatID) != localInvalidReply {
+		t.Fatalf("requests/reply = %d/%q", calls.Load(), localAssistant(t, database, chatID))
+	}
+}
+
+func TestLocalOllamaGreetingUsesPlainTextAndFolderPrompt(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		calls.Add(1)
+		messages, _ := request["messages"].([]any)
+		system, _ := messages[0].(map[string]any)
+		prompt, _ := system["content"].(string)
+		if !strings.Contains(prompt, "a private scratch folder") || !strings.Contains(prompt, time.Now().In(time.Local).Format("2006-01-02")) || !strings.Contains(prompt, "Reply normally") {
+			t.Errorf("system prompt = %q", prompt)
+		}
+		writeNDJSON(w, `{"message":{"content":"Hi! Nice to meet you."},"done":true}`)
+	})
+	if code := sendLocalMessage(t, server, chatID, "Hi!"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 1 || localAssistant(t, database, chatID) != "Hi! Nice to meet you." {
+		t.Fatalf("requests/reply = %d/%q", calls.Load(), localAssistant(t, database, chatID))
+	}
+	var toolMessages int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='tool'`, chatID).Scan(&toolMessages); err != nil || toolMessages != 0 {
+		t.Fatalf("tool messages = %d, %v", toolMessages, err)
+	}
+}
+
+func TestLocalOllamaToolErrorsStartWithError(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		if calls.Add(1) == 1 {
+			writeNDJSON(w, `{"message":{"tool_calls":[{"function":{"name":"file__read_file","arguments":{"path":"missing.txt"}}}]},"done":true}`)
+			return
+		}
+		messages, _ := request["messages"].([]any)
+		last, _ := messages[len(messages)-1].(map[string]any)
+		if last["role"] != "tool" || !strings.HasPrefix(last["content"].(string), "Error: ") {
+			t.Errorf("tool error result = %#v", last)
+		}
+		writeNDJSON(w, `{"message":{"content":"File missing"},"done":true}`)
+	})
+	if code := sendLocalMessage(t, server, chatID, "read missing.txt"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	var result string
+	if err := database.QueryRow(`SELECT tool_result FROM chat_message WHERE chat_id=? AND role='tool'`, chatID).Scan(&result); err != nil || !strings.HasPrefix(result, "Error: ") {
+		t.Fatalf("stored tool error result = %q, %v", result, err)
 	}
 }

@@ -708,6 +708,28 @@ func InsertChatMessage(database *sql.DB, chatID, role, content string) (ChatMess
 	return m, err
 }
 
+func InsertChatToolMessage(database *sql.DB, chatID, summary, result string) (ChatMessage, error) {
+	m := ChatMessage{ID: uid(), ChatID: chatID, Role: "tool", Content: summary, CreatedAt: now()}
+	err := txrun(database, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,tool_result,created_at) VALUES(?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, result, m.CreatedAt); err != nil {
+			return err
+		}
+		res, err := tx.Exec(`UPDATE chat SET updated_at=? WHERE id=?`, m.CreatedAt, chatID)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+	return m, err
+}
+
 func SetChatSessionID(database *sql.DB, chatID, sessionID string) error {
 	res, err := database.Exec(`UPDATE chat SET session_id=? WHERE id=?`, sessionID, chatID)
 	if err != nil {

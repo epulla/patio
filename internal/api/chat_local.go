@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 const (
 	localMaxToolCalls   = 20
 	localMaxToolOutput  = 32 << 10
+	localStoredToolMax  = 2 << 10
 	localSSELineLimit   = 4 << 20
 	localHistoryBudget  = 1500 * 4
 	localHistoryLimit   = 40
@@ -33,6 +35,7 @@ const (
 	localToolNote       = "This model doesn't support tools; chatting without them."
 	localToolLimitNote  = "Tool call limit reached; stopping here."
 	localContextNote    = "Conversation too long for this model's context; older messages were left out."
+	localInvalidReply   = "I couldn't produce a reply. Please try again."
 )
 
 type localRuntime struct {
@@ -329,8 +332,10 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 	toolCalls := 0
 	contextNoted := false
 	var fullText strings.Builder
+	retriedWithoutTools := false
 	for {
-		response, err := d.stream(ctx, messages, !d.toolsOff, thinking)
+		withTools := !d.toolsOff && !retriedWithoutTools
+		response, err := d.stream(ctx, messages, withTools, thinking)
 		if err != nil {
 			return "", err
 		}
@@ -342,6 +347,19 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 				}
 				d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localContextNote})
 				contextNoted = true
+			}
+		}
+		if len(response.calls) == 0 {
+			call, bareJSON, validCall := d.textToolCall(response.text)
+			if validCall {
+				response.calls = []localCall{call}
+				response.text = ""
+			} else if bareJSON || strings.TrimSpace(response.text) == "" {
+				if !retriedWithoutTools {
+					retriedWithoutTools = true
+					continue
+				}
+				return localInvalidReply, nil
 			}
 		}
 		fullText.WriteString(response.text)
@@ -361,10 +379,10 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 				if ctx.Err() != nil {
 					return "", ctx.Err()
 				}
-				result = err.Error()
+				result = "Error: " + strings.TrimPrefix(err.Error(), "Error: ")
 			}
 			result = capToolOutput(d.redact(result))
-			if err := d.manager.emitTool(d.chatID, summary); err != nil {
+			if err := d.manager.emitToolResult(d.chatID, summary, capStoredToolResult(result)); err != nil {
 				return "", err
 			}
 			toolMessage := map[string]any{"role": "tool", "tool_call_id": call.ID, "content": result}
@@ -379,7 +397,69 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 			fullText.WriteString("\n\n" + note)
 			return strings.TrimSpace(fullText.String()), nil
 		}
+		retriedWithoutTools = false
 	}
+}
+
+func (d *localRuntime) textToolCall(content string) (localCall, bool, bool) {
+	trimmed := strings.TrimSpace(content)
+	jsonText := trimmed
+	if strings.HasPrefix(jsonText, "```json") {
+		jsonText = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(jsonText, "```json"), "```"))
+	} else if strings.HasPrefix(jsonText, "```\n") {
+		jsonText = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(jsonText, "```\n"), "```"))
+	}
+	if !json.Valid([]byte(jsonText)) {
+		return localCall{}, false, false
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonText), &object); err != nil || object == nil {
+		return localCall{}, true, false
+	}
+	var name string
+	if err := json.Unmarshal(object["name"], &name); err != nil || name == "" {
+		return localCall{}, true, false
+	}
+	var argsRaw json.RawMessage
+	if len(object["arguments"]) > 0 {
+		argsRaw = object["arguments"]
+	} else {
+		argsRaw = object["parameters"]
+	}
+	var args map[string]any
+	if len(argsRaw) == 0 || json.Unmarshal(argsRaw, &args) != nil || args == nil {
+		return localCall{}, true, false
+	}
+	known := make(map[string]string)
+	aliases := make(map[string]string)
+	for _, definition := range d.tools {
+		function, _ := definition["function"].(map[string]any)
+		toolName, _ := function["name"].(string)
+		if toolName == "" {
+			continue
+		}
+		known[toolName] = toolName
+		if strings.HasPrefix(toolName, "file__") || strings.HasPrefix(toolName, "ticket__") {
+			alias := toolName[strings.Index(toolName, "__")+2:]
+			if _, exists := aliases[alias]; exists {
+				aliases[alias] = ""
+			} else {
+				aliases[alias] = toolName
+			}
+		}
+	}
+	if fullName, exists := known[name]; exists {
+		name = fullName
+	} else if fullName, exists := aliases[name]; exists && fullName != "" {
+		name = fullName
+	} else {
+		return localCall{}, true, false
+	}
+	encoded, err := json.Marshal(args)
+	if err != nil {
+		return localCall{}, true, false
+	}
+	return localCall{ID: "text-tool-call", Name: name, Arguments: string(encoded)}, true, true
 }
 
 func (d *localRuntime) history() ([]map[string]any, error) {
@@ -400,9 +480,17 @@ func (d *localRuntime) history() ([]map[string]any, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	systemPrompt := "You work inside this chat's folder. Use file__ tools for sandboxed file reads and approved writes; ticket__ tools access my-tickets. Reads and ticket actions need no approval; file changes require approval."
+	folder := "a private scratch folder"
+	var folderPath sql.NullString
+	if err := d.manager.db.QueryRow(`SELECT folder FROM chat WHERE id=?`, d.chatID).Scan(&folderPath); err != nil {
+		return nil, err
+	}
+	if folderPath.Valid {
+		folder = filepath.Base(filepath.Clean(folderPath.String))
+	}
+	systemPrompt := fmt.Sprintf("Reply normally. Use tools only when user asks about files, this folder (%s), or tickets. Never describe tool calls in text. Today's date (local): %s.", folder, time.Now().In(time.Local).Format("2006-01-02"))
 	if d.toolsOff {
-		systemPrompt = "You work inside this chat's folder, but this model does not support tools. Answer without file or ticket access."
+		systemPrompt += " Tools unavailable; do not claim file or ticket access."
 	}
 	messages := []map[string]any{{"role": "system", "content": systemPrompt}}
 	if len(saved) == 0 {
@@ -1009,6 +1097,18 @@ func capToolOutput(output string) string {
 	}
 	const suffix = "\n[tool output truncated]"
 	end := localMaxToolOutput - len(suffix)
+	for end > 0 && !utf8.RuneStart(output[end]) {
+		end--
+	}
+	return output[:end] + suffix
+}
+
+func capStoredToolResult(output string) string {
+	const suffix = "\n[tool result truncated]"
+	if len(output) <= localStoredToolMax {
+		return output
+	}
+	end := localStoredToolMax - len(suffix)
 	for end > 0 && !utf8.RuneStart(output[end]) {
 		end--
 	}

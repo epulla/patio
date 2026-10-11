@@ -236,6 +236,15 @@ func (m *chatManager) emitTool(id, summary string) error {
 	return nil
 }
 
+func (m *chatManager) emitToolResult(id, summary, result string) error {
+	message, err := InsertChatToolMessage(m.db, id, summary, result)
+	if err != nil {
+		return err
+	}
+	m.emit(id, map[string]any{"type": "tool", "message": message})
+	return nil
+}
+
 func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error {
 	role, content := "assistant", assistantText
 	if turnErr != nil {
