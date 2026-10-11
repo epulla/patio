@@ -41,5 +41,5 @@ Approved 2026-10-10: the user accepted all decisions as defaults and said "start
 ## Tasks
 
 - [x] File tool package (`internal/filetools`): sandboxed path resolution, the 9 tools, OS trash. Check: table-driven Go tests including symlink escape, sibling prefix, edit must match once, and trash command argv per OS; `make release`.
-- [ ] Local driver: OpenAI-compatible streaming client with a tool loop, history rebuild, MCP client to `my-tickets mcp`, approvals for writes, stop, and the no-tools fallback. Check: `httptest` fake server streaming SSE with tool calls; live with Ollama.
+- [x] Local driver: OpenAI-compatible streaming client with a tool loop, history rebuild, MCP client to `my-tickets mcp`, approvals for writes, stop, and the no-tools fallback. Check: `httptest` fake server streaming SSE with tool calls; live with Ollama.
 - [ ] Chats UI: allow `local` connectors in New chat and show the model from the connector. Check: `pnpm --dir web build`; `wails build`; smoke test (see "For the user to do or confirm", item 3).

@@ -350,6 +350,13 @@ func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 		t.Fatal(err)
 	}
 	chatID := createDriverTestChat(t, database, connectorID, root)
+	start, existed := runtimes["local"]
+	delete(runtimes, "local")
+	defer func() {
+		if existed {
+			runtimes["local"] = start
+		}
+	}()
 	server := New(database, "local", false, "dev", root)
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "hello"}, nil); code != http.StatusBadRequest {
 		t.Fatalf("unsupported driver send status = %d", code)
