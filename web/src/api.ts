@@ -7,6 +7,35 @@ export type Board = {
   updated_at: string;
 };
 export type Config = { show_hidden: boolean; version: string };
+export type ChatDefaults = {
+  connector_id: string | null;
+  folder: string | null;
+  auto_allow: boolean;
+  tools: boolean;
+  thinking: boolean;
+};
+export type SettingsAbout = {
+  version: string;
+  os: string;
+  arch: string;
+  db_path: string;
+  data_dir: string;
+  data_dir_bytes: number;
+  approximate: boolean;
+  counts: {
+    boards: number;
+    tickets: number;
+    chats: number;
+    connectors: number;
+    mcp_servers: number;
+    skills: number;
+  };
+  schema_version: number;
+  show_hidden: boolean;
+  secrets_store: string;
+  repo_url: string;
+};
+export type SettingsRevealTarget = "database" | "data_dir";
 export type Status = {
   id: string;
   name: string;

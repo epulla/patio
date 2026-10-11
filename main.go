@@ -202,7 +202,7 @@ func runMCP(args []string) {
 			log.Printf("close database: %v", err)
 		}
 	}()
-	handler := api.New(database, "ai", true, version, filepath.Dir(dbFilePath))
+	handler := api.New(database, "ai", true, version, filepath.Dir(dbFilePath), api.Options{DBPath: dbFilePath})
 	var server *sdk.Server
 	if approveEnabled {
 		if *approveChat == "" {

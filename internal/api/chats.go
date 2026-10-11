@@ -177,18 +177,64 @@ func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ConnectorID string  `json:"connector_id"`
-		Title       string  `json:"title"`
-		Model       string  `json:"model"`
-		Folder      *string `json:"folder"`
-		AutoAllow   bool    `json:"auto_allow"`
+		ConnectorID json.RawMessage `json:"connector_id"`
+		Title       string          `json:"title"`
+		Model       string          `json:"model"`
+		Folder      json.RawMessage `json:"folder"`
+		AutoAllow   *bool           `json:"auto_allow"`
+		Tools       *bool           `json:"tools"`
+		Thinking    *bool           `json:"thinking"`
 	}
-	if decode(r, &in) != nil || !required(in.ConnectorID) {
-		errw(w, 400, "connector_id required")
+	if decode(r, &in) != nil {
+		errw(w, 400, "valid chat required")
 		return
 	}
+	defaults, err := s.chatDefaults()
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	var connectorID string
+	if len(in.ConnectorID) > 0 {
+		if err := json.Unmarshal(in.ConnectorID, &connectorID); err != nil || !required(connectorID) {
+			errw(w, 400, "connector_id required")
+			return
+		}
+	} else if defaults.ConnectorID != nil {
+		connectorID = *defaults.ConnectorID
+	} else if err := s.db.QueryRow(`SELECT id FROM connector ORDER BY created_at,rowid LIMIT 1`).Scan(&connectorID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errw(w, 400, "connector_id required")
+		} else {
+			errw(w, 500, err.Error())
+		}
+		return
+	}
+	folder := defaults.Folder
+	if len(in.Folder) > 0 {
+		if string(in.Folder) == "null" {
+			folder = nil
+		} else {
+			var value string
+			if err := json.Unmarshal(in.Folder, &value); err != nil {
+				errw(w, 400, "folder must be an allowed folder or null")
+				return
+			}
+			folder = &value
+		}
+	}
+	autoAllow, tools, thinking := defaults.AutoAllow, defaults.Tools, defaults.Thinking
+	if in.AutoAllow != nil {
+		autoAllow = *in.AutoAllow
+	}
+	if in.Tools != nil {
+		tools = *in.Tools
+	}
+	if in.Thinking != nil {
+		thinking = *in.Thinking
+	}
 	var exists int
-	if err := s.db.QueryRow(`SELECT 1 FROM connector WHERE id=?`, in.ConnectorID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+	if err := s.db.QueryRow(`SELECT 1 FROM connector WHERE id=?`, connectorID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
 		errw(w, 400, "connector not found")
 		return
 	} else if err != nil {
@@ -202,57 +248,22 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "title required")
 		return
 	}
-	if in.Folder != nil {
-		folder, err := cleanExistingDir(*in.Folder)
-		if err != nil {
-			errw(w, 400, err.Error())
-			return
-		}
-		rows, err := s.db.Query(`SELECT path FROM allowed_folder`)
+	if folder != nil {
+		cleaned, allowed, err := s.allowedFolderPath(*folder)
 		if err != nil {
 			errw(w, 500, err.Error())
-			return
-		}
-		allowed := false
-		for rows.Next() {
-			var root string
-			if err := rows.Scan(&root); err != nil {
-				if closeErr := rows.Close(); closeErr != nil {
-					err = errors.Join(err, closeErr)
-				}
-				errw(w, 500, err.Error())
-				return
-			}
-			rel, err := filepath.Rel(filepath.Clean(root), folder)
-			if err != nil {
-				if closeErr := rows.Close(); closeErr != nil {
-					err = errors.Join(err, closeErr)
-				}
-				errw(w, 500, err.Error())
-				return
-			}
-			if rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
-				allowed = true
-			}
-		}
-		rowsErr := rows.Err()
-		if err := rows.Close(); err != nil {
-			rowsErr = errors.Join(rowsErr, err)
-		}
-		if rowsErr != nil {
-			errw(w, 500, rowsErr.Error())
 			return
 		}
 		if !allowed {
 			errw(w, 400, "folder is not allowed")
 			return
 		}
-		in.Folder = &folder
+		folder = &cleaned
 	}
 	id, created := uid(), now()
-	c := chat{ID: id, ConnectorID: &in.ConnectorID, Title: in.Title, Model: in.Model, Folder: in.Folder, CreatedAt: created, UpdatedAt: created}
-	c.Tools, c.AutoAllow = true, in.AutoAllow
-	if in.Folder == nil {
+	c := chat{ID: id, ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, CreatedAt: created, UpdatedAt: created}
+	c.Tools, c.Thinking, c.AutoAllow = tools, thinking, autoAllow
+	if folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			errw(w, 500, err.Error())
@@ -263,8 +274,8 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,auto_allow) VALUES(?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.AutoAllow); err != nil {
-		if in.Folder == nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,tools,auto_allow) VALUES(?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.Tools, c.AutoAllow); err != nil {
+		if folder == nil {
 			err = cleanupConnectorDir(s.chatWorkdir(c), err)
 		}
 		errw(w, 500, err.Error())
@@ -453,9 +464,15 @@ func openInFileManager(path string) error {
 	var args []string
 	switch runtime.GOOS {
 	case "darwin":
-		name, args = "open", []string{"-R", path}
+		name, args = "open", []string{path}
+		if !info.IsDir() {
+			args = []string{"-R", path}
+		}
 	case "windows":
-		name, args = "explorer", []string{"/select," + path}
+		name, args = "explorer", []string{path}
+		if !info.IsDir() {
+			args = []string{"/select," + path}
+		}
 	case "linux":
 		dir := path
 		if !info.IsDir() {

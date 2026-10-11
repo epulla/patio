@@ -21,6 +21,7 @@ type Server struct {
 	showHidden      bool
 	version         string
 	dbDir           string
+	dbPath          string
 	chats           *chatManager
 	revealFile      func(string) error
 	openOAuthURL    func(string) error
@@ -62,7 +63,23 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if opts.mcpConnect == nil {
 		opts.mcpConnect = connectMCP
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, oauthLogins: make(map[string]bool)}
+	dbPath := opts.DBPath
+	actualDBPath := dbPath != ""
+	if dbPath == "" {
+		var seq int
+		var name, file string
+		if err := db.QueryRow(`PRAGMA database_list`).Scan(&seq, &name, &file); err == nil && file != "" {
+			dbPath = file
+			actualDBPath = true
+		}
+	}
+	if dbPath == "" {
+		dbPath = filepath.Join(dbDir, "my-tickets.db")
+	}
+	if actualDBPath {
+		dbDir = filepath.Dir(dbPath)
+	}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, oauthLogins: make(map[string]bool)}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -97,6 +114,10 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("GET /api/settings/folders", s.listAllowedFolders)
 	m.HandleFunc("POST /api/settings/folders", s.addAllowedFolder)
 	m.HandleFunc("DELETE /api/settings/folders/{id}", s.deleteAllowedFolder)
+	m.HandleFunc("GET /api/settings/defaults", s.getSettingsDefaults)
+	m.HandleFunc("PUT /api/settings/defaults", s.putSettingsDefaults)
+	m.HandleFunc("GET /api/settings/about", s.settingsAbout)
+	m.HandleFunc("POST /api/settings/reveal", s.revealSettingsTarget)
 	m.HandleFunc("GET /api/chats", s.listChats)
 	m.HandleFunc("POST /api/chats", s.createChat)
 	m.HandleFunc("GET /api/chats/{id}", s.getChat)

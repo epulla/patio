@@ -140,12 +140,12 @@ func TestChatCreateAutoAllow(t *testing.T) {
 	_, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, handler.(*Server).db)
 	var defaults chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &defaults); code != http.StatusCreated || defaults.AutoAllow {
-		t.Fatalf("create default auto_allow chat = %d, %#v", code, defaults)
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &defaults); code != http.StatusCreated || !defaults.AutoAllow {
+		t.Fatalf("create default auto_allow chat (on by default) = %d, %#v", code, defaults)
 	}
-	var enabled chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "auto_allow": true}, &enabled); code != http.StatusCreated || !enabled.AutoAllow {
-		t.Fatalf("create auto_allow chat = %d, %#v", code, enabled)
+	var disabled chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "auto_allow": false}, &disabled); code != http.StatusCreated || disabled.AutoAllow {
+		t.Fatalf("create chat with auto_allow explicitly off = %d, %#v", code, disabled)
 	}
 }
 
