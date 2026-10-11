@@ -1829,6 +1829,25 @@ label.days-field {
   align-self: flex-end;
   background: var(--base-300);
 }
+.message-row {
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+  align-items: flex-start;
+  gap: 2px;
+}
+.message-row.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.message-time {
+  flex-shrink: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 .message.assistant {
   align-self: flex-start;
   white-space: normal;

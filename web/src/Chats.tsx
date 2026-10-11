@@ -48,6 +48,22 @@ function useModels(connectorID: string | null | undefined) {
   return state.id === connectorID ? state : { models: fallbackModels, loading: true };
 }
 
+function MessageTime({ iso }: { iso: string }) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const now = new Date();
+  const time: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const options: Intl.DateTimeFormatOptions =
+    date.toDateString() === now.toDateString()
+      ? time
+      : { month: "short", day: "numeric", ...(date.getFullYear() !== now.getFullYear() && { year: "numeric" }), ...time };
+  return (
+    <time className="message-time" dateTime={iso} title={date.toLocaleString()}>
+      {date.toLocaleString(undefined, options)}
+    </time>
+  );
+}
+
 function ModelOptions({ models, current, loading }: { models: ModelOption[]; current: string; loading: boolean }) {
   if (loading) return <option value={current}>Loading models…</option>;
   return (
@@ -377,11 +393,14 @@ function Conversation({
         {detail.messages.map((message) =>
           message.role === "tool" ? (
             <p key={message.id} className="tool-line">
-              <Icon name="plug" /> <code>{message.content}</code>
+              <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
             </p>
           ) : (
-            <div key={message.id} className={`message ${message.role}`}>
-              {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
+            <div key={message.id} className={`message-row ${message.role}`}>
+              <div className={`message ${message.role}`}>
+                {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
+              </div>
+              <MessageTime iso={message.created_at} />
             </div>
           ),
         )}
