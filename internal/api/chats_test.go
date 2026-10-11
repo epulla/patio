@@ -204,6 +204,46 @@ func TestChatGetMessagesDeleteAndApproval(t *testing.T) {
 	}
 }
 
+func TestChatThinkingUpdate(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var created chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Thinking {
+		t.Fatalf("create chat = %d, %#v", code, created)
+	}
+	var listed []chat
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed) != 1 || listed[0].Thinking {
+		t.Fatalf("list chats = %d, %#v", code, listed)
+	}
+	updated := true
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": updated}, &created); code != http.StatusOK || !created.Thinking {
+		t.Fatalf("enable thinking = %d, %#v", code, created)
+	}
+	var got struct {
+		Chat chat `json:"chat"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &got); code != http.StatusOK || !got.Chat.Thinking {
+		t.Fatalf("get chat thinking = %d, %#v", code, got.Chat)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]string{"title": ""}, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid update status = %d", code)
+	}
+	runtime := handler.(*Server).chats.runtime(created.ID)
+	runtime.mu.Lock()
+	runtime.busy = true
+	runtime.mu.Unlock()
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
+		t.Fatalf("unchanged thinking while running = %d", code)
+	}
+	changed := false
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": changed}, nil); code != http.StatusConflict {
+		t.Fatalf("thinking change while running = %d, want %d", code, http.StatusConflict)
+	}
+	runtime.mu.Lock()
+	runtime.busy = false
+	runtime.mu.Unlock()
+}
+
 func TestDeleteConnectorKeepsChat(t *testing.T) {
 	keyring.MockInit()
 	database, handler, _ := chatAPI(t)

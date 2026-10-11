@@ -31,6 +31,7 @@ type chat struct {
 	UpdatedAt   string  `json:"updated_at"`
 	Workdir     string  `json:"workdir"`
 	Running     bool    `json:"running"`
+	Thinking    bool    `json:"thinking"`
 }
 
 type ChatMessage struct {
@@ -132,7 +133,7 @@ func (s *Server) deleteAllowedFolder(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking); err != nil {
 		return c, err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -146,7 +147,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking`
 
 func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 	rows, err := s.db.Query(`SELECT ` + chatColumns + ` FROM chat ORDER BY updated_at DESC,rowid DESC`)
@@ -508,11 +509,12 @@ func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Title *string `json:"title"`
-		Model *string `json:"model"`
+		Title    *string `json:"title"`
+		Model    *string `json:"model"`
+		Thinking *bool   `json:"thinking"`
 	}
-	if decode(r, &in) != nil || in.Title == nil && in.Model == nil {
-		errw(w, 400, "title or model required")
+	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil {
+		errw(w, 400, "title, model, or thinking required")
 		return
 	}
 	if in.Title != nil && !required(*in.Title) {
@@ -529,16 +531,19 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	title, model := c.Title, c.Model
+	title, model, thinking := c.Title, c.Model, c.Thinking
 	if in.Title != nil {
 		title = *in.Title
 	}
 	if in.Model != nil {
 		model = *in.Model
 	}
+	if in.Thinking != nil {
+		thinking = *in.Thinking
+	}
 	updated := now()
 	update := func() error {
-		res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,updated_at=? WHERE id=?`, title, model, updated, id)
+		res, err := s.db.Exec(`UPDATE chat SET title=?,model=?,thinking=?,updated_at=? WHERE id=?`, title, model, thinking, updated, id)
 		if err != nil {
 			return err
 		}
@@ -553,17 +558,19 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Model != nil && model != c.Model {
 		err = s.chats.ChangeModel(id, update)
+	} else if in.Thinking != nil && thinking != c.Thinking {
+		err = s.chats.UpdateChat(id, update)
 	} else {
 		err = update()
 	}
-	if errors.Is(err, errChatModelChangeBusy) {
+	if errors.Is(err, errChatModelChangeBusy) || errors.Is(err, errChatThinkingChangeBusy) {
 		errw(w, http.StatusConflict, err.Error())
 	} else if errors.Is(err, sql.ErrNoRows) {
 		errw(w, http.StatusNotFound, "chat not found")
 	} else if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
-		c.Title, c.Model, c.UpdatedAt = title, model, updated
+		c.Title, c.Model, c.Thinking, c.UpdatedAt = title, model, thinking, updated
 		write(w, http.StatusOK, c)
 	}
 }

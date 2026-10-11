@@ -23,32 +23,41 @@ import (
 )
 
 const (
-	localMaxToolCalls  = 20
-	localMaxToolOutput = 32 << 10
-	localSSELineLimit  = 4 << 20
-	localToolNote      = "This model doesn't support tools; chatting without them."
-	localToolLimitNote = "Tool call limit reached; stopping here."
+	localMaxToolCalls   = 20
+	localMaxToolOutput  = 32 << 10
+	localSSELineLimit   = 4 << 20
+	localHistoryBudget  = 1500 * 4
+	localHistoryLimit   = 40
+	localToolsMaxBytes  = 8 << 10
+	localDefaultContext = 4096
+	localToolNote       = "This model doesn't support tools; chatting without them."
+	localToolLimitNote  = "Tool call limit reached; stopping here."
+	localContextNote    = "Conversation too long for this model's context; older messages were left out."
 )
 
 type localRuntime struct {
-	manager    *chatManager
-	chatID     string
-	model      string
-	baseURL    string
-	secret     string
-	workdir    string
-	ctx        context.Context
-	cancel     context.CancelFunc
-	session    *mcp.ClientSession
-	cleanup    func()
-	tools      []map[string]any
-	mcpTools   map[string]string
-	client     *http.Client
-	mu         sync.Mutex
-	turnCancel context.CancelFunc
-	turnDone   chan struct{}
-	closed     bool
-	toolsOff   bool
+	manager        *chatManager
+	chatID         string
+	model          string
+	baseURL        string
+	ollamaURL      string
+	ollama         bool
+	secret         string
+	workdir        string
+	ctx            context.Context
+	cancel         context.CancelFunc
+	session        *mcp.ClientSession
+	cleanup        func()
+	tools          []map[string]any
+	mcpTools       map[string]string
+	client         *http.Client
+	mu             sync.Mutex
+	turnCancel     context.CancelFunc
+	turnDone       chan struct{}
+	closed         bool
+	toolsOff       bool
+	contextSize    int
+	contextChecked bool
 }
 
 func init() { runtimes["local"] = startLocal }
@@ -88,11 +97,15 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 		manager: m, chatID: c.ID, model: model, baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret,
 		workdir: c.Workdir, ctx: ctx, cancel: cancel, client: &http.Client{}, mcpTools: make(map[string]string),
 	}
+	d.ollamaURL = ollamaOrigin(d.baseURL)
+	d.detectOllama()
 	for _, tool := range filetools.Tools() {
-		d.tools = append(d.tools, map[string]any{"type": "function", "function": map[string]any{
-			"name": "file__" + tool.Name, "description": tool.Description,
-			"parameters": tool.Parameters,
-		}})
+		definition, err := localToolDefinition("file__"+tool.Name, tool.Description, tool.Parameters)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("compact file tool %s: %w", tool.Name, err)
+		}
+		d.tools = append(d.tools, definition)
 	}
 	spec, err := m.ticketMCPServerSpec()
 	if err != nil {
@@ -128,6 +141,12 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 		cancel()
 		return nil, fmt.Errorf("list ticket MCP tools: %w", err)
 	}
+	d.tools, err = compactLocalTools(d.tools)
+	if err != nil {
+		d.cleanupRuntime()
+		cancel()
+		return nil, err
+	}
 	return d, nil
 }
 
@@ -148,9 +167,10 @@ func (d *localRuntime) loadTools(ctx context.Context) error {
 			if schema == nil {
 				schema = map[string]any{"type": "object", "properties": map[string]any{}}
 			}
-			definition := map[string]any{"type": "function", "function": map[string]any{
-				"name": name, "description": tool.Description, "parameters": schema,
-			}}
+			definition, err := localToolDefinition(name, tool.Description, schema)
+			if err != nil {
+				return fmt.Errorf("compact ticket tool %s: %w", tool.Name, err)
+			}
 			d.tools = append(d.tools, definition)
 			d.mcpTools[name] = tool.Name
 		}
@@ -163,6 +183,100 @@ func (d *localRuntime) loadTools(ctx context.Context) error {
 		seen[result.NextCursor] = true
 		cursor = result.NextCursor
 	}
+}
+
+func ollamaOrigin(baseURL string) string {
+	trimmed := strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(strings.ToLower(trimmed), "/v1") {
+		trimmed = trimmed[:len(trimmed)-3]
+	}
+	return strings.TrimRight(trimmed, "/")
+}
+
+func (d *localRuntime) detectOllama() {
+	ctx, cancel := context.WithTimeout(d.ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.ollamaURL+"/api/version", nil)
+	if err != nil {
+		return
+	}
+	if d.secret != "" {
+		req.Header.Set("Authorization", "Bearer "+d.secret)
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	d.ollama = resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+func localToolDefinition(name, description string, parameters any) (map[string]any, error) {
+	description = strings.TrimSpace(strings.SplitN(strings.SplitN(description, "\n", 2)[0], ". ", 2)[0])
+	if len(description) > 100 {
+		limit := 97
+		for limit > 0 && !utf8.RuneStart(description[limit]) {
+			limit--
+		}
+		description = description[:limit] + "..."
+	}
+	data, err := json.Marshal(parameters)
+	if err != nil {
+		return nil, err
+	}
+	var schemaValue any
+	if err := json.Unmarshal(data, &schemaValue); err != nil {
+		return nil, err
+	}
+	schemaValue = compactLocalSchema(schemaValue)
+	return map[string]any{"type": "function", "function": map[string]any{
+		"name": name, "description": description, "parameters": schemaValue,
+	}}, nil
+}
+
+func compactLocalSchema(value any) any {
+	switch item := value.(type) {
+	case map[string]any:
+		for key, nested := range item {
+			if key == "description" {
+				delete(item, key)
+				continue
+			}
+			item[key] = compactLocalSchema(nested)
+		}
+	case []any:
+		for i, nested := range item {
+			item[i] = compactLocalSchema(nested)
+		}
+	}
+	return value
+}
+
+func compactLocalTools(tools []map[string]any) ([]map[string]any, error) {
+	compact := func(input []map[string]any) ([]map[string]any, error) {
+		data, err := json.Marshal(input)
+		if err != nil {
+			return nil, err
+		}
+		if len(data) > localToolsMaxBytes {
+			return nil, fmt.Errorf("local tool definitions exceed %d bytes", localToolsMaxBytes)
+		}
+		return input, nil
+	}
+	result, err := compact(tools)
+	if err == nil {
+		return result, nil
+	}
+	filtered := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
+		function, _ := tool["function"].(map[string]any)
+		name, _ := function["name"].(string)
+		if strings.Contains(name, "calendar") || name == "file__duplicate" {
+			continue
+		}
+		filtered = append(filtered, tool)
+	}
+	return compact(filtered)
 }
 
 func (d *localRuntime) send(_ string) error {
@@ -208,12 +322,27 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	var thinking bool
+	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
+		return "", err
+	}
 	toolCalls := 0
+	contextNoted := false
 	var fullText strings.Builder
 	for {
-		response, err := d.stream(ctx, messages, !d.toolsOff)
+		response, err := d.stream(ctx, messages, !d.toolsOff, thinking)
 		if err != nil {
 			return "", err
+		}
+		if d.ollama && !contextNoted && response.promptEvalCount > 0 {
+			contextSize := d.ollamaContextSize(ctx)
+			if response.promptEvalCount >= contextSize {
+				if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", localContextNote); err != nil {
+					return "", err
+				}
+				d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localContextNote})
+				contextNoted = true
+			}
 		}
 		fullText.WriteString(response.text)
 		if len(response.calls) == 0 {
@@ -238,7 +367,11 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 			if err := d.manager.emitTool(d.chatID, summary); err != nil {
 				return "", err
 			}
-			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": result})
+			toolMessage := map[string]any{"role": "tool", "tool_call_id": call.ID, "content": result}
+			if d.ollama {
+				toolMessage["tool_name"] = call.Name
+			}
+			messages = append(messages, toolMessage)
 		}
 		if limitReached || toolCalls >= localMaxToolCalls {
 			note := localToolLimitNote
@@ -250,7 +383,7 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 }
 
 func (d *localRuntime) history() ([]map[string]any, error) {
-	rows, err := d.manager.db.Query(`SELECT role,content FROM chat_message WHERE chat_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,rowid DESC LIMIT 40`, d.chatID)
+	rows, err := d.manager.db.Query(`SELECT role,content FROM chat_message WHERE chat_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,rowid DESC LIMIT ?`, d.chatID, localHistoryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -272,8 +405,20 @@ func (d *localRuntime) history() ([]map[string]any, error) {
 		systemPrompt = "You work inside this chat's folder, but this model does not support tools. Answer without file or ticket access."
 	}
 	messages := []map[string]any{{"role": "system", "content": systemPrompt}}
-	for i := len(saved) - 1; i >= 0; i-- {
-		messages = append(messages, map[string]any{"role": saved[i].role, "content": saved[i].content})
+	if len(saved) == 0 {
+		return messages, nil
+	}
+	selected := []entry{saved[0]}
+	used := len(saved[0].content)
+	for i := 1; i < len(saved); i++ {
+		if used+len(saved[i].content) > localHistoryBudget {
+			continue
+		}
+		selected = append(selected, saved[i])
+		used += len(saved[i].content)
+	}
+	for i := len(selected) - 1; i >= 0; i-- {
+		messages = append(messages, map[string]any{"role": selected[i].role, "content": selected[i].content})
 	}
 	return messages, nil
 }
@@ -286,12 +431,17 @@ type localCall struct {
 }
 
 type localStreamResult struct {
-	text  string
-	calls []localCall
+	text            string
+	calls           []localCall
+	promptEvalCount int
 }
 
-func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, withTools bool) (localStreamResult, error) {
-	body := map[string]any{"model": d.model, "stream": true, "messages": messages}
+func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, withTools, thinking bool) (localStreamResult, error) {
+	if d.ollama {
+		return d.streamOllama(ctx, messages, withTools, thinking)
+	}
+	requestMessages := openAIMessages(messages, thinking)
+	body := map[string]any{"model": d.model, "stream": true, "messages": requestMessages}
 	if withTools {
 		body["tools"] = d.tools
 	}
@@ -325,12 +475,272 @@ func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, wi
 				return localStreamResult{}, err
 			}
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localToolNote})
-			return d.stream(ctx, messages, false)
+			return d.stream(ctx, messages, false, thinking)
 		}
 		return localStreamResult{}, fmt.Errorf("local chat completion returned %s: %s", resp.Status, message)
 	}
 	defer resp.Body.Close()
 	return d.readSSE(ctx, resp.Body)
+}
+
+func openAIMessages(messages []map[string]any, thinking bool) []map[string]any {
+	copyMessages := make([]map[string]any, len(messages))
+	for i, message := range messages {
+		copyMessages[i] = make(map[string]any, len(message))
+		for key, value := range message {
+			copyMessages[i][key] = value
+		}
+	}
+	if !thinking {
+		for i := len(copyMessages) - 1; i >= 0; i-- {
+			if copyMessages[i]["role"] == "user" {
+				content, _ := copyMessages[i]["content"].(string)
+				copyMessages[i]["content"] = content + " /no_think"
+				break
+			}
+		}
+	}
+	return copyMessages
+}
+
+func (d *localRuntime) streamOllama(ctx context.Context, messages []map[string]any, withTools, thinking bool) (localStreamResult, error) {
+	nativeMessages, err := ollamaMessages(messages)
+	if err != nil {
+		return localStreamResult{}, err
+	}
+	body := map[string]any{"model": d.model, "stream": true, "think": thinking, "messages": nativeMessages}
+	if withTools {
+		body["tools"] = d.tools
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return localStreamResult{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.ollamaURL+"/api/chat", bytes.NewReader(encoded))
+	if err != nil {
+		return localStreamResult{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+	if d.secret != "" {
+		req.Header.Set("Authorization", "Bearer "+d.secret)
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return localStreamResult{}, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return localStreamResult{}, readErr
+		}
+		message := strings.TrimSpace(string(data))
+		if withTools && resp.StatusCode >= 400 && resp.StatusCode < 500 && strings.Contains(strings.ToLower(message), "tool") {
+			d.toolsOff = true
+			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", localToolNote); err != nil {
+				return localStreamResult{}, err
+			}
+			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localToolNote})
+			return d.streamOllama(ctx, messages, false, thinking)
+		}
+		return localStreamResult{}, fmt.Errorf("local chat completion returned %s: %s", resp.Status, message)
+	}
+	defer resp.Body.Close()
+	return d.readOllamaNDJSON(ctx, resp.Body)
+}
+
+func ollamaMessages(messages []map[string]any) ([]map[string]any, error) {
+	result := make([]map[string]any, len(messages))
+	for i, message := range messages {
+		converted := make(map[string]any, len(message))
+		for key, value := range message {
+			if key == "tool_call_id" {
+				continue
+			}
+			if key == "tool_calls" {
+				calls, ok := value.([]map[string]any)
+				if !ok {
+					return nil, errors.New("invalid local tool calls")
+				}
+				nativeCalls := make([]map[string]any, 0, len(calls))
+				for _, call := range calls {
+					function, ok := call["function"].(map[string]string)
+					if !ok || function["name"] == "" {
+						return nil, errors.New("invalid local tool function")
+					}
+					var arguments map[string]any
+					if err := json.Unmarshal([]byte(function["arguments"]), &arguments); err != nil {
+						return nil, fmt.Errorf("decode local tool arguments: %w", err)
+					}
+					if arguments == nil {
+						return nil, errors.New("local tool arguments must be an object")
+					}
+					nativeCalls = append(nativeCalls, map[string]any{"function": map[string]any{"name": function["name"], "arguments": arguments}})
+				}
+				converted[key] = nativeCalls
+				continue
+			}
+			converted[key] = value
+		}
+		result[i] = converted
+	}
+	return result, nil
+}
+
+type ollamaChunk struct {
+	Error           any  `json:"error"`
+	Done            bool `json:"done"`
+	PromptEvalCount int  `json:"prompt_eval_count"`
+	Message         struct {
+		Content   string `json:"content"`
+		Thinking  string `json:"thinking"`
+		ToolCalls []struct {
+			Function struct {
+				Name      string          `json:"name"`
+				Arguments json.RawMessage `json:"arguments"`
+			} `json:"function"`
+		} `json:"tool_calls"`
+	} `json:"message"`
+}
+
+func (d *localRuntime) readOllamaNDJSON(ctx context.Context, body io.Reader) (localStreamResult, error) {
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 64*1024), localSSELineLimit)
+	var result localStreamResult
+	calls := make(map[int]localCall)
+	filter := localSecretFilter{secret: d.secret}
+	emitSafeText := func(text string) {
+		if text != "" {
+			result.text += text
+			d.manager.emitDelta(d.chatID, text)
+		}
+	}
+	emitText := func(text string) { emitSafeText(filter.feed(text)) }
+	index := 0
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return localStreamResult{}, err
+		}
+		var chunk ollamaChunk
+		if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
+			return localStreamResult{}, fmt.Errorf("decode Ollama stream chunk: %w", err)
+		}
+		if chunk.Error != nil {
+			return localStreamResult{}, fmt.Errorf("Ollama stream error: %v", chunk.Error)
+		}
+		emitText(chunk.Message.Content)
+		for _, tool := range chunk.Message.ToolCalls {
+			var arguments map[string]any
+			if len(tool.Function.Arguments) == 0 {
+				return localStreamResult{}, fmt.Errorf("Ollama returned invalid arguments for %s", tool.Function.Name)
+			}
+			if err := json.Unmarshal(tool.Function.Arguments, &arguments); err != nil {
+				return localStreamResult{}, fmt.Errorf("decode Ollama arguments for %s: %w", tool.Function.Name, err)
+			}
+			if arguments == nil {
+				return localStreamResult{}, fmt.Errorf("Ollama arguments for %s must be an object", tool.Function.Name)
+			}
+			encoded, err := json.Marshal(arguments)
+			if err != nil {
+				return localStreamResult{}, err
+			}
+			calls[index] = localCall{Index: index, ID: fmt.Sprintf("ollama-call-%d", index), Name: tool.Function.Name, Arguments: string(encoded)}
+			index++
+		}
+		if chunk.PromptEvalCount > 0 {
+			result.promptEvalCount = chunk.PromptEvalCount
+		}
+		if chunk.Done {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return localStreamResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return localStreamResult{}, err
+	}
+	emitSafeText(filter.flush())
+	for i := 0; i < len(calls); i++ {
+		call, ok := calls[i]
+		if !ok {
+			return localStreamResult{}, errors.New("Ollama returned incomplete tool calls")
+		}
+		if call.Name == "" {
+			return localStreamResult{}, errors.New("Ollama returned incomplete tool call")
+		}
+		result.calls = append(result.calls, call)
+	}
+	return result, nil
+}
+
+func (d *localRuntime) ollamaContextSize(ctx context.Context) int {
+	if d.contextChecked {
+		if d.contextSize == 0 {
+			return localDefaultContext
+		}
+		return d.contextSize
+	}
+	d.contextChecked = true
+	d.contextSize = localDefaultContext
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	request := func(method, path string, body any) (*http.Response, error) {
+		var reader io.Reader
+		if body != nil {
+			encoded, err := json.Marshal(body)
+			if err != nil {
+				return nil, err
+			}
+			reader = bytes.NewReader(encoded)
+		}
+		req, err := http.NewRequestWithContext(queryCtx, method, d.ollamaURL+path, reader)
+		if err != nil {
+			return nil, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if d.secret != "" {
+			req.Header.Set("Authorization", "Bearer "+d.secret)
+		}
+		return d.client.Do(req)
+	}
+	resp, err := request(http.MethodGet, "/api/ps", nil)
+	if err == nil {
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			var running struct {
+				Models []struct {
+					Name          string `json:"name"`
+					Model         string `json:"model"`
+					ContextLength int    `json:"context_length"`
+				} `json:"models"`
+			}
+			if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&running); decodeErr != nil {
+				d.contextSize = localDefaultContext
+			} else {
+				for _, model := range running.Models {
+					if (model.Name == d.model || model.Model == d.model) && model.ContextLength > 0 {
+						d.contextSize = model.ContextLength
+						break
+					}
+				}
+			}
+		}
+		_ = resp.Body.Close()
+	}
+	// /api/show reports model maximum context, not active context; read it once but
+	// use the running context from /api/ps or the server's default instead.
+	selectedContext := d.contextSize
+	resp, err = request(http.MethodPost, "/api/show", map[string]string{"model": d.model})
+	if err == nil {
+		if _, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20)); readErr != nil {
+			d.contextSize = selectedContext
+		}
+		_ = resp.Body.Close()
+	}
+	return d.contextSize
 }
 
 type localToolDelta struct {
@@ -362,12 +772,13 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 	filter := thinkFilter{}
 	secretFilter := localSecretFilter{secret: d.secret}
 	finished := false
-	emitText := func(text string) {
-		if text = secretFilter.feed(text); text != "" {
+	emitSafeText := func(text string) {
+		if text != "" {
 			result.text += text
 			d.manager.emitDelta(d.chatID, text)
 		}
 	}
+	emitText := func(text string) { emitSafeText(secretFilter.feed(text)) }
 	consume := func(raw string) error {
 		if raw == "[DONE]" {
 			finished = true
@@ -435,7 +846,7 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 	if rest := filter.flush(); rest != "" {
 		emitText(rest)
 	}
-	emitText(secretFilter.flush())
+	emitSafeText(secretFilter.flush())
 	indices := make([]int, 0, len(calls))
 	for index := range calls {
 		indices = append(indices, index)

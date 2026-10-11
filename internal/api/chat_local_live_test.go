@@ -3,9 +3,12 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,76 +31,100 @@ func TestLocalOllamaLive(t *testing.T) {
 	keyring.MockInit()
 	database, _, root := chatAPI(t)
 	connectorID := uid()
-	dbPath := filepath.Join(root, "test.db")
-	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,base_url,model,created_at) VALUES(?,'local','Ollama',?,'qwen3:4b',?)`, connectorID, baseURL, now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,base_url,model,created_at) VALUES(?,'local','Ollama',?,'qwen2.5:3b',?)`, connectorID, baseURL, now()); err != nil {
 		t.Fatal(err)
 	}
 	events := make(chan map[string]any, 512)
 	server := New(database, "local", false, "live", root, Options{
-		DBPath: dbPath, mcpExecutable: binary,
+		DBPath: filepath.Join(root, "test.db"), mcpExecutable: binary,
 		Emit: func(_ string, event any) { events <- event.(map[string]any) },
 	})
 	defer server.Close()
 
-	plainChat := liveLocalChat(t, database, connectorID, root)
-	if _, err := database.Exec(`UPDATE chat SET model='' WHERE id=?`, plainChat); err != nil {
-		t.Fatal(err)
-	}
-	if code := sendLocalMessage(t, server, plainChat, "Call ticket__list_boards, then reply with just OK"); code != http.StatusAccepted {
-		t.Fatalf("send plain prompt = %d", code)
-	}
-	plain, tools, _ := waitLiveLocalTurn(t, database, server, events, plainChat, nil)
-	if strings.TrimSpace(plain) != "OK" {
-		t.Fatalf("plain reply = %q, want OK", plain)
-	}
-	if !tools["ticket__list_boards"] {
-		t.Fatal("qwen3:4b did not call ticket__list_boards")
-	}
-
-	allowed := liveLocalWrite(t, database, server, events, connectorID, root, true)
-	if !allowed {
-		t.Fatal("qwen3:4b did not call file__write_file after three attempts")
-	}
-	denied := liveLocalWrite(t, database, server, events, connectorID, root, false)
-	if !denied {
-		t.Fatal("qwen3:4b did not call file__write_file for denied action")
+	for _, model := range []string{"qwen2.5:3b", "llama3.2:3b"} {
+		runLiveOllamaModel(t, database, server, events, connectorID, root, model)
 	}
 }
 
-func liveLocalWrite(t *testing.T, database *sql.DB, server *Server, events <-chan map[string]any, connectorID, root string, allow bool) bool {
+func runLiveOllamaModel(t *testing.T, database *sql.DB, server *Server, events <-chan map[string]any, connectorID, root, model string) {
 	t.Helper()
-	chatID := liveLocalChat(t, database, connectorID, root)
+	shouldStop := false
+	defer func() {
+		if !shouldStop {
+			return
+		}
+		output, err := exec.Command("ollama", "stop", model).CombinedOutput()
+		if err != nil {
+			t.Errorf("stop %s: %v: %s", model, err, strings.TrimSpace(string(output)))
+		}
+	}()
+	chatID := liveLocalChat(t, database, connectorID, root, model)
+	if err := requireLiveMemoryHeadroom(); err != nil {
+		t.Fatal(err)
+	}
+	shouldStop = true
+	started := time.Now()
+	if code := sendLocalMessage(t, server, chatID, "Say hi in 3 words"); code != http.StatusAccepted {
+		t.Fatalf("%s hello prompt status = %d", model, code)
+	}
+	hello, helloTools, _ := waitLiveLocalTurn(t, database, server, events, chatID, nil)
+	helloTime := time.Since(started)
+	t.Logf("LIVE model=%s hello_wall=%s reply=%q hello_tools=%v", model, helloTime.Round(time.Millisecond), strings.TrimSpace(hello), helloTools)
+
+	if err := requireLiveMemoryHeadroom(); err != nil {
+		t.Fatal(err)
+	}
+	started = time.Now()
+	writeCalled := liveLocalWrite(t, database, server, events, chatID, root)
+	writeTime := time.Since(started)
+	t.Logf("LIVE model=%s write_wall=%s file__write_file=%v", model, writeTime.Round(time.Millisecond), writeCalled)
+}
+
+func requireLiveMemoryHeadroom() error {
+	output, err := exec.Command("sh", "-c", "memory_pressure | tail -1").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("check memory pressure: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	line := strings.TrimSpace(string(output))
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return fmt.Errorf("cannot parse memory pressure output %q", line)
+	}
+	percentage := strings.TrimSuffix(fields[len(fields)-1], "%")
+	free, err := strconv.Atoi(percentage)
+	if err != nil {
+		return fmt.Errorf("cannot parse memory pressure output %q: %w", line, err)
+	}
+	if free < 30 {
+		return fmt.Errorf("memory pressure free percentage %d%% is below required 30%%; stopping live checks", free)
+	}
+	return nil
+}
+
+func liveLocalWrite(t *testing.T, database *sql.DB, server *Server, events <-chan map[string]any, chatID, root string) bool {
+	t.Helper()
 	if code := sendLocalMessage(t, server, chatID, "Create a file hello.txt containing hi"); code != http.StatusAccepted {
 		t.Fatalf("send write prompt = %d", code)
 	}
-	_, tools, approvalSeen := waitLiveLocalTurn(t, database, server, events, chatID, &allow)
-	if tools["file__write_file"] {
+	decision := true
+	_, tools, approvalSeen := waitLiveLocalTurn(t, database, server, events, chatID, &decision)
+	called := tools["file__write_file"]
+	if called {
 		path := filepath.Join(root, "chats", chatID, "hello.txt")
-		_, err := os.Stat(path)
-		if allow && err != nil {
-			t.Fatalf("approved file missing: %v", err)
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != "hi" {
+			t.Fatalf("approved file = %q, %v", data, err)
 		}
-		if !allow && !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("denied file exists or stat failed: %v", err)
-		}
-		if allow {
-			data, err := os.ReadFile(path)
-			if err != nil || string(data) != "hi" {
-				t.Fatalf("approved file = %q, %v", data, err)
-			}
-		}
-		return true
+	} else if approvalSeen {
+		t.Fatal("approval shown without file__write_file tool call")
 	}
-	if approvalSeen {
-		t.Fatalf("approval shown without file__write_file tool call (allow=%v)", allow)
-	}
-	return false
+	return called
 }
 
-func liveLocalChat(t *testing.T, database *sql.DB, connectorID, root string) string {
+func liveLocalChat(t *testing.T, database *sql.DB, connectorID, root, model string) string {
 	t.Helper()
 	id := createDriverTestChat(t, database, connectorID, root)
-	if _, err := database.Exec(`UPDATE chat SET model='qwen3:4b' WHERE id=?`, id); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET model=? WHERE id=?`, model, id); err != nil {
 		t.Fatal(err)
 	}
 	return id

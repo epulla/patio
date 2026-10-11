@@ -15,6 +15,7 @@ The answers refer to three ideas: (1) turn qwen3 thinking off, (2) a bigger cont
 - Ollama's native `/api/chat` documents `think:false` and `options.num_ctx`. Not tested yet: the test was interrupted by the out-of-memory crash.
 - The user then removed `qwen3:4b` and pulled `qwen2.5:3b` (1.9 GB) and `llama3.2:3b` (2.0 GB). Neither thinks, so decisions 1–2 matter for thinking models (qwen3, deepseek-r1) other users may pick. Context fit (decision 4) matters for all.
 - Each local request sends about 24 tool schemas (9 file tools, 13 ticket tools, 2 skill tools) plus up to 40 history messages. That likely overflows 4096 tokens, and Ollama then silently drops the oldest part, including the system prompt and tools.
+- Live (2026-10-11): `qwen2.5:3b` completed hello; 13.79s elapsed through response and next safety check (prompt-only timing not captured); free memory fell to 25% before write, so stopped and unloaded; no write or `llama3.2:3b` run.
 
 ## Decisions
 
@@ -32,5 +33,5 @@ The answers refer to three ideas: (1) turn qwen3 thinking off, (2) a bigger cont
 
 ## Tasks
 
-- [ ] Driver: Ollama detection and native `/api/chat` transport, `think` per chat (migration + API field), `/no_think` fallback, tool and description trimming, history budget, truncation note. Check: Go tests with a fake Ollama (NDJSON, tool call loop, think on/off sent, approvals unchanged, truncation note) and a fake OpenAI server (unchanged behavior + `/no_think`); a size test on the tool JSON; `go test -race ./internal/api/...`; `make release`. Live (decision 6): per model, "Say hi in 3 words" (time it) and one file write with Allow; report which picks tools better.
+- [x] Driver: Ollama detection and native `/api/chat` transport, `think` per chat (migration + API field), `/no_think` fallback, tool and description trimming, history budget, truncation note. Check: Go tests with a fake Ollama (NDJSON, tool call loop, think on/off sent, approvals unchanged, truncation note) and a fake OpenAI server (unchanged behavior + `/no_think`); a size test on the tool JSON; `go test -race ./internal/api/...`; `make release`. Live (decision 6): per model, "Say hi in 3 words" (time it) and one file write with Allow; report which picks tools better.
 - [ ] UI: "Thinking" switch in the chat header for local chats, and the faster-model hint on the Local AI connector form and card. Check: `pnpm --dir web build`; `wails build`; smoke test: toggle the switch, send a message, check the reply is fast with thinking off.

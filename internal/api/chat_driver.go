@@ -213,11 +213,12 @@ func (m *chatManager) workdir(chatID string) (string, error) {
 }
 
 var (
-	errChatTurnRunning      = errors.New("chat turn already running")
-	errChatModelChangeBusy  = errors.New("Stop the reply before changing the model")
-	errChatUnsupported      = errors.New("not supported yet")
-	errChatConnectorMissing = errors.New("chat has no connector")
-	errChatManagerClosed    = errors.New("chat manager is closed")
+	errChatTurnRunning        = errors.New("chat turn already running")
+	errChatModelChangeBusy    = errors.New("Stop the reply before changing the model")
+	errChatThinkingChangeBusy = errors.New("Stop the reply before changing thinking")
+	errChatUnsupported        = errors.New("not supported yet")
+	errChatConnectorMissing   = errors.New("chat has no connector")
+	errChatManagerClosed      = errors.New("chat manager is closed")
 )
 
 func (m *chatManager) emit(id string, data any) { m.emitEvent("chat:"+id, data) }
@@ -417,6 +418,16 @@ func (m *chatManager) ChangeModel(id string, update func() error) error {
 	close(done)
 	rt.mu.Unlock()
 	return err
+}
+
+func (m *chatManager) UpdateChat(id string, update func() error) error {
+	rt := m.runtime(id)
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.busy || rt.stopping {
+		return errChatThinkingChangeBusy
+	}
+	return update()
 }
 
 func (m *chatManager) lookupRuntime(id string) *chatRuntime {

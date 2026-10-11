@@ -17,12 +17,18 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
+	"my-tickets/internal/filetools"
 )
 
 func TestLocalChatPlainAndThinkStripping(t *testing.T) {
 	database, root, chatID, handler, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
 		if request["stream"] != true || request["model"] != "qwen3:4b" {
 			t.Errorf("completion request = %#v", request)
+		}
+		messages, _ := request["messages"].([]any)
+		last, _ := messages[len(messages)-1].(map[string]any)
+		if last["content"] != "reply /no_think" {
+			t.Errorf("fallback user message = %#v", last)
 		}
 		writeSSE(w,
 			`{"choices":[{"delta":{"content":"OK<th"}}]}`,
@@ -38,6 +44,10 @@ func TestLocalChatPlainAndThinkStripping(t *testing.T) {
 	if got := localAssistant(t, database, chatID); got != "OK safe" {
 		t.Fatalf("assistant = %q", got)
 	}
+	var userMessage string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user'`, chatID).Scan(&userMessage); err != nil || userMessage != "reply" {
+		t.Fatalf("stored user message = %q, %v", userMessage, err)
+	}
 	if _, err := os.Stat(filepath.Join(root, "chats", chatID)); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +62,10 @@ func TestLocalChatRedactsConnectorSecretFromMessages(t *testing.T) {
 	}{
 		{
 			name: "streamed response split across chunks",
-			handler: func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+			handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+				if r.Header.Get("Authorization") != "Bearer "+secret {
+					t.Errorf("OpenAI Authorization = %q", r.Header.Get("Authorization"))
+				}
 				writeSSE(w,
 					`{"choices":[{"delta":{"content":"before do-not-"}}]}`,
 					`{"choices":[{"delta":{"content":"store-token after"}}]}`,
@@ -61,7 +74,10 @@ func TestLocalChatRedactsConnectorSecretFromMessages(t *testing.T) {
 		},
 		{
 			name: "upstream error",
-			handler: func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+			handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+				if r.Header.Get("Authorization") != "Bearer "+secret {
+					t.Errorf("OpenAI Authorization = %q", r.Header.Get("Authorization"))
+				}
 				w.WriteHeader(http.StatusBadGateway)
 				_, _ = fmt.Fprintf(w, `{"error":"upstream rejected %s"}`, secret)
 			},
@@ -376,6 +392,10 @@ func newLocalChatFixture(t *testing.T, handler func(http.ResponseWriter, *http.R
 	keyring.MockInit()
 	database, _, root := chatAPI(t)
 	openAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/version" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if r.URL.Path != "/v1/chat/completions" {
 			t.Errorf("request path = %s", r.URL.Path)
 		}
@@ -411,6 +431,14 @@ func fakeLocalMCPConnect() mcpConnector {
 		server.AddTool(&mcp.Tool{Name: "list_boards", Description: "List boards", InputSchema: map[string]any{"type": "object", "properties": map[string]any{}}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "[]"}}}, nil
 		})
+		for _, tool := range fakeTicketTools() {
+			if tool.Name == "list_boards" {
+				continue
+			}
+			server.AddTool(tool, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}}, nil
+			})
+		}
 		clientTransport, serverTransport := mcp.NewInMemoryTransports()
 		serverSession, err := server.Connect(ctx, serverTransport, nil)
 		if err != nil {
@@ -427,6 +455,98 @@ func fakeLocalMCPConnect() mcpConnector {
 			_ = serverSession.Close()
 		}
 		return session, cleanup, nil
+	}
+}
+
+func fakeTicketTools() []*mcp.Tool {
+	names := []string{"list_boards", "get_board", "create_board", "create_ticket", "get_ticket", "update_ticket", "move_ticket", "search_tickets", "add_comment", "list_calendar", "create_calendar_item", "update_calendar_item", "delete_calendar_item", "list_skills", "load_skill"}
+	tools := make([]*mcp.Tool, 0, len(names))
+	for _, name := range names {
+		properties := map[string]any{}
+		for _, field := range []string{"id", "board_id", "title", "description", "starts_at"} {
+			properties[field] = map[string]any{"type": "string", "description": "Optional value used to identify or describe the requested ticket, board, calendar item, or date."}
+		}
+		tools = append(tools, &mcp.Tool{
+			Name: name, Description: "Perform the " + strings.ReplaceAll(name, "_", " ") + " operation for the current chat with validated input and return its result.",
+			InputSchema: map[string]any{"type": "object", "properties": properties, "additionalProperties": false},
+		})
+	}
+	return tools
+}
+
+func TestLocalToolJSONFits4096Context(t *testing.T) {
+	var raw []map[string]any
+	for _, tool := range fakeTicketTools() {
+		raw = append(raw, map[string]any{"type": "function", "function": map[string]any{
+			"name": "ticket__" + tool.Name, "description": tool.Description, "parameters": tool.InputSchema,
+		}})
+	}
+	for _, tool := range filetools.Tools() {
+		raw = append(raw, map[string]any{"type": "function", "function": map[string]any{
+			"name": "file__" + tool.Name, "description": tool.Description, "parameters": json.RawMessage(tool.Parameters),
+		}})
+	}
+	before, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := make([]map[string]any, 0, len(raw))
+	for _, tool := range raw {
+		function := tool["function"].(map[string]any)
+		definition, err := localToolDefinition(function["name"].(string), function["description"].(string), function["parameters"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		compact = append(compact, definition)
+	}
+	compact, err = compactLocalTools(compact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := json.Marshal(compact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("tool JSON bytes: before=%d after=%d tools=%d", len(before), len(after), len(compact))
+	if len(after) >= localToolsMaxBytes {
+		t.Fatalf("local tool JSON = %d bytes, want under %d", len(after), localToolsMaxBytes)
+	}
+}
+
+func TestLocalHistoryUsesNewestMessagesWithinBudget(t *testing.T) {
+	database, _, _ := chatAPI(t)
+	chatID := uid()
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, chatID, "History", now(), now()); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 45; i++ {
+		role := "assistant"
+		if i%2 == 0 {
+			role = "user"
+		}
+		content := fmt.Sprintf("%02d %s", i, strings.Repeat("x", 200))
+		if _, err := database.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,?,?,?)`, uid(), chatID, role, content, fmt.Sprintf("%02d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,?,?,?)`, uid(), chatID, "user", "current turn", "99"); err != nil {
+		t.Fatal(err)
+	}
+	driver := &localRuntime{manager: newChatManager(database, Options{}), chatID: chatID}
+	messages, err := driver.history()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var historyChars int
+	for _, message := range messages[1:] {
+		content := message["content"].(string)
+		historyChars += len(content)
+	}
+	if historyChars > localHistoryBudget || len(messages) > localHistoryLimit+1 {
+		t.Fatalf("history chars/messages = %d/%d", historyChars, len(messages))
+	}
+	if messages[len(messages)-1]["content"] != "current turn" {
+		t.Fatalf("latest user message missing or out of order: %#v", messages[len(messages)-1])
 	}
 }
 
@@ -451,7 +571,7 @@ func waitLocalDone(t *testing.T, events <-chan map[string]any) {
 		select {
 		case event := <-events:
 			if eventType(event) == "error" {
-				if event["message"] == localToolNote {
+				if event["message"] == localToolNote || event["message"] == localContextNote {
 					continue
 				}
 				t.Fatalf("local runtime error: %v", event["message"])
@@ -506,5 +626,270 @@ func TestLocalChatEmptyModelUsesConnectorModel(t *testing.T) {
 	waitLocalDone(t, events)
 	if got := localAssistant(t, database, chatID); got != "OK" {
 		t.Fatalf("assistant = %q", got)
+	}
+}
+
+func TestOpenAIFallbackThinkingChangesNextTurnWithoutRestart(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		messages, _ := request["messages"].([]any)
+		last, _ := messages[len(messages)-1].(map[string]any)
+		if _, exists := request["think"]; exists {
+			t.Error("OpenAI-compatible request included native think field")
+		}
+		if calls.Add(1) == 1 && last["content"] != "first /no_think" {
+			t.Errorf("thinking-off user content = %#v", last["content"])
+		}
+		if calls.Load() == 2 && last["content"] != "second" {
+			t.Errorf("thinking-on user content = %#v", last["content"])
+		}
+		writeSSE(w, `{"choices":[{"delta":{"content":"OK"}}]}`)
+	})
+	defer server.Close()
+	if code := sendLocalMessage(t, server, chatID, "first"); code != http.StatusAccepted {
+		t.Fatalf("first send = %d", code)
+	}
+	waitLocalDone(t, events)
+	var updated chat
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, &updated); code != http.StatusOK || !updated.Thinking {
+		t.Fatalf("enable thinking = %d, %#v", code, updated)
+	}
+	if code := sendLocalMessage(t, server, chatID, "second"); code != http.StatusAccepted {
+		t.Fatalf("second send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 2 {
+		t.Fatalf("completion requests = %d", calls.Load())
+	}
+	var stored string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&stored); err != nil || stored != "second" {
+		t.Fatalf("stored user message = %q, %v", stored, err)
+	}
+	var versionCalls int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND content LIKE '%/no_think%'`, chatID).Scan(&versionCalls); err != nil || versionCalls != 0 {
+		t.Fatalf("stored /no_think messages = %d, %v", versionCalls, err)
+	}
+}
+
+func newOllamaChatFixture(t *testing.T, handler func(http.ResponseWriter, *http.Request, map[string]any)) (*sql.DB, string, string, *Server, <-chan map[string]any, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	var versionCalls, showCalls atomic.Int32
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version":
+			versionCalls.Add(1)
+			_, _ = fmt.Fprint(w, `{"version":"test"}`)
+		case "/api/ps":
+			_, _ = fmt.Fprint(w, `{"models":[{"name":"qwen2.5:3b","context_length":4096}]}`)
+		case "/api/show":
+			showCalls.Add(1)
+			_, _ = fmt.Fprint(w, `{"model_info":{"qwen.context_length":32768}}`)
+		case "/api/chat":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode Ollama request: %v", err)
+				return
+			}
+			handler(w, r, body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(ollama.Close)
+	database, root, chatID, server, events := newLocalChatFixture(t, func(http.ResponseWriter, *http.Request, map[string]any) {})
+	var connectorID string
+	if err := database.QueryRow(`SELECT connector_id FROM chat WHERE id=?`, chatID).Scan(&connectorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE connector SET base_url=? WHERE id=?`, ollama.URL, connectorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE chat SET model='qwen2.5:3b' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	return database, root, chatID, server, events, &versionCalls, &showCalls
+}
+
+func writeNDJSON(w http.ResponseWriter, chunks ...string) {
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	for _, chunk := range chunks {
+		_, _ = fmt.Fprintln(w, chunk)
+	}
+}
+
+func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
+	var calls atomic.Int32
+	database, root, chatID, server, events, versionCalls, showCalls := newOllamaChatFixture(t, func(w http.ResponseWriter, r *http.Request, request map[string]any) {
+		if r.Header.Get("Authorization") != "Bearer native-secret" {
+			t.Errorf("native Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if _, exists := request["num_ctx"]; exists {
+			t.Error("native request set num_ctx")
+		}
+		switch calls.Add(1) {
+		case 1:
+			if request["think"] != false {
+				t.Errorf("default native think = %#v", request["think"])
+			}
+			tools, _ := request["tools"].([]any)
+			encoded, _ := json.Marshal(tools)
+			if len(tools) != 24 || len(encoded) >= localToolsMaxBytes {
+				t.Errorf("native tool definitions count/bytes = %d/%d", len(tools), len(encoded))
+			}
+			writeNDJSON(w,
+				`{"message":{"thinking":"private reasoning","content":"Reading "},"done":false}`,
+				`{"message":{"tool_calls":[{"function":{"name":"file__read_file","arguments":{"path":"hello.txt"}}}]},"done":false}`,
+				`{"done":true,"prompt_eval_count":4096}`,
+			)
+		case 2:
+			messages, _ := request["messages"].([]any)
+			var assistantCall, toolResult bool
+			for _, raw := range messages {
+				message, _ := raw.(map[string]any)
+				switch message["role"] {
+				case "assistant":
+					calls, _ := message["tool_calls"].([]any)
+					if len(calls) > 0 {
+						call, _ := calls[0].(map[string]any)
+						function, _ := call["function"].(map[string]any)
+						args, _ := function["arguments"].(map[string]any)
+						assistantCall = args["path"] == "hello.txt"
+					}
+				case "tool":
+					toolResult = message["tool_name"] == "file__read_file" && message["content"] == "hello content"
+					if _, exists := message["tool_call_id"]; exists {
+						t.Error("native tool result included OpenAI tool_call_id")
+					}
+				}
+			}
+			if !assistantCall || !toolResult {
+				t.Errorf("native tool history assistant=%v result=%v messages=%#v", assistantCall, toolResult, messages)
+			}
+			writeNDJSON(w, `{"message":{"content":"Found it"},"done":true,"prompt_eval_count":4096}`)
+		case 3:
+			if request["think"] != true {
+				t.Errorf("updated native think = %#v", request["think"])
+			}
+			writeNDJSON(w,
+				`{"message":{"thinking":"hidden", "content":"safe native-"},"done":false}`,
+				`{"message":{"content":"secret end"},"done":true,"prompt_eval_count":4096}`,
+			)
+		}
+	})
+	var connectorID string
+	if err := database.QueryRow(`SELECT connector_id FROM chat WHERE id=?`, chatID).Scan(&connectorID); err != nil {
+		t.Fatal(err)
+	}
+	if err := keyring.Set(connectorService, connectorSecret(connectorID), "native-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "chats", chatID, "hello.txt"), []byte("hello content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := sendLocalMessage(t, server, chatID, "read file"); code != http.StatusAccepted {
+		t.Fatalf("native send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if got := localAssistant(t, database, chatID); got != "Reading Found it" {
+		rows, _ := database.Query(`SELECT role,content FROM chat_message WHERE chat_id=? ORDER BY rowid`, chatID)
+		defer rows.Close()
+		for rows.Next() {
+			var role, content string
+			_ = rows.Scan(&role, &content)
+			t.Logf("message %s: %q", role, content)
+		}
+		t.Fatalf("native assistant = %q, completion calls=%d", got, calls.Load())
+	}
+	var thinkingMessages int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND (content LIKE '%private reasoning%' OR content LIKE '%hidden%')`, chatID).Scan(&thinkingMessages); err != nil || thinkingMessages != 0 {
+		t.Fatalf("hidden thinking messages = %d, %v", thinkingMessages, err)
+	}
+	var contextNotes int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, chatID, localContextNote).Scan(&contextNotes); err != nil || contextNotes != 1 {
+		t.Fatalf("context note count = %d, %v", contextNotes, err)
+	}
+	var updated chat
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, &updated); code != http.StatusOK || !updated.Thinking {
+		t.Fatalf("enable Ollama thinking = %d, %#v", code, updated)
+	}
+	if code := sendLocalMessage(t, server, chatID, "second turn"); code != http.StatusAccepted {
+		t.Fatalf("second native send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 3 || versionCalls.Load() != 1 || showCalls.Load() != 1 {
+		t.Fatalf("native calls/version/show = %d/%d/%d", calls.Load(), versionCalls.Load(), showCalls.Load())
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, chatID, localContextNote).Scan(&contextNotes); err != nil || contextNotes != 2 {
+		t.Fatalf("per-turn context notes = %d, %v", contextNotes, err)
+	}
+	if got := localAssistant(t, database, chatID); got != "safe [redacted] end" {
+		t.Fatalf("native secret redaction = %q", got)
+	}
+	var leaked int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND content LIKE '%native-secret%'`, chatID).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatalf("native secret-bearing messages = %d, %v", leaked, err)
+	}
+}
+
+func TestLocalOllamaNativeFallsBackWithoutTools(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		if calls.Add(1) == 1 {
+			if _, ok := request["tools"]; !ok {
+				t.Error("first native request omitted tools")
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"error":"model does not support tools"}`)
+			return
+		}
+		if _, ok := request["tools"]; ok {
+			t.Error("native fallback request still included tools")
+		}
+		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
+	})
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 2 || localAssistant(t, database, chatID) != "Hello" {
+		t.Fatalf("native fallback requests/reply = %d/%q", calls.Load(), localAssistant(t, database, chatID))
+	}
+	var note string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='error'`, chatID).Scan(&note); err != nil || note != localToolNote {
+		t.Fatalf("native fallback note = %q, %v", note, err)
+	}
+}
+
+func TestLocalOllamaNativeWriteApprovalAllowAndDeny(t *testing.T) {
+	for _, allow := range []bool{true, false} {
+		t.Run(fmt.Sprintf("allow_%v", allow), func(t *testing.T) {
+			var calls atomic.Int32
+			database, root, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+				if calls.Add(1) == 1 {
+					writeNDJSON(w, `{"message":{"tool_calls":[{"function":{"name":"file__write_file","arguments":{"path":"hello.txt","content":"hi"}}}]},"done":true}`)
+					return
+				}
+				writeNDJSON(w, `{"message":{"content":"Finished"},"done":true}`)
+			})
+			if code := sendLocalMessage(t, server, chatID, "create file"); code != http.StatusAccepted {
+				t.Fatalf("send = %d", code)
+			}
+			waitLocalEvent(t, events, "approval")
+			var approvalID string
+			if err := database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending'`, chatID).Scan(&approvalID); err != nil {
+				t.Fatal(err)
+			}
+			if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": allow}, nil); code != http.StatusOK {
+				t.Fatalf("answer approval = %d", code)
+			}
+			waitLocalDone(t, events)
+			_, err := os.Stat(filepath.Join(root, "chats", chatID, "hello.txt"))
+			if allow && err != nil {
+				t.Fatalf("approved file missing: %v", err)
+			}
+			if !allow && !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("denied file exists or stat failed: %v", err)
+			}
+		})
 	}
 }
