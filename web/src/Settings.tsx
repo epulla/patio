@@ -286,12 +286,7 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
               onChange={(auto_allow) => save({ auto_allow })}
             />
             <Switch
-              label="Tools (Local AI chats)"
-              checked={defaults.tools}
-              onChange={(tools) => save({ tools })}
-            />
-            <Switch
-              label="Thinking (Local AI chats)"
+              label="Thinking"
               checked={defaults.thinking}
               onChange={(thinking) => save({ thinking })}
             />

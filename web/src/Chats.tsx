@@ -284,7 +284,7 @@ function Conversation({
     }
   }
 
-  async function update(fields: { model: string } | { thinking: boolean } | { tools: boolean } | { auto_allow: boolean }) {
+  async function update(fields: { model: string } | { thinking: boolean } | { auto_allow: boolean }) {
     try {
       await api.put(`/api/chats/${id}`, fields);
       setDetail((current) => current && { ...current, chat: { ...current.chat, ...fields } });
@@ -380,32 +380,13 @@ function Conversation({
               </select>
               {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
             </label>
-            {connector?.kind === "local" && (
-              <Switch
-                label="Tools"
-                checked={detail.chat.tools}
-                disabled={running}
-                title={
-                  running
-                    ? "Stop the reply to change tools"
-                    : "Let the model use files in this folder and your tickets. Turn off for plain conversation."
-                }
-                onChange={(tools) => update({ tools })}
-              />
-            )}
-            {connector?.kind === "local" && (
-              <Switch
-                label="Thinking"
-                checked={detail.chat.thinking}
-                disabled={running}
-                title={
-                  running
-                    ? "Stop the reply to change thinking"
-                    : "Let models that think reason before answering. Slower; no effect on other models."
-                }
-                onChange={(thinking) => update({ thinking })}
-              />
-            )}
+            <Switch
+              label="Thinking"
+              checked={detail.chat.capabilities.thinking.supported && detail.chat.thinking}
+              disabled={running || !detail.chat.capabilities.thinking.supported}
+              title={thinkingTitle(detail.chat, running)}
+              onChange={(thinking) => update({ thinking })}
+            />
             <button
               type="button"
               className="folder-chip"
@@ -497,6 +478,13 @@ function Conversation({
       </form>
     </section>
   );
+}
+
+function thinkingTitle(chat: Chat, running: boolean) {
+  const { supported, reason } = chat.capabilities.thinking;
+  if (!supported) return reason;
+  if (running) return "Stop the reply to change thinking";
+  return ["Let the model reason before answering. Slower but smarter.", reason].filter(Boolean).join(" ");
 }
 
 function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
