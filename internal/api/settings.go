@@ -191,7 +191,11 @@ func (s *Server) allowedFolderPath(path string) (string, bool, error) {
 			_ = rows.Close()
 			return "", false, err
 		}
-		rel, err := filepath.Rel(filepath.Clean(root), cleaned)
+		root, err := cleanExistingDir(root)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(root, cleaned)
 		if err != nil {
 			_ = rows.Close()
 			return "", false, err

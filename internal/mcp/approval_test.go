@@ -37,6 +37,7 @@ func TestApprovalTool(t *testing.T) {
 		t.Fatalf("skill approval rows = %d, %v", skillApprovals, err)
 	}
 	h := api.New(database, "local", false, "dev", t.TempDir())
+	defer h.Close()
 	call := func(timeout time.Duration) (*sdk.ClientSession, func()) {
 		t.Helper()
 		server, err := NewServerWithApproval(h, "dev", ApprovalOptions{DB: database, ChatID: chatID, Timeout: timeout, PollInterval: time.Millisecond})
@@ -203,6 +204,39 @@ func TestApprovalToolAutoAllowedFromDatabase(t *testing.T) {
 	var auto bool
 	if err := database.QueryRow(`SELECT status,auto FROM chat_approval WHERE chat_id=?`, chatID).Scan(&status, &auto); err != nil || status != "allowed" || !auto {
 		t.Fatalf("auto approval = (%q, %v), %v", status, auto, err)
+	}
+	if _, err := database.Exec(`UPDATE chat SET auto_allow=0 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	h := api.New(database, "local", false, "dev", t.TempDir())
+	defer h.Close()
+	resultCh := make(chan *sdk.CallToolResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, _, err := approvalHandler(context.Background(), &ApprovalOptions{DB: database, ChatID: chatID, Timeout: time.Second, PollInterval: time.Millisecond}, approveArgs{
+			ToolName: "write_file", Input: json.RawMessage(`{"path":"pending"}`),
+		})
+		resultCh <- result
+		errCh <- err
+	}()
+	pendingID := pendingApprovalID(t, database, chatID)
+	body := bytes.NewBufferString(`{"auto_allow":true}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/chats/"+chatID, body)
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("enable auto-allow = %d: %s", res.Code, res.Body)
+	}
+	select {
+	case result := <-resultCh:
+		if err := <-errCh; err != nil || result.Content[0].(*sdk.TextContent).Text != `{"behavior":"allow","updatedInput":{"path":"pending"}}` {
+			t.Fatalf("pending Claude approval = %#v, %v", result, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending Claude approval waiter did not return")
+	}
+	if err := database.QueryRow(`SELECT status,auto FROM chat_approval WHERE id=?`, pendingID).Scan(&status, &auto); err != nil || status != "allowed" || !auto {
+		t.Fatalf("resolved Claude approval = (%q, %v), %v", status, auto, err)
 	}
 }
 

@@ -16,6 +16,10 @@ func TestSettingsDefaultsRoundTripAndValidation(t *testing.T) {
 	if err := os.Mkdir(allowed, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	allowed, err := filepath.EvalSymlinks(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/folders", map[string]string{"path": allowed}, nil); code != http.StatusCreated {
 		t.Fatalf("add allowed folder = %d", code)
 	}
@@ -67,6 +71,40 @@ func TestSettingsDefaultsDeletedReferencesFallBack(t *testing.T) {
 	}
 }
 
+func TestSettingsDefaultsNormalizeFolderAliases(t *testing.T) {
+	database, handler, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	canonical := filepath.Join(root, "allowed")
+	alias := filepath.Join(root, "alias")
+	if err := os.Mkdir(canonical, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := filepath.EvalSymlinks(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(canonical, alias); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/folders", map[string]string{"path": canonical}, nil); code != http.StatusCreated {
+		t.Fatalf("add allowed folder = %d", code)
+	}
+	var folders []allowedFolder
+	if code := requestJSON(t, handler, http.MethodGet, "/api/settings/folders", nil, &folders); code != http.StatusOK || len(folders) != 1 || folders[0].Path != canonical {
+		t.Fatalf("allowed folders = %d, %#v", code, folders)
+	}
+	want := settingsDefaults{ConnectorID: &connectorID, Folder: &canonical, AutoAllow: true, Tools: true}
+	input := settingsDefaults{ConnectorID: &connectorID, Folder: &alias, AutoAllow: true, Tools: true}
+	var got settingsDefaults
+	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", input, &got); code != http.StatusOK || !reflect.DeepEqual(got, want) {
+		t.Fatalf("save aliased defaults = %d, %#v; want %#v", code, got, want)
+	}
+	got = settingsDefaults{}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/settings/defaults", nil, &got); code != http.StatusOK || !reflect.DeepEqual(got, want) {
+		t.Fatalf("read normalized defaults = %d, %#v; want %#v", code, got, want)
+	}
+}
+
 func TestCreateChatUsesDefaultsAndExplicitValuesWin(t *testing.T) {
 	database, handler, root := chatAPI(t)
 	first := createTestConnector(t, database)
@@ -76,6 +114,10 @@ func TestCreateChatUsesDefaultsAndExplicitValuesWin(t *testing.T) {
 	}
 	allowed := filepath.Join(root, "allowed")
 	if err := os.Mkdir(allowed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	allowed, err := filepath.EvalSymlinks(allowed)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/folders", map[string]string{"path": allowed}, nil); code != http.StatusCreated {

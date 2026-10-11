@@ -37,6 +37,10 @@ func createTestConnector(t *testing.T, database *sql.DB) string {
 
 func TestAllowedFolderValidation(t *testing.T) {
 	_, handler, root := chatAPI(t)
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	file := filepath.Join(root, "file")
 	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -57,7 +61,7 @@ func TestAllowedFolderValidation(t *testing.T) {
 					t.Fatalf("duplicate folder status = %d", code)
 				}
 				var list []allowedFolder
-				if code := requestJSON(t, handler, http.MethodGet, "/api/settings/folders", nil, &list); code != http.StatusOK || len(list) != 1 || list[0].Path != root {
+				if code := requestJSON(t, handler, http.MethodGet, "/api/settings/folders", nil, &list); code != http.StatusOK || len(list) != 1 || list[0].Path != canonicalRoot {
 					t.Fatalf("folders = %#v, status %d", list, code)
 				}
 				if code := requestJSON(t, handler, http.MethodDelete, "/api/settings/folders/"+out.ID, nil, nil); code != http.StatusNoContent {
@@ -75,6 +79,10 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 	if err := os.Mkdir(allowed, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	allowed, err := filepath.EvalSymlinks(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sibling := filepath.Join(root, "allowed-sibling")
 	if err := os.Mkdir(sibling, 0o700); err != nil {
 		t.Fatal(err)
@@ -84,6 +92,10 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 	}
 	child := filepath.Join(allowed, "child")
 	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	canonicalChild, err := filepath.EvalSymlinks(child)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
@@ -100,7 +112,7 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 			if code := requestJSON(t, handler, http.MethodPost, "/api/chats", body, &got); code != test.want {
 				t.Fatalf("create status = %d, want %d", code, test.want)
 			}
-			if test.name == "allowed child" && got.Workdir != child {
+			if test.name == "allowed child" && got.Workdir != canonicalChild {
 				t.Fatalf("workdir = %q", got.Workdir)
 			}
 			if test.name == "default folder" {

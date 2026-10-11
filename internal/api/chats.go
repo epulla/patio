@@ -67,7 +67,7 @@ func cleanExistingDir(path string) (string, error) {
 	if !info.IsDir() {
 		return "", errors.New("path must be a directory")
 	}
-	return path, nil
+	return filepath.EvalSymlinks(path)
 }
 
 func (s *Server) listAllowedFolders(w http.ResponseWriter, _ *http.Request) {
@@ -83,6 +83,9 @@ func (s *Server) listAllowedFolders(w http.ResponseWriter, _ *http.Request) {
 		if err := rows.Scan(&f.ID, &f.Path, &f.CreatedAt); err != nil {
 			errw(w, 500, err.Error())
 			return
+		}
+		if normalized, err := cleanExistingDir(f.Path); err == nil {
+			f.Path = normalized
 		}
 		out = append(out, f)
 	}
