@@ -445,7 +445,7 @@ function Conversation({
             <Markdown text={streaming} onFile={reveal} />
           </div>
         )}
-        {running && !streaming && <p className="muted typing">Thinking…</p>}
+        {running && !streaming && <p className="muted typing">Working…</p>}
         {detail.pending_approvals.map((approval) => (
           <ApprovalCard key={approval.id} approval={approval} onAnswer={(allow) => answer(approval, allow)} />
         ))}
