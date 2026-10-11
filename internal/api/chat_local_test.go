@@ -44,6 +44,78 @@ func TestLocalChatPlainAndThinkStripping(t *testing.T) {
 
 }
 
+func TestLocalChatRedactsConnectorSecretFromMessages(t *testing.T) {
+	const secret = "do-not-store-token"
+	for _, tc := range []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request, map[string]any)
+	}{
+		{
+			name: "streamed response split across chunks",
+			handler: func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+				writeSSE(w,
+					`{"choices":[{"delta":{"content":"before do-not-"}}]}`,
+					`{"choices":[{"delta":{"content":"store-token after"}}]}`,
+				)
+			},
+		},
+		{
+			name: "upstream error",
+			handler: func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = fmt.Fprintf(w, `{"error":"upstream rejected %s"}`, secret)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, _, chatID, server, events := newLocalChatFixture(t, tc.handler)
+			defer server.Close()
+			var connectorID string
+			if err := database.QueryRow(`SELECT connector_id FROM chat WHERE id=?`, chatID).Scan(&connectorID); err != nil {
+				t.Fatal(err)
+			}
+			if err := keyring.Set(connectorService, connectorSecret(connectorID), secret); err != nil {
+				t.Fatal(err)
+			}
+			if code := sendLocalMessage(t, server, chatID, "reply"); code != http.StatusAccepted {
+				t.Fatalf("send = %d", code)
+			}
+			deadline := time.After(5 * time.Second)
+			for {
+				select {
+				case event := <-events:
+					if eventType(event) == "delta" && strings.Contains(event["text"].(string), secret) {
+						t.Fatal("stream exposed connector secret")
+					}
+					if eventType(event) == "done" {
+						goto checkMessages
+					}
+				case <-deadline:
+					t.Fatal("timed out waiting for local chat done")
+				}
+			}
+		checkMessages:
+			rows, err := database.Query(`SELECT content FROM chat_message WHERE chat_id=?`, chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var content string
+				if err := rows.Scan(&content); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(content, secret) {
+					t.Fatalf("chat message stored connector secret: %q", content)
+				}
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestLocalOllamaSSEFixture(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := uid()
@@ -271,6 +343,31 @@ func TestLocalChatStopCancelsStreamingRequest(t *testing.T) {
 	var assistants int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='assistant'`, chatID).Scan(&assistants); err != nil || assistants != 0 {
 		t.Fatalf("assistant rows after stop = %d, %v", assistants, err)
+	}
+}
+
+func TestLocalChatStopCancelsPendingApproval(t *testing.T) {
+	database, root, chatID, server, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		writeSSE(w, `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"write-1","type":"function","function":{"name":"file__write_file","arguments":"{\"path\":\"hello.txt\",\"content\":\"hi\"}"}}]}}]}`)
+	})
+	defer server.Close()
+	if code := sendLocalMessage(t, server, chatID, "create file"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalEvent(t, events, "approval")
+	var approvalID string
+	if err := database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending'`, chatID).Scan(&approvalID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/stop", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("stop = %d", code)
+	}
+	var status string
+	if err := database.QueryRow(`SELECT status FROM chat_approval WHERE id=?`, approvalID).Scan(&status); err != nil || status != "expired" {
+		t.Fatalf("approval status = %q, %v", status, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chats", chatID, "hello.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("file after stopped approval: %v", err)
 	}
 }
 

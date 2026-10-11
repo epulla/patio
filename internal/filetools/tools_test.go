@@ -50,6 +50,40 @@ func TestResolveRejectsUnsafePaths(t *testing.T) {
 	})
 }
 
+func TestWritesRejectSymlinkedFileOutsideWorkdir(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	outside := filepath.Join(base, "outside.txt")
+	mustMkdir(t, root)
+	if err := os.WriteFile(outside, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "link.txt")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		args map[string]string
+	}{
+		{name: "write", args: map[string]string{"path": "link.txt", "content": "overwritten"}},
+		{name: "edit", args: map[string]string{"path": "link.txt", "old_string": "original", "new_string": "overwritten"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tool := "write_file"
+			if tc.name == "edit" {
+				tool = "edit_file"
+			}
+			if _, err := Run(context.Background(), root, tool, rawArgs(t, tc.args)); err == nil {
+				t.Fatal("write through outside symlink unexpectedly succeeded")
+			}
+			got, err := os.ReadFile(outside)
+			if err != nil || string(got) != "original" {
+				t.Fatalf("outside file = %q, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestEditRequiresExactlyOneMatch(t *testing.T) {
 	for _, tc := range []struct {
 		name, content string

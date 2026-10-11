@@ -182,6 +182,9 @@ func (d *localRuntime) runTurn(ctx context.Context) {
 	d.mu.Unlock()
 	defer close(done)
 	text, err := d.completeTurn(ctx)
+	if err != nil {
+		err = errors.New(d.redact(err.Error()))
+	}
 	d.mu.Lock()
 	stopped := ctx.Err() != nil || d.closed
 	if d.turnDone == done {
@@ -227,7 +230,7 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 				}
 				result = err.Error()
 			}
-			result = capToolOutput(result)
+			result = capToolOutput(d.redact(result))
 			if err := d.manager.emitTool(d.chatID, summary); err != nil {
 				return "", err
 			}
@@ -353,7 +356,14 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 	calls := make(map[int]*localCall)
 	var data strings.Builder
 	filter := thinkFilter{}
+	secretFilter := localSecretFilter{secret: d.secret}
 	finished := false
+	emitText := func(text string) {
+		if text = secretFilter.feed(text); text != "" {
+			result.text += text
+			d.manager.emitDelta(d.chatID, text)
+		}
+	}
 	consume := func(raw string) error {
 		if raw == "[DONE]" {
 			finished = true
@@ -367,10 +377,7 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 			return fmt.Errorf("local model stream error: %v", chunk.Error)
 		}
 		for _, choice := range chunk.Choices {
-			if text := filter.feed(choice.Delta.Content); text != "" {
-				result.text += text
-				d.manager.emitDelta(d.chatID, text)
-			}
+			emitText(filter.feed(choice.Delta.Content))
 			for _, delta := range choice.Delta.ToolCalls {
 				call := calls[delta.Index]
 				if call == nil {
@@ -422,9 +429,9 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 		return localStreamResult{}, err
 	}
 	if rest := filter.flush(); rest != "" {
-		result.text += rest
-		d.manager.emitDelta(d.chatID, rest)
+		emitText(rest)
 	}
+	emitText(secretFilter.flush())
 	indices := make([]int, 0, len(calls))
 	for index := range calls {
 		indices = append(indices, index)
@@ -441,6 +448,63 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 		result.calls = append(result.calls, call)
 	}
 	return result, nil
+}
+
+func (d *localRuntime) redact(text string) string {
+	if d.secret == "" {
+		return text
+	}
+	return strings.ReplaceAll(text, d.secret, localRedactionMarker(d.secret))
+}
+
+type localSecretFilter struct {
+	secret  string
+	pending string
+}
+
+func (f *localSecretFilter) feed(text string) string {
+	if f.secret == "" {
+		return text
+	}
+	f.pending += text
+	safeLimit := len(f.pending) - len(f.secret) + 1
+	if safeLimit <= 0 {
+		return ""
+	}
+	var output strings.Builder
+	consumed := 0
+	for consumed < safeLimit {
+		if strings.HasPrefix(f.pending[consumed:], f.secret) {
+			output.WriteString(localRedactionMarker(f.secret))
+			consumed += len(f.secret)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(f.pending[consumed:])
+		if consumed+size > safeLimit {
+			break
+		}
+		output.WriteString(f.pending[consumed : consumed+size])
+		consumed += size
+	}
+	f.pending = f.pending[consumed:]
+	return output.String()
+}
+
+func (f *localSecretFilter) flush() string {
+	defer func() { f.pending = "" }()
+	if f.secret == "" {
+		return f.pending
+	}
+	return strings.ReplaceAll(f.pending, f.secret, localRedactionMarker(f.secret))
+}
+
+func localRedactionMarker(secret string) string {
+	for _, marker := range []string{"[redacted]", "[hidden]", "***", "█", "■", "◆"} {
+		if !strings.Contains(marker, secret) {
+			return marker
+		}
+	}
+	return "\u0000"
 }
 
 func openAIToolCalls(calls []localCall) []map[string]any {
