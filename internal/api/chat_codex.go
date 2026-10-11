@@ -14,6 +14,7 @@ import (
 
 type codexClient interface {
 	Call(context.Context, string, any, any) error
+	Models(context.Context) ([]connectorcli.Model, error)
 	Notifications() <-chan connectorcli.Notification
 	Requests() <-chan connectorcli.Request
 	Respond(json.RawMessage, any) error
@@ -21,19 +22,22 @@ type codexClient interface {
 }
 
 type codexRuntime struct {
-	manager   *chatManager
-	chatID    string
-	runtime   *chatRuntime
-	client    codexClient
-	threadID  string
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mu        sync.Mutex
-	turnID    string
-	finished  bool
-	closing   bool
-	assistant strings.Builder
-	items     map[string]json.RawMessage
+	manager      *chatManager
+	chatID       string
+	runtime      *chatRuntime
+	client       codexClient
+	threadID     string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	mu           sync.Mutex
+	turnID       string
+	finished     bool
+	closing      bool
+	assistant    strings.Builder
+	items        map[string]json.RawMessage
+	model        string
+	modelsLoaded bool
+	lowestEffort string
 }
 
 func init() { runtimes["codex"] = startCodex }
@@ -71,7 +75,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		cancel()
 		return nil, fmt.Errorf("start codex: %w", err)
 	}
-	driver := &codexRuntime{manager: m, chatID: c.ID, runtime: rt, client: client, ctx: ctx, cancel: cancel, items: make(map[string]json.RawMessage)}
+	driver := &codexRuntime{manager: m, chatID: c.ID, runtime: rt, client: client, ctx: ctx, cancel: cancel, items: make(map[string]json.RawMessage), model: c.Model}
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.threadID = *c.SessionID
 		var result json.RawMessage
@@ -163,6 +167,19 @@ func codexMCPOverrides(spec map[string]any) ([]string, error) {
 }
 
 func (d *codexRuntime) send(text string) error {
+	var thinking bool
+	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
+		return err
+	}
+	if !thinking && !d.modelsLoaded {
+		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
+		models, err := d.client.Models(ctx)
+		cancel()
+		d.modelsLoaded = true
+		if err == nil {
+			d.lowestEffort = lowestCodexEffort(models, d.model)
+		}
+	}
 	d.mu.Lock()
 	d.finished = false
 	d.assistant.Reset()
@@ -172,10 +189,14 @@ func (d *codexRuntime) send(text string) error {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	if err := d.client.Call(d.ctx, "turn/start", map[string]any{
+	params := map[string]any{
 		"threadId": d.threadID,
 		"input":    []map[string]string{{"type": "text", "text": text}},
-	}, &response); err != nil {
+	}
+	if !thinking && d.lowestEffort != "" {
+		params["effort"] = d.lowestEffort
+	}
+	if err := d.client.Call(d.ctx, "turn/start", params, &response); err != nil {
 		return err
 	}
 	if response.Turn.ID == "" {
@@ -185,6 +206,30 @@ func (d *codexRuntime) send(text string) error {
 	d.turnID = response.Turn.ID
 	d.mu.Unlock()
 	return nil
+}
+
+func lowestCodexEffort(models []connectorcli.Model, selected string) string {
+	ranks := map[string]int{"minimal": 0, "low": 1, "medium": 2, "high": 3, "xhigh": 4}
+	var efforts []string
+	if selected == "" {
+		if len(models) > 0 {
+			efforts = models[0].Efforts
+		}
+	} else {
+		for _, model := range models {
+			if model.ID == selected {
+				efforts = model.Efforts
+				break
+			}
+		}
+	}
+	lowest, rank := "", int(^uint(0)>>1)
+	for _, effort := range efforts {
+		if current, ok := ranks[effort]; ok && current < rank {
+			lowest, rank = effort, current
+		}
+	}
+	return lowest
 }
 
 func (d *codexRuntime) watch() {

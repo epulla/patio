@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestCopilotACPDriver(t *testing.T) {
 		DBPath:      filepath.Join(root, "test.db"),
 		findCopilot: func() (string, error) { return "copilot-test", nil },
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
-			if path != "copilot-test" || strings.Join(args, " ") != "--acp --stdio" || cwd != filepath.Join(root, "chats", chatID) {
+			if path != "copilot-test" || strings.Join(args, " ") != "--acp --stdio --reasoning-effort low" || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("Copilot process launch = %q %v %q", path, args, cwd)
 			}
 			if !hasEnv(env, "COPILOT_GITHUB_TOKEN", "copilot-test-secret") {
@@ -166,6 +167,91 @@ func TestCopilotAuthError(t *testing.T) {
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
+	keyring.MockInit()
+	database, _, root := chatAPI(t)
+	connectorID := createCopilotTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
+	loaded := make(chan string, 2)
+	launch := 0
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath:      filepath.Join(root, "test.db"),
+		findCopilot: func() (string, error) { return "copilot-test", nil },
+		processFactory: func(_ string, args, _ []string, _ string) (chatProcess, error) {
+			want := []string{"--acp", "--stdio", "--reasoning-effort", "low"}
+			if launch == 1 {
+				want = []string{"--acp", "--stdio"}
+			}
+			if !reflect.DeepEqual(args, want) {
+				t.Errorf("Copilot args = %v, want %v", args, want)
+			}
+			process := processes[launch]
+			go serveThinkingCopilot(process, launch, loaded)
+			launch++
+			return process, nil
+		},
+	})
+	defer server.Close()
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "first"}, nil); code != http.StatusAccepted {
+		t.Fatalf("first send = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
+		t.Fatalf("thinking update = %d", code)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "second"}, nil); code != http.StatusAccepted {
+		t.Fatalf("second send = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	select {
+	case got := <-loaded:
+		if got != "session/new:" {
+			t.Fatalf("first Copilot session = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Copilot did not create initial session")
+	}
+	select {
+	case got := <-loaded:
+		if got != "session/load:session-thinking-copilot" {
+			t.Fatalf("resumed Copilot session = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Copilot did not resume session")
+	}
+	select {
+	case <-processes[0].done:
+	case <-time.After(time.Second):
+		t.Fatal("Copilot process was not restarted")
+	}
+}
+
+func serveThinkingCopilot(process *pipeChatProcess, index int, loaded chan<- string) {
+	for line := range process.input {
+		var request acpMessage
+		if json.Unmarshal([]byte(line), &request) != nil {
+			return
+		}
+		switch request.Method {
+		case "initialize":
+			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{}})
+		case "session/new", "session/load":
+			var params map[string]any
+			_ = json.Unmarshal(request.Params, &params)
+			if index == 0 && request.Method != "session/new" || index == 1 && (request.Method != "session/load" || params["sessionId"] != "session-thinking-copilot") {
+				return
+			}
+			sessionID, _ := params["sessionId"].(string)
+			loaded <- request.Method + ":" + sessionID
+			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{"sessionId": "session-thinking-copilot"}})
+		case "session/prompt":
+			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "session-thinking-copilot", "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"text": "OK"}}}})
+			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{"stopReason": "end_turn"}})
+		}
 	}
 }
 

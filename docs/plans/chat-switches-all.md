@@ -36,5 +36,5 @@ Tools off can't be done cleanly on the CLIs: Codex can't remove its file-edit to
 
 ## Tasks
 
-- [ ] Backend: drop `chat.tools` and the `tools` default; Thinking default on plus the migration for existing non-local chats; Claude env, Copilot flag and Codex per-turn effort; restart-on-change with resume for Claude and Copilot; `capabilities.thinking` per connector kind. Check: Go tests per driver for the exact env, args and effort sent for each value, restart on change with resume, migration; race; `make release`; live per decision 7.
+- [x] Backend: drop `chat.tools` and the `tools` default; Thinking default on plus the migration for existing non-local chats; Claude env, Copilot flag and Codex per-turn effort; restart-on-change with resume for Claude and Copilot; `capabilities.thinking` per connector kind. Check: Go tests per driver for the exact env, args and effort sent for each value, restart on change with resume, migration; race; `make release`; live per decision 7.
 - [ ] UI: remove the Tools switches; Thinking on every chat, disabled with the reason when unsupported; Defaults label. Check: `pnpm --dir web build`; `wails build`; user smoke test on a Claude chat with Thinking off.

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -443,7 +444,7 @@ func TestCodexModelListOverFakeAppServerPipes(t *testing.T) {
 		t.Fatal(err)
 	}
 	models, err := client.Models(ctx)
-	if err != nil || len(models) != 2 || models[0].ID != "gpt-5-codex" || models[0].Label != "GPT-5 Codex" || models[1].ID != "gpt-4.1" {
+	if err != nil || len(models) != 2 || models[0].ID != "gpt-5-codex" || models[0].Label != "GPT-5 Codex" || !reflect.DeepEqual(models[0].Efforts, []string{"minimal", "low", "high"}) || models[1].ID != "gpt-4.1" || !reflect.DeepEqual(models[1].Efforts, []string{"low", "high"}) {
 		t.Fatalf("models = %#v, %v", models, err)
 	}
 	if err := <-serverErr; err != nil {

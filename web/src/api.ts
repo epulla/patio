@@ -11,7 +11,6 @@ export type ChatDefaults = {
   connector_id: string | null;
   folder: string | null;
   auto_allow: boolean;
-  tools: boolean;
   thinking: boolean;
 };
 export type SettingsAbout = {
@@ -174,8 +173,8 @@ export type Chat = {
   workdir: string;
   running: boolean;
   thinking: boolean;
-  tools: boolean;
   auto_allow: boolean;
+  capabilities: { thinking: { supported: boolean; reason: string } };
 };
 export type ChatMessage = {
   id: string;

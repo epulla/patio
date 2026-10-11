@@ -24,6 +24,11 @@ func TestCodexTurnOverPipes(t *testing.T) {
 			database, _, root := chatAPI(t)
 			connectorID := createCodexTestConnector(t, database)
 			chatID := createDriverTestChat(t, database, connectorID, root)
+			if allow {
+				if _, err := database.Exec(`UPDATE chat SET thinking=1 WHERE id=?`, chatID); err != nil {
+					t.Fatal(err)
+				}
+			}
 			var mu sync.Mutex
 			var events []map[string]any
 			serverErr := make(chan error, 1)
@@ -83,6 +88,15 @@ func TestCodexTurnOverPipes(t *testing.T) {
 						if err := writeCodexResponse(write, request.ID, map[string]any{"thread": map[string]string{"id": "thread-fixture"}}); err != nil {
 							return err
 						}
+						if !allow {
+							request, err = readCodexRequest(read, "model/list")
+							if err != nil {
+								return err
+							}
+							if err := writeCodexResponse(write, request.ID, map[string]any{"data": []any{map[string]any{"id": "gpt-5-codex", "isDefault": true, "supportedReasoningEfforts": []any{map[string]string{"reasoningEffort": "high"}, map[string]string{"reasoningEffort": "low"}}}}}); err != nil {
+								return err
+							}
+						}
 						request, err = readCodexRequest(read, "turn/start")
 						if err != nil {
 							return err
@@ -93,6 +107,13 @@ func TestCodexTurnOverPipes(t *testing.T) {
 						}
 						if turnParams["threadId"] != "thread-fixture" {
 							return fmt.Errorf("turn/start params = %#v", turnParams)
+						}
+						wantEffort := any("low")
+						if allow {
+							wantEffort = nil
+						}
+						if turnParams["effort"] != wantEffort {
+							return fmt.Errorf("turn/start effort = %#v, want %#v", turnParams["effort"], wantEffort)
 						}
 						if err := writeCodexResponse(write, request.ID, map[string]any{"turn": map[string]string{"id": "turn-fixture"}}); err != nil {
 							return err
@@ -209,6 +230,67 @@ func TestCodexTurnOverPipes(t *testing.T) {
 	}
 }
 
+func TestLowestCodexEffortSelection(t *testing.T) {
+	models := []connectorcli.Model{
+		{ID: "other", Efforts: []string{"minimal"}},
+		{ID: "selected", Efforts: []string{"high", "medium", "low"}},
+	}
+	if got := lowestCodexEffort(models, "selected"); got != "low" {
+		t.Fatalf("selected model effort = %q, want low", got)
+	}
+	if got := lowestCodexEffort(models, "missing"); got != "" {
+		t.Fatalf("unknown model effort = %q, want empty", got)
+	}
+	if got := lowestCodexEffort([]connectorcli.Model{{ID: "selected", Efforts: []string{"custom"}}}, "selected"); got != "" {
+		t.Fatalf("unknown supported effort = %q, want empty", got)
+	}
+}
+
+func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createCodexTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET model='missing' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	client := &effortTestCodexClient{models: []connectorcli.Model{{ID: "other", Efforts: []string{"minimal"}}}}
+	driver := &codexRuntime{manager: newChatManager(database, Options{}), chatID: chatID, client: client, threadID: "thread", ctx: context.Background(), model: "missing"}
+	if err := driver.send("hello"); err != nil {
+		t.Fatalf("send with unknown model = %v", err)
+	}
+	if _, exists := client.turnParams["effort"]; exists {
+		t.Fatalf("unknown model turn/start effort = %#v", client.turnParams["effort"])
+	}
+}
+
+type effortTestCodexClient struct {
+	models     []connectorcli.Model
+	turnParams map[string]any
+}
+
+func (c *effortTestCodexClient) Call(_ context.Context, method string, params, out any) error {
+	if method != "turn/start" {
+		return fmt.Errorf("unexpected Codex method %q", method)
+	}
+	data, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &c.turnParams); err != nil {
+		return err
+	}
+	data = []byte(`{"turn":{"id":"turn-test"}}`)
+	return json.Unmarshal(data, out)
+}
+
+func (c *effortTestCodexClient) Models(context.Context) ([]connectorcli.Model, error) {
+	return c.models, nil
+}
+func (*effortTestCodexClient) Notifications() <-chan connectorcli.Notification { return nil }
+func (*effortTestCodexClient) Requests() <-chan connectorcli.Request           { return nil }
+func (*effortTestCodexClient) Respond(json.RawMessage, any) error              { return nil }
+func (*effortTestCodexClient) Close() error                                    { return nil }
+
 func TestCodexThreadResumeWithoutPrompt(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createCodexTestConnector(t, database)
@@ -297,6 +379,13 @@ func TestCodexStopInterruptsTurn(t *testing.T) {
 					return err
 				}
 				if err := writeCodexResponse(write, request.ID, map[string]any{"thread": map[string]string{"id": "thread-stop"}}); err != nil {
+					return err
+				}
+				request, err = readCodexRequest(read, "model/list")
+				if err != nil {
+					return err
+				}
+				if err := writeCodexResponse(write, request.ID, map[string]any{"data": []any{}}); err != nil {
 					return err
 				}
 				request, err = readCodexRequest(read, "turn/start")

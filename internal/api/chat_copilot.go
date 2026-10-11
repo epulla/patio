@@ -65,7 +65,11 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	if factory == nil {
 		factory = startOSChatProcess
 	}
-	process, err := factory(path, []string{"--acp", "--stdio"}, connectorcli.Env("copilot", configDir, secret), c.Workdir)
+	args := []string{"--acp", "--stdio"}
+	if !c.Thinking {
+		args = append(args, "--reasoning-effort", "low")
+	}
+	process, err := factory(path, args, connectorcli.Env("copilot", configDir, secret), c.Workdir)
 	if err != nil {
 		return nil, fmt.Errorf("start copilot: %w", err)
 	}

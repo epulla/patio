@@ -441,6 +441,67 @@ func TestChatModelChangeClosesIdleProcessAndRestartsWithNewModel(t *testing.T) {
 	}
 }
 
+func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
+	var launches [][]string
+	launch := 0
+	server := New(database, "local", false, "dev", root, Options{
+		findClaude: func() (string, error) { return "claude-test", nil },
+		commandBuilder: func(_, _, _, model, session string) ([]string, error) {
+			args := []string{"--model", model}
+			if session != "" {
+				args = append(args, "--resume", session)
+			}
+			return args, nil
+		},
+		processFactory: func(_ string, args, env []string, _ string) (chatProcess, error) {
+			launches = append(launches, append([]string(nil), args...))
+			if launch == 0 && !hasEnv(env, "MAX_THINKING_TOKENS", "0") {
+				t.Errorf("thinking-off Claude env missing MAX_THINKING_TOKENS=0: %v", env)
+			}
+			if launch == 1 && !reflect.DeepEqual(env, connectorEnv("claude", "")) {
+				t.Errorf("thinking-on Claude env changed defaults: %v", env)
+			}
+			process := processes[launch]
+			launch++
+			return process, nil
+		},
+	})
+	defer server.Close()
+	for i, process := range processes {
+		go func(i int, process *pipeChatProcess) {
+			for range process.input {
+				if i == 0 {
+					_, _ = io.WriteString(process.stdoutW, `{"type":"system","subtype":"init","session_id":"session-thinking"}`+"\n")
+				}
+				_, _ = io.WriteString(process.stdoutW, `{"type":"result","result":"OK"}`+"\n")
+			}
+		}(i, process)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "first"}, nil); code != http.StatusAccepted {
+		t.Fatalf("first send = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
+		t.Fatalf("thinking update = %d", code)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "second"}, nil); code != http.StatusAccepted {
+		t.Fatalf("second send = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	select {
+	case <-processes[0].done:
+	case <-time.After(time.Second):
+		t.Fatal("Claude process was not restarted")
+	}
+	if !reflect.DeepEqual(launches, [][]string{{"--model", ""}, {"--model", "", "--resume", "session-thinking"}}) {
+		t.Fatalf("Claude launches = %#v", launches)
+	}
+}
+
 func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := uid()

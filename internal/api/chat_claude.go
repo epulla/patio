@@ -78,7 +78,11 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 	if factory == nil {
 		factory = startOSChatProcess
 	}
-	process, err := factory(path, args, connectorEnv("claude", configDir), c.Workdir)
+	env := connectorEnv("claude", configDir)
+	if !c.Thinking {
+		env = setChatEnv(env, "MAX_THINKING_TOKENS", "0")
+	}
+	process, err := factory(path, args, env, c.Workdir)
 	if err != nil {
 		if configPath != "" {
 			_ = os.Remove(configPath)

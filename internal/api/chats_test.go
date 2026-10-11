@@ -2,9 +2,11 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -233,11 +235,11 @@ func TestChatThinkingUpdate(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	var created chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Thinking || !created.Tools {
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || !created.Thinking {
 		t.Fatalf("create chat = %d, %#v", code, created)
 	}
 	var listed []chat
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed) != 1 || listed[0].Thinking {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed) != 1 || !listed[0].Thinking {
 		t.Fatalf("list chats = %d, %#v", code, listed)
 	}
 	updated := true
@@ -269,35 +271,62 @@ func TestChatThinkingUpdate(t *testing.T) {
 	runtime.mu.Unlock()
 }
 
-func TestChatToolsUpdate(t *testing.T) {
+func TestChatThinkingCapabilities(t *testing.T) {
+	_, handler, _ := chatAPI(t)
+	tests := []struct {
+		kind      string
+		supported bool
+		reason    string
+	}{
+		{"claude", true, "Some models always think"},
+		{"codex", true, ""},
+		{"copilot", true, ""},
+		{"local", true, ""},
+		{"opencode", false, "opencode picks reasoning with model variants"},
+	}
+	for _, test := range tests {
+		t.Run(test.kind, func(t *testing.T) {
+			id := uid()
+			if _, err := handler.(*Server).db.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,?,?,?)`, id, test.kind, test.kind, now()); err != nil {
+				t.Fatal(err)
+			}
+			var created chat
+			if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": id}, &created); code != http.StatusCreated {
+				t.Fatalf("create chat = %d", code)
+			}
+			want := thinkingCapability{Supported: test.supported, Reason: test.reason}
+			if created.Capabilities.Thinking != want {
+				t.Fatalf("create capabilities = %#v, want %#v", created.Capabilities.Thinking, want)
+			}
+			var detail struct {
+				Chat chat `json:"chat"`
+			}
+			if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &detail); code != http.StatusOK || detail.Chat.Capabilities.Thinking != want {
+				t.Fatalf("get capabilities = %d %#v, want %#v", code, detail.Chat.Capabilities.Thinking, want)
+			}
+		})
+	}
+}
+
+func TestChatToolsRemovedFromAPI(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	var created chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || !created.Tools {
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated {
 		t.Fatalf("create chat = %d, %#v", code, created)
 	}
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": false}, &created); code != http.StatusOK || created.Tools {
-		t.Fatalf("disable tools = %d, %#v", code, created)
+	data, err := json.Marshal(created)
+	if err != nil {
+		t.Fatal(err)
 	}
-	var listed []chat
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed) != 1 || listed[0].Tools {
-		t.Fatalf("list chat tools = %d, %#v", code, listed)
+	if strings.Contains(string(data), `"tools"`) {
+		t.Fatalf("chat API still exposes tools: %s", data)
 	}
-	runtime := handler.(*Server).chats.runtime(created.ID)
-	runtime.mu.Lock()
-	runtime.busy = true
-	runtime.mu.Unlock()
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": false}, nil); code != http.StatusOK {
-		t.Fatalf("unchanged tools while running = %d", code)
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": false}, nil); code != http.StatusBadRequest {
+		t.Fatalf("tools-only update = %d, want %d", code, http.StatusBadRequest)
 	}
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": true}, nil); code != http.StatusConflict {
-		t.Fatalf("tools change while running = %d, want %d", code, http.StatusConflict)
-	}
-	runtime.mu.Lock()
-	runtime.busy = false
-	runtime.mu.Unlock()
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"tools": true}, &created); code != http.StatusOK || !created.Tools {
-		t.Fatalf("enable tools = %d, %#v", code, created)
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "tools": false}, nil); code != http.StatusBadRequest {
+		t.Fatalf("create with removed tools field = %d, want %d", code, http.StatusBadRequest)
 	}
 }
 

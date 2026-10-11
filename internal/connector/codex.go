@@ -24,9 +24,10 @@ type Request struct {
 }
 
 type Model struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Description string `json:"description"`
+	ID          string   `json:"id"`
+	Label       string   `json:"label"`
+	Description string   `json:"description"`
+	Efforts     []string `json:"efforts,omitempty"`
 }
 
 type rpcMessage struct {
@@ -141,11 +142,14 @@ func (c *Client) Respond(id json.RawMessage, result any) error {
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	var response struct {
 		Data []struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"displayName"`
-			Description string `json:"description"`
-			IsDefault   bool   `json:"isDefault"`
-			Hidden      bool   `json:"hidden"`
+			ID                        string `json:"id"`
+			DisplayName               string `json:"displayName"`
+			Description               string `json:"description"`
+			IsDefault                 bool   `json:"isDefault"`
+			Hidden                    bool   `json:"hidden"`
+			SupportedReasoningEfforts []struct {
+				ReasoningEffort string `json:"reasoningEffort"`
+			} `json:"supportedReasoningEfforts"`
 		} `json:"data"`
 	}
 	if err := c.Call(ctx, "model/list", map[string]any{}, &response); err != nil {
@@ -161,7 +165,13 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 		if label == "" {
 			label = model.ID
 		}
-		models = append(models, Model{ID: model.ID, Label: label, Description: model.Description})
+		efforts := make([]string, 0, len(model.SupportedReasoningEfforts))
+		for _, effort := range model.SupportedReasoningEfforts {
+			if effort.ReasoningEffort != "" {
+				efforts = append(efforts, effort.ReasoningEffort)
+			}
+		}
+		models = append(models, Model{ID: model.ID, Label: label, Description: model.Description, Efforts: efforts})
 	}
 	return models, nil
 }

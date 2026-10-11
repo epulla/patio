@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,15 +93,16 @@ func mcpSpecHeaders(spec mcpServerSpec) map[string]string {
 }
 
 type chatRuntime struct {
-	mu            sync.Mutex
-	driver        chatRuntimeDriver
-	busy          bool
-	stopping      bool
-	changingModel bool
-	stopDone      chan struct{}
-	connectorID   string
-	lastActivity  time.Time
-	idleTimer     *time.Timer
+	mu              sync.Mutex
+	driver          chatRuntimeDriver
+	busy            bool
+	stopping        bool
+	changingModel   bool
+	stopDone        chan struct{}
+	connectorID     string
+	startedThinking *bool
+	lastActivity    time.Time
+	idleTimer       *time.Timer
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -165,6 +167,9 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 		return ChatMessage{}, err
 	}
 	c.Model = model
+	if err := m.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, c.ID).Scan(&c.Thinking); err != nil {
+		return ChatMessage{}, err
+	}
 	workdir, err := m.workdir(c.ID)
 	if err != nil {
 		return ChatMessage{}, err
@@ -172,6 +177,9 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 	c.Workdir = workdir
 	if c.ConnectorID == nil {
 		return ChatMessage{}, errChatConnectorMissing
+	}
+	if err := m.restartThinkingLocked(kind, c, rt); err != nil {
+		return ChatMessage{}, fmt.Errorf("restart chat for thinking change: %w", err)
 	}
 	message, err := InsertChatMessage(m.db, c.ID, "user", text)
 	if err != nil {
@@ -185,6 +193,10 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 			rt.busy = false
 			return message, err
 		}
+		if kind == "claude" || kind == "copilot" {
+			thinking := c.Thinking
+			rt.startedThinking = &thinking
+		}
 	}
 	if err := rt.driver.send(text); err != nil {
 		rt.busy = false
@@ -193,6 +205,29 @@ func (m *chatManager) Send(c chat, kind, configDir, text string) (ChatMessage, e
 	}
 	m.markRuntimeActiveLocked(c.ID, rt)
 	return message, nil
+}
+
+func (m *chatManager) restartThinkingLocked(kind string, c chat, rt *chatRuntime) error {
+	if (kind != "claude" && kind != "copilot") || rt.driver == nil || rt.startedThinking == nil || *rt.startedThinking == c.Thinking {
+		return nil
+	}
+	driver := rt.driver
+	rt.stopping = true
+	rt.stopDone = make(chan struct{})
+	done := rt.stopDone
+	m.stopRuntimeTimerLocked(rt)
+	rt.mu.Unlock()
+	err := driver.close()
+	rt.mu.Lock()
+	if rt.driver == driver {
+		rt.driver = nil
+		rt.busy = false
+		rt.startedThinking = nil
+	}
+	rt.stopping = false
+	rt.stopDone = nil
+	close(done)
+	return err
 }
 
 func (m *chatManager) model(chatID string) (string, error) {
@@ -297,6 +332,17 @@ func connectorEnv(kind, configDir string) []string {
 	return connectorcli.Env(kind, configDir, "")
 }
 
+func setChatEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i := range env {
+		if strings.HasPrefix(env[i], prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
 func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
 	exe := m.mcpExecutable
 	if exe == "" {
@@ -389,6 +435,7 @@ func (m *chatManager) Stop(id string) error {
 	if rt.driver == driver {
 		rt.driver = nil
 		rt.busy = false
+		rt.startedThinking = nil
 	}
 	rt.stopping = false
 	rt.stopDone = nil

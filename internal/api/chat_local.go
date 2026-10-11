@@ -321,11 +321,11 @@ func (d *localRuntime) runTurn(ctx context.Context) {
 }
 
 func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
-	var thinking, toolsEnabled bool
-	if err := d.manager.db.QueryRow(`SELECT thinking,tools FROM chat WHERE id=?`, d.chatID).Scan(&thinking, &toolsEnabled); err != nil {
+	var thinking bool
+	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
 		return "", err
 	}
-	messages, err := d.historyForTools(toolsEnabled)
+	messages, err := d.historyForTools()
 	if err != nil {
 		return "", err
 	}
@@ -334,7 +334,7 @@ func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
 	var fullText strings.Builder
 	retriedWithoutTools := false
 	for {
-		withTools := toolsEnabled && !d.toolsOff && !retriedWithoutTools
+		withTools := !d.toolsOff && !retriedWithoutTools
 		response, err := d.stream(ctx, messages, withTools, thinking)
 		if err != nil {
 			return "", err
@@ -463,14 +463,10 @@ func (d *localRuntime) textToolCall(content string) (localCall, bool, bool) {
 }
 
 func (d *localRuntime) history() ([]map[string]any, error) {
-	var toolsEnabled bool
-	if err := d.manager.db.QueryRow(`SELECT tools FROM chat WHERE id=?`, d.chatID).Scan(&toolsEnabled); err != nil {
-		return nil, err
-	}
-	return d.historyForTools(toolsEnabled)
+	return d.historyForTools()
 }
 
-func (d *localRuntime) historyForTools(toolsEnabled bool) ([]map[string]any, error) {
+func (d *localRuntime) historyForTools() ([]map[string]any, error) {
 	rows, err := d.manager.db.Query(`SELECT role,content FROM chat_message WHERE chat_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,rowid DESC LIMIT ?`, d.chatID, localHistoryLimit)
 	if err != nil {
 		return nil, err
@@ -496,7 +492,7 @@ func (d *localRuntime) historyForTools(toolsEnabled bool) ([]map[string]any, err
 	if folderPath.Valid {
 		folder = filepath.Base(filepath.Clean(folderPath.String))
 	}
-	systemPrompt := localSystemPrompt(folder, toolsEnabled && !d.toolsOff)
+	systemPrompt := localSystemPrompt(folder, !d.toolsOff)
 	messages := []map[string]any{{"role": "system", "content": systemPrompt}}
 	if len(saved) == 0 {
 		return messages, nil

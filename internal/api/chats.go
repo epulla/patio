@@ -21,19 +21,28 @@ type allowedFolder struct {
 }
 
 type chat struct {
-	ID          string  `json:"id"`
-	ConnectorID *string `json:"connector_id"`
-	Title       string  `json:"title"`
-	Model       string  `json:"model"`
-	Folder      *string `json:"folder"`
-	SessionID   *string `json:"session_id"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	Workdir     string  `json:"workdir"`
-	Running     bool    `json:"running"`
-	Thinking    bool    `json:"thinking"`
-	Tools       bool    `json:"tools"`
-	AutoAllow   bool    `json:"auto_allow"`
+	ID           string           `json:"id"`
+	ConnectorID  *string          `json:"connector_id"`
+	Title        string           `json:"title"`
+	Model        string           `json:"model"`
+	Folder       *string          `json:"folder"`
+	SessionID    *string          `json:"session_id"`
+	CreatedAt    string           `json:"created_at"`
+	UpdatedAt    string           `json:"updated_at"`
+	Workdir      string           `json:"workdir"`
+	Running      bool             `json:"running"`
+	Thinking     bool             `json:"thinking"`
+	AutoAllow    bool             `json:"auto_allow"`
+	Capabilities chatCapabilities `json:"capabilities"`
+}
+
+type chatCapabilities struct {
+	Thinking thinkingCapability `json:"thinking"`
+}
+
+type thinkingCapability struct {
+	Supported bool   `json:"supported"`
+	Reason    string `json:"reason"`
 }
 
 type ChatMessage struct {
@@ -139,11 +148,30 @@ func (s *Server) deleteAllowedFolder(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.Tools, &c.AutoAllow); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.AutoAllow); err != nil {
 		return c, err
 	}
 	c.Workdir = s.chatWorkdir(c)
+	c.Capabilities = chatCapabilities{Thinking: thinkingCapability{Supported: true}}
+	if c.ConnectorID != nil {
+		var kind string
+		if err := s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return c, err
+		}
+		c.Capabilities = capabilitiesForKind(kind)
+	}
 	return c, nil
+}
+
+func capabilitiesForKind(kind string) chatCapabilities {
+	capability := thinkingCapability{Supported: true}
+	switch kind {
+	case "opencode":
+		capability = thinkingCapability{Reason: "opencode picks reasoning with model variants"}
+	case "claude":
+		capability.Reason = "Some models always think"
+	}
+	return chatCapabilities{Thinking: capability}
 }
 
 func (s *Server) chatWorkdir(c chat) string {
@@ -153,7 +181,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,tools,auto_allow`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,auto_allow`
 
 func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 	rows, err := s.db.Query(`SELECT ` + chatColumns + ` FROM chat ORDER BY updated_at DESC,rowid DESC`)
@@ -185,7 +213,6 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		Model       string          `json:"model"`
 		Folder      json.RawMessage `json:"folder"`
 		AutoAllow   *bool           `json:"auto_allow"`
-		Tools       *bool           `json:"tools"`
 		Thinking    *bool           `json:"thinking"`
 	}
 	if decode(r, &in) != nil {
@@ -226,18 +253,15 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 			folder = &value
 		}
 	}
-	autoAllow, tools, thinking := defaults.AutoAllow, defaults.Tools, defaults.Thinking
+	autoAllow, thinking := defaults.AutoAllow, defaults.Thinking
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
-	}
-	if in.Tools != nil {
-		tools = *in.Tools
 	}
 	if in.Thinking != nil {
 		thinking = *in.Thinking
 	}
-	var exists int
-	if err := s.db.QueryRow(`SELECT 1 FROM connector WHERE id=?`, connectorID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+	var kind string
+	if err := s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, connectorID).Scan(&kind); errors.Is(err, sql.ErrNoRows) {
 		errw(w, 400, "connector not found")
 		return
 	} else if err != nil {
@@ -264,8 +288,8 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		folder = &cleaned
 	}
 	id, created := uid(), now()
-	c := chat{ID: id, ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, CreatedAt: created, UpdatedAt: created}
-	c.Tools, c.Thinking, c.AutoAllow = tools, thinking, autoAllow
+	c := chat{ID: id, ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, CreatedAt: created, UpdatedAt: created, Capabilities: capabilitiesForKind(kind)}
+	c.Thinking, c.AutoAllow = thinking, autoAllow
 	if folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -277,7 +301,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,tools,auto_allow) VALUES(?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.Tools, c.AutoAllow); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,auto_allow) VALUES(?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.AutoAllow); err != nil {
 		if folder == nil {
 			err = cleanupConnectorDir(s.chatWorkdir(c), err)
 		}
@@ -564,11 +588,10 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		Title     *string `json:"title"`
 		Model     *string `json:"model"`
 		Thinking  *bool   `json:"thinking"`
-		Tools     *bool   `json:"tools"`
 		AutoAllow *bool   `json:"auto_allow"`
 	}
-	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.Tools == nil && in.AutoAllow == nil {
-		errw(w, 400, "title, model, thinking, tools, or auto_allow required")
+	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.AutoAllow == nil {
+		errw(w, 400, "title, model, thinking, or auto_allow required")
 		return
 	}
 	if in.Title != nil && !required(*in.Title) {
@@ -585,7 +608,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	title, model, thinking, tools, autoAllow := c.Title, c.Model, c.Thinking, c.Tools, c.AutoAllow
+	title, model, thinking, autoAllow := c.Title, c.Model, c.Thinking, c.AutoAllow
 	if in.Title != nil {
 		title = *in.Title
 	}
@@ -595,9 +618,6 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	if in.Thinking != nil {
 		thinking = *in.Thinking
 	}
-	if in.Tools != nil {
-		tools = *in.Tools
-	}
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
 	}
@@ -605,7 +625,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	writeUpdate := func(exec interface {
 		Exec(string, ...any) (sql.Result, error)
 	}) error {
-		res, err := exec.Exec(`UPDATE chat SET title=?,model=?,thinking=?,tools=?,auto_allow=?,updated_at=? WHERE id=?`, title, model, thinking, tools, autoAllow, updated, id)
+		res, err := exec.Exec(`UPDATE chat SET title=?,model=?,thinking=?,auto_allow=?,updated_at=? WHERE id=?`, title, model, thinking, autoAllow, updated, id)
 		if err != nil {
 			return err
 		}
@@ -635,7 +655,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Model != nil && model != c.Model {
 		err = s.chats.ChangeModel(id, update)
-	} else if (in.Thinking != nil && thinking != c.Thinking) || (in.Tools != nil && tools != c.Tools) {
+	} else if in.Thinking != nil && thinking != c.Thinking {
 		err = s.chats.UpdateChat(id, update)
 	} else {
 		err = update()
@@ -647,7 +667,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
-		c.Title, c.Model, c.Thinking, c.Tools, c.AutoAllow, c.UpdatedAt = title, model, thinking, tools, autoAllow, updated
+		c.Title, c.Model, c.Thinking, c.AutoAllow, c.UpdatedAt = title, model, thinking, autoAllow, updated
 		write(w, http.StatusOK, c)
 	}
 }

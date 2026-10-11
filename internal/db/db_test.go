@@ -2,7 +2,12 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"io/fs"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 14 {
-		t.Fatalf("migration count = %d, want 14", migrations)
+	if migrations != 15 {
+		t.Fatalf("migration count = %d, want 15", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -56,12 +61,9 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if thinking != 0 {
 		t.Fatalf("new chat thinking = %d, want 0", thinking)
 	}
-	var tools int
-	if err := second.QueryRow(`SELECT tools FROM chat WHERE id='migration-test'`).Scan(&tools); err != nil {
-		t.Fatalf("read chat tools default: %v", err)
-	}
-	if tools != 1 {
-		t.Fatalf("new chat tools = %d, want 1", tools)
+	var toolsColumn int
+	if err := second.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('chat') WHERE name='tools'`).Scan(&toolsColumn); err != nil || toolsColumn != 0 {
+		t.Fatalf("chat tools column count = %d, %v", toolsColumn, err)
 	}
 	var autoAllow, auto int
 	if err := second.QueryRow(`SELECT auto_allow FROM chat WHERE id='migration-test'`).Scan(&autoAllow); err != nil {
@@ -78,6 +80,67 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if auto != 0 {
 		t.Fatalf("new approval auto = %d, want 0", auto)
+	}
+}
+
+func TestThinkingMigrationUpdatesExistingChatsAndRemovesTools(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for version, entry := range entries[:14] {
+		script, err := migrations.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(string(script)); err != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), err)
+		}
+		if _, err := legacy.Exec(fmt.Sprintf("PRAGMA user_version=%d", version+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range []string{
+		`INSERT INTO connector(id,kind,name,created_at) VALUES('local-connector','local','Local','now')`,
+		`INSERT INTO connector(id,kind,name,created_at) VALUES('claude-connector','claude','Claude','now')`,
+		`INSERT INTO chat(id,connector_id,title,model,created_at,updated_at,thinking,tools) VALUES('local-chat','local-connector','Local','', 'now','now',0,1)`,
+		`INSERT INTO chat(id,connector_id,title,model,created_at,updated_at,thinking,tools) VALUES('claude-chat','claude-connector','Claude','', 'now','now',0,1)`,
+		`INSERT INTO app_setting(key,value) VALUES('tools','false')`,
+	} {
+		if _, err := legacy.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for id, want := range map[string]int{"local-chat": 0, "claude-chat": 1} {
+		var thinking int
+		if err := database.QueryRow(`SELECT thinking FROM chat WHERE id=?`, id).Scan(&thinking); err != nil || thinking != want {
+			t.Errorf("%s thinking = %d, %v; want %d", id, thinking, err, want)
+		}
+	}
+	var settingCount, toolsColumn int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM app_setting WHERE key='tools'`).Scan(&settingCount); err != nil || settingCount != 0 {
+		t.Errorf("tools setting count = %d, %v", settingCount, err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('chat') WHERE name='tools'`).Scan(&toolsColumn); err != nil || toolsColumn != 0 {
+		t.Errorf("tools column count = %d, %v", toolsColumn, err)
+	}
+	var missingColumnErr error = database.QueryRow(`SELECT tools FROM chat`).Scan(new(int))
+	if missingColumnErr == nil || !strings.Contains(strings.ToLower(missingColumnErr.Error()), "no such column") {
+		t.Errorf("tools column query error = %v", missingColumnErr)
 	}
 }
 
