@@ -1,4 +1,4 @@
-# Local AI chats with file tools (phase b2c): parked
+# Local AI chats with file tools (phase b2c)
 
 ## Request
 
@@ -12,7 +12,7 @@ Builds on `docs/plans/ai-shell.md` (decisions 7, 10, 13) and the chat runtime se
 
 ## Status
 
-Parked. Nothing here is approved yet. Every decision below is a proposed default that the user still has to confirm.
+Approved 2026-10-10: the user accepted all decisions as defaults and said "start b2c". Ollama 0.40.2 with `qwen3:4b` is running at `http://localhost:11434/v1`.
 
 ## For the user to do or confirm
 
@@ -25,7 +25,7 @@ Parked. Nothing here is approved yet. Every decision below is a proposed default
 2. Confirm or change proposed decisions 1–7 below.
 3. After implementation, run the smoke test: a local connector chat streams a reply, a `write_file` shows an approval card (allow and deny), `delete` sends the file to the Trash, and a ticket tool call works.
 
-## Proposed decisions (unconfirmed)
+## Decisions
 
 1. Ticket tools: the local driver starts `my-tickets mcp -d <db>` and connects to it as an MCP client (go-sdk client over stdio), giving it the same tools as the CLIs. This avoids the `api` ↔ `mcp` import cycle.
 2. History: the server keeps no session, so each turn re-sends the last 40 saved user and assistant messages plus the current turn's tool calls and results. Older tool results aren't re-sent.
@@ -38,7 +38,7 @@ Parked. Nothing here is approved yet. Every decision below is a proposed default
 6. Limits: Stop cancels the request context. At most 20 tool calls per turn; tool output sent back to the model is capped at 32 KB.
 7. Live checks use the local model only (no paid quota).
 
-## Draft tasks (not approved)
+## Tasks
 
 - [ ] File tool package (`internal/filetools`): sandboxed path resolution, the 9 tools, OS trash. Check: table-driven Go tests including symlink escape, sibling prefix, edit must match once, and trash command argv per OS; `make release`.
 - [ ] Local driver: OpenAI-compatible streaming client with a tool loop, history rebuild, MCP client to `my-tickets mcp`, approvals for writes, stop, and the no-tools fallback. Check: `httptest` fake server streaming SSE with tool calls; live with Ollama.
