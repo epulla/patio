@@ -2358,3 +2358,77 @@ label.days-field {
 .defaults-panel .switch {
   margin-right: 0;
 }
+.conversation.dragging .messages {
+  outline: 2px dashed var(--border);
+  outline-offset: -2px;
+  border-radius: var(--radius-box);
+}
+.drop-hint {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.attachments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.attachments.sent {
+  justify-content: flex-end;
+}
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  height: 32px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--base-100);
+  font-size: 13px;
+}
+.attachments.sent .attachment {
+  padding-right: 10px;
+  cursor: pointer;
+}
+.attachment.image {
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  padding: 6px;
+}
+.attachment.image img {
+  display: block;
+  max-width: 240px;
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: 4px;
+  align-self: center;
+}
+.attachment-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment .muted {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.attachment .icon {
+  width: 24px;
+  height: 24px;
+}

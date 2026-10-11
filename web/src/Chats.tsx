@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import Markdown from "./Markdown";
 import {
   api,
   type AllowedFolder,
   type Chat,
   type ChatApproval,
+  type ChatAttachment,
   type ChatDefaults,
   type ChatMessage,
   type Connector,
@@ -12,6 +21,7 @@ import {
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
+import { formatBytes } from "./Settings";
 
 type ChatDetail = {
   chat: Chat;
@@ -179,7 +189,11 @@ function Conversation({
   const [error, setError] = useState<unknown>();
   const [missing, setMissing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [pending, setPending] = useState<ChatAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const end = useRef<HTMLDivElement>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
   const { models, loading: modelsLoading } = useModels(detail?.chat.connector_id);
 
   const load = () =>
@@ -198,6 +212,11 @@ function Conversation({
   useEffect(() => {
     void load();
   }, [id, refresh]);
+
+  useEffect(() => {
+    setPending([]);
+    setDragging(false);
+  }, [id]);
 
   useEffect(() => {
     const unsubscribe = window.runtime?.EventsOn(`chat:${id}`, (data) => {
@@ -233,22 +252,87 @@ function Conversation({
     end.current?.scrollIntoView({ block: "end" });
   }, [detail?.messages.length, streaming, detail?.pending_approvals.length]);
 
+  async function attach(files: File[]) {
+    if (!files.length || uploading) return;
+    const problem = attachmentProblem(files, pending.length);
+    if (problem) {
+      setError(new Error(problem));
+      return;
+    }
+    setError(undefined);
+    setUploading(true);
+    try {
+      const added = await api.upload<ChatAttachment[]>(`/api/chats/${id}/attachments`, files);
+      setPending((current) => [...current, ...added]);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function unattach(attachment: ChatAttachment) {
+    try {
+      await api.delete(`/api/chats/${id}/attachments/${encodeURIComponent(attachment.name)}`);
+      setPending((current) => current.filter((a) => a.name !== attachment.name));
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  async function revealAttachment(attachment: ChatAttachment) {
+    try {
+      await api.post(`/api/chats/${id}/attachments/${encodeURIComponent(attachment.name)}/reveal`, {});
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.files);
+    if (!files.length) return;
+    event.preventDefault();
+    void attach(files.map(pastedFile));
+  }
+
+  function onDragOver(event: DragEvent) {
+    if (!connector || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    setDragging(true);
+  }
+
+  function onDragLeave(event: DragEvent) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+  }
+
+  function onDrop(event: DragEvent) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    setDragging(false);
+    if (connector) void attach(Array.from(event.dataTransfer.files));
+  }
+
   async function send(event?: FormEvent) {
     event?.preventDefault();
     const value = text.trim();
-    if (!value || running || !detail) return;
+    if ((!value && !pending.length) || running || uploading || !detail) return;
     setError(undefined);
     setRunning(true);
     try {
-      const message = await api.post<ChatMessage>(`/api/chats/${id}/messages`, { text: value });
+      const message = await api.post<ChatMessage>(`/api/chats/${id}/messages`, {
+        text: value,
+        ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
+      });
       setText("");
+      setPending([]);
       setDetail((current) =>
         current && !current.messages.some((m) => m.id === message.id)
           ? { ...current, messages: [...current.messages, message] }
           : current,
       );
       if (detail.chat.title === "New chat" && detail.messages.length === 0) {
-        await rename(value.length > 48 ? `${value.slice(0, 48)}…` : value);
+        const label = value || pending.map((a) => a.name).join(", ");
+        await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label);
       }
     } catch (reason) {
       setRunning(false);
@@ -352,7 +436,13 @@ function Conversation({
   const connector = connectors.find((c) => c.id === detail.chat.connector_id);
 
   return (
-    <section className="conversation" aria-labelledby="chat-title">
+    <section
+      className={dragging ? "conversation dragging" : "conversation"}
+      aria-labelledby="chat-title"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <header className="conversation-head">
         <div className="conversation-title">
           <label className="sr-only" htmlFor="chat-title">
@@ -417,8 +507,8 @@ function Conversation({
       <div className="messages">
         {detail.messages.length === 0 && !streaming && (
           <p className="muted chat-hint">
-            Ask anything. The assistant can read files in this chat's folder, use your tickets, and asks before
-            changing anything.
+            Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files
+            and images with the paperclip, drag and drop, or paste.
           </p>
         )}
         {timeline(detail).map((message) =>
@@ -433,9 +523,34 @@ function Conversation({
             </p>
           ) : (
             <div key={message.id} className={`message-row ${message.role}`}>
-              <div className={`message ${message.role}`}>
-                {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
-              </div>
+              {(message.role !== "user" || message.content) && (
+                <div className={`message ${message.role}`}>
+                  {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
+                </div>
+              )}
+              {message.attachments.length > 0 && (
+                <ul className="attachments sent" aria-label="Attachments">
+                  {message.attachments.map((attachment) => (
+                    <li key={attachment.name}>
+                      <button
+                        type="button"
+                        className={attachment.kind === "image" ? "attachment image" : "attachment"}
+                        title="Show in folder"
+                        onClick={() => revealAttachment(attachment)}
+                      >
+                        {attachment.kind === "image" && (
+                          <img
+                            src={`/api/chats/${id}/attachments/${encodeURIComponent(attachment.name)}`}
+                            alt=""
+                            loading="lazy"
+                          />
+                        )}
+                        <AttachmentLabel attachment={attachment} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <MessageTime iso={message.created_at} />
             </div>
           ),
@@ -453,7 +568,50 @@ function Conversation({
       </div>
 
       <ErrorText error={error} />
+      {dragging && (
+        <p className="drop-hint" aria-hidden="true">
+          <Icon name="paperclip" /> Drop files to attach
+        </p>
+      )}
+      {(pending.length > 0 || uploading) && (
+        <ul className="attachments" aria-label="Files to send">
+          {pending.map((attachment) => (
+            <li key={attachment.name} className="attachment">
+              <AttachmentLabel attachment={attachment} />
+              <IconButton
+                type="button"
+                icon="x"
+                label={`Remove ${attachment.name}`}
+                disabled={running}
+                onClick={() => unattach(attachment)}
+              />
+            </li>
+          ))}
+          {uploading && (
+            <li className="muted" role="status">
+              Uploading…
+            </li>
+          )}
+        </ul>
+      )}
       <form className="composer" onSubmit={send}>
+        <input
+          ref={filePicker}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            void attach(Array.from(event.target.files ?? []));
+            event.target.value = "";
+          }}
+        />
+        <IconButton
+          type="button"
+          icon="paperclip"
+          label="Attach files"
+          disabled={!connector || uploading || pending.length >= maxAttachments}
+          onClick={() => filePicker.current?.click()}
+        />
         <label className="sr-only" htmlFor="chat-input">
           Message
         </label>
@@ -465,18 +623,51 @@ function Conversation({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
         />
         {running ? (
           <button type="button" onClick={stop}>
             Stop
           </button>
         ) : (
-          <button className="primary" disabled={!text.trim() || !connector}>
+          <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector}>
             <Icon name="send" /> Send
           </button>
         )}
       </form>
     </section>
+  );
+}
+
+const maxAttachments = 10;
+const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+function attachmentProblem(files: File[], alreadyAttached: number) {
+  if (alreadyAttached + files.length > maxAttachments) return `Attach at most ${maxAttachments} files per message.`;
+  for (const file of files) {
+    const image = imageTypes.includes(file.type);
+    if (image && file.size > 10 << 20) return `${file.name} is larger than 10 MB.`;
+    if (!image && file.size > 1 << 20) return `${file.name} is larger than 1 MB. Text files can be up to 1 MB.`;
+  }
+  return "";
+}
+
+function pastedFile(file: File) {
+  if (!file.type.startsWith("image/") || (file.name && file.name !== "image.png")) return file;
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+  const extension = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+  return new File([file], `pasted-${stamp}.${extension}`, { type: file.type });
+}
+
+function AttachmentLabel({ attachment }: { attachment: ChatAttachment }) {
+  return (
+    <span className="attachment-label">
+      <Icon name={attachment.kind === "image" ? "image" : "file"} />
+      <span className="attachment-name">{attachment.name}</span>
+      <span className="muted">{formatBytes(attachment.size)}</span>
+    </span>
   );
 }
 

@@ -220,7 +220,7 @@ export type McpServerCheck = {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
-      "Content-Type": "application/json",
+      ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(options?.headers || {}),
     },
     ...options,
@@ -245,4 +245,9 @@ export const api = {
   put: <T>(path: string, value: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(value) }),
   delete: (path: string) => request<void>(path, { method: "DELETE" }),
+  upload: <T>(path: string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("file", file);
+    return request<T>(path, { method: "POST", body: form });
+  },
 };

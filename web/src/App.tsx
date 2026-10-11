@@ -82,6 +82,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const blockFileDrop = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+    };
+    addEventListener("dragover", blockFileDrop);
+    addEventListener("drop", blockFileDrop);
+    return () => {
+      removeEventListener("dragover", blockFileDrop);
+      removeEventListener("drop", blockFileDrop);
+    };
+  }, []);
+
+  useEffect(() => {
     api
       .get<Config>("/api/config")
       .then(setConfig)

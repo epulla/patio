@@ -97,7 +97,7 @@ function AllowedFolders({ onChange }: { onChange: () => void }) {
 
 const fileManager: Record<string, string> = { darwin: "Finder", windows: "Explorer" };
 
-function formatBytes(bytes: number) {
+export function formatBytes(bytes: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
