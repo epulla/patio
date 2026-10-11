@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,11 +58,14 @@ type localRuntime struct {
 	mu             sync.Mutex
 	turnCancel     context.CancelFunc
 	turnDone       chan struct{}
+	turnRequest    ChatSendRequest
 	closed         bool
 	toolsOff       bool
 	contextSize    int
 	contextChecked bool
 }
+
+var localVisionCapabilities sync.Map
 
 func init() { runtimes["local"] = startLocal }
 
@@ -282,7 +286,7 @@ func compactLocalTools(tools []map[string]any) ([]map[string]any, error) {
 	return compact(filtered)
 }
 
-func (d *localRuntime) send(_ ChatSendRequest) error {
+func (d *localRuntime) send(request ChatSendRequest) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed {
@@ -293,6 +297,7 @@ func (d *localRuntime) send(_ ChatSendRequest) error {
 	}
 	ctx, cancel := context.WithCancel(d.ctx)
 	d.turnCancel, d.turnDone = cancel, make(chan struct{})
+	d.turnRequest = request
 	go d.runTurn(ctx)
 	return nil
 }
@@ -300,9 +305,10 @@ func (d *localRuntime) send(_ ChatSendRequest) error {
 func (d *localRuntime) runTurn(ctx context.Context) {
 	d.mu.Lock()
 	done := d.turnDone
+	request := d.turnRequest
 	d.mu.Unlock()
 	defer close(done)
-	text, err := d.completeTurn(ctx)
+	text, err := d.completeTurn(ctx, request)
 	if err != nil {
 		err = errors.New(d.redact(err.Error()))
 	}
@@ -320,23 +326,57 @@ func (d *localRuntime) runTurn(ctx context.Context) {
 	}
 }
 
-func (d *localRuntime) completeTurn(ctx context.Context) (string, error) {
+func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest) (string, error) {
 	var thinking bool
 	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
 		return "", err
 	}
-	messages, err := d.historyForTools()
+	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
 	if err != nil {
 		return "", err
+	}
+	images := make([]chatAttachmentFile, 0, len(files))
+	for _, file := range files {
+		if file.Kind == "image" {
+			images = append(images, file)
+		}
+	}
+	includeImages := len(images) > 0
+	if d.ollama && includeImages {
+		includeImages = d.ollamaVision(ctx)
+		if !includeImages {
+			if err := saveChatImageNote(d.manager, d.chatID, localImageUnsupportedNote); err != nil {
+				return "", err
+			}
+		}
+	}
+	messages, err := d.historyForToolsWithAttachments(includeImages)
+	if err != nil {
+		return "", err
+	}
+	if !includeImages {
+		images = nil
 	}
 	toolCalls := 0
 	contextNoted := false
 	var fullText strings.Builder
 	retriedWithoutTools := false
+	retriedWithoutImages := false
 	for {
 		withTools := !d.toolsOff && !retriedWithoutTools
-		response, err := d.stream(ctx, messages, withTools, thinking)
+		response, err := d.streamWithImages(ctx, messages, withTools, thinking, images)
 		if err != nil {
+			if errors.Is(err, errLocalUnsupportedImage) && len(images) > 0 && !retriedWithoutImages {
+				if err := appendCurrentImagePaths(messages, images); err != nil {
+					return "", err
+				}
+				if err := saveChatImageNote(d.manager, d.chatID, localImageUnsupportedNote); err != nil {
+					return "", err
+				}
+				images = nil
+				retriedWithoutImages = true
+				continue
+			}
 			return "", err
 		}
 		if d.ollama && !contextNoted && response.promptEvalCount > 0 {
@@ -467,17 +507,44 @@ func (d *localRuntime) history() ([]map[string]any, error) {
 }
 
 func (d *localRuntime) historyForTools() ([]map[string]any, error) {
-	rows, err := d.manager.db.Query(`SELECT role,content FROM chat_message WHERE chat_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,rowid DESC LIMIT ?`, d.chatID, localHistoryLimit)
+	return d.historyForToolsWithAttachments(false)
+}
+
+func (d *localRuntime) historyForToolsWithAttachments(currentImagesIncluded bool) ([]map[string]any, error) {
+	rows, err := d.manager.db.Query(`SELECT role,content,attachments FROM chat_message WHERE chat_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,rowid DESC LIMIT ?`, d.chatID, localHistoryLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	type entry struct{ role, content string }
+	type entry struct {
+		role, content string
+		attachments   []ChatAttachment
+	}
 	var saved []entry
 	for rows.Next() {
 		var item entry
-		if err := rows.Scan(&item.role, &item.content); err != nil {
+		var raw string
+		if err := rows.Scan(&item.role, &item.content, &raw); err != nil {
 			return nil, err
+		}
+		item.attachments, err = decodeChatAttachments(raw)
+		if err != nil {
+			return nil, fmt.Errorf("decode local history attachments: %w", err)
+		}
+		if item.role == "user" && len(item.attachments) > 0 {
+			lines := make([]string, 0, len(item.attachments))
+			current := len(saved) == 0
+			for _, attachment := range item.attachments {
+				if current && currentImagesIncluded && attachment.Kind == "image" {
+					continue
+				}
+				path, err := chatAttachmentAbsolutePath(d.workdir, attachment.Name)
+				if err != nil {
+					return nil, err
+				}
+				lines = append(lines, attachmentPathLine(path))
+			}
+			item.content = appendPromptLines(item.content, lines)
 		}
 		saved = append(saved, item)
 	}
@@ -512,6 +579,23 @@ func (d *localRuntime) historyForTools() ([]map[string]any, error) {
 	return messages, nil
 }
 
+func appendCurrentImagePaths(messages []map[string]any, images []chatAttachmentFile) error {
+	if len(messages) == 0 {
+		return errors.New("local history has no user prompt")
+	}
+	last := messages[len(messages)-1]
+	content, ok := last["content"].(string)
+	if !ok {
+		return fmt.Errorf("local history user content has type %T", last["content"])
+	}
+	lines := make([]string, 0, len(images))
+	for _, image := range images {
+		lines = append(lines, attachmentPathLine(image.Path))
+	}
+	last["content"] = appendPromptLines(content, lines)
+	return nil
+}
+
 func localSystemPrompt(folder string, toolsEnabled bool) string {
 	today := time.Now().In(time.Local).Format("2006-01-02")
 	if !toolsEnabled {
@@ -534,10 +618,16 @@ type localStreamResult struct {
 }
 
 func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, withTools, thinking bool) (localStreamResult, error) {
+	return d.streamWithImages(ctx, messages, withTools, thinking, nil)
+}
+
+var errLocalUnsupportedImage = errors.New("local model rejected image input")
+
+func (d *localRuntime) streamWithImages(ctx context.Context, messages []map[string]any, withTools, thinking bool, images []chatAttachmentFile) (localStreamResult, error) {
 	if d.ollama {
-		return d.streamOllama(ctx, messages, withTools, thinking)
+		return d.streamOllamaWithImages(ctx, messages, withTools, thinking, images)
 	}
-	requestMessages := openAIMessages(messages, thinking)
+	requestMessages := openAIMessagesWithImages(messages, thinking, images)
 	body := map[string]any{"model": d.model, "stream": true, "messages": requestMessages}
 	if withTools {
 		body["tools"] = d.tools
@@ -566,18 +656,57 @@ func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, wi
 			return localStreamResult{}, readErr
 		}
 		message := strings.TrimSpace(string(data))
+		if len(images) > 0 && isUnsupportedLocalImageResponse(resp.StatusCode, message) {
+			return localStreamResult{}, errLocalUnsupportedImage
+		}
 		if withTools && resp.StatusCode >= 400 && resp.StatusCode < 500 && strings.Contains(strings.ToLower(message), "tool") {
 			d.toolsOff = true
 			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", localToolNote); err != nil {
 				return localStreamResult{}, err
 			}
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localToolNote})
-			return d.stream(ctx, messages, false, thinking)
+			return d.streamWithImages(ctx, messages, false, thinking, images)
 		}
 		return localStreamResult{}, fmt.Errorf("local chat completion returned %s: %s", resp.Status, message)
 	}
 	defer resp.Body.Close()
 	return d.readSSE(ctx, resp.Body)
+}
+
+func openAIMessagesWithImages(messages []map[string]any, thinking bool, images []chatAttachmentFile) []map[string]any {
+	result := openAIMessages(messages, thinking)
+	if len(images) == 0 {
+		return result
+	}
+	for i := len(result) - 1; i >= 0; i-- {
+		if result[i]["role"] != "user" {
+			continue
+		}
+		text, _ := result[i]["content"].(string)
+		content := make([]any, 0, len(images)+1)
+		if text != "" {
+			content = append(content, map[string]string{"type": "text", "text": text})
+		}
+		for _, image := range images {
+			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": chatImageDataURL(image)}})
+		}
+		result[i]["content"] = content
+		break
+	}
+	return result
+}
+
+func isUnsupportedLocalImageResponse(status int, body string) bool {
+	if status < 400 || status >= 500 {
+		return false
+	}
+	body = strings.ToLower(body)
+	for _, marker := range []string{"image", "vision", "multimodal", "unsupported input", "content type"} {
+		if strings.Contains(body, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func openAIMessages(messages []map[string]any, thinking bool) []map[string]any {
@@ -601,9 +730,26 @@ func openAIMessages(messages []map[string]any, thinking bool) []map[string]any {
 }
 
 func (d *localRuntime) streamOllama(ctx context.Context, messages []map[string]any, withTools, thinking bool) (localStreamResult, error) {
+	return d.streamOllamaWithImages(ctx, messages, withTools, thinking, nil)
+}
+
+func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []map[string]any, withTools, thinking bool, images []chatAttachmentFile) (localStreamResult, error) {
 	nativeMessages, err := ollamaMessages(messages)
 	if err != nil {
 		return localStreamResult{}, err
+	}
+	if len(images) > 0 {
+		for i := len(nativeMessages) - 1; i >= 0; i-- {
+			if nativeMessages[i]["role"] != "user" {
+				continue
+			}
+			encoded := make([]string, 0, len(images))
+			for _, image := range images {
+				encoded = append(encoded, base64.StdEncoding.EncodeToString(image.Data))
+			}
+			nativeMessages[i]["images"] = encoded
+			break
+		}
 	}
 	body := map[string]any{"model": d.model, "stream": true, "think": thinking, "messages": nativeMessages}
 	if withTools {
@@ -639,12 +785,51 @@ func (d *localRuntime) streamOllama(ctx context.Context, messages []map[string]a
 				return localStreamResult{}, err
 			}
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localToolNote})
-			return d.streamOllama(ctx, messages, false, thinking)
+			return d.streamOllamaWithImages(ctx, messages, false, thinking, images)
 		}
 		return localStreamResult{}, fmt.Errorf("local chat completion returned %s: %s", resp.Status, message)
 	}
 	defer resp.Body.Close()
 	return d.readOllamaNDJSON(ctx, resp.Body)
+}
+
+func (d *localRuntime) ollamaVision(ctx context.Context) bool {
+	key := d.ollamaURL + "\x00" + d.model
+	if cached, ok := localVisionCapabilities.Load(key); ok {
+		return cached.(bool)
+	}
+	vision := false
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	encoded, err := json.Marshal(map[string]string{"model": d.model})
+	if err == nil {
+		request, requestErr := http.NewRequestWithContext(queryCtx, http.MethodPost, d.ollamaURL+"/api/show", bytes.NewReader(encoded))
+		if requestErr == nil {
+			request.Header.Set("Content-Type", "application/json")
+			if d.secret != "" {
+				request.Header.Set("Authorization", "Bearer "+d.secret)
+			}
+			response, doErr := d.client.Do(request)
+			if doErr == nil {
+				if response.StatusCode >= 200 && response.StatusCode < 300 {
+					var details struct {
+						Capabilities []string `json:"capabilities"`
+					}
+					if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&details) == nil {
+						for _, capability := range details.Capabilities {
+							if capability == "vision" {
+								vision = true
+								break
+							}
+						}
+					}
+				}
+				_ = response.Body.Close()
+			}
+		}
+	}
+	cached, _ := localVisionCapabilities.LoadOrStore(key, vision)
+	return cached.(bool)
 }
 
 func ollamaMessages(messages []map[string]any) ([]map[string]any, error) {

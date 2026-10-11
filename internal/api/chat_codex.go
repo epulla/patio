@@ -24,6 +24,7 @@ type codexClient interface {
 type codexRuntime struct {
 	manager      *chatManager
 	chatID       string
+	workdir      string
 	runtime      *chatRuntime
 	client       codexClient
 	threadID     string
@@ -75,7 +76,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		cancel()
 		return nil, fmt.Errorf("start codex: %w", err)
 	}
-	driver := &codexRuntime{manager: m, chatID: c.ID, runtime: rt, client: client, ctx: ctx, cancel: cancel, items: make(map[string]json.RawMessage), model: c.Model}
+	driver := &codexRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, client: client, ctx: ctx, cancel: cancel, items: make(map[string]json.RawMessage), model: c.Model}
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.threadID = *c.SessionID
 		var result json.RawMessage
@@ -167,6 +168,10 @@ func codexMCPOverrides(spec map[string]any) ([]string, error) {
 }
 
 func (d *codexRuntime) send(request ChatSendRequest) error {
+	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
+	if err != nil {
+		return err
+	}
 	var thinking bool
 	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
 		return err
@@ -189,10 +194,7 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	params := map[string]any{
-		"threadId": d.threadID,
-		"input":    []map[string]string{{"type": "text", "text": request.Text}},
-	}
+	params := map[string]any{"threadId": d.threadID, "input": codexUserInput(request.Text, files)}
 	if !thinking && d.lowestEffort != "" {
 		params["effort"] = d.lowestEffort
 	}
@@ -206,6 +208,16 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 	d.turnID = response.Turn.ID
 	d.mu.Unlock()
 	return nil
+}
+
+func codexUserInput(text string, files []chatAttachmentFile) []map[string]string {
+	input := []map[string]string{{"type": "text", "text": promptWithAttachmentPaths(text, files, true)}}
+	for _, file := range files {
+		if file.Kind == "image" {
+			input = append(input, map[string]string{"type": "localImage", "path": file.Path})
+		}
+	}
+	return input
 }
 
 func lowestCodexEffort(models []connectorcli.Model, selected string) string {

@@ -347,6 +347,10 @@ func (d *opencodeRuntime) createSession() error {
 }
 
 func (d *opencodeRuntime) send(request ChatSendRequest) error {
+	files, err := loadChatAttachmentFiles(d.directory, request.Attachments)
+	if err != nil {
+		return err
+	}
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
@@ -360,10 +364,11 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		model = map[string]string{"providerID": provider, "modelID": modelID}
 	}
 	endpoint := d.endpoint("/session/" + url.PathEscape(d.session) + "/prompt_async")
-	body := map[string]any{"parts": []any{map[string]string{"type": "text", "text": request.Text}}}
+	parts := opencodePromptParts(request.Text, files)
+	body := map[string]any{"parts": parts}
 	if d.server.major >= 2 {
 		endpoint = "/api/session/" + url.PathEscape(d.session) + "/prompt"
-		body = map[string]any{"text": request.Text}
+		body = opencodeV2Prompt(request.Text, files)
 	} else if model != nil {
 		body["model"] = model
 	}
@@ -401,6 +406,34 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		return err
 	}
 	return nil
+}
+
+func opencodePromptParts(text string, files []chatAttachmentFile) []any {
+	parts := make([]any, 0, len(files)+1)
+	prompt := promptWithAttachmentPaths(text, files, true)
+	if prompt != "" {
+		parts = append(parts, map[string]string{"type": "text", "text": prompt})
+	}
+	for _, file := range files {
+		if file.Kind == "image" {
+			parts = append(parts, map[string]string{"type": "file", "mime": file.MIME, "url": chatImageDataURL(file)})
+		}
+	}
+	return parts
+}
+
+func opencodeV2Prompt(text string, files []chatAttachmentFile) map[string]any {
+	body := map[string]any{"text": promptWithAttachmentPaths(text, files, true)}
+	attachments := make([]map[string]string, 0, len(files))
+	for _, file := range files {
+		if file.Kind == "image" {
+			attachments = append(attachments, map[string]string{"uri": chatImageDataURL(file), "mime": file.MIME, "name": file.Name})
+		}
+	}
+	if len(attachments) > 0 {
+		body["files"] = attachments
+	}
+	return body
 }
 
 func (d *opencodeRuntime) stop() error {

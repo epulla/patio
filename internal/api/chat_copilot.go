@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ func init() { runtimes["copilot"] = startCopilot }
 type copilotRuntime struct {
 	manager     *chatManager
 	chatID      string
+	workdir     string
 	runtime     *chatRuntime
 	process     chatProcess
 	client      *acpClient
@@ -38,6 +40,7 @@ type copilotRuntime struct {
 	stopped     atomic.Bool
 	closing     atomic.Bool
 	authFailed  bool
+	imagePrompt bool
 	external    []mcpServerSpec
 }
 
@@ -74,7 +77,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 		return nil, fmt.Errorf("start copilot: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &copilotRuntime{manager: m, chatID: c.ID, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external}
+	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external}
 	d.client = newACPClient(process.Stdin(), process.Stdout(), d.handleMessage)
 	go d.watch()
 	if err := d.initialize(c); err != nil {
@@ -95,6 +98,11 @@ func (d *copilotRuntime) initialize(c chat) error {
 	}, &initialized); err != nil {
 		return fmt.Errorf("initialize Copilot ACP: %w", err)
 	}
+	imagePrompt, err := copilotImageCapability(initialized)
+	if err != nil {
+		return fmt.Errorf("decode Copilot ACP capabilities: %w", err)
+	}
+	d.imagePrompt = imagePrompt
 	mcp, err := d.manager.ticketMCPServerSpec()
 	if err != nil {
 		return err
@@ -139,16 +147,39 @@ func (d *copilotRuntime) initialize(c chat) error {
 	return nil
 }
 
+func copilotImageCapability(initialized json.RawMessage) (bool, error) {
+	var capabilities struct {
+		AgentCapabilities struct {
+			PromptCapabilities struct {
+				Image bool `json:"image"`
+			} `json:"promptCapabilities"`
+		} `json:"agentCapabilities"`
+	}
+	if err := json.Unmarshal(initialized, &capabilities); err != nil {
+		return false, err
+	}
+	return capabilities.AgentCapabilities.PromptCapabilities.Image, nil
+}
+
 func (d *copilotRuntime) send(request ChatSendRequest) error {
 	if d.authFailed {
 		return nil
+	}
+	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
+	if err != nil {
+		return err
+	}
+	if !d.imagePrompt && hasChatImage(files) {
+		if err := saveChatImageNote(d.manager, d.chatID, "Copilot can't take images; sent the file path instead"); err != nil {
+			return err
+		}
 	}
 	d.assistantMu.Lock()
 	d.assistant.Reset()
 	d.assistantMu.Unlock()
 	result, err := d.client.callAsync("session/prompt", map[string]any{
 		"sessionId": d.sessionID,
-		"prompt":    []any{map[string]string{"type": "text", "text": request.Text}},
+		"prompt":    copilotPromptContent(request.Text, files, d.imagePrompt),
 	})
 	if err != nil {
 		return err
@@ -164,6 +195,31 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 		d.finishPrompt(got.result)
 	}()
 	return nil
+}
+
+func hasChatImage(files []chatAttachmentFile) bool {
+	for _, file := range files {
+		if file.Kind == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+func copilotPromptContent(text string, files []chatAttachmentFile, imageSupport bool) []any {
+	content := make([]any, 0, len(files)+1)
+	prompt := promptWithAttachmentPaths(text, files, imageSupport)
+	if prompt != "" {
+		content = append(content, map[string]string{"type": "text", "text": prompt})
+	}
+	if imageSupport {
+		for _, file := range files {
+			if file.Kind == "image" {
+				content = append(content, map[string]string{"type": "image", "mimeType": file.MIME, "data": base64.StdEncoding.EncodeToString(file.Data)})
+			}
+		}
+	}
+	return content
 }
 
 func (d *copilotRuntime) finishPrompt(result json.RawMessage) {

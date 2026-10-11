@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,7 @@ type chatCommandBuilder func(exe, dbPath, chatID, model, sessionID string) ([]st
 type claudeRuntime struct {
 	manager     *chatManager
 	chatID      string
+	workdir     string
 	runtime     *chatRuntime
 	process     chatProcess
 	processDone chan struct{}
@@ -89,7 +91,7 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		}
 		return nil, fmt.Errorf("start claude: %w", err)
 	}
-	driver := &claudeRuntime{manager: m, chatID: c.ID, runtime: rt, process: process, processDone: make(chan struct{}), configFile: configPath}
+	driver := &claudeRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), configFile: configPath}
 	rt.driver = driver
 	go driver.watch()
 	return driver, nil
@@ -152,19 +154,41 @@ func (d *claudeRuntime) removeConfig() {
 }
 
 func (d *claudeRuntime) send(request ChatSendRequest) error {
+	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
+	if err != nil {
+		return err
+	}
 	payload, err := json.Marshal(struct {
 		Type            string `json:"type"`
 		Message         any    `json:"message"`
 		ParentToolUseID any    `json:"parent_tool_use_id"`
-	}{"user", struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}{"user", request.Text}, nil})
+	}{"user", claudeUserMessage(request.Text, files), nil})
 	if err != nil {
 		return err
 	}
 	_, err = d.process.Stdin().Write(append(payload, '\n'))
 	return err
+}
+
+func claudeUserMessage(text string, files []chatAttachmentFile) map[string]any {
+	if len(files) == 0 {
+		return map[string]any{"role": "user", "content": text}
+	}
+	content := make([]any, 0, len(files)+1)
+	prompt := promptWithAttachmentPaths(text, files, true)
+	if prompt != "" {
+		content = append(content, map[string]string{"type": "text", "text": prompt})
+	}
+	for _, file := range files {
+		if file.Kind != "image" {
+			continue
+		}
+		content = append(content, map[string]any{
+			"type":   "image",
+			"source": map[string]string{"type": "base64", "media_type": file.MIME, "data": base64.StdEncoding.EncodeToString(file.Data)},
+		})
+	}
+	return map[string]any{"role": "user", "content": content}
 }
 
 func (d *claudeRuntime) watch() {
