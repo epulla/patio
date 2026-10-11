@@ -95,6 +95,7 @@ const paths = {
   play: ["m6 3 14 9-14 9V3z"],
   more: ["M12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2", "M19 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2", "M5 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2"],
   send: ["m22 2-7 20-4-9-9-4Z", "M22 2 11 13"],
+  refresh: ["M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8", "M21 3v5h-5"],
 };
 
 export type IconName = keyof typeof paths;

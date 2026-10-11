@@ -278,7 +278,7 @@ function Conversation({
     }
   }
 
-  async function update(fields: { model: string } | { thinking: boolean }) {
+  async function update(fields: { model: string } | { thinking: boolean } | { tools: boolean }) {
     try {
       await api.put(`/api/chats/${id}`, fields);
       setDetail((current) => current && { ...current, chat: { ...current.chat, ...fields } });
@@ -368,6 +368,19 @@ function Conversation({
               </select>
               {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
             </label>
+            {connector?.kind === "local" && (
+              <Switch
+                label="Tools"
+                checked={detail.chat.tools}
+                disabled={running}
+                title={
+                  running
+                    ? "Stop the reply to change tools"
+                    : "Let the model use files in this folder and your tickets. Turn off for plain conversation."
+                }
+                onChange={(tools) => update({ tools })}
+              />
+            )}
             {connector?.kind === "local" && (
               <Switch
                 label="Thinking"

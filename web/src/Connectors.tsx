@@ -347,6 +347,9 @@ function ConnectorDialog({
   const [baseURL, setBaseURL] = useState(connector?.base_url ?? presets[0].url);
   const [model, setModel] = useState(connector?.model ?? "");
   const [models, setModels] = useState<string[]>();
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState("");
+  const modelsRequest = useRef(0);
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<unknown>();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -369,19 +372,32 @@ function ConnectorDialog({
   }
 
   async function loadModels() {
-    setError(undefined);
+    const request = ++modelsRequest.current;
+    setModelsLoading(true);
+    setModelsError("");
     try {
       const result = await api.post<{ models: string[] }>("/api/connectors/local-models", {
         base_url: baseURL.trim(),
         ...(secret ? { secret } : {}),
         ...(connector ? { id: connector.id } : {}),
       });
+      if (request !== modelsRequest.current) return;
       setModels(result.models);
-      if (!model && result.models[0]) setModel(result.models[0]);
+      setModel((current) => current || result.models[0] || "");
     } catch (reason) {
-      setError(reason);
+      if (request !== modelsRequest.current) return;
+      setModels(undefined);
+      setModelsError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      if (request === modelsRequest.current) setModelsLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!local || !validURL(baseURL.trim())) return;
+    const timer = setTimeout(loadModels, 400);
+    return () => clearTimeout(timer);
+  }, [local, baseURL, secret]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -471,7 +487,6 @@ function ConnectorDialog({
                   value={presets.find((p) => p.url === baseURL)?.url ?? ""}
                   onChange={(event) => {
                     if (event.target.value) setBaseURL(event.target.value);
-                    setModels(undefined);
                   }}
                 >
                   {presets.map((p) => (
@@ -488,10 +503,7 @@ function ConnectorDialog({
                   required
                   type="url"
                   value={baseURL}
-                  onChange={(event) => {
-                    setBaseURL(event.target.value);
-                    setModels(undefined);
-                  }}
+                  onChange={(event) => setBaseURL(event.target.value)}
                 />
               </label>
               <label>
@@ -504,24 +516,36 @@ function ConnectorDialog({
                   onChange={(event) => setSecret(event.target.value)}
                 />
               </label>
-              <label>
-                Model
+              <div className="field">
+                <span className="label-row">
+                  <label htmlFor="local-model">Model</label>
+                  {modelsLoading ? (
+                    <span className="spinner" role="status" aria-label="Loading models" />
+                  ) : (
+                    <IconButton
+                      type="button"
+                      className="ghost"
+                      icon="refresh"
+                      label="Reload models"
+                      onClick={loadModels}
+                    />
+                  )}
+                </span>
                 {models ? (
-                  <select value={model} onChange={(event) => setModel(event.target.value)}>
+                  <select id="local-model" value={model} onChange={(event) => setModel(event.target.value)}>
                     {models.length === 0 && <option value="">No models found</option>}
                     {models.map((id) => (
                       <option key={id} value={id}>
                         {id}
                       </option>
                     ))}
+                    {model && !models.includes(model) && <option value={model}>{model} (not found)</option>}
                   </select>
                 ) : (
-                  <input value={model} placeholder="Load or type a model" onChange={(event) => setModel(event.target.value)} />
+                  <input id="local-model" value={model} placeholder="Type a model" onChange={(event) => setModel(event.target.value)} />
                 )}
-              </label>
-              <button type="button" onClick={loadModels}>
-                Load models
-              </button>
+                {modelsError && <small className="muted">Couldn't load models: {modelsError}</small>}
+              </div>
               <ModelHint />
             </>
           )}
@@ -546,4 +570,12 @@ function ModelHint() {
       Both support tools; neither thinks.
     </small>
   );
+}
+
+function validURL(value: string) {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
 }

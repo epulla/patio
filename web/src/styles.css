@@ -676,6 +676,7 @@ a:has(> .svg-icon) {
   background: var(--base-200);
 }
 .create label,
+.create .field,
 .inline-form label,
 .ticket-form label,
 .ticket-side label,
@@ -2299,4 +2300,7 @@ label.days-field {
 }
 .model-hint code {
   font: 12px var(--mono);
+}
+.create .field .label-row label {
+  display: inline;
 }
