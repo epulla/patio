@@ -2,9 +2,9 @@ package api
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,24 +33,22 @@ func attachmentTestChat(t *testing.T) (*Server, chat) {
 
 func postAttachmentFiles(t *testing.T, handler http.Handler, chatID string, files []attachmentUpload) *httptest.ResponseRecorder {
 	t.Helper()
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+	var all []ChatAttachment
 	for _, file := range files {
-		part, err := writer.CreateFormFile("file", file.name)
-		if err != nil {
+		response := requestRecorderJSON(handler, http.MethodPost, "/api/chats/"+chatID+"/attachments", map[string]string{"name": file.name, "data": base64.StdEncoding.EncodeToString(file.data)})
+		if response.Code != http.StatusCreated {
+			return response
+		}
+		var uploaded []ChatAttachment
+		if err := json.Unmarshal(response.Body.Bytes(), &uploaded); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := part.Write(file.data); err != nil {
-			t.Fatal(err)
-		}
+		all = append(all, uploaded...)
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	request := httptest.NewRequest(http.MethodPost, "/api/chats/"+chatID+"/attachments", &body)
-	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
+	response.Code = http.StatusCreated
+	encoded, _ := json.Marshal(all)
+	response.Body.Write(encoded)
 	return response
 }
 
@@ -97,6 +95,27 @@ func TestChatAttachmentUploadLimitsTypesAndCount(t *testing.T) {
 	}
 }
 
+func TestChatAttachmentJSONValidation(t *testing.T) {
+	server, c := attachmentTestChat(t)
+	for _, test := range []struct {
+		name string
+		body map[string]string
+	}{
+		{"invalid base64", map[string]string{"name": "bad.txt", "data": "%%%"}},
+		{"missing name", map[string]string{"data": base64.StdEncoding.EncodeToString([]byte("text"))}},
+	} {
+		response := requestRecorderJSON(server, http.MethodPost, "/api/chats/"+c.ID+"/attachments", test.body)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("%s status = %d: %s", test.name, response.Code, response.Body.String())
+		}
+	}
+	tooLarge := map[string]string{"name": "large.png", "data": strings.Repeat("A", maxChatAttachmentRequest+1)}
+	response := requestRecorderJSON(server, http.MethodPost, "/api/chats/"+c.ID+"/attachments", tooLarge)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized request status = %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func manyAttachmentFiles(count int) []attachmentUpload {
 	files := make([]attachmentUpload, count)
 	for index := range files {
@@ -119,15 +138,15 @@ func TestSanitizeChatAttachmentName(t *testing.T) {
 			}
 		})
 	}
+	server, c := attachmentTestChat(t)
+	response := postAttachmentFiles(t, server, c.ID, []attachmentUpload{{"folder/name.txt", []byte("safe")}})
+	var sanitized []ChatAttachment
+	if response.Code != http.StatusCreated || json.Unmarshal(response.Body.Bytes(), &sanitized) != nil || len(sanitized) != 1 || sanitized[0].Name != "foldername.txt" {
+		t.Fatalf("path-ish name upload = %d, %s", response.Code, response.Body.String())
+	}
 	long := sanitizeChatAttachmentName(strings.Repeat("é", 100) + ".md")
 	if len(long) > maxChatAttachmentName || !utf8.ValidString(long) || !strings.HasSuffix(long, ".md") {
 		t.Fatalf("truncated unicode name = %q (%d bytes)", long, len(long))
-	}
-	server, c := attachmentTestChat(t)
-	response := postAttachmentFiles(t, server, c.ID, []attachmentUpload{{"", []byte("empty filename")}})
-	var emptyName []ChatAttachment
-	if response.Code != http.StatusCreated || json.Unmarshal(response.Body.Bytes(), &emptyName) != nil || len(emptyName) != 1 || emptyName[0].Name != "file" {
-		t.Fatalf("empty filename upload = %d, %s", response.Code, response.Body.String())
 	}
 	response = postAttachmentFiles(t, server, c.ID, []attachmentUpload{{"same.txt", []byte("one")}, {"same.txt", []byte("two")}})
 	var got []ChatAttachment

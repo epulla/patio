@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,7 +22,7 @@ const (
 	maxChatTextAttachment    = 1 << 20
 	maxChatImageAttachment   = 10 << 20
 	maxChatAttachmentName    = 120
-	maxChatAttachmentRequest = maxChatAttachments*maxChatImageAttachment + (1 << 20)
+	maxChatAttachmentRequest = 14 << 20
 )
 
 type ChatAttachment struct {
@@ -106,7 +107,29 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxChatAttachmentRequest)
-	multipart, err := r.MultipartReader()
+	var request struct {
+		Name string `json:"name"`
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeAttachmentError(w, err)
+		return
+	}
+	var extra any
+	if err := json.NewDecoder(r.Body).Decode(&extra); !errors.Is(err, io.EOF) {
+		writeAttachmentError(w, errors.New("invalid JSON request"))
+		return
+	}
+	if request.Name == "" {
+		errw(w, http.StatusBadRequest, "attachment name is required")
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(request.Data)
+	if err != nil {
+		errw(w, http.StatusBadRequest, "invalid base64 attachment data")
+		return
+	}
+	kind, contentType, err := classifyChatAttachment(data)
 	if err != nil {
 		writeAttachmentError(w, err)
 		return
@@ -121,74 +144,19 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	created := make([]ChatAttachment, 0)
-	rollback := func() {
-		for _, attachment := range created {
-			_ = os.Remove(filepath.Join(dir, attachment.Name))
-			delete(pending, attachment.Name)
-		}
-	}
-	for {
-		part, nextErr := multipart.NextPart()
-		if errors.Is(nextErr, io.EOF) {
-			break
-		}
-		if nextErr != nil {
-			rollback()
-			writeAttachmentError(w, nextErr)
-			return
-		}
-		_, disposition, dispositionErr := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
-		_, hasFilename := disposition["filename"]
-		if part.FormName() != "file" || dispositionErr != nil || !hasFilename {
-			_ = part.Close()
-			rollback()
-			errw(w, http.StatusBadRequest, "multipart files must use field name file")
-			return
-		}
-		if len(created)+len(pending) >= maxChatAttachments {
-			_ = part.Close()
-			rollback()
-			errw(w, http.StatusBadRequest, "at most 10 attachments are allowed")
-			return
-		}
-		data, readErr := io.ReadAll(io.LimitReader(part, maxChatImageAttachment+1))
-		closeErr := part.Close()
-		if readErr == nil {
-			readErr = closeErr
-		}
-		if readErr != nil {
-			rollback()
-			writeAttachmentError(w, readErr)
-			return
-		}
-		kind, contentType, err := classifyChatAttachment(data)
-		if err != nil {
-			rollback()
-			writeAttachmentError(w, err)
-			return
-		}
-		name := sanitizeChatAttachmentName(part.FileName())
-		storedName, err := writeChatAttachment(dir, name, data)
-		if err != nil {
-			rollback()
-			errw(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		attachment := ChatAttachment{Name: storedName, Kind: kind, MIME: contentType, Size: int64(len(data))}
-		if pending == nil {
-			pending = make(map[string]ChatAttachment)
-			s.attachments[c.ID] = pending
-		}
-		pending[storedName] = attachment
-		created = append(created, attachment)
-	}
-	if len(created) == 0 {
-		rollback()
-		errw(w, http.StatusBadRequest, "at least one file is required")
+	name := sanitizeChatAttachmentName(request.Name)
+	storedName, err := writeChatAttachment(dir, name, data)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusCreated, created)
+	attachment := ChatAttachment{Name: storedName, Kind: kind, MIME: contentType, Size: int64(len(data))}
+	if pending == nil {
+		pending = make(map[string]ChatAttachment)
+		s.attachments[c.ID] = pending
+	}
+	pending[storedName] = attachment
+	write(w, http.StatusCreated, []ChatAttachment{attachment})
 }
 
 func classifyChatAttachment(data []byte) (string, string, error) {
@@ -239,7 +207,7 @@ func writeAttachmentError(w http.ResponseWriter, err error) {
 	case errors.Is(err, errChatAttachmentType):
 		errw(w, http.StatusBadRequest, err.Error())
 	default:
-		errw(w, http.StatusBadRequest, "invalid multipart upload: "+err.Error())
+		errw(w, http.StatusBadRequest, "invalid attachment request: "+err.Error())
 	}
 }
 
