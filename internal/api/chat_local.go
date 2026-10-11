@@ -57,8 +57,8 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 	if c.ConnectorID == nil {
 		return nil, errChatConnectorMissing
 	}
-	var kind, baseURL string
-	if err := m.db.QueryRow(`SELECT kind,base_url FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &baseURL); err != nil {
+	var kind, baseURL, connectorModel string
+	if err := m.db.QueryRow(`SELECT kind,base_url,model FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &baseURL, &connectorModel); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errChatConnectorMissing
 		}
@@ -79,9 +79,13 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 	if err != nil {
 		return nil, err
 	}
+	model := c.Model
+	if model == "" {
+		model = connectorModel
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &localRuntime{
-		manager: m, chatID: c.ID, model: c.Model, baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret,
+		manager: m, chatID: c.ID, model: model, baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret,
 		workdir: c.Workdir, ctx: ctx, cancel: cancel, client: &http.Client{}, mcpTools: make(map[string]string),
 	}
 	for _, tool := range filetools.Tools() {

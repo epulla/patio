@@ -40,12 +40,18 @@ func TestLocalOllamaLive(t *testing.T) {
 	defer server.Close()
 
 	plainChat := liveLocalChat(t, database, connectorID, root)
-	if code := sendLocalMessage(t, server, plainChat, "Reply with just OK"); code != http.StatusAccepted {
+	if _, err := database.Exec(`UPDATE chat SET model='' WHERE id=?`, plainChat); err != nil {
+		t.Fatal(err)
+	}
+	if code := sendLocalMessage(t, server, plainChat, "Call ticket__list_boards, then reply with just OK"); code != http.StatusAccepted {
 		t.Fatalf("send plain prompt = %d", code)
 	}
-	plain, _, _ := waitLiveLocalTurn(t, database, server, events, plainChat, nil)
+	plain, tools, _ := waitLiveLocalTurn(t, database, server, events, plainChat, nil)
 	if strings.TrimSpace(plain) != "OK" {
 		t.Fatalf("plain reply = %q, want OK", plain)
+	}
+	if !tools["ticket__list_boards"] {
+		t.Fatal("qwen3:4b did not call ticket__list_boards")
 	}
 
 	allowed := liveLocalWrite(t, database, server, events, connectorID, root, true)
@@ -54,51 +60,36 @@ func TestLocalOllamaLive(t *testing.T) {
 	}
 	denied := liveLocalWrite(t, database, server, events, connectorID, root, false)
 	if !denied {
-		t.Fatal("qwen3:4b did not call file__write_file for denied action after three attempts")
-	}
-
-	ticketUsed := false
-	for attempt := 0; attempt < 3 && !ticketUsed; attempt++ {
-		chatID := liveLocalChat(t, database, connectorID, root)
-		if code := sendLocalMessage(t, server, chatID, "List my boards"); code != http.StatusAccepted {
-			t.Fatalf("send boards prompt = %d", code)
-		}
-		_, tools, _ := waitLiveLocalTurn(t, database, server, events, chatID, nil)
-		ticketUsed = tools["ticket__list_boards"]
-	}
-	if !ticketUsed {
-		t.Fatal("qwen3:4b did not call ticket__list_boards after three attempts")
+		t.Fatal("qwen3:4b did not call file__write_file for denied action")
 	}
 }
 
 func liveLocalWrite(t *testing.T, database *sql.DB, server *Server, events <-chan map[string]any, connectorID, root string, allow bool) bool {
 	t.Helper()
-	for attempt := 0; attempt < 3; attempt++ {
-		chatID := liveLocalChat(t, database, connectorID, root)
-		if code := sendLocalMessage(t, server, chatID, "Create a file hello.txt containing hi"); code != http.StatusAccepted {
-			t.Fatalf("send write prompt = %d", code)
+	chatID := liveLocalChat(t, database, connectorID, root)
+	if code := sendLocalMessage(t, server, chatID, "Create a file hello.txt containing hi"); code != http.StatusAccepted {
+		t.Fatalf("send write prompt = %d", code)
+	}
+	_, tools, approvalSeen := waitLiveLocalTurn(t, database, server, events, chatID, &allow)
+	if tools["file__write_file"] {
+		path := filepath.Join(root, "chats", chatID, "hello.txt")
+		_, err := os.Stat(path)
+		if allow && err != nil {
+			t.Fatalf("approved file missing: %v", err)
 		}
-		_, tools, approvalSeen := waitLiveLocalTurn(t, database, server, events, chatID, &allow)
-		if tools["file__write_file"] {
-			path := filepath.Join(root, "chats", chatID, "hello.txt")
-			_, err := os.Stat(path)
-			if allow && err != nil {
-				t.Fatalf("approved file missing: %v", err)
-			}
-			if !allow && !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("denied file exists or stat failed: %v", err)
-			}
-			if allow {
-				data, err := os.ReadFile(path)
-				if err != nil || string(data) != "hi" {
-					t.Fatalf("approved file = %q, %v", data, err)
-				}
-			}
-			return true
+		if !allow && !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("denied file exists or stat failed: %v", err)
 		}
-		if approvalSeen {
-			t.Fatalf("approval shown without file__write_file tool call (allow=%v)", allow)
+		if allow {
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != "hi" {
+				t.Fatalf("approved file = %q, %v", data, err)
+			}
 		}
+		return true
+	}
+	if approvalSeen {
+		t.Fatalf("approval shown without file__write_file tool call (allow=%v)", allow)
 	}
 	return false
 }

@@ -488,3 +488,23 @@ func localAssistant(t *testing.T, database *sql.DB, chatID string) string {
 	}
 	return content
 }
+
+func TestLocalChatEmptyModelUsesConnectorModel(t *testing.T) {
+	database, _, chatID, server, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		if request["model"] != "qwen3:4b" {
+			t.Errorf("completion model = %#v, want connector model", request["model"])
+		}
+		writeSSE(w, `{"choices":[{"delta":{"content":"OK"}}]}`)
+	})
+	defer server.Close()
+	if _, err := database.Exec(`UPDATE chat SET model='' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if code := sendLocalMessage(t, server, chatID, "reply"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if got := localAssistant(t, database, chatID); got != "OK" {
+		t.Fatalf("assistant = %q", got)
+	}
+}

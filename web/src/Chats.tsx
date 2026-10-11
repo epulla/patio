@@ -19,8 +19,6 @@ type ChatEvent =
   | { type: "error"; message: string }
   | { type: "approval" };
 
-const canChat = (connector: Connector) => connector.kind !== "local";
-
 type ModelOption = { id: string; label: string; description?: string };
 
 const fallbackModels: ModelOption[] = [{ id: "", label: "Default" }];
@@ -116,11 +114,11 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
         <section className="chat-empty">
           <h1>Chats</h1>
           <p className="muted">
-            {connectors.some(canChat)
+            {connectors.length
               ? "Pick a chat or start a new one."
-              : "Add a Claude Code, Codex, Copilot, or opencode connector first, then start a chat."}
+              : "Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then start a chat."}
           </p>
-          {!connectors.some(canChat) && (
+          {!connectors.length && (
             <button onClick={() => navigate("/ai/connectors")}>Go to Connectors</button>
           )}
         </section>
@@ -459,9 +457,9 @@ function NewChatDialog({
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
-  const supported = connectors.filter(canChat);
-  const [connectorID, setConnectorID] = useState(supported[0]?.id ?? "");
-  const [model, setModel] = useState("");
+  const defaultModel = (id: string) => connectors.find((c) => c.id === id && c.kind === "local")?.model ?? "";
+  const [connectorID, setConnectorID] = useState(connectors[0]?.id ?? "");
+  const [model, setModel] = useState(() => defaultModel(connectors[0]?.id ?? ""));
   const { models, loading: modelsLoading } = useModels(connectorID);
   const [folder, setFolder] = useState("");
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
@@ -499,11 +497,11 @@ function NewChatDialog({
             Connector
             <select required value={connectorID} onChange={(event) => {
                 setConnectorID(event.target.value);
-                setModel("");
+                setModel(defaultModel(event.target.value));
               }}>
-              {supported.length === 0 && <option value="">No chat connector</option>}
+              {connectors.length === 0 && <option value="">No chat connector</option>}
               {connectors.map((c) => (
-                <option key={c.id} value={c.id} disabled={!canChat(c)}>
+                <option key={c.id} value={c.id}>
                   {c.name} · {c.kind}
                 </option>
               ))}
