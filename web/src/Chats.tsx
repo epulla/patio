@@ -262,8 +262,10 @@ function Conversation({
     setError(undefined);
     setUploading(true);
     try {
-      const added = await api.upload<ChatAttachment[]>(`/api/chats/${id}/attachments`, files);
-      setPending((current) => [...current, ...added]);
+      for (const file of files) {
+        const added = await api.upload<ChatAttachment[]>(`/api/chats/${id}/attachments`, file);
+        setPending((current) => [...current, ...added]);
+      }
     } catch (reason) {
       setError(reason);
     } finally {

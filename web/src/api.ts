@@ -220,7 +220,7 @@ export type McpServerCheck = {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
-      ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      "Content-Type": "application/json",
       ...(options?.headers || {}),
     },
     ...options,
@@ -245,9 +245,15 @@ export const api = {
   put: <T>(path: string, value: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(value) }),
   delete: (path: string) => request<void>(path, { method: "DELETE" }),
-  upload: <T>(path: string, files: File[]) => {
-    const form = new FormData();
-    for (const file of files) form.append("file", file);
-    return request<T>(path, { method: "POST", body: form });
-  },
+  upload: async <T>(path: string, file: File) =>
+    request<T>(path, body({ name: file.name, data: await base64(file) })),
 };
+
+function base64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+    reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
