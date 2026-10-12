@@ -56,6 +56,17 @@ type ticketIDArgs struct {
 type skillArgs struct {
 	Name string `json:"name" jsonschema:"Skill name"`
 }
+type createSkillArgs struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Body        string `json:"body"`
+}
+type updateSkillArgs struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	Body        *string `json:"body,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+}
 type updateTicketArgs struct {
 	ID           string  `json:"id" jsonschema:"Ticket UUID"`
 	Title        *string `json:"title,omitempty" jsonschema:"Optional new title"`
@@ -167,7 +178,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	instructions := "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"
+	instructions := "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply."
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
 	}
@@ -251,7 +262,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
-	addSkillTools(s, database, skills)
+	addSkillTools(s, h, database, skills)
 	if approval != nil {
 		if approval.Timeout == 0 {
 			approval.Timeout = 10 * time.Minute
@@ -272,7 +283,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	return s, nil
 }
 
-func addSkillTools(s *sdk.Server, database *sql.DB, skills []api.Skill) {
+func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api.Skill) {
 	description := "No skills are enabled."
 	if len(skills) > 0 {
 		var available strings.Builder
@@ -318,6 +329,52 @@ func addSkillTools(s *sdk.Server, database *sql.DB, skills []api.Skill) {
 			return errorResult(err), nil, nil
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
+	})
+	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill"}, func(_ context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
+		data, err := doJSON(h, request{http.MethodPost, "/api/skills", in})
+		if err != nil {
+			if strings.Contains(err.Error(), "skill name already exists") {
+				err = fmt.Errorf("%w; use update_skill", err)
+			}
+			return errorResult(err), nil, nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil, nil
+	})
+	sdk.AddTool[updateSkillArgs, any](s, &sdk.Tool{Name: "update_skill", Description: "Update a skill by name"}, func(_ context.Context, _ *sdk.CallToolRequest, in updateSkillArgs) (*sdk.CallToolResult, any, error) {
+		if database == nil {
+			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
+		}
+		skill, err := api.SkillByName(database, in.Name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
+		}
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		body := struct {
+			Description *string `json:"description,omitempty"`
+			Body        *string `json:"body,omitempty"`
+			Enabled     *bool   `json:"enabled,omitempty"`
+		}{in.Description, in.Body, in.Enabled}
+		result, err := do(h, request{http.MethodPut, "/api/skills/" + url.PathEscape(skill.ID), body})
+		return result, nil, err
+	})
+	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "delete_skill", Description: "Delete a skill by name"}, func(_ context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
+		if database == nil {
+			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
+		}
+		skill, err := api.SkillByName(database, in.Name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
+		}
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		_, err = doJSON(h, request{http.MethodDelete, "/api/skills/" + url.PathEscape(skill.ID), nil})
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil, nil
 	})
 }
 

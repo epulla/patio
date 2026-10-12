@@ -61,6 +61,32 @@ func TestApprovalTool(t *testing.T) {
 
 	session, closeSession := call(time.Second)
 	defer closeSession()
+	createResult := make(chan *sdk.CallToolResult, 1)
+	createErr := make(chan error, 1)
+	go func() {
+		result, err := session.CallTool(context.Background(), &sdk.CallToolParams{Name: "approve", Arguments: map[string]any{"tool_name": "mcp__patio__create_skill", "input": map[string]any{"name": "repeatable", "description": "Repeat", "body": "Steps"}}})
+		createResult <- result
+		createErr <- err
+	}()
+	createID := pendingApprovalID(t, database, chatID)
+	var createTool, createStatus string
+	if err := database.QueryRow(`SELECT tool_name,status FROM chat_approval WHERE id=?`, createID).Scan(&createTool, &createStatus); err != nil || createTool != "mcp__patio__create_skill" || createStatus != "pending" {
+		t.Fatalf("create skill approval = (%q, %q), %v", createTool, createStatus, err)
+	}
+	answer := httptest.NewRequest(http.MethodPost, "/api/chats/"+chatID+"/approvals/"+createID, bytes.NewBufferString(`{"allow":false}`))
+	answerRes := httptest.NewRecorder()
+	h.ServeHTTP(answerRes, answer)
+	if answerRes.Code != http.StatusOK {
+		t.Fatalf("deny skill approval = %d: %s", answerRes.Code, answerRes.Body)
+	}
+	select {
+	case <-createResult:
+		if err := <-createErr; err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("skill approval did not return")
+	}
 	for _, allow := range []bool{true, false} {
 		input := map[string]any{"command": "write", "path": "x"}
 		resultCh := make(chan *sdk.CallToolResult, 1)

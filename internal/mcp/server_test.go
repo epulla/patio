@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"patio/internal/api"
@@ -49,7 +50,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"add_comment": true, "list_calendar": true, "create_calendar_item": true,
 		"update_calendar_item": true, "delete_calendar_item": true,
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
-		"list_skills": true, "load_skill": true,
+		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -67,8 +68,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 20 {
-		t.Fatalf("tool count = %d, want 20", count)
+	if count != 23 {
+		t.Fatalf("tool count = %d, want 23", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -314,6 +315,31 @@ func TestMCPSkillTools(t *testing.T) {
 			t.Fatalf("load_skill(%q) = %#v, want tool error", name, result)
 		}
 	}
+	created := callTool(t, session, "create_skill", map[string]any{"name": "repeatable", "description": "Repeat this task", "body": "Steps"})
+	if created.IsError {
+		t.Fatalf("create_skill: %#v", created)
+	}
+	duplicate := callTool(t, session, "create_skill", map[string]any{"name": "repeatable", "description": "Again", "body": "Steps"})
+	if !duplicate.IsError || !strings.Contains(duplicate.Content[0].(*sdk.TextContent).Text, "update_skill") {
+		t.Fatalf("duplicate create result = %#v", duplicate)
+	}
+	updated := callTool(t, session, "update_skill", map[string]any{"name": "repeatable", "body": "Updated steps"})
+	var skill struct {
+		Body        string `json:"body"`
+		Description string `json:"description"`
+	}
+	decodeText(t, updated, &skill)
+	if skill.Body != "Updated steps" || skill.Description != "Repeat this task" {
+		t.Fatalf("updated skill = %#v", skill)
+	}
+	deleted := callTool(t, session, "delete_skill", map[string]any{"name": "repeatable"})
+	if deleted.IsError || deleted.Content[0].(*sdk.TextContent).Text != "deleted" {
+		t.Fatalf("delete_skill = %#v", deleted)
+	}
+	missing := callTool(t, session, "delete_skill", map[string]any{"name": "repeatable"})
+	if !missing.IsError || missing.Content[0].(*sdk.TextContent).Text != "skill not found: repeatable" {
+		t.Fatalf("unknown delete = %#v", missing)
+	}
 }
 
 func TestMCPInstructions(t *testing.T) {
@@ -335,9 +361,9 @@ func TestMCPInstructions(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	want := "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app"
-	if got := session.InitializeResult().Instructions; got != want {
-		t.Fatalf("instructions = %q, want %q", got, want)
+	got := session.InitializeResult().Instructions
+	if !strings.Contains(got, "After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply.") || !strings.HasPrefix(got, "You act as Martin") {
+		t.Fatalf("instructions = %q", got)
 	}
 }
 
