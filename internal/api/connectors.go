@@ -174,6 +174,7 @@ func (s *Server) createConnector(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	clearLocalModelCapabilities(id)
 	c, err := s.readConnector(s.db.QueryRow(`SELECT id,kind,name,config_dir,base_url,model,quota_json,created_at FROM connector WHERE id=?`, id))
 	if err != nil {
 		errw(w, 500, err.Error())
@@ -270,6 +271,7 @@ func (s *Server) updateConnector(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
+	clearLocalModelCapabilities(id)
 	c, err := s.readConnector(s.db.QueryRow(`SELECT id,kind,name,config_dir,base_url,model,quota_json,created_at FROM connector WHERE id=?`, id))
 	if err != nil {
 		errw(w, 500, err.Error())

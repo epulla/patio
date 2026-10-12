@@ -754,7 +754,15 @@ func newOllamaChatFixture(t *testing.T, handler func(http.ResponseWriter, *http.
 			_, _ = fmt.Fprint(w, `{"models":[{"name":"qwen2.5:3b","context_length":4096}]}`)
 		case "/api/show":
 			showCalls.Add(1)
-			_, _ = fmt.Fprint(w, `{"model_info":{"qwen.context_length":32768}}`)
+			var request struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			if request.Model == "thinking-model" {
+				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools","thinking"],"model_info":{"qwen.context_length":32768}}`)
+			} else {
+				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools"],"model_info":{"qwen.context_length":32768}}`)
+			}
 		case "/api/chat":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -847,6 +855,9 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 			)
 		}
 	})
+	if _, err := database.Exec(`UPDATE chat SET model='thinking-model' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	var connectorID string
 	if err := database.QueryRow(`SELECT connector_id FROM chat WHERE id=?`, chatID).Scan(&connectorID); err != nil {
 		t.Fatal(err)
@@ -887,7 +898,7 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 		t.Fatalf("second native send = %d", code)
 	}
 	waitLocalDone(t, events)
-	if calls.Load() != 3 || versionCalls.Load() != 1 || showCalls.Load() != 1 {
+	if calls.Load() != 3 || versionCalls.Load() == 0 || showCalls.Load() == 0 {
 		t.Fatalf("native calls/version/show = %d/%d/%d", calls.Load(), versionCalls.Load(), showCalls.Load())
 	}
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, chatID, localContextNote).Scan(&contextNotes); err != nil || contextNotes != 2 {
@@ -899,6 +910,93 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 	var leaked int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND content LIKE '%native-secret%'`, chatID).Scan(&leaked); err != nil || leaked != 0 {
 		t.Fatalf("native secret-bearing messages = %d, %v", leaked, err)
+	}
+}
+
+func TestLocalOllamaModelWithoutThinkingCapability(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		calls.Add(1)
+		if think, exists := request["think"]; exists && think == true {
+			t.Error("request sent think=true for model without thinking capability")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"error":"\"qwen2.5:3b\" does not support thinking"}`)
+			return
+		}
+		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
+	})
+	var updated chat
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, &updated); code != http.StatusOK {
+		t.Fatalf("enable thinking = %d", code)
+	}
+	var detail struct {
+		Chat chat `json:"chat"`
+	}
+	if code := requestJSON(t, server, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK {
+		t.Fatalf("get chat = %d", code)
+	}
+	if detail.Chat.ID != chatID {
+		t.Fatalf("GET chat ID = %q", detail.Chat.ID)
+	}
+	if detail.Chat.Capabilities.Thinking.Supported {
+		t.Errorf("thinking capability supported = true")
+	}
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if got := localAssistant(t, database, chatID); got != "Hello" {
+		t.Fatalf("assistant = %q (calls=%d)", got, calls.Load())
+	}
+}
+
+func TestLocalOllamaThinkingCapabilitySendsThink(t *testing.T) {
+	var calls atomic.Int32
+	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+		calls.Add(1)
+		if request["think"] != true {
+			t.Errorf("thinking-capable model think = %#v", request["think"])
+		}
+		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
+	})
+	if _, err := database.Exec(`UPDATE chat SET model='thinking-model',thinking=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if calls.Load() != 1 || localAssistant(t, database, chatID) != "Hello" {
+		t.Fatalf("calls/reply = %d/%q", calls.Load(), localAssistant(t, database, chatID))
+	}
+}
+
+func TestLocalOllamaRefreshClearsThinkingCapabilityCache(t *testing.T) {
+	database, _, chatID, server, _, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		writeNDJSON(w, `{"message":{"content":"unused"},"done":true}`)
+	})
+	var connectorID string
+	if err := database.QueryRow(`SELECT connector_id FROM chat WHERE id=?`, chatID).Scan(&connectorID); err != nil {
+		t.Fatal(err)
+	}
+	localModelCapabilities.Store(connectorID+"\x00qwen2.5:3b", ollamaModelCapabilities{thinking: true})
+	getSupported := func() bool {
+		var detail struct {
+			Chat chat `json:"chat"`
+		}
+		if code := requestJSON(t, server, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK {
+			t.Fatalf("get chat = %d", code)
+		}
+		return detail.Chat.Capabilities.Thinking.Supported
+	}
+	if !getSupported() {
+		t.Fatal("cached thinking support was not used")
+	}
+	if code := requestJSON(t, server, http.MethodGet, "/api/connectors/"+connectorID+"/status", nil, nil); code != http.StatusOK {
+		t.Fatalf("refresh connector = %d", code)
+	}
+	if getSupported() {
+		t.Fatal("thinking support cache survived connector refresh")
 	}
 }
 

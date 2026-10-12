@@ -367,7 +367,7 @@ func TestOllamaImageCapabilityAndNativePayload(t *testing.T) {
 			defer fake.Close()
 			workdir, attachments, imageData := deliveryAttachments(t)
 			cacheKey := fake.URL + "\x00model-test"
-			localVisionCapabilities.Delete(cacheKey)
+			localModelCapabilities.Delete(cacheKey)
 			manager := newChatManager(nil, Options{})
 			driver := &localRuntime{manager: manager, chatID: "chat", model: "model-test", ollama: true, ollamaURL: fake.URL, client: fake.Client(), workdir: workdir}
 			files, err := loadChatAttachmentFiles(workdir, attachments[1:])

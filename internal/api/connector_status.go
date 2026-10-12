@@ -23,6 +23,7 @@ func (s *Server) connectorStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Kind == "local" {
+		clearLocalModelCapabilities(c.ID)
 		write(w, http.StatusOK, connectorstatus.Status{Kind: "local"})
 		return
 	}

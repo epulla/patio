@@ -42,6 +42,7 @@ const (
 type localRuntime struct {
 	manager        *chatManager
 	chatID         string
+	connectorID    string
 	model          string
 	baseURL        string
 	ollamaURL      string
@@ -64,8 +65,6 @@ type localRuntime struct {
 	contextSize    int
 	contextChecked bool
 }
-
-var localVisionCapabilities sync.Map
 
 func init() { runtimes["local"] = startLocal }
 
@@ -101,7 +100,7 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &localRuntime{
-		manager: m, chatID: c.ID, model: model, baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret,
+		manager: m, chatID: c.ID, connectorID: *c.ConnectorID, model: model, baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret,
 		workdir: c.Workdir, ctx: ctx, cancel: cancel, client: &http.Client{}, mcpTools: make(map[string]string),
 	}
 	d.ollamaURL = ollamaOrigin(d.baseURL)
@@ -763,7 +762,10 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 			break
 		}
 	}
-	body := map[string]any{"model": d.model, "stream": true, "think": thinking, "messages": nativeMessages}
+	body := map[string]any{"model": d.model, "stream": true, "messages": nativeMessages}
+	if !d.ollama || d.ollamaThinkingSupported(ctx) {
+		body["think"] = thinking
+	}
 	if withTools {
 		body["tools"] = d.tools
 	}
@@ -806,42 +808,74 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 }
 
 func (d *localRuntime) ollamaVision(ctx context.Context) bool {
-	key := d.ollamaURL + "\x00" + d.model
-	if cached, ok := localVisionCapabilities.Load(key); ok {
-		return cached.(bool)
+	capabilities, ok := d.ollamaModelCapabilities(ctx)
+	return ok && capabilities.vision
+}
+
+func (d *localRuntime) ollamaThinkingSupported(ctx context.Context) bool {
+	capabilities, ok := d.ollamaModelCapabilities(ctx)
+	return !ok || capabilities.thinking
+}
+
+type ollamaModelCapabilities struct {
+	thinking bool
+	vision   bool
+}
+
+var localModelCapabilities sync.Map
+
+func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModelCapabilities, bool) {
+	key := d.connectorID + "\x00" + d.model
+	if d.connectorID == "" {
+		key = d.ollamaURL + "\x00" + d.model
 	}
-	vision := false
+	if cached, ok := localModelCapabilities.Load(key); ok {
+		return cached.(ollamaModelCapabilities), true
+	}
 	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	encoded, err := json.Marshal(map[string]string{"model": d.model})
-	if err == nil {
-		request, requestErr := http.NewRequestWithContext(queryCtx, http.MethodPost, d.ollamaURL+"/api/show", bytes.NewReader(encoded))
-		if requestErr == nil {
-			request.Header.Set("Content-Type", "application/json")
-			if d.secret != "" {
-				request.Header.Set("Authorization", "Bearer "+d.secret)
-			}
-			response, doErr := d.client.Do(request)
-			if doErr == nil {
-				if response.StatusCode >= 200 && response.StatusCode < 300 {
-					var details struct {
-						Capabilities []string `json:"capabilities"`
-					}
-					if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&details) == nil {
-						for _, capability := range details.Capabilities {
-							if capability == "vision" {
-								vision = true
-								break
-							}
-						}
-					}
-				}
-				_ = response.Body.Close()
-			}
-		}
+	if err != nil {
+		return ollamaModelCapabilities{}, false
 	}
-	cached, _ := localVisionCapabilities.LoadOrStore(key, vision)
-	return cached.(bool)
+	request, err := http.NewRequestWithContext(queryCtx, http.MethodPost, d.ollamaURL+"/api/show", bytes.NewReader(encoded))
+	if err != nil {
+		return ollamaModelCapabilities{}, false
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if d.secret != "" {
+		request.Header.Set("Authorization", "Bearer "+d.secret)
+	}
+	response, err := d.client.Do(request)
+	if err != nil {
+		return ollamaModelCapabilities{}, false
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return ollamaModelCapabilities{}, false
+	}
+	var details struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&details) != nil {
+		return ollamaModelCapabilities{}, false
+	}
+	capabilities := ollamaModelCapabilities{}
+	for _, capability := range details.Capabilities {
+		capabilities.thinking = capabilities.thinking || capability == "thinking"
+		capabilities.vision = capabilities.vision || capability == "vision"
+	}
+	cached, _ := localModelCapabilities.LoadOrStore(key, capabilities)
+	return cached.(ollamaModelCapabilities), true
+}
+
+func clearLocalModelCapabilities(connectorID string) {
+	localModelCapabilities.Range(func(key, _ any) bool {
+		if strings.HasPrefix(key.(string), connectorID+"\x00") {
+			localModelCapabilities.Delete(key)
+		}
+		return true
+	})
 }
 
 func ollamaMessages(messages []map[string]any) ([]map[string]any, error) {

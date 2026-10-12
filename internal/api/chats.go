@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+
+	"github.com/zalando/go-keyring"
 )
 
 type allowedFolder struct {
@@ -157,11 +161,28 @@ func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 	c.Workdir = s.chatWorkdir(c)
 	c.Capabilities = chatCapabilities{Thinking: thinkingCapability{Supported: true}}
 	if c.ConnectorID != nil {
-		var kind string
-		if err := s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		var kind, baseURL, connectorModel string
+		if err := s.db.QueryRow(`SELECT kind,base_url,model FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &baseURL, &connectorModel); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return c, err
 		}
 		c.Capabilities = capabilitiesForKind(kind)
+		if kind == "local" {
+			model := c.Model
+			if model == "" {
+				model = connectorModel
+			}
+			secret, secretErr := keyring.Get(connectorService, connectorSecret(*c.ConnectorID))
+			if secretErr != nil {
+				secret = ""
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			d := &localRuntime{connectorID: *c.ConnectorID, model: model, baseURL: baseURL, ollamaURL: ollamaOrigin(baseURL), secret: secret, ctx: ctx, client: &http.Client{}}
+			d.detectOllama()
+			if d.ollama && !d.ollamaThinkingSupported(ctx) {
+				c.Capabilities.Thinking = thinkingCapability{Reason: "This model doesn't support thinking"}
+			}
+			cancel()
+		}
 	}
 	return c, nil
 }

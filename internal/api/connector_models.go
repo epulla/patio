@@ -42,6 +42,9 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusNotFound, "unknown connector")
 		return
 	}
+	if c.Kind == "local" {
+		clearLocalModelCapabilities(c.ID)
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String)
