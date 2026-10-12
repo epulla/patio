@@ -211,7 +211,12 @@ func TestSettingsAboutAndReveal(t *testing.T) {
 			t.Fatalf("reveal %s status = %d", target, code)
 		}
 	}
-	if len(revealed) != 2 || revealed[0] != canonicalDBPath || revealed[1] != canonicalRoot {
+	if len(revealed) != 2 {
+		t.Fatalf("revealed paths = %#v", revealed)
+	}
+	revealedDBPath, dbErr := filepath.EvalSymlinks(revealed[0])
+	revealedDataDir, dirErr := filepath.EvalSymlinks(revealed[1])
+	if len(revealed) != 2 || dbErr != nil || dirErr != nil || revealedDBPath != canonicalDBPath || revealedDataDir != canonicalRoot {
 		t.Fatalf("revealed paths = %#v", revealed)
 	}
 	for _, body := range []any{map[string]string{}, map[string]string{"target": "chat"}} {

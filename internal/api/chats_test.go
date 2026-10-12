@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -119,7 +120,7 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 			}
 			if test.name == "default folder" {
 				info, err := os.Stat(got.Workdir)
-				if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 || got.Folder != nil || got.Title != "New chat" {
+				if err != nil || !info.IsDir() || runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 || got.Folder != nil || got.Title != "New chat" {
 					t.Fatalf("default chat = %#v; dir stat = %v, %v", got, info, err)
 				}
 				canonicalWorkdir, err := filepath.EvalSymlinks(got.Workdir)

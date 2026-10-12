@@ -18,7 +18,7 @@ func TestMCPServerValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nonExecutable := filepath.Join(root, "not-executable"+filepath.Ext(executable))
+	nonExecutable := filepath.Join(root, "not-executable.txt")
 	if err := os.WriteFile(nonExecutable, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}

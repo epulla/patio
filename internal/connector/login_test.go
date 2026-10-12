@@ -12,14 +12,23 @@ import (
 )
 
 func TestBuildLoginCommandQuotesAndFiltersSecrets(t *testing.T) {
-	path, config := filepath.Join("/tmp", "cli with space", "claude"), filepath.Join("/tmp", "config with 'quote'")
+	root := t.TempDir()
+	path, config := filepath.Join(root, "cli with space", "claude"), filepath.Join(root, "config with 'quote'")
+	path, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err = filepath.Abs(config)
+	if err != nil {
+		t.Fatal(err)
+	}
 	command, err := BuildLoginCommand("darwin", "claude", path, []string{
 		"CLAUDE_CONFIG_DIR=" + config, "COPILOT_GITHUB_TOKEN=hidden", "OTHER_SECRET=hidden",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(command, `export CLAUDE_CONFIG_DIR='/tmp/config with '"'"'quote'"'"''`) || !strings.Contains(command, `'/tmp/cli with space/claude' auth login`) {
+	if !strings.Contains(command, "export CLAUDE_CONFIG_DIR="+shellQuote(config)) || !strings.Contains(command, shellQuote(path)+" auth login") {
 		t.Fatalf("login command = %q", command)
 	}
 	if strings.Contains(command, "hidden") || strings.Contains(command, "SECRET") {
