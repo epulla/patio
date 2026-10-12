@@ -1,7 +1,10 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "Patio",
+  "name": "patio",
   "outputfilename": "patio",
+  "info": {
+    "productName": "Patio"
+  },
   "frontend:dir": "web",
   "frontend:install": "pnpm install",
   "frontend:build": "pnpm build",
