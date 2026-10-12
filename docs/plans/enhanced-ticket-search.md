@@ -24,5 +24,5 @@ Assumed (by me, per 3a "do whatever you think"):
 ## Tasks
 
 - [x] 1. API: `GET /api/tickets/search` accepts optional `q`, `board_id`, `created_from/to`, `updated_from/to`, `sort`, `dir`; default `created_at DESC`, limit 200, 400 on bad input. Check: `go test ./internal/api -run TestSearchTickets -count=1` with new cases (empty q, each filter, each sort, bad sort/date).
-- [ ] 2. MCP: `search_tickets` gets the same optional args. Check: `go test ./internal/mcp -count=1` with a filtered + sorted call.
+- [x] 2. MCP: `search_tickets` gets the same optional args. Check: `go test ./internal/mcp -count=1` with a filtered + sorted call.
 - [ ] 3. UI: `Tickets.tsx` list view with board selector, date inputs, sort `<Menu>`, sortable header row, default most recent; README line updated; this plan deleted. Check: `gofmt -l internal` empty, `go vet ./... && go test ./... -count=1`, `pnpm --dir web build`, `wails build`, smoke run with a throwaway DB.

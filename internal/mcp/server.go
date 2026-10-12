@@ -68,8 +68,14 @@ type moveTicketArgs struct {
 	Status string `json:"status" jsonschema:"Status UUID or case-insensitive status name"`
 }
 type searchArgs struct {
-	Query   string `json:"query" jsonschema:"Title or code search text"`
-	BoardID string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
+	Query       string `json:"query,omitempty" jsonschema:"Optional title or code search text; omit to list all tickets"`
+	BoardID     string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
+	CreatedFrom string `json:"created_from,omitempty" jsonschema:"Optional RFC 3339 timestamp; created at or after"`
+	CreatedTo   string `json:"created_to,omitempty" jsonschema:"Optional RFC 3339 timestamp; created before"`
+	UpdatedFrom string `json:"updated_from,omitempty" jsonschema:"Optional RFC 3339 timestamp; updated at or after"`
+	UpdatedTo   string `json:"updated_to,omitempty" jsonschema:"Optional RFC 3339 timestamp; updated before"`
+	Sort        string `json:"sort,omitempty" jsonschema:"Optional sort: created (default), updated, title, code, board, status"`
+	Dir         string `json:"dir,omitempty" jsonschema:"Optional asc or desc; default desc for created/updated, asc otherwise"`
 }
 type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
@@ -180,10 +186,12 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return request{http.MethodPut, "/api/tickets/" + url.PathEscape(a.ID), a}
 	})
 	addGenericHandler(s, "move_ticket", "Move ticket to status UUID or name", moveHandler(h))
-	addGeneric(s, "search_tickets", "Search tickets by title or code", h, func(a searchArgs) request {
-		q := url.Values{"q": {a.Query}}
-		if a.BoardID != "" {
-			q.Set("board_id", a.BoardID)
+	addGeneric(s, "search_tickets", "Search tickets by title or code, filter by board and created/updated time, and sort; newest first, at most 200", h, func(a searchArgs) request {
+		q := url.Values{}
+		for k, v := range map[string]string{"q": a.Query, "board_id": a.BoardID, "created_from": a.CreatedFrom, "created_to": a.CreatedTo, "updated_from": a.UpdatedFrom, "updated_to": a.UpdatedTo, "sort": a.Sort, "dir": a.Dir} {
+			if v != "" {
+				q.Set(k, v)
+			}
 		}
 		return request{http.MethodGet, "/api/tickets/search?" + q.Encode(), nil}
 	})

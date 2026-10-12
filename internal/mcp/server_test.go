@@ -205,6 +205,13 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if len(found) != 1 {
 		t.Fatalf("search results = %d, want 1", len(found))
 	}
+	var sorted []struct {
+		Title string `json:"title"`
+	}
+	decodeText(t, callTool(t, session, "search_tickets", map[string]any{"board_id": board.ID, "sort": "title", "dir": "desc", "created_from": "2000-01-01T00:00:00Z"}), &sorted)
+	if len(sorted) != 2 || sorted[0].Title != "Second" || sorted[1].Title != "MCP ticket" {
+		t.Fatalf("sorted search = %#v", sorted)
+	}
 
 	var transitions, histories int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM ticket_status_transition WHERE ticket_id=? AND user_id='ai'`, ticket.ID).Scan(&transitions); err != nil {
