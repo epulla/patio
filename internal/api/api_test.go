@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -559,8 +560,34 @@ func TestSearchTickets(t *testing.T) {
 	if result[0].BoardName != "SEA" || result[0].StatusName != "Todo" {
 		t.Fatalf("search result board/status = %q/%q", result[0].BoardName, result[0].StatusName)
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/search?q=%20", nil, nil); code != http.StatusBadRequest {
-		t.Fatalf("empty search status = %d", code)
+	for _, test := range []struct {
+		query string
+		want  []string
+	}{
+		{"", []string{second.Code, first.Code}},
+		{"q=%20", []string{second.Code, first.Code}},
+		{"sort=created&dir=asc", []string{first.Code, second.Code}},
+		{"sort=title&dir=desc", []string{first.Code, second.Code}},
+		{"sort=board&dir=asc", []string{second.Code, first.Code}},
+		{"created_from=2999-01-01T00:00:00Z", nil},
+		{"updated_to=2999-01-01T00:00:00Z&board_id=" + a.ID, []string{first.Code}},
+	} {
+		var got []testTicket
+		if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/search?"+test.query, nil, &got); code != http.StatusOK {
+			t.Fatalf("search %q status = %d", test.query, code)
+		}
+		var codes []string
+		for _, ticket := range got {
+			codes = append(codes, ticket.Code)
+		}
+		if !slices.Equal(codes, test.want) {
+			t.Fatalf("search %q = %v, want %v", test.query, codes, test.want)
+		}
+	}
+	for _, query := range []string{"sort=nope", "dir=up", "created_from=yesterday", "updated_to=2026-01-01"} {
+		if code := requestJSON(t, handler, http.MethodGet, "/api/tickets/search?"+query, nil, nil); code != http.StatusBadRequest {
+			t.Fatalf("search %q status = %d, want 400", query, code)
+		}
 	}
 }
 

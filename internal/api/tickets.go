@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func scanTicket(row interface{ Scan(...any) error }, extra ...any) (ticket, error) {
@@ -173,22 +174,69 @@ func (s *Server) transitionTx(tx *sql.Tx, tid, bid, from, to, t string) error {
 	_, e := tx.Exec(`INSERT INTO ticket_status_transition(id,ticket_id,board_id,from_status_id,to_status_id,user_id,moved_at) VALUES(?,?,?,?,?,?,?)`, uid(), tid, bid, f, to, s.userID, t)
 	return e
 }
+
+var ticketSearchSorts = map[string]string{
+	"created": "t.created_at %[1]s",
+	"updated": "t.updated_at %[1]s",
+	"title":   "t.title COLLATE NOCASE %[1]s,t.code %[1]s",
+	"code":    "b.short_name %[1]s,t.number %[1]s",
+	"board":   "b.name COLLATE NOCASE %[1]s,t.number %[1]s",
+	"status":  "st.name COLLATE NOCASE %[1]s,t.number %[1]s",
+}
+
 func (s *Server) searchTickets(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if q == "" {
-		errw(w, http.StatusBadRequest, "q required")
-		return
-	}
-	q = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(q)
+	params := r.URL.Query()
 	query := `SELECT t.id,t.title,t.description,t.number,t.code,t.created_at,t.updated_at,t.due_date,t.status_updated_at,t.status_id,t.board_id,t.ticket_type_id,t.reporter_id,t.assignee_id,b.name,st.name
 		FROM ticket t JOIN board b ON b.id=t.board_id JOIN status st ON st.id=t.status_id
-		WHERE b.deleted_at IS NULL AND (t.title LIKE '%' || ? || '%' ESCAPE '\' OR t.code LIKE '%' || ? || '%' ESCAPE '\')`
-	args := []any{q, q}
-	if boardID := strings.TrimSpace(r.URL.Query().Get("board_id")); boardID != "" {
+		WHERE b.deleted_at IS NULL`
+	args := []any{}
+	if q := strings.TrimSpace(params.Get("q")); q != "" {
+		q = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(q)
+		query += ` AND (t.title LIKE '%' || ? || '%' ESCAPE '\' OR t.code LIKE '%' || ? || '%' ESCAPE '\')`
+		args = append(args, q, q)
+	}
+	if boardID := strings.TrimSpace(params.Get("board_id")); boardID != "" {
 		query += " AND t.board_id=?"
 		args = append(args, boardID)
 	}
-	query += " ORDER BY b.created_at,t.number"
+	for _, f := range []struct{ param, cond string }{
+		{"created_from", "t.created_at>=?"}, {"created_to", "t.created_at<?"},
+		{"updated_from", "t.updated_at>=?"}, {"updated_to", "t.updated_at<?"},
+	} {
+		v := strings.TrimSpace(params.Get(f.param))
+		if v == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			errw(w, http.StatusBadRequest, f.param+" must be an RFC 3339 timestamp")
+			return
+		}
+		query += " AND " + f.cond
+		args = append(args, at.UTC().Format("2006-01-02T15:04:05.000Z"))
+	}
+	sort := params.Get("sort")
+	if sort == "" {
+		sort = "created"
+	}
+	order, ok := ticketSearchSorts[sort]
+	if !ok {
+		errw(w, http.StatusBadRequest, "sort must be one of created, updated, title, code, board, status")
+		return
+	}
+	dir := params.Get("dir")
+	switch {
+	case dir == "" && (sort == "created" || sort == "updated"):
+		dir = "DESC"
+	case dir == "" || dir == "asc":
+		dir = "ASC"
+	case dir == "desc":
+		dir = "DESC"
+	default:
+		errw(w, http.StatusBadRequest, "dir must be asc or desc")
+		return
+	}
+	query += " ORDER BY " + fmt.Sprintf(order, dir) + ",t.rowid " + dir + " LIMIT 200"
 	rows, e := s.db.Query(query, args...)
 	if e != nil {
 		errw(w, http.StatusInternalServerError, e.Error())
