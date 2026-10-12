@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestMCPServerValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nonExecutable := filepath.Join(root, "not-executable.txt")
+	nonExecutable := filepath.Join(root, "not-executable"+filepath.Ext(executable))
 	if err := os.WriteFile(nonExecutable, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +70,9 @@ func TestMCPServerValidation(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "absolute non-executable command" && runtime.GOOS == "windows" {
+				t.Skip("Windows has no execute bit")
+			}
 			err := validateMCPServer(tc.config)
 			if (err == nil) != tc.valid {
 				t.Fatalf("validateMCPServer() error = %v, valid = %v", err, tc.valid)
