@@ -267,6 +267,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	addSkillTools(s, h, database, skills)
+	addQueryTools(s, database)
 	if approval != nil {
 		if approval.Timeout == 0 {
 			approval.Timeout = 10 * time.Minute

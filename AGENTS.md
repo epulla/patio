@@ -9,6 +9,7 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 - No ORM, no router library, no state or CSS framework. `database/sql`, `net/http` ServeMux patterns, React with a tiny pathname router.
 - Plans live in `docs/plans/`.
 - UI: no colored accent stripes on box edges (e.g. a primary `border-left` on callouts or a state-colored top border on cards). Use a plain `var(--border)` border.
+- New migration → update `internal/mcp/schema.md`.
 
 ## Layout
 

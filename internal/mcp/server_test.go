@@ -51,6 +51,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"update_calendar_item": true, "delete_calendar_item": true,
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
 		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
+		"query_db": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -68,8 +69,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 23 {
-		t.Fatalf("tool count = %d, want 23", count)
+	if count != 24 {
+		t.Fatalf("tool count = %d, want 24", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
