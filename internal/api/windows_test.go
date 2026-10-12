@@ -115,3 +115,23 @@ func TestConfigIncludesChatWindow(t *testing.T) {
 		t.Fatalf("config = %#v", got)
 	}
 }
+
+func TestLiveChatWindowCountExcludesSelfAndStale(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "count.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, row := range []struct{ id, chat, heartbeat string }{
+		{"self", "one", now()}, {"other", "two", now()}, {"stale", "three", "2000-01-01T00:00:00.000Z"},
+	} {
+		if _, err := database.Exec(`INSERT INTO app_window(id,chat_id,pid,heartbeat_at) VALUES(?,?,1,?)`, row.id, row.chat, row.heartbeat); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := New(database, "local", false, "dev", t.TempDir(), Options{WindowID: "self"})
+	count, err := s.LiveChatWindowCount()
+	if err != nil || count != 1 {
+		t.Fatalf("live other chat windows = %d, %v; want 1", count, err)
+	}
+}

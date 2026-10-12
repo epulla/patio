@@ -171,6 +171,51 @@ func main() {
 				}()
 			}
 		},
+		OnDomReady: func(ctx context.Context) {
+			if *chatWindow == "" {
+				return
+			}
+			screens, err := wruntime.ScreenGetAll(ctx)
+			if err != nil {
+				log.Printf("get screens for chat window: %v", err)
+				return
+			}
+			var screen *wruntime.Screen
+			for i := range screens {
+				if screens[i].IsCurrent {
+					screen = &screens[i]
+					break
+				}
+			}
+			if screen == nil {
+				for i := range screens {
+					if screens[i].IsPrimary {
+						screen = &screens[i]
+						break
+					}
+				}
+			}
+			if screen == nil {
+				log.Printf("no current or primary screen for chat window")
+				return
+			}
+			n, err := apiServer.LiveChatWindowCount()
+			if err != nil {
+				log.Printf("count live chat windows: %v", err)
+				return
+			}
+			// burnedout: assumed right-edge cascade, 32px step, wraps after 5
+			n %= 5
+			x := screen.Size.Width - 900 - 24 - 32*n
+			y := 40 + 32*n
+			if x < 0 {
+				x = 0
+			}
+			if y < 0 {
+				y = 0
+			}
+			wruntime.WindowSetPosition(ctx, x, y)
+		},
 		OnShutdown: func(context.Context) {
 			close(windowStop)
 			if err := apiServer.UnregisterWindow(); err != nil {

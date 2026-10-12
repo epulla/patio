@@ -134,6 +134,12 @@ func (s *Server) FocusCurrentWindow() {
 	}
 }
 
+func (s *Server) LiveChatWindowCount() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM app_window WHERE chat_id IS NOT NULL AND id<>? AND heartbeat_at>=?`, s.windowID, nowMinusWindowStale()).Scan(&count)
+	return count, err
+}
+
 func NewWindowID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
