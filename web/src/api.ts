@@ -6,7 +6,7 @@ export type Board = {
   created_at: string;
   updated_at: string;
 };
-export type Config = { show_hidden: boolean; version: string; chat_window: string };
+export type Config = { show_hidden: boolean; version: string; chat_window: string; open_path: string };
 export type ChatDefaults = {
   connector_id: string | null;
   folder: string | null;

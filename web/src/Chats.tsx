@@ -539,7 +539,7 @@ function Conversation({
           label={windowed ? "Open main window" : "Open in new window"}
           onClick={() =>
             api
-              .post(windowed ? "/api/windows/main" : `/api/chats/${id}/window`, {})
+              .post(windowed ? "/api/windows/main" : `/api/chats/${id}/window`, windowed ? { path: `/ai/chats/${id}` } : {})
               .catch(setError)
           }
         />

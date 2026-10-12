@@ -34,6 +34,7 @@ type Server struct {
 	attachmentsMu   sync.Mutex
 	attachments     map[string]map[string]ChatAttachment
 	chatWindow      string
+	openPath        string
 	windowID        string
 	startWindow     func([]string) error
 	focusWindow     func()
@@ -59,6 +60,7 @@ type Options struct {
 	mcpConnect      mcpConnector
 	openOAuthURL    func(string) error
 	ChatWindow      string
+	OpenPath        string
 	WindowID        string
 	StartWindow     func([]string) error
 	FocusWindow     func()
@@ -91,7 +93,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}

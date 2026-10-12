@@ -41,6 +41,7 @@ func main() {
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
 	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
 	chatWindow := flag.String("chat", "", "open a chat in its own window")
+	openPath := flag.String("open", "", "navigate main window to an app path")
 	flag.Parse()
 	home := ""
 	if *dbFile == "" {
@@ -77,8 +78,14 @@ func main() {
 	var appCtx context.Context
 	mux := http.NewServeMux()
 	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
-		DBPath:      path,
-		ChatWindow:  *chatWindow,
+		DBPath:     path,
+		ChatWindow: *chatWindow,
+		OpenPath: func() string {
+			if *chatWindow == "" {
+				return *openPath
+			}
+			return ""
+		}(),
 		WindowID:    windowID,
 		StartWindow: func(args []string) error { return startWindow(exe, args) },
 		FocusWindow: func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
@@ -141,7 +148,13 @@ func main() {
 			if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
 				log.Printf("register app window: %v", err)
 			}
-			apiServer.RunWindowHeartbeat(windowStop, apiServer.FocusCurrentWindow)
+			apiServer.RunWindowHeartbeat(windowStop, func(path string) {
+				wruntime.WindowUnminimise(ctx)
+				wruntime.WindowShow(ctx)
+				if path != "" {
+					wruntime.EventsEmit(ctx, "navigate", path)
+				}
+			})
 			backgroundCtx, cancel := context.WithCancel(ctx)
 			stopBackground = cancel
 			background.Add(1)

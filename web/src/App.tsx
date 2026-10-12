@@ -82,6 +82,8 @@ export default function App() {
     return () => unsubscribe?.();
   }, []);
 
+  useEffect(() => window.runtime?.EventsOn("navigate", (to) => navigate(String(to))), []);
+
   useEffect(() => {
     const blockFileDrop = (event: DragEvent) => {
       if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
@@ -97,8 +99,11 @@ export default function App() {
   useEffect(() => {
     api
       .get<Config>("/api/config")
-      .then(setConfig)
-      .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "" }));
+      .then((loaded) => {
+        if (loaded.open_path) navigate(loaded.open_path);
+        setConfig(loaded);
+      })
+      .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "", open_path: "" }));
   }, []);
 
   if (!config) return null;

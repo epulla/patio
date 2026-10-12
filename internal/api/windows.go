@@ -1,12 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -45,11 +49,35 @@ func (s *Server) openChatWindow(w http.ResponseWriter, r *http.Request) {
 	noContent(w)
 }
 
-func (s *Server) openMainWindow(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) openMainWindow(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path *string `json:"path"`
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		errw(w, 400, "valid JSON required")
+		return
+	}
+	if len(bytes.TrimSpace(body)) != 0 {
+		d := json.NewDecoder(bytes.NewReader(body))
+		d.DisallowUnknownFields()
+		if err := d.Decode(&in); err != nil {
+			errw(w, 400, "valid JSON required")
+			return
+		}
+	}
+	focusPath := ""
+	if in.Path != nil {
+		focusPath = *in.Path
+		if !strings.HasPrefix(focusPath, "/") || strings.HasPrefix(focusPath, "//") {
+			errw(w, 400, "path must be an app path")
+			return
+		}
+	}
 	var id string
-	err := s.db.QueryRow(`SELECT id FROM app_window WHERE chat_id IS NULL AND heartbeat_at>=? ORDER BY heartbeat_at DESC LIMIT 1`, nowMinusWindowStale()).Scan(&id)
+	err = s.db.QueryRow(`SELECT id FROM app_window WHERE chat_id IS NULL AND heartbeat_at>=? ORDER BY heartbeat_at DESC LIMIT 1`, nowMinusWindowStale()).Scan(&id)
 	if err == nil {
-		if _, err := s.db.Exec(`UPDATE app_window SET focus_at=? WHERE id=?`, now(), id); err != nil {
+		if _, err := s.db.Exec(`UPDATE app_window SET focus_at=?,focus_path=? WHERE id=?`, now(), focusPath, id); err != nil {
 			errw(w, 500, err.Error())
 			return
 		}
@@ -64,7 +92,11 @@ func (s *Server) openMainWindow(w http.ResponseWriter, _ *http.Request) {
 		errw(w, 500, "window process starter unavailable")
 		return
 	}
-	if err := s.startWindow(dbArgs(s.dbPath, s.showHidden)); err != nil {
+	args := dbArgs(s.dbPath, s.showHidden)
+	if in.Path != nil {
+		args = append(args, "-open", focusPath)
+	}
+	if err := s.startWindow(args); err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
@@ -95,7 +127,7 @@ func nullableChat(id string) any {
 	return id
 }
 
-func (s *Server) RunWindowHeartbeat(stop <-chan struct{}, focus func()) {
+func (s *Server) RunWindowHeartbeat(stop <-chan struct{}, focus func(string)) {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
@@ -109,13 +141,13 @@ func (s *Server) RunWindowHeartbeat(stop <-chan struct{}, focus func()) {
 					log.Printf("update app window heartbeat: %v", err)
 					continue
 				}
-				var value sql.NullString
-				if err := s.db.QueryRow(`SELECT focus_at FROM app_window WHERE id=?`, s.windowID).Scan(&value); err != nil {
+				var value, focusPath sql.NullString
+				if err := s.db.QueryRow(`SELECT focus_at,focus_path FROM app_window WHERE id=?`, s.windowID).Scan(&value, &focusPath); err != nil {
 					log.Printf("read app window focus request: %v", err)
 					continue
 				}
 				if value.Valid && (!seen.Valid || value.String != seen.String) {
-					focus()
+					focus(focusPath.String)
 					seen = value
 				}
 			}

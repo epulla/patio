@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +72,58 @@ func TestMainWindowFocusOrStart(t *testing.T) {
 	}
 }
 
+func TestMainWindowFocusStoresPath(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "focus-path.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`INSERT INTO app_window(id,pid,heartbeat_at) VALUES('main',1,?)`, now()); err != nil {
+		t.Fatal(err)
+	}
+	s := New(database, "local", false, "dev", t.TempDir(), Options{WindowID: "caller"})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/windows/main", strings.NewReader(`{"path":"/boards/b"}`)))
+	var got string
+	if w.Code != 204 {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if err := database.QueryRow(`SELECT focus_path FROM app_window WHERE id='main'`).Scan(&got); err != nil || got != "/boards/b" {
+		t.Fatalf("focus path = %q, %v", got, err)
+	}
+}
+
+func TestMainWindowColdStartPassesOpenPath(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "cold-open.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var got []string
+	s := New(database, "local", false, "dev", t.TempDir(), Options{DBPath: "db", StartWindow: func(args []string) error { got = args; return nil }})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/windows/main", strings.NewReader(`{"path":"/boards/b"}`)))
+	if w.Code != 204 || !reflect.DeepEqual(got, []string{"-d", "db", "-open", "/boards/b"}) {
+		t.Fatalf("status=%d args=%v", w.Code, got)
+	}
+}
+
+func TestMainWindowRejectsInvalidPath(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "invalid-open.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s := New(database, "local", false, "dev", t.TempDir())
+	for _, path := range []string{"relative", "//boards"} {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/windows/main", strings.NewReader(`{"path":"`+path+`"}`)))
+		if w.Code != 400 {
+			t.Errorf("path %q status = %d", path, w.Code)
+		}
+	}
+}
+
 func TestChatTurnGuardLiveAndStale(t *testing.T) {
 	database, err := db.Open(filepath.Join(t.TempDir(), "guard.db"))
 	if err != nil {
@@ -104,7 +158,7 @@ func TestConfigIncludesChatWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	s := New(database, "local", false, "dev", t.TempDir(), Options{ChatWindow: "chat-id"})
+	s := New(database, "local", false, "dev", t.TempDir(), Options{ChatWindow: "chat-id", OpenPath: "/boards/b"})
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/config", nil))
 	var got map[string]any
@@ -113,6 +167,9 @@ func TestConfigIncludesChatWindow(t *testing.T) {
 	}
 	if got["chat_window"] != "chat-id" {
 		t.Fatalf("config = %#v", got)
+	}
+	if got["open_path"] != "/boards/b" {
+		t.Fatalf("open_path = %#v", got["open_path"])
 	}
 }
 
