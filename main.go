@@ -24,11 +24,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"my-tickets/internal/api"
-	"my-tickets/internal/db"
-	mcpserver "my-tickets/internal/mcp"
-	"my-tickets/internal/reminder"
-	"my-tickets/web"
+	"patio/internal/api"
+	"patio/internal/db"
+	mcpserver "patio/internal/mcp"
+	"patio/internal/reminder"
+	"patio/web"
 )
 
 var version = "dev"
@@ -258,7 +258,7 @@ func appTitle(chatTitle string) string {
 	if chatTitle != "" {
 		return chatTitle
 	}
-	return "My Tickets"
+	return "Patio"
 }
 func appWidth(chatID string) int {
 	if chatID != "" {
@@ -351,15 +351,15 @@ func dbPath(flagValue, goos string, getenv func(string) string, home string) (st
 			return "", fmt.Errorf("LOCALAPPDATA is not set")
 		}
 		// Use Local instead of Roaming because SQLite WAL breaks on redirected or network Roaming profiles.
-		return filepath.Join(local, "my-tickets", "my-tickets.db"), nil
+		return filepath.Join(local, "patio", "patio.db"), nil
 	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "my-tickets", "my-tickets.db"), nil
+		return filepath.Join(home, "Library", "Application Support", "patio", "patio.db"), nil
 	default:
 		xdg := getenv("XDG_DATA_HOME")
 		if path.IsAbs(xdg) {
-			return filepath.Join(xdg, "my-tickets", "my-tickets.db"), nil
+			return filepath.Join(xdg, "patio", "patio.db"), nil
 		}
-		return filepath.Join(home, ".local", "share", "my-tickets", "my-tickets.db"), nil
+		return filepath.Join(home, ".local", "share", "patio", "patio.db"), nil
 	}
 }
 

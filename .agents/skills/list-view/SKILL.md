@@ -1,6 +1,6 @@
 ---
 name: list-view
-description: Conventions for list pages in the my-tickets web UI (web/src) such as Skills, and any new list of user-managed items (servers, templates, presets). Use when building or changing a page that lists items with enable/disable, edit, remove, sort, or a create flow.
+description: Conventions for list pages in the Patio web UI (web/src) such as Skills, and any new list of user-managed items (servers, templates, presets). Use when building or changing a page that lists items with enable/disable, edit, remove, sort, or a create flow.
 ---
 
 # List view conventions

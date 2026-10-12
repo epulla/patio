@@ -10,17 +10,17 @@ import (
 	"testing"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
-	"my-tickets/internal/db"
+	connectorcli "patio/internal/connector"
+	"patio/internal/db"
 )
 
 func TestChatThinkingOffLive(t *testing.T) {
-	if os.Getenv("MY_TICKETS_CHAT_THINKING_LIVE") != "1" {
-		t.Skip("set MY_TICKETS_CHAT_THINKING_LIVE=1 for logged-in Codex and Copilot checks")
+	if os.Getenv("PATIO_CHAT_THINKING_LIVE") != "1" {
+		t.Skip("set PATIO_CHAT_THINKING_LIVE=1 for logged-in Codex and Copilot checks")
 	}
-	binary := os.Getenv("MY_TICKETS_BINARY")
+	binary := os.Getenv("PATIO_BINARY")
 	if binary == "" {
-		t.Fatal("MY_TICKETS_BINARY is required")
+		t.Fatal("PATIO_BINARY is required")
 	}
 	root := t.TempDir()
 	dbPath := filepath.Join(root, "thinking-live.db")

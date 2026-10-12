@@ -126,7 +126,7 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 		if result.err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 		}
-		_, _ = w.Write([]byte("<!doctype html><title>my-tickets</title>You can close this window."))
+		_, _ = w.Write([]byte("<!doctype html><title>patio</title>You can close this window."))
 		select {
 		case callback <- result:
 		default:
@@ -141,7 +141,7 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 	client := &http.Client{Timeout: 15 * time.Second}
 	authHandler, err := auth.NewAuthorizationCodeHandler(&auth.AuthorizationCodeHandlerConfig{
 		DynamicClientRegistrationConfig: &auth.DynamicClientRegistrationConfig{Metadata: &oauthex.ClientRegistrationMetadata{
-			ClientName:    "my-tickets",
+			ClientName:    "patio",
 			RedirectURIs:  []string{redirectURL},
 			GrantTypes:    []string{"authorization_code", "refresh_token"},
 			ResponseTypes: []string{"code"},
@@ -202,7 +202,7 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 		OAuthHandler:         authHandler,
 		DisableStandaloneSSE: true,
 	}
-	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "my-tickets", Version: "1.0.0"}, nil)
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "patio", Version: "1.0.0"}, nil)
 	session, err := mcpClient.Connect(ctx, transport, nil)
 	if err != nil {
 		return fmt.Errorf("connect to OAuth MCP server: %w", err)

@@ -262,7 +262,7 @@ func (s *Server) settingsAbout(w http.ResponseWriter, _ *http.Request) {
 	about := settingsAbout{
 		Version: s.version, OS: runtime.GOOS, Arch: runtime.GOARCH,
 		DBPath: s.dbPath, DataDir: s.dbDir, ShowHidden: s.showHidden,
-		SecretsStore: secretsStore(), RepoURL: "https://github.com/epulla/my-tickets",
+		SecretsStore: secretsStore(), RepoURL: "https://github.com/epulla/patio",
 	}
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&about.SchemaVersion); err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())

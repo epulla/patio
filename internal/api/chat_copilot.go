@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/zalando/go-keyring"
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 const copilotAuthError = "Sign in to Copilot: run `copilot login` (Connectors → Log in)"
@@ -386,7 +386,7 @@ func (d *copilotRuntime) handlePermission(message acpMessage) {
 
 func isTicketMCPTool(name string) bool {
 	name = strings.ToLower(name)
-	return strings.Contains(name, "my-tickets") || strings.HasPrefix(name, "mcp__my_tickets__")
+	return strings.Contains(name, "patio") || strings.HasPrefix(name, "mcp__patio__")
 }
 
 func findACPOption(options []struct {

@@ -35,7 +35,7 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	stdio := mcpServerSpec{Name: "stdio-test", Kind: "stdio", Command: "/bin/test", Args: []string{"--fixture"}, Env: map[string]string{"TOKEN": "stdio-secret"}}
 	token := "Bearer http-secret"
 	httpServer := mcpServerSpec{Name: "http-test", Kind: "http", URL: "https://mcp.example.test/mcp", OAuthHeader: &token}
-	ticket := map[string]any{"command": "/app/my-tickets", "args": []string{"mcp", "-d", "/data/test.db"}}
+	ticket := map[string]any{"command": "/app/patio", "args": []string{"mcp", "-d", "/data/test.db"}}
 	external := []mcpServerSpec{stdio, httpServer}
 
 	claude := claudeMCPServers(ticket, external)
@@ -59,7 +59,7 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	}
 
 	copilot := copilotMCPServers(ticket, external)
-	if len(copilot) != 3 || copilot[0].(map[string]any)["name"] != "my-tickets" {
+	if len(copilot) != 3 || copilot[0].(map[string]any)["name"] != "patio" {
 		t.Fatalf("Copilot servers = %#v", copilot)
 	}
 	copilotStdio := copilot[1].(map[string]any)
@@ -71,7 +71,7 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 		t.Fatalf("Copilot HTTP config = %#v", copilotHTTP)
 	}
 
-	opencode := opencodeMCPServers("/app/my-tickets", ticket["args"].([]string), external)
+	opencode := opencodeMCPServers("/app/patio", ticket["args"].([]string), external)
 	opencodeStdio := opencode["stdio-test"].(map[string]any)
 	if opencodeStdio["type"] != "local" || !reflect.DeepEqual(opencodeStdio["command"], []string{"/bin/test", "--fixture"}) || !reflect.DeepEqual(opencodeStdio["environment"], stdio.Env) {
 		t.Fatalf("opencode stdio config = %#v", opencodeStdio)
@@ -80,9 +80,9 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	if opencodeHTTP["type"] != "remote" || opencodeHTTP["url"] != httpServer.URL || opencodeHTTP["headers"].(map[string]string)["Authorization"] != token {
 		t.Fatalf("opencode HTTP config = %#v", opencodeHTTP)
 	}
-	opencodeV2 := opencodeV2MCPServers("/app/my-tickets", ticket["args"].([]string), external)["servers"].(map[string]any)
-	opencodeV2Ticket := opencodeV2["my-tickets"].(map[string]any)
-	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/my-tickets", "mcp", "-d", "/data/test.db"}) {
+	opencodeV2 := opencodeV2MCPServers("/app/patio", ticket["args"].([]string), external)["servers"].(map[string]any)
+	opencodeV2Ticket := opencodeV2["patio"].(map[string]any)
+	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/patio", "mcp", "-d", "/data/test.db"}) {
 		t.Fatalf("opencode v2 ticket config = %#v", opencodeV2Ticket)
 	}
 	opencodeV2Stdio := opencodeV2["stdio-test"].(map[string]any)
@@ -127,7 +127,7 @@ func TestClaudeMCPConfigIsPrivateAndRemoved(t *testing.T) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		t.Fatal(err)
 	}
-	if len(config.Servers) != 3 || config.Servers["my-tickets"] == nil || config.Servers["disabled-test"] != nil {
+	if len(config.Servers) != 3 || config.Servers["patio"] == nil || config.Servers["disabled-test"] != nil {
 		t.Fatalf("Claude configured servers = %#v", config.Servers)
 	}
 	stdio := config.Servers["stdio-test"]

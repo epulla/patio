@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 type testBoard struct {

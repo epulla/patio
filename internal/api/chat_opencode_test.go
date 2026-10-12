@@ -243,7 +243,7 @@ func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
 	if config.Permission["*"] != "ask" || config.Permission["edit"] != "ask" || config.Permission["bash"] != "ask" || config.Permission["webfetch"] != "ask" {
 		return nil, fmt.Errorf("unexpected permission config: %#v", config.Permission)
 	}
-	mcp := config.MCP["my-tickets"]
+	mcp := config.MCP["patio"]
 	if len(config.MCP) != 3 || config.MCP["disabled-test"].Type != "" || mcp.Type != "local" || !mcp.Enabled || len(mcp.Command) != 4 || mcp.Command[1] != "mcp" || mcp.Command[2] != "-d" || mcp.Command[3] == "" {
 		return nil, fmt.Errorf("unexpected ticket MCP config: %#v", mcp)
 	}
@@ -619,7 +619,7 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 			}
 		}
 	}
-	ticket := config.MCP.Servers["my-tickets"]
+	ticket := config.MCP.Servers["patio"]
 	if len(config.MCP.Servers) != 3 || !wantPermissions["edit"] || !wantPermissions["shell"] || !wantPermissions["webfetch"] || ticket.Type != "local" || ticket.Disabled == nil || *ticket.Disabled || len(ticket.Command) != 4 {
 		return nil, fmt.Errorf("unexpected v2 opencode config: %#v", config)
 	}

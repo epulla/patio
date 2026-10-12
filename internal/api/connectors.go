@@ -14,7 +14,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-const connectorService = "my-tickets"
+const connectorService = "patio"
 
 type connector struct {
 	ID        string  `json:"id"`

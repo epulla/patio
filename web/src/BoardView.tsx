@@ -109,7 +109,7 @@ export default function BoardView({
 const exportFormats = [
   ["xlsx", "Excel (.xlsx)", "Spreadsheet of tickets"],
   ["csv", "CSV", "Plain table"],
-  ["json", "JSON backup", "Import into my-tickets on another computer"],
+  ["json", "JSON backup", "Import into Patio on another computer"],
 ];
 
 function ExportMenu({ boardId }: { boardId: string }) {

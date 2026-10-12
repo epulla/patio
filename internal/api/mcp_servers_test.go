@@ -53,7 +53,7 @@ func TestMCPServerValidation(t *testing.T) {
 		{"valid localhost HTTP", func() mcpServerConfig { c := validHTTP; c.URL = "http://localhost:8080/mcp"; return c }(), true},
 		{"empty name", func() mcpServerConfig { c := validStdio; c.Name = ""; return c }(), false},
 		{"long name", func() mcpServerConfig { c := validStdio; c.Name = strings.Repeat("a", 65); return c }(), false},
-		{"reserved sanitized name", func() mcpServerConfig { c := validStdio; c.Name = "My Tickets"; return c }(), false},
+		{"reserved sanitized name", func() mcpServerConfig { c := validStdio; c.Name = "Patio"; return c }(), false},
 		{"missing command", func() mcpServerConfig { c := validStdio; c.Command = ""; return c }(), false},
 		{"absolute directory command", func() mcpServerConfig { c := validStdio; c.Command = directory; return c }(), false},
 		{"absolute non-executable command", func() mcpServerConfig { c := validStdio; c.Command = nonExecutable; return c }(), false},
@@ -197,7 +197,7 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 func TestMCPServerNamesAndEnabledSpec(t *testing.T) {
 	keyring.MockInit()
 	database, handler, root := chatAPI(t)
-	body := map[string]any{"name": "My Tickets", "kind": "http", "url": "https://example.test/mcp"}
+	body := map[string]any{"name": "Patio", "kind": "http", "url": "https://example.test/mcp"}
 	if code := requestJSON(t, handler, http.MethodPost, "/api/mcp-servers", body, nil); code != http.StatusBadRequest {
 		t.Fatalf("reserved name status = %d", code)
 	}

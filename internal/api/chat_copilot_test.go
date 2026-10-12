@@ -306,7 +306,7 @@ func serveCopilotFake(process *pipeChatProcess, method func(acpMessage), process
 			var params map[string]any
 			_ = json.Unmarshal(request.Params, &params)
 			servers, ok := params["mcpServers"].([]any)
-			if !ok || len(servers) != 3 || servers[0].(map[string]any)["name"] != "my-tickets" || len(servers[0].(map[string]any)["env"].([]any)) != 0 {
+			if !ok || len(servers) != 3 || servers[0].(map[string]any)["name"] != "patio" || len(servers[0].(map[string]any)["env"].([]any)) != 0 {
 				return
 			}
 			stdio := servers[1].(map[string]any)

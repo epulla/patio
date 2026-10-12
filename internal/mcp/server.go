@@ -16,7 +16,7 @@ import (
 	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
-	"my-tickets/internal/api"
+	"patio/internal/api"
 )
 
 type boardArgs struct {
@@ -171,7 +171,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
 	}
-	s := sdk.NewServer(&sdk.Implementation{Name: "my-tickets", Version: version}, &sdk.ServerOptions{Instructions: instructions})
+	s := sdk.NewServer(&sdk.Implementation{Name: "patio", Version: version}, &sdk.ServerOptions{Instructions: instructions})
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
@@ -332,7 +332,7 @@ func approvalHandler(ctx context.Context, options *ApprovalOptions, in approveAr
 	if input == nil {
 		return nil, nil, fmt.Errorf("input must be an object")
 	}
-	toolName := strings.TrimPrefix(in.ToolName, "mcp__my-tickets__")
+	toolName := strings.TrimPrefix(in.ToolName, "mcp__patio__")
 	if toolName == "list_skills" || toolName == "load_skill" {
 		return approvalAllowResult(in.Input)
 	}
@@ -401,7 +401,7 @@ func approvalResult(data []byte) *sdk.CallToolResult {
 
 func Check(ctx context.Context, t sdk.Transport) ([]*sdk.Tool, time.Duration, error) {
 	start := time.Now()
-	client := sdk.NewClient(&sdk.Implementation{Name: "my-tickets-check", Version: "1"}, nil)
+	client := sdk.NewClient(&sdk.Implementation{Name: "patio-check", Version: "1"}, nil)
 	session, err := client.Connect(ctx, t, nil)
 	if err != nil {
 		return nil, time.Since(start), fmt.Errorf("connect: %w", err)

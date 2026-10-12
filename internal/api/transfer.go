@@ -298,7 +298,7 @@ func (s *Server) backup(id string) (boardBackup, error) {
 		b.Users = append(b.Users, u)
 	}
 	sort.Slice(b.Users, func(i, j int) bool { return b.Users[i].ID < b.Users[j].ID })
-	b.Format = "my-tickets-board"
+	b.Format = "patio-board"
 	b.Version = 1
 	b.ExportedAt = now()
 	return b, nil
@@ -501,7 +501,7 @@ func (s *Server) ticketExport(id string) (ticketExport, error) {
 func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
 	var b boardBackup
-	if json.NewDecoder(r.Body).Decode(&b) != nil || b.Format != "my-tickets-board" || b.Version != 1 {
+	if json.NewDecoder(r.Body).Decode(&b) != nil || b.Format != "patio-board" || b.Version != 1 {
 		errw(w, 400, "invalid board backup")
 		return
 	}

@@ -34,7 +34,7 @@ export default function McpServers({ refresh }: { refresh: number }) {
         </button>
       </div>
       <p className="muted">
-        Enabled servers are available in every chat, next to the built-in my-tickets tools (status in{" "}
+        Enabled servers are available in every chat, next to the built-in Patio tools (status in{" "}
         <a
           href="/settings"
           onClick={(event) => {

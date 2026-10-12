@@ -19,7 +19,7 @@ Use this workflow for local builds and tagged GitHub releases. Never skip requir
 3. Optional: stamp a version with `wails build -ldflags "-X main.version=<v>"`.
    Untagged builds default to `dev`.
 4. Smoke-test macOS build:
-   `build/bin/my-tickets.app/Contents/MacOS/my-tickets -d "$(mktemp -d)/test.db"`
+   `build/bin/patio.app/Contents/MacOS/patio -d "$(mktemp -d)/test.db"`
 5. Report build outputs in `build/bin/`.
 
 ## GitHub release
@@ -70,10 +70,10 @@ Use this workflow for local builds and tagged GitHub releases. Never skip requir
 4. On success, check assets with
    `gh release view vX.Y.Z --json assets -q '.assets[].name'`.
 5. Require exactly these four names:
-   - `my-tickets-darwin-arm64.zip`
-   - `my-tickets-darwin-amd64.zip`
-   - `my-tickets-windows-amd64.exe`
-   - `my-tickets-linux-amd64`
+   - `patio-darwin-arm64.zip`
+   - `patio-darwin-amd64.zip`
+   - `patio-windows-amd64.exe`
+   - `patio-linux-amd64`
 6. Workflow auto-generates release notes. Tag builds stamp version via
    `-ldflags "-X main.version=<tag>"`; app shows version bottom-right and MCP
    `serverInfo` reports it.

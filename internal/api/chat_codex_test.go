@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 func TestCodexTurnOverPipes(t *testing.T) {
@@ -72,7 +72,7 @@ func TestCodexTurnOverPipes(t *testing.T) {
 						}
 						config, _ := params["config"].(map[string]any)
 						servers, _ := config["mcp_servers"].(map[string]any)
-						if len(servers) != 3 || servers["my-tickets"] == nil || servers["disabled-test"] != nil {
+						if len(servers) != 3 || servers["patio"] == nil || servers["disabled-test"] != nil {
 							return fmt.Errorf("thread/start missing MCP config: %#v", config)
 						}
 						stdio, _ := servers["stdio-test"].(map[string]any)

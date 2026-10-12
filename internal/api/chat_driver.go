@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 const chatApprovalTimeout = 10 * time.Minute

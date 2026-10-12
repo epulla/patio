@@ -2,10 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"my-tickets/internal/db"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"patio/internal/db"
 	"reflect"
 	"strings"
 	"testing"

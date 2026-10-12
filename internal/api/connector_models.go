@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 type selectableModel struct {

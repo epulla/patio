@@ -88,7 +88,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 		}
 	}
 	if dbPath == "" {
-		dbPath = filepath.Join(dbDir, "my-tickets.db")
+		dbPath = filepath.Join(dbDir, "patio.db")
 	}
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)

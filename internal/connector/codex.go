@@ -78,7 +78,7 @@ func (c *Client) Initialize(ctx context.Context, version string) error {
 		version = "dev"
 	}
 	var ignored json.RawMessage
-	if err := c.Call(ctx, "initialize", map[string]any{"clientInfo": map[string]string{"name": "my_tickets", "title": "my-tickets", "version": version}}, &ignored); err != nil {
+	if err := c.Call(ctx, "initialize", map[string]any{"clientInfo": map[string]string{"name": "patio", "title": "Patio", "version": version}}, &ignored); err != nil {
 		return err
 	}
 	return c.Notify("initialized", map[string]any{})

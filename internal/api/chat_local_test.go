@@ -17,7 +17,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
-	"my-tickets/internal/filetools"
+	"patio/internal/filetools"
 )
 
 func TestLocalChatPlainAndThinkStripping(t *testing.T) {

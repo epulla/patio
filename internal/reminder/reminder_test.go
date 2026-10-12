@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 func TestDue(t *testing.T) {

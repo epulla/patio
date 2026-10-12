@@ -1,6 +1,6 @@
 ---
 name: icon-button
-description: Conventions for icon-only buttons and hover tooltips in the my-tickets web UI (web/src). Use when adding or changing any button that shows only an icon (header actions, toolbar buttons, row actions, open-in-window, delete, collapse), or any element that needs a hover/focus tooltip, so it gets the shared `IconButton`, an accessible name, and the custom `data-tip` tooltip instead of a native `title`.
+description: Conventions for icon-only buttons and hover tooltips in the Patio web UI (web/src). Use when adding or changing any button that shows only an icon (header actions, toolbar buttons, row actions, open-in-window, delete, collapse), or any element that needs a hover/focus tooltip, so it gets the shared `IconButton`, an accessible name, and the custom `data-tip` tooltip instead of a native `title`.
 ---
 
 # Icon buttons and tooltips

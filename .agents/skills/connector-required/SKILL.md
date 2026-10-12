@@ -1,6 +1,6 @@
 ---
 name: connector-required
-description: Conventions for my-tickets web UI (web/src) pages that need an AI connector to do anything, such as Chats and Scheduled tasks. Use when building or changing any AI feature page, form, or empty state that picks a connector (chat, scheduled task, agent, automation, prompt runner), so users with no connectors get pointed to the Connectors page instead of an empty picker.
+description: Conventions for Patio web UI (web/src) pages that need an AI connector to do anything, such as Chats and Scheduled tasks. Use when building or changing any AI feature page, form, or empty state that picks a connector (chat, scheduled task, agent, automation, prompt runner), so users with no connectors get pointed to the Connectors page instead of an empty picker.
 ---
 
 # Connector required

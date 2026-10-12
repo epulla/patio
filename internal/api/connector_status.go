@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
-	connectorstatus "my-tickets/internal/connector"
+	connectorstatus "patio/internal/connector"
 )
 
 func (s *Server) connectorStatus(w http.ResponseWriter, r *http.Request) {

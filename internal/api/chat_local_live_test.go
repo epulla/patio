@@ -17,14 +17,14 @@ import (
 )
 
 func TestLocalOllamaLive(t *testing.T) {
-	if os.Getenv("MY_TICKETS_LOCAL_LIVE") != "1" {
-		t.Skip("set MY_TICKETS_LOCAL_LIVE=1 for local Ollama checks")
+	if os.Getenv("PATIO_LOCAL_LIVE") != "1" {
+		t.Skip("set PATIO_LOCAL_LIVE=1 for local Ollama checks")
 	}
-	binary := os.Getenv("MY_TICKETS_BINARY")
+	binary := os.Getenv("PATIO_BINARY")
 	if binary == "" {
-		t.Fatal("MY_TICKETS_BINARY is required")
+		t.Fatal("PATIO_BINARY is required")
 	}
-	baseURL := os.Getenv("MY_TICKETS_LOCAL_URL")
+	baseURL := os.Getenv("PATIO_LOCAL_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:11434/v1"
 	}

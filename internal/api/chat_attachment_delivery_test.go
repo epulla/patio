@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 func deliveryAttachments(t *testing.T) (string, []ChatAttachment, []byte) {

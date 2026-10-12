@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
-	conn "my-tickets/internal/connector"
+	conn "patio/internal/connector"
 )
 
 var codexLogins = struct {

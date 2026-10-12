@@ -15,18 +15,18 @@ jobs:
         include:
           - os: macos-latest
             platform: darwin/arm64
-            artifact: my-tickets-darwin-arm64.zip
+            artifact: patio-darwin-arm64.zip
             app: true
           - os: macos-latest
             platform: darwin/amd64
-            artifact: my-tickets-darwin-amd64.zip
+            artifact: patio-darwin-amd64.zip
             app: true
           - os: windows-latest
             platform: windows/amd64
-            artifact: my-tickets-windows-amd64.exe
+            artifact: patio-windows-amd64.exe
           - os: ubuntu-22.04
             platform: linux/amd64
-            artifact: my-tickets-linux-amd64
+            artifact: patio-linux-amd64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
         run: |
           $request = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"1"}}}'
           $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-          $startInfo.FileName = "build/bin/my-tickets.exe"
+          $startInfo.FileName = "build/bin/patio.exe"
           $startInfo.ArgumentList.Add("mcp")
           $startInfo.UseShellExecute = $false
           $startInfo.RedirectStandardInput = $true
@@ -74,7 +74,7 @@ jobs:
             $process.StandardInput.WriteLine($request)
             $process.StandardInput.Flush()
             $response = $process.StandardOutput.ReadLine()
-            if ($response -notmatch '"name"\s*:\s*"my-tickets"') {
+            if ($response -notmatch '"name"\s*:\s*"patio"') {
               throw "MCP initialize response missing server name: $response"
             }
             $process.StandardInput.Close()
@@ -90,11 +90,11 @@ jobs:
           }
       - name: Zip macOS app
         if: matrix.app == true
-        run: ditto -c -k --sequesterRsrc --keepParent build/bin/my-tickets.app ${{ matrix.artifact }}
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/patio.app ${{ matrix.artifact }}
       - name: Stage other build
         if: matrix.app != true
         shell: bash
-        run: cp build/bin/my-tickets${{ runner.os == 'Windows' && '.exe' || '' }} "${{ matrix.artifact }}"
+        run: cp build/bin/patio${{ runner.os == 'Windows' && '.exe' || '' }} "${{ matrix.artifact }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

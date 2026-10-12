@@ -175,7 +175,7 @@ export default function App() {
     <div className="app">
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-head">
-          <span className="brand nav-label">my-tickets</span>
+          <span className="brand nav-label">Patio</span>
           <IconButton
             className="ghost"
             icon={collapsed ? "chevronsRight" : "chevronsLeft"}

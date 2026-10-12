@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 func TestOpenCodeV2Live(t *testing.T) {
-	if os.Getenv("MY_TICKETS_OPENCODE_V2_LIVE") != "1" {
-		t.Skip("set MY_TICKETS_OPENCODE_V2_LIVE=1 for sandboxed OpenCode v2 checks")
+	if os.Getenv("PATIO_OPENCODE_V2_LIVE") != "1" {
+		t.Skip("set PATIO_OPENCODE_V2_LIVE=1 for sandboxed OpenCode v2 checks")
 	}
 	sandbox := os.Getenv("OPENCODE_V2_SANDBOX")
 	if sandbox == "" {
@@ -36,9 +36,9 @@ func TestOpenCodeV2Live(t *testing.T) {
 		}
 	}
 
-	binary := os.Getenv("MY_TICKETS_BINARY")
+	binary := os.Getenv("PATIO_BINARY")
 	if binary == "" {
-		t.Fatal("MY_TICKETS_BINARY is required")
+		t.Fatal("PATIO_BINARY is required")
 	}
 	database, _, root := chatAPI(t)
 	dbPath := filepath.Join(root, "test.db")

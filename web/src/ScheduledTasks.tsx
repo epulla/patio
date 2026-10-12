@@ -198,7 +198,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       </div>
       <p className="muted">
         A scheduled task sends a prompt to an AI connector at the times you pick. Each run starts a new chat. Tasks
-        run only while My Tickets is open.
+        run only while Patio is open.
       </p>
       <ErrorText error={error} />
 
@@ -609,7 +609,7 @@ function TaskEditor({
           )}
           <ErrorText error={preview.error} />
         </div>
-        <p className="muted">Runs only while My Tickets is open.</p>
+        <p className="muted">Runs only while Patio is open.</p>
 
         <ErrorText error={error} />
         <div className="connector-buttons">

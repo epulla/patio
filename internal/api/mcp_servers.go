@@ -212,8 +212,8 @@ func validateMCPServer(config mcpServerConfig) error {
 	if sanitized == "" {
 		return errors.New("name must produce a CLI identifier")
 	}
-	if strings.EqualFold(sanitized, "my-tickets") {
-		return errors.New("name produces reserved identifier my-tickets")
+	if strings.EqualFold(sanitized, "patio") {
+		return errors.New("name produces reserved identifier patio")
 	}
 	if !validMCPEnv(config.Env) {
 		return errors.New("environment keys must match [A-Za-z_][A-Za-z0-9_]*")
@@ -795,7 +795,7 @@ func (s *Server) mcpServerCheckSpec(ctx context.Context, server mcpServer) (mcpS
 }
 
 func connectMCP(ctx context.Context, spec mcpServerSpec) (*mcp.ClientSession, func(), error) {
-	client := mcp.NewClient(&mcp.Implementation{Name: "my-tickets-health-check", Version: "1"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "patio-health-check", Version: "1"}, nil)
 	var transport mcp.Transport
 	var cmd *exec.Cmd
 	var httpClient *http.Client

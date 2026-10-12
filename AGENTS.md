@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Local kanban desktop app: Go + SQLite + Wails v2 + React UI. `my-tickets mcp` exposes AI access over stdio. See README.md for features and usage.
+AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go + SQLite + Wails v2 + React UI. `patio mcp` exposes AI access over stdio. See README.md for features and usage.
 
 ## Rules
 
@@ -33,7 +33,7 @@ Local kanban desktop app: Go + SQLite + Wails v2 + React UI. `my-tickets mcp` ex
 - Multi-row writes run in one transaction. Never ignore DB or JSON errors.
 - Lists with timestamps sort by timestamp, then `rowid` (insertion order), not random ids.
 - `-show-hidden` only affects the UI (comments, assignee). The API always serves them.
-- JSON backup format `my-tickets-board` version 1 must stay backward compatible. Import validates all references and remaps every id.
+- JSON backup format `patio-board` version 1 must stay backward compatible. Import validates all references and remaps every id.
 - Sanitize every rendered HTML description with DOMPurify. CSV/xlsx cells starting with `= + - @` get a leading `'`.
 
 ## Verify
@@ -48,4 +48,4 @@ make release                      # CGO-free Windows compile check
 
 Install Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0`.
 
-Smoke-test with a throwaway data dir: `build/bin/my-tickets.app/Contents/MacOS/my-tickets -d "$(mktemp -d)/test.db"`.
+Smoke-test with a throwaway data dir: `build/bin/patio.app/Contents/MacOS/patio -d "$(mktemp -d)/test.db"`.

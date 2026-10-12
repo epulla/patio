@@ -17,12 +17,12 @@ import (
 	"sync"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 const (
 	chatLineLimit    = 10 << 20
-	chatSystemPrompt = "You are chatting inside the my-tickets desktop app. Reply in Markdown. When you mention a ticket or board you read, created, or changed with the my-tickets tools, link it with an app path: tickets as [CODE: Title](/tickets/<ticket id>) and boards as [Board name](/boards/<board id>), using the ids returned by the tools. Never invent ids."
+	chatSystemPrompt = "You are chatting inside the patio desktop app. Reply in Markdown. When you mention a ticket or board you read, created, or changed with the patio tools, link it with an app path: tickets as [CODE: Title](/tickets/<ticket id>) and boards as [Board name](/boards/<board id>), using the ids returned by the tools. Never invent ids."
 )
 
 type chatCommandBuilder func(exe, dbPath, chatID, model, sessionID string) ([]string, error)
@@ -109,7 +109,7 @@ func buildClaudeArgsWithConfig(model, sessionID, configPath string) []string {
 	if model != "" {
 		args = append(args, "--model", model)
 	}
-	args = append(args, "--mcp-config", configPath, "--strict-mcp-config", "--permission-prompt-tool", "mcp__my-tickets__approve")
+	args = append(args, "--mcp-config", configPath, "--strict-mcp-config", "--permission-prompt-tool", "mcp__patio__approve")
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}

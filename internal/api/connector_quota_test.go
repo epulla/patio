@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/zalando/go-keyring"
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 func TestClaudeQuotaStoredSlot(t *testing.T) {

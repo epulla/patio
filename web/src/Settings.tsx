@@ -334,7 +334,7 @@ export default function Settings() {
 
   const config = status
     ? JSON.stringify(
-        { mcpServers: { "my-tickets": { command: status.command, args: status.args } } },
+        { mcpServers: { patio: { command: status.command, args: status.args } } },
         null,
         2,
       )

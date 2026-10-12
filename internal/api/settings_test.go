@@ -201,7 +201,7 @@ func TestSettingsAboutAndReveal(t *testing.T) {
 	}
 	aboutDBPath, pathErr := filepath.EvalSymlinks(about.DBPath)
 	aboutDataDir, dirErr := filepath.EvalSymlinks(about.DataDir)
-	if pathErr != nil || dirErr != nil || about.Version != "dev" || about.OS != runtime.GOOS || about.Arch != runtime.GOARCH || aboutDBPath != canonicalDBPath || aboutDataDir != canonicalRoot || about.DataDirBytes < info.Size() || about.Approximate || about.Counts != (settingsCounts{Boards: 1, Tickets: 1, Chats: 1, Connectors: 1, MCPServers: 1, Skills: 1}) || about.SchemaVersion != schema || !about.ShowHidden || about.SecretsStore == "" || about.RepoURL != "https://github.com/epulla/my-tickets" {
+	if pathErr != nil || dirErr != nil || about.Version != "dev" || about.OS != runtime.GOOS || about.Arch != runtime.GOARCH || aboutDBPath != canonicalDBPath || aboutDataDir != canonicalRoot || about.DataDirBytes < info.Size() || about.Approximate || about.Counts != (settingsCounts{Boards: 1, Tickets: 1, Chats: 1, Connectors: 1, MCPServers: 1, Skills: 1}) || about.SchemaVersion != schema || !about.ShowHidden || about.SecretsStore == "" || about.RepoURL != "https://github.com/epulla/patio" {
 		t.Fatalf("about fields = %#v", about)
 	}
 	var revealed []string

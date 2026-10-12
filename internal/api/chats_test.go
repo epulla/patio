@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/zalando/go-keyring"
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 func chatAPI(t *testing.T) (*sql.DB, http.Handler, string) {

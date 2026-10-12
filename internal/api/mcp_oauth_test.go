@@ -17,7 +17,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 type fakeOAuthServer struct {
@@ -54,7 +54,7 @@ func (f *fakeOAuthServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ClientName   string   `json:"client_name"`
 			RedirectURIs []string `json:"redirect_uris"`
 		}
-		if json.NewDecoder(r.Body).Decode(&registration) != nil || registration.ClientName != "my-tickets" || len(registration.RedirectURIs) != 1 {
+		if json.NewDecoder(r.Body).Decode(&registration) != nil || registration.ClientName != "patio" || len(registration.RedirectURIs) != 1 {
 			http.Error(w, "invalid client registration", http.StatusBadRequest)
 			return
 		}

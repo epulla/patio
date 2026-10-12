@@ -1,4 +1,4 @@
-module my-tickets
+module patio
 
 go 1.27
 

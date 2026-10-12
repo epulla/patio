@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
-	connectorquota "my-tickets/internal/connector"
+	connectorquota "patio/internal/connector"
 )
 
 func (s *Server) connectorQuota(w http.ResponseWriter, r *http.Request) {

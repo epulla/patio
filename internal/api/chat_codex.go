@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 type codexClient interface {
@@ -162,8 +162,8 @@ func codexMCPOverrides(spec map[string]any) ([]string, error) {
 		return nil, err
 	}
 	return []string{
-		"mcp_servers.my-tickets.command=" + string(commandValue),
-		"mcp_servers.my-tickets.args=" + string(argsValue),
+		"mcp_servers.patio.command=" + string(commandValue),
+		"mcp_servers.patio.args=" + string(argsValue),
 	}, nil
 }
 

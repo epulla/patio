@@ -14,16 +14,16 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 func TestClaudeLiveExternalMCP(t *testing.T) {
-	if os.Getenv("MY_TICKETS_CLAUDE_LIVE") != "1" {
-		t.Skip("set MY_TICKETS_CLAUDE_LIVE=1 for logged-in Claude checks")
+	if os.Getenv("PATIO_CLAUDE_LIVE") != "1" {
+		t.Skip("set PATIO_CLAUDE_LIVE=1 for logged-in Claude checks")
 	}
-	binary := os.Getenv("MY_TICKETS_BINARY")
+	binary := os.Getenv("PATIO_BINARY")
 	if binary == "" {
-		t.Fatal("MY_TICKETS_BINARY is required")
+		t.Fatal("PATIO_BINARY is required")
 	}
 	claudePath, err := connectorcli.Find("claude")
 	if err != nil {
@@ -141,12 +141,12 @@ func TestClaudeLiveExternalMCP(t *testing.T) {
 }
 
 func TestClaudeLiveSkillLoad(t *testing.T) {
-	if os.Getenv("MY_TICKETS_CLAUDE_LIVE") != "1" {
-		t.Skip("set MY_TICKETS_CLAUDE_LIVE=1 for logged-in Claude checks")
+	if os.Getenv("PATIO_CLAUDE_LIVE") != "1" {
+		t.Skip("set PATIO_CLAUDE_LIVE=1 for logged-in Claude checks")
 	}
-	binary := os.Getenv("MY_TICKETS_BINARY")
+	binary := os.Getenv("PATIO_BINARY")
 	if binary == "" {
-		t.Fatal("MY_TICKETS_BINARY is required")
+		t.Fatal("PATIO_BINARY is required")
 	}
 	claudePath, err := connectorcli.Find("claude")
 	if err != nil {
@@ -188,7 +188,7 @@ func TestClaudeLiveSkillLoad(t *testing.T) {
 				if raw, ok := event["message"]; ok {
 					message, _ = raw.(ChatMessage)
 				}
-				if strings.Contains(message.Content, "mcp__my-tickets__load_skill") {
+				if strings.Contains(message.Content, "mcp__patio__load_skill") {
 					toolUsed = true
 				}
 			case "done":
@@ -197,7 +197,7 @@ func TestClaudeLiveSkillLoad(t *testing.T) {
 					message, _ = raw.(ChatMessage)
 				}
 				if !toolUsed {
-					t.Fatalf("Claude did not call mcp__my-tickets__load_skill; reply=%q", message.Content)
+					t.Fatalf("Claude did not call mcp__patio__load_skill; reply=%q", message.Content)
 				}
 				if !strings.HasSuffix(strings.TrimSpace(message.Content), "Arrr!") {
 					t.Fatalf("live Claude reply = %q, want suffix Arrr!", message.Content)

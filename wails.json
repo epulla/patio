@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "my-tickets",
-  "outputfilename": "my-tickets",
+  "name": "Patio",
+  "outputfilename": "patio",
   "frontend:dir": "web",
   "frontend:install": "pnpm install",
   "frontend:build": "pnpm build",

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
-	"my-tickets/internal/api"
-	"my-tickets/internal/db"
+	"patio/internal/api"
+	"patio/internal/db"
 )
 
 func TestApprovalTool(t *testing.T) {
@@ -27,7 +27,7 @@ func TestApprovalTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	allowed, _, err := approvalHandler(context.Background(), &ApprovalOptions{DB: database, ChatID: chatID}, approveArgs{
-		ToolName: "mcp__my-tickets__load_skill", Input: json.RawMessage(`{"name":"pirate-voice"}`),
+		ToolName: "mcp__patio__load_skill", Input: json.RawMessage(`{"name":"pirate-voice"}`),
 	})
 	if err != nil || allowed.Content[0].(*sdk.TextContent).Text != `{"behavior":"allow","updatedInput":{"name":"pirate-voice"}}` {
 		t.Fatalf("skill approval result = %#v, %v", allowed, err)

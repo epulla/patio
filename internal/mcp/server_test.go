@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"my-tickets/internal/api"
-	"my-tickets/internal/db"
+	"patio/internal/api"
+	"patio/internal/db"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )

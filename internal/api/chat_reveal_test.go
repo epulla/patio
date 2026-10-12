@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 func TestRevealChatFile(t *testing.T) {

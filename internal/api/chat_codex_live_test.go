@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	connectorcli "my-tickets/internal/connector"
+	connectorcli "patio/internal/connector"
 )
 
 func TestCodexLive(t *testing.T) {
-	if os.Getenv("MY_TICKETS_CODEX_LIVE") != "1" {
-		t.Skip("set MY_TICKETS_CODEX_LIVE=1 for logged-in Codex checks")
+	if os.Getenv("PATIO_CODEX_LIVE") != "1" {
+		t.Skip("set PATIO_CODEX_LIVE=1 for logged-in Codex checks")
 	}
-	binary := os.Getenv("MY_TICKETS_BINARY")
+	binary := os.Getenv("PATIO_BINARY")
 	if binary == "" {
-		t.Fatal("MY_TICKETS_BINARY is required")
+		t.Fatal("PATIO_BINARY is required")
 	}
 	codexPath, err := connectorcli.Find("codex")
 	if err != nil {
@@ -29,7 +29,7 @@ func TestCodexLive(t *testing.T) {
 	}
 	database, _, root := chatAPI(t)
 	connectorID := createCodexTestConnector(t, database)
-	fixturePath := os.Getenv("MY_TICKETS_CODEX_FIXTURE")
+	fixturePath := os.Getenv("PATIO_CODEX_FIXTURE")
 	var fixture *os.File
 	if fixturePath != "" {
 		fixture, err = os.Create(fixturePath)
@@ -60,7 +60,7 @@ func TestCodexLive(t *testing.T) {
 	server.chats.approvalPollInterval = 100 * time.Millisecond
 	defer server.Close()
 
-	if os.Getenv("MY_TICKETS_CODEX_SKIP_REPLY") != "1" {
+	if os.Getenv("PATIO_CODEX_SKIP_REPLY") != "1" {
 		firstChat := liveCodexChat(t, database, connectorID, root)
 		liveCodexPrompt(t, server, firstChat, "Reply with just OK", nil, events)
 		var session string

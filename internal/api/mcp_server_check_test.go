@@ -13,11 +13,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
-	"my-tickets/internal/db"
+	"patio/internal/db"
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("MY_TICKETS_MCP_TEST_SERVER") == "1" {
+	if os.Getenv("PATIO_MCP_TEST_SERVER") == "1" {
 		server := mcp.NewServer(&mcp.Implementation{Name: "check-test-server", Version: "1"}, nil)
 		server.AddTool(&mcp.Tool{Name: "zebra", Description: "last", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{}, nil
@@ -48,7 +48,7 @@ func TestMCPServerCheckStdio(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	envJSON, keysJSON, err := encodeMCPEnv(map[string]string{"HEALTH_CHECK_TEST_ENV": "from-keychain", "MY_TICKETS_MCP_TEST_SERVER": "1"})
+	envJSON, keysJSON, err := encodeMCPEnv(map[string]string{"HEALTH_CHECK_TEST_ENV": "from-keychain", "PATIO_MCP_TEST_SERVER": "1"})
 	if err != nil {
 		t.Fatal(err)
 	}
