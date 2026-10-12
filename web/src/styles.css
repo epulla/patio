@@ -1475,6 +1475,10 @@ label.days-field {
 .chat-link[aria-current="page"] {
   background: var(--base-300);
 }
+.chats > .skill-empty {
+  align-self: center;
+  margin-top: 0;
+}
 .chat-empty {
   align-self: center;
   justify-self: center;
