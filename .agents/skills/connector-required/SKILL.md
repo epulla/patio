@@ -17,16 +17,16 @@ import { ConnectorRequired } from "./Connectors";
 <ConnectorRequired then="create a scheduled task" />
 ```
 
-It renders the shared sentence "Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then <then>." and a **Go to Connectors** button that navigates to `/ai/connectors`. Pass `then` as a lowercase verb phrase for what the page does. Don't copy the sentence or the button into a page; if the wording or the list of connector kinds changes, it should change in one place.
+It renders a complete `.panel skill-empty` card: the `connector` icon mark, `<h2>No connectors yet</h2>`, the shared sentence "Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then <then>.", and a **Go to Connectors** button that navigates to `/ai/connectors`. Pass `then` as a lowercase verb phrase for what the page does. Don't wrap it in another panel, and don't copy the card, sentence, or button into a page; if the look or wording changes, it should change in one place.
 
 ## Where it goes
 
 Load connectors with `api.get<Connector[]>("/api/connectors")` and keep the state `undefined` until loaded, then check `connectors?.length === 0`. This avoids flashing the message before the request returns.
 
-- **List page with no connectors**: replace the normal empty state with a `.panel skill-empty` card (icon mark `connector`, `<h2>No connectors yet</h2>`, then `ConnectorRequired`). Hide the page's primary "New <thing>" buttons, since creating one would fail anyway. Existing items still list below.
-- **Main empty area** (like Chats with no chat open): show `ConnectorRequired` in place of the usual hint.
-- **Create form with no connectors**: show only the card and skip the form.
-- **Edit form for an existing item whose connector is gone**: keep the form so the user can still read, disable, or delete the item, show the card above it, and keep Save disabled until a connector is picked.
+- **List page with no connectors**: show `ConnectorRequired` in place of the normal empty state. Hide the page's primary "New <thing>" buttons, since creating one would fail anyway. Existing items still list below.
+- **Main empty area** (like Chats with no chat open): show `ConnectorRequired` in place of the whole empty-area section.
+- **Create form with no connectors**: show only `ConnectorRequired` and skip the form.
+- **Edit form for an existing item whose connector is gone**: keep the form so the user can still read, disable, or delete the item, show `ConnectorRequired` above it, and keep Save disabled until a connector is picked.
 
 ## Checklist
 

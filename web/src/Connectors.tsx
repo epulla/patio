@@ -11,12 +11,16 @@ import { Icon, IconButton } from "./icons";
 
 export function ConnectorRequired({ then }: { then: string }) {
   return (
-    <>
+    <section className="panel skill-empty">
+      <span className="skill-empty-mark" aria-hidden="true">
+        <Icon name="connector" />
+      </span>
+      <h2>No connectors yet</h2>
       <p className="muted">
         Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then {then}.
       </p>
       <button onClick={() => navigate("/ai/connectors")}>Go to Connectors</button>
-    </>
+    </section>
   );
 }
 

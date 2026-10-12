@@ -121,9 +121,11 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
   return (
     <div className="chats">
       <aside className="chat-list" aria-label="Chats">
-        <button className="primary" onClick={() => setCreating(true)}>
-          <Icon name="plus" /> New chat
-        </button>
+        {(connectors.length > 0 || !loaded) && (
+          <button className="primary" onClick={() => setCreating(true)}>
+            <Icon name="plus" /> New chat
+          </button>
+        )}
         <ErrorText error={error} />
         {chats.length === 0 && !error && <p className="muted">No chats yet.</p>}
         <nav>
@@ -161,15 +163,13 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
           connectors={connectors}
           onChanged={() => setReload((value) => value + 1)}
         />
-      ) : (
+      ) : connectors.length || !loaded ? (
         <section className="chat-empty">
           <h1>Chats</h1>
-          {connectors.length || !loaded ? (
-            <p className="muted">Pick a chat or start a new one.</p>
-          ) : (
-            <ConnectorRequired then="start a chat" />
-          )}
+          <p className="muted">Pick a chat or start a new one.</p>
         </section>
+      ) : (
+        <ConnectorRequired then="start a chat" />
       )}
       {creating && (
         <NewChatDialog

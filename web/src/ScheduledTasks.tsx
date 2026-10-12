@@ -202,15 +202,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       </p>
       <ErrorText error={error} />
 
-      {noConnectors && (
-        <section className="panel skill-empty">
-          <span className="skill-empty-mark" aria-hidden="true">
-            <Icon name="connector" />
-          </span>
-          <h2>No connectors yet</h2>
-          <ConnectorRequired then="create a scheduled task" />
-        </section>
-      )}
+      {noConnectors && <ConnectorRequired then="create a scheduled task" />}
 
       {tasks?.length === 0 && !noConnectors && (
         <section className="panel skill-empty">
@@ -447,9 +439,7 @@ function TaskEditor({
         <h1>{task ? task.title : "New scheduled task"}</h1>
       </div>
       {connectors?.length === 0 && (
-        <section className="panel skill-empty">
-          <ConnectorRequired then={task ? "pick it for this task" : "create a scheduled task"} />
-        </section>
+        <ConnectorRequired then={task ? "pick it for this task" : "create a scheduled task"} />
       )}
       {(task || !!connectors?.length) && (
       <form
