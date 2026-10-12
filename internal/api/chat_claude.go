@@ -21,8 +21,7 @@ import (
 )
 
 const (
-	chatLineLimit    = 10 << 20
-	chatSystemPrompt = "You are chatting inside the patio desktop app. Reply in Markdown. When you mention a ticket or board you read, created, or changed with the patio tools, link it with an app path: tickets as [CODE: Title](/tickets/<ticket id>) and boards as [Board name](/boards/<board id>), using the ids returned by the tools. Never invent ids."
+	chatLineLimit = 10 << 20
 )
 
 type chatCommandBuilder func(exe, dbPath, chatID, model, sessionID string) ([]string, error)
@@ -62,6 +61,10 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		}
 	}
 	var args []string
+	persona, err := MartinPersonaEnabled(m.db)
+	if err != nil {
+		return nil, err
+	}
 	configPath := ""
 	if m.options.commandBuilder == nil {
 		ticket := map[string]any{"type": "stdio", "command": exe, "args": []string{"mcp", "-d", m.dbPath, "-approve-chat", c.ID}}
@@ -69,12 +72,13 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		if err != nil {
 			return nil, err
 		}
-		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath)
+		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath, persona)
 	} else {
 		args, err = m.options.commandBuilder(exe, m.dbPath, c.ID, c.Model, stringValue(c.SessionID))
 		if err != nil {
 			return nil, err
 		}
+		args = append(args, "--append-system-prompt", ChatSystemPrompt(persona))
 	}
 	factory := m.options.processFactory
 	if factory == nil {
@@ -104,8 +108,12 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func buildClaudeArgsWithConfig(model, sessionID, configPath string) []string {
-	args := []string{"-p", "--append-system-prompt", chatSystemPrompt, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+func buildClaudeArgsWithConfig(model, sessionID, configPath string, persona ...bool) []string {
+	enabled := true
+	if len(persona) > 0 {
+		enabled = persona[0]
+	}
+	args := []string{"-p", "--append-system-prompt", ChatSystemPrompt(enabled), "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}

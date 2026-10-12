@@ -1089,7 +1089,7 @@ func TestLocalOllamaGreetingUsesPlainTextAndFolderPrompt(t *testing.T) {
 		messages, _ := request["messages"].([]any)
 		system, _ := messages[0].(map[string]any)
 		prompt, _ := system["content"].(string)
-		if !strings.Contains(prompt, "a private scratch folder") || !strings.Contains(prompt, time.Now().In(time.Local).Format("2006-01-02")) || !strings.Contains(prompt, "Reply normally") {
+		if !strings.Contains(prompt, "a private scratch folder") || !strings.Contains(prompt, time.Now().In(time.Local).Format("2006-01-02")) || !strings.Contains(prompt, "You are Martin") {
 			t.Errorf("system prompt = %q", prompt)
 		}
 		writeNDJSON(w, `{"message":{"content":"Hi! Nice to meet you."},"done":true}`)

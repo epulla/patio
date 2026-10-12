@@ -127,7 +127,7 @@ func TestCreateChatUsesDefaultsAndExplicitValuesWin(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/folders", map[string]string{"path": allowed}, nil); code != http.StatusCreated {
 		t.Fatalf("add allowed folder = %d", code)
 	}
-	want := settingsDefaults{ConnectorID: &first, Folder: &allowed, AutoAllow: false, Thinking: true}
+	want := settingsDefaults{ConnectorID: &first, Folder: &allowed, AutoAllow: false, Thinking: true, MartinPersona: true}
 	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", want, nil); code != http.StatusOK {
 		t.Fatalf("save defaults = %d", code)
 	}

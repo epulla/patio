@@ -362,7 +362,7 @@ func TestMCPInstructions(t *testing.T) {
 		}
 	}()
 	got := session.InitializeResult().Instructions
-	if !strings.Contains(got, "After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply.") || !strings.HasPrefix(got, "You act as Martin") {
+	if !strings.Contains(got, "After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply.") || !strings.Contains(got, "You are Martin") || !strings.Contains(got, "/tickets/<ticket id>") {
 		t.Fatalf("instructions = %q", got)
 	}
 }

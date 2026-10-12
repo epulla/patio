@@ -322,7 +322,7 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 		findClaude:     func() (string, error) { return "claude-test", nil },
 		commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil },
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
-			if path != "claude-test" || len(args) != 1 || cwd != filepath.Join(root, "chats", chatID) {
+			if path != "claude-test" || len(args) != 3 || args[1] != "--append-system-prompt" || !strings.Contains(args[2], "/tickets/<ticket id>") || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("process launch = %q %#v %q", path, args, cwd)
 			}
 			return fake, nil
@@ -497,7 +497,7 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Claude process was not restarted")
 	}
-	if !reflect.DeepEqual(launches, [][]string{{"--model", ""}, {"--model", "", "--resume", "session-thinking"}}) {
+	if len(launches) != 2 || !reflect.DeepEqual(launches[0][:2], []string{"--model", ""}) || !reflect.DeepEqual(launches[1][:4], []string{"--model", "", "--resume", "session-thinking"}) || !strings.Contains(strings.Join(launches[0], " "), "/tickets/<ticket id>") {
 		t.Fatalf("Claude launches = %#v", launches)
 	}
 }

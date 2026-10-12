@@ -94,6 +94,13 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 			"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "read-only",
 			"config": map[string]any{"mcp_servers": servers},
 		}
+		persona, promptErr := MartinPersonaEnabled(m.db)
+		if promptErr != nil {
+			cancel()
+			_ = client.Close()
+			return nil, promptErr
+		}
+		params["developerInstructions"] = ChatSystemPrompt(persona)
 		if c.Model != "" {
 			params["model"] = c.Model
 		}

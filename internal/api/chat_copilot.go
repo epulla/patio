@@ -42,6 +42,7 @@ type copilotRuntime struct {
 	authFailed  bool
 	imagePrompt bool
 	external    []mcpServerSpec
+	firstPrompt bool
 }
 
 func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (chatRuntimeDriver, error) {
@@ -77,7 +78,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 		return nil, fmt.Errorf("start copilot: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external}
+	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external, firstPrompt: true}
 	d.client = newACPClient(process.Stdin(), process.Stdout(), d.handleMessage)
 	go d.watch()
 	if err := d.initialize(c); err != nil {
@@ -177,6 +178,14 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 	d.assistantMu.Lock()
 	d.assistant.Reset()
 	d.assistantMu.Unlock()
+	if d.firstPrompt {
+		persona, err := MartinPersonaEnabled(d.manager.db)
+		if err != nil {
+			return err
+		}
+		request.Text = ChatSystemPrompt(persona) + "\n\n" + request.Text
+		d.firstPrompt = false
+	}
 	result, err := d.client.callAsync("session/prompt", map[string]any{
 		"sessionId": d.sessionID,
 		"prompt":    copilotPromptContent(request.Text, files, d.imagePrompt),

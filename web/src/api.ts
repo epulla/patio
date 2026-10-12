@@ -12,6 +12,7 @@ export type ChatDefaults = {
   folder: string | null;
   auto_allow: boolean;
   thinking: boolean;
+  martin_persona: boolean;
 };
 export type SettingsAbout = {
   version: string;

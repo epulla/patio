@@ -559,7 +559,11 @@ func (d *localRuntime) historyForToolsWithAttachments(currentImagesIncluded bool
 	if folderPath.Valid {
 		folder = filepath.Base(filepath.Clean(folderPath.String))
 	}
-	systemPrompt := localSystemPrompt(folder, !d.toolsOff)
+	persona, err := MartinPersonaEnabled(d.manager.db)
+	if err != nil {
+		return nil, err
+	}
+	systemPrompt := localSystemPrompt(folder, !d.toolsOff, persona)
 	messages := []map[string]any{{"role": "system", "content": systemPrompt}}
 	if len(saved) == 0 {
 		return messages, nil
@@ -596,12 +600,20 @@ func appendCurrentImagePaths(messages []map[string]any, images []chatAttachmentF
 	return nil
 }
 
-func localSystemPrompt(folder string, toolsEnabled bool) string {
+func localSystemPrompt(folder string, toolsEnabled bool, persona ...bool) string {
+	enabled := true
+	if len(persona) > 0 {
+		enabled = persona[0]
+	}
+	tone := martinPersona + " "
+	if !enabled {
+		tone = "You are a neutral assistant. "
+	}
 	today := time.Now().In(time.Local).Format("2006-01-02")
 	if !toolsEnabled {
-		return fmt.Sprintf("Reply normally. Tools unavailable; do not claim file or ticket access. Today's date (local): %s.", today)
+		return fmt.Sprintf("%s%s Tools unavailable; do not claim file or ticket access. Date: %s.", tone, chatLinkRules, today)
 	}
-	return fmt.Sprintf("Reply normally. Use tools only when user asks about files, this folder (%s), or tickets. Never describe tool calls in text. Examples: \"Hi\" → \"Hi!\" (no tool); \"list my files\" → call file__list_dir; \"what boards do I have?\" → call ticket__list_boards. Today's date (local): %s.", folder, today)
+	return fmt.Sprintf("%s%s Requested files, folder %s, tickets. No narration. \"Hi\" → \"Hi!\" (no tool); \"list my files\" → call file__list_dir; \"what boards do I have?\" → call ticket__list_boards. Date %s", tone, chatLinkRules, folder, today)
 }
 
 type localCall struct {

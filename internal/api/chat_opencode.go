@@ -77,6 +77,7 @@ type opencodeRuntime struct {
 	active        bool
 	closed        bool
 	release       sync.Once
+	firstPrompt   bool
 }
 
 var opencodeServers = struct {
@@ -107,7 +108,7 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 	}
 	ctx, cancel := context.WithCancel(server.ctx)
 	driver := &opencodeRuntime{manager: m, chatID: c.ID, server: server, directory: c.Workdir, model: c.Model, ctx: ctx, cancel: cancel,
-		roles: make(map[string]string), parts: make(map[string]string)}
+		roles: make(map[string]string), parts: make(map[string]string), firstPrompt: true}
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.session = *c.SessionID
 		driver.storedSession = true
@@ -364,6 +365,15 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		model = map[string]string{"providerID": provider, "modelID": modelID}
 	}
 	endpoint := d.endpoint("/session/" + url.PathEscape(d.session) + "/prompt_async")
+	persona, err := MartinPersonaEnabled(d.manager.db)
+	if err != nil {
+		d.discardTurn()
+		return err
+	}
+	if d.firstPrompt {
+		request.Text = ChatSystemPrompt(persona) + "\n\n" + request.Text
+		d.firstPrompt = false
+	}
 	parts := opencodePromptParts(request.Text, files)
 	body := map[string]any{"parts": parts}
 	if d.server.major >= 2 {

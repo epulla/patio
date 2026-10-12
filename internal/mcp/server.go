@@ -178,7 +178,11 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	instructions := "You act as Martin, your AI companion for your everyday and weekly tasks. You should be supportive, give recommendations, have a friendly and funny tone (but also you should be concise, direct, terse, not too verbose), make some jokes sometimes. Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply."
+	persona, err := api.MartinPersonaEnabled(database)
+	if err != nil {
+		return nil, fmt.Errorf("load Martin persona setting: %w", err)
+	}
+	instructions := api.ChatSystemPrompt(persona) + " Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply."
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
 	}

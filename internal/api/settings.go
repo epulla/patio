@@ -13,14 +13,15 @@ import (
 )
 
 type settingsDefaults struct {
-	ConnectorID *string `json:"connector_id"`
-	Folder      *string `json:"folder"`
-	AutoAllow   bool    `json:"auto_allow"`
-	Thinking    bool    `json:"thinking"`
+	ConnectorID   *string `json:"connector_id"`
+	Folder        *string `json:"folder"`
+	AutoAllow     bool    `json:"auto_allow"`
+	Thinking      bool    `json:"thinking"`
+	MartinPersona bool    `json:"martin_persona"`
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Thinking: true}
+	defaults := settingsDefaults{AutoAllow: true, Thinking: true, MartinPersona: true}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -81,6 +82,11 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 			return defaults, err
 		}
 	}
+	if raw, ok := values["martin_persona"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.MartinPersona); err != nil {
+			return defaults, err
+		}
+	}
 	return defaults, nil
 }
 
@@ -95,12 +101,13 @@ func (s *Server) getSettingsDefaults(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ConnectorID json.RawMessage `json:"connector_id"`
-		Folder      json.RawMessage `json:"folder"`
-		AutoAllow   *bool           `json:"auto_allow"`
-		Thinking    *bool           `json:"thinking"`
+		ConnectorID   json.RawMessage `json:"connector_id"`
+		Folder        json.RawMessage `json:"folder"`
+		AutoAllow     *bool           `json:"auto_allow"`
+		Thinking      *bool           `json:"thinking"`
+		MartinPersona *bool           `json:"martin_persona"`
 	}
-	if decode(r, &in) != nil || len(in.ConnectorID) == 0 || len(in.Folder) == 0 || in.AutoAllow == nil || in.Thinking == nil {
+	if decode(r, &in) != nil || len(in.ConnectorID) == 0 || len(in.Folder) == 0 || in.AutoAllow == nil || in.Thinking == nil || in.MartinPersona == nil {
 		errw(w, http.StatusBadRequest, "connector_id, folder, auto_allow, and thinking required")
 		return
 	}
@@ -139,10 +146,11 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		folder = &cleaned
 	}
 	values := map[string]any{
-		"connector_id": connectorID,
-		"folder":       folder,
-		"auto_allow":   *in.AutoAllow,
-		"thinking":     *in.Thinking,
+		"connector_id":   connectorID,
+		"folder":         folder,
+		"auto_allow":     *in.AutoAllow,
+		"thinking":       *in.Thinking,
+		"martin_persona": *in.MartinPersona,
 	}
 	encoded := make(map[string]string, len(values))
 	for key, value := range values {
@@ -164,7 +172,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Folder: folder, AutoAllow: *in.AutoAllow, Thinking: *in.Thinking})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Folder: folder, AutoAllow: *in.AutoAllow, Thinking: *in.Thinking, MartinPersona: *in.MartinPersona})
 }
 
 func (s *Server) allowedFolderPath(path string) (string, bool, error) {

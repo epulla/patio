@@ -340,6 +340,11 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
               checked={defaults.thinking}
               onChange={(thinking) => save({ thinking })}
             />
+            <Switch
+              label="Martin persona (playful tone in all chats)"
+              checked={defaults.martin_persona}
+              onChange={(martin_persona) => save({ martin_persona })}
+            />
           </>
         ) : (
           !error && <p className="muted" role="status">Loading…</p>
