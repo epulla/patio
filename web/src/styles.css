@@ -1437,10 +1437,29 @@ label.days-field {
 }
 .chats {
   display: grid;
-  grid-template-columns: clamp(180px, 22%, 260px) minmax(0, 1fr);
+  grid-template-columns: clamp(180px, 22%, 220px) minmax(0, 1fr);
   gap: 24px;
-  height: calc(100vh - 112px);
+  height: calc(100vh - 40px);
   min-height: 420px;
+}
+.chats:has(> .chat-list.collapsed) {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.chat-list-head {
+  display: flex;
+  gap: 8px;
+}
+.chat-list-head .primary {
+  flex: 1;
+}
+.chat-list.collapsed {
+  align-items: center;
+}
+.chat-list.collapsed .error {
+  width: 160px;
+}
+main:has(> .chats) {
+  padding-block: 16px 24px;
 }
 .chat-list {
   display: flex;
@@ -1475,6 +1494,72 @@ label.days-field {
 .chat-link[aria-current="page"] {
   background: var(--base-300);
 }
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.chat-row .chat-link {
+  flex: 1;
+  min-width: 0;
+}
+.chat-row:not(:hover, :focus-within) .icon:not(.pinned) {
+  opacity: 0;
+}
+.icon.pinned {
+  color: var(--primary);
+}
+.split-button {
+  display: flex;
+}
+.split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+}
+.split > .messages {
+  min-width: 0;
+}
+.splitter {
+  touch-action: none;
+  border-radius: 3px;
+  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;
+  cursor: col-resize;
+}
+.splitter[aria-orientation="horizontal"] {
+  background-size: 100% 2px;
+  cursor: row-resize;
+}
+.splitter:hover {
+  background-color: var(--base-300);
+}
+.chat-grid {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+}
+.grid-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-box);
+}
+.grid-pane > section {
+  flex: 1;
+  min-width: 0;
+}
+.grid-pane .conversation-title input {
+  font-size: 16px;
+}
+.pane-grip {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  color: var(--muted);
+  cursor: grab;
+}
 main.chat-window {
   padding: 16px;
 }
@@ -1499,9 +1584,13 @@ main.chat-window {
 }
 .conversation-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: start;
-  gap: 12px;
+  align-items: center;
+  gap: 2px 12px;
+}
+.conversation-head > .conversation-meta {
+  flex-basis: 100%;
 }
 .conversation-title {
   display: flex;
@@ -1531,6 +1620,7 @@ main.chat-window {
 }
 .conversation-meta .switch {
   margin-right: 0;
+  white-space: nowrap;
 }
 .switch:has(input:disabled) {
   opacity: 0.55;
@@ -1962,7 +2052,8 @@ main.chat-window {
   }
 }
 .folder-chip {
-  height: 30px;
+  height: auto;
+  min-height: 30px;
   padding: 0 8px;
   border-color: transparent;
   background: transparent;
@@ -2121,13 +2212,29 @@ main.chat-window {
 }
 .composer {
   display: flex;
-  gap: 12px;
-  align-items: end;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-box);
+  background: var(--base-100);
+}
+.composer:has(textarea:focus) {
+  border-color: var(--primary);
 }
 .composer textarea {
-  flex: 1;
-  min-width: 0;
+  border: 0;
+  padding: 6px;
+  background: transparent;
   resize: none;
+}
+.composer textarea:focus-visible {
+  outline: none;
+}
+.composer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 @media (max-width: 760px) {
   .chats {
@@ -2138,7 +2245,8 @@ main.chat-window {
     flex-direction: row;
     overflow-x: auto;
   }
-  .chat-link {
+  .chat-link,
+  .chat-row {
     flex: 0 0 auto;
     max-width: 200px;
   }

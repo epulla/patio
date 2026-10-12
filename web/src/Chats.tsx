@@ -1,13 +1,17 @@
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type ClipboardEvent,
+  type CSSProperties,
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import Markdown from "./Markdown";
+import Menu from "./Menu";
 import {
   api,
   type AllowedFolder,
@@ -99,6 +103,33 @@ export function ModelOptions({ models, current, loading }: { models: ModelOption
   );
 }
 
+type Pins = { ids: string[]; cols: number[]; rows: number[] };
+
+const maxPins = 9;
+const paneType = "application/x-chat-pane";
+
+function pinLayout(ids: string[]): Pins {
+  const cols = Math.ceil(Math.sqrt(ids.length));
+  const rows = cols && Math.ceil(ids.length / cols);
+  return { ids, cols: Array(cols).fill(1 / cols), rows: Array(rows).fill(1 / rows) };
+}
+
+function loadPins(): Pins {
+  try {
+    const saved = JSON.parse(localStorage.getItem("chat-pins") ?? "null") as Partial<Pins> | null;
+    const ids: unknown = saved?.ids;
+    const cols: unknown = saved?.cols;
+    const rows: unknown = saved?.rows;
+    if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string")) return pinLayout([]);
+    const pins = pinLayout(ids.slice(0, maxPins));
+    const fits = (sizes: unknown, fresh: number[]): sizes is number[] =>
+      Array.isArray(sizes) && sizes.length === fresh.length && sizes.every((x) => typeof x === "number" && x > 0);
+    return fits(cols, pins.cols) && fits(rows, pins.rows) ? { ...pins, cols, rows } : pins;
+  } catch {
+    return pinLayout([]);
+  }
+}
+
 export default function Chats({ id, refresh, windowed }: { id?: string; refresh: number; windowed?: boolean }) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -106,6 +137,8 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<unknown>();
   const [reload, setReload] = useState(0);
+  const [pins, setPins] = useState(loadPins);
+  const [listOpen, setListOpen] = useState(() => localStorage.getItem("chat-list") !== "closed");
 
   useEffect(() => {
     Promise.all([api.get<Chat[]>("/api/chats"), api.get<Connector[]>("/api/connectors")])
@@ -114,56 +147,215 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
         setConnectors(connectorList);
         setLoaded(true);
         setError(undefined);
+        setPins((current) => {
+          const ids = current.ids.filter((pinned) => chatList.some((chat) => chat.id === pinned));
+          return ids.length === current.ids.length ? current : pinLayout(ids);
+        });
       })
       .catch(setError);
   }, [refresh, reload, id]);
 
+  useEffect(() => localStorage.setItem("chat-pins", JSON.stringify(pins)), [pins]);
+
+  function togglePin(chatID: string) {
+    if (pins.ids.includes(chatID)) return setPins(pinLayout(pins.ids.filter((pinned) => pinned !== chatID)));
+    if (pins.ids.length >= maxPins) return setError(new Error(`Unpin a chat first (max ${maxPins}).`));
+    setPins(pinLayout([...pins.ids, chatID]));
+  }
+
+  function swap(from: number, to: number) {
+    const ids = [...pins.ids];
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    setPins({ ...pins, ids });
+  }
+
+  const showGrid = !windowed && pins.ids.length > 0 && (!id || pins.ids.includes(id));
+  const tracks = (sizes: number[]) => sizes.map((size) => `minmax(240px, ${size}fr)`).join(" 6px ");
+
   return (
     <div className={windowed ? "chats windowed" : "chats"}>
       {!windowed && (
-      <aside className="chat-list" aria-label="Chats">
-        {(connectors.length > 0 || !loaded) && (
-          <button className="primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" /> New chat
-          </button>
+      <aside className={listOpen ? "chat-list" : "chat-list collapsed"} aria-label="Chats">
+        <div className="chat-list-head">
+          {listOpen && (connectors.length > 0 || !loaded) && (
+            <button className="primary" onClick={() => setCreating(true)}>
+              <Icon name="plus" /> New chat
+            </button>
+          )}
+          <IconButton
+            className="ghost"
+            icon={listOpen ? "chevronsLeft" : "chevronsRight"}
+            label={listOpen ? "Collapse chat list" : "Expand chat list"}
+            aria-expanded={listOpen}
+            onClick={() => {
+              localStorage.setItem("chat-list", listOpen ? "closed" : "open");
+              setListOpen(!listOpen);
+            }}
+          />
+        </div>
+        {!listOpen && (connectors.length > 0 || !loaded) && (
+          <IconButton className="ghost" icon="plus" label="New chat" onClick={() => setCreating(true)} />
+        )}
+        {!listOpen && pins.ids.length > 0 && (
+          <IconButton
+            className="ghost"
+            icon="boards"
+            label={`Pinned (${pins.ids.length})`}
+            aria-current={showGrid ? "page" : undefined}
+            onClick={() => navigate("/ai/chats")}
+          />
         )}
         <ErrorText error={error} />
-        {chats.length === 0 && !error && <p className="muted">No chats yet.</p>}
+        {listOpen && chats.length === 0 && !error && <p className="muted">No chats yet.</p>}
+        {listOpen && (
         <nav>
-          {chats.map((chat) => (
+          {pins.ids.length > 0 && (
             <button
-              key={chat.id}
               className="chat-link"
-              aria-current={chat.id === id ? "page" : undefined}
-              onClick={() => navigate(`/ai/chats/${chat.id}`)}
+              aria-current={showGrid ? "page" : undefined}
+              onClick={() => navigate("/ai/chats")}
             >
-              <span>{chat.title}</span>
-              <small>
-                {new Date(chat.updated_at).toLocaleDateString()}
-                {chat.scheduled_task_id && (
-                  <>
-                    {" · "}
-                    <Icon name="clock" /> Scheduled
-                  </>
-                )}
-                {chat.scheduled_late && (
-                  <span className="run-label" title={lateTitle}>
-                    Ran late
-                  </span>
-                )}
-              </small>
+              <span>
+                <Icon name="boards" /> Pinned ({pins.ids.length})
+              </span>
             </button>
-          ))}
+          )}
+          {chats.map((chat) => {
+            const pinned = pins.ids.includes(chat.id);
+            return (
+              <div key={chat.id} className="chat-row">
+                <button
+                  className="chat-link"
+                  aria-current={!showGrid && chat.id === id ? "page" : undefined}
+                  onClick={() => navigate(`/ai/chats/${chat.id}`)}
+                >
+                  <span>{chat.title}</span>
+                  <small>
+                    {new Date(chat.updated_at).toLocaleDateString()}
+                    {chat.scheduled_task_id && (
+                      <>
+                        {" · "}
+                        <Icon name="clock" /> Scheduled
+                      </>
+                    )}
+                    {chat.scheduled_late && (
+                      <span className="run-label" title={lateTitle}>
+                        Ran late
+                      </span>
+                    )}
+                  </small>
+                </button>
+                <IconButton
+                  className={pinned ? "ghost pinned" : "ghost"}
+                  icon="pin"
+                  label={pinned ? "Unpin chat" : "Pin chat"}
+                  onClick={() => togglePin(chat.id)}
+                />
+              </div>
+            );
+          })}
         </nav>
+        )}
       </aside>
       )}
-      {id ? (
+      {showGrid ? (
+        <div className="chat-grid" style={{ gridTemplateColumns: tracks(pins.cols), gridTemplateRows: tracks(pins.rows) }}>
+          {pins.ids.map((chatID, index) => (
+            <div
+              key={chatID}
+              className="grid-pane"
+              style={{
+                gridColumn: (index % pins.cols.length) * 2 + 1,
+                gridRow: Math.floor(index / pins.cols.length) * 2 + 1,
+              }}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes(paneType)) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                const from = event.dataTransfer.getData(paneType);
+                if (!from) return;
+                event.preventDefault();
+                swap(Number(from), index);
+              }}
+            >
+              <Conversation
+                id={chatID}
+                refresh={refresh}
+                connectors={connectors}
+                pinned
+                focused={chatID === id}
+                onPin={() => togglePin(chatID)}
+                onChanged={() => setReload((value) => value + 1)}
+                pane={
+                  <>
+                    <span
+                      className="pane-grip"
+                      draggable
+                      aria-hidden="true"
+                      data-tip="Drag to swap"
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(paneType, String(index));
+                        event.dataTransfer.effectAllowed = "move";
+                      }}
+                    >
+                      <Icon name="grip" />
+                    </span>
+                    {pins.ids.length > 1 && (
+                      <Menu label="Move chat" buttonClassName="icon ghost" button={<Icon name="more" />}>
+                        {(close) => (
+                          <>
+                            {index > 0 && (
+                              <button role="menuitem" onClick={() => (close(), swap(index, index - 1))}>
+                                <Icon name="chevronLeft" /> Move earlier
+                              </button>
+                            )}
+                            {index < pins.ids.length - 1 && (
+                              <button role="menuitem" onClick={() => (close(), swap(index, index + 1))}>
+                                <Icon name="chevronRight" /> Move later
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </Menu>
+                    )}
+                  </>
+                }
+              />
+            </div>
+          ))}
+          {pins.cols.slice(1).map((_, index) => (
+            <Splitter
+              key={`col-${index}`}
+              vertical
+              label="Resize columns"
+              sizes={pins.cols}
+              index={index}
+              min={240}
+              style={{ gridColumn: index * 2 + 2, gridRow: "1 / -1" }}
+              onChange={(cols) => setPins((current) => ({ ...current, cols }))}
+            />
+          ))}
+          {pins.rows.slice(1).map((_, index) => (
+            <Splitter
+              key={`row-${index}`}
+              label="Resize rows"
+              sizes={pins.rows}
+              index={index}
+              min={240}
+              style={{ gridRow: index * 2 + 2, gridColumn: "1 / -1" }}
+              onChange={(rows) => setPins((current) => ({ ...current, rows }))}
+            />
+          ))}
+        </div>
+      ) : id ? (
         <Conversation
           key={id}
           id={id}
           refresh={refresh}
           windowed={windowed}
           connectors={connectors}
+          pinned={pins.ids.includes(id)}
+          onPin={windowed ? undefined : () => togglePin(id)}
           onChanged={() => setReload((value) => value + 1)}
         />
       ) : connectors.length || !loaded ? (
@@ -188,19 +380,91 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   );
 }
 
+function Splitter({
+  label,
+  vertical,
+  sizes,
+  index,
+  min,
+  style,
+  onChange,
+}: {
+  label: string;
+  vertical?: boolean;
+  sizes: number[];
+  index: number;
+  min: number;
+  style?: CSSProperties;
+  onChange: (sizes: number[]) => void;
+}) {
+  function move(element: HTMLElement, start: number[], pixels: number) {
+    const box = element.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    const limit = min / (vertical ? box.width : box.height);
+    if (start[index] + start[index + 1] < limit * 2) return;
+    const delta = Math.min(Math.max(pixels / (vertical ? box.width : box.height), limit - start[index]), start[index + 1] - limit);
+    const next = [...start];
+    next[index] += delta;
+    next[index + 1] -= delta;
+    onChange(next);
+  }
+
+  return (
+    <div
+      role="separator"
+      tabIndex={0}
+      aria-label={label}
+      aria-orientation={vertical ? "vertical" : "horizontal"}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round((sizes[index] / (sizes[index] + sizes[index + 1])) * 100)}
+      className="splitter"
+      style={style}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        const element = event.currentTarget;
+        const start = sizes;
+        const origin = vertical ? event.clientX : event.clientY;
+        element.setPointerCapture(event.pointerId);
+        element.onpointermove = (moved) => move(element, start, (vertical ? moved.clientX : moved.clientY) - origin);
+        element.onlostpointercapture = () => (element.onpointermove = null);
+      }}
+      onKeyDown={(event) => {
+        const steps: Record<string, number> = vertical ? { ArrowLeft: -1, ArrowRight: 1 } : { ArrowUp: -1, ArrowDown: 1 };
+        const step = steps[event.key];
+        if (!step) return;
+        event.preventDefault();
+        move(event.currentTarget, sizes, step * 24);
+      }}
+    />
+  );
+}
+
 function Conversation({
   id,
   refresh,
   windowed,
   connectors,
+  pinned,
+  focused,
+  pane,
+  onPin,
   onChanged,
 }: {
   id: string;
   refresh: number;
   windowed?: boolean;
   connectors: Connector[];
+  pinned?: boolean;
+  focused?: boolean;
+  pane?: ReactNode;
+  onPin?: () => void;
   onChanged: () => void;
 }) {
+  const uid = useId();
+  const [split, setSplit] = useState<"" | "row" | "column">("");
+  const [splitSizes, setSplitSizes] = useState([0.5, 0.5]);
+  const input = useRef<HTMLTextAreaElement>(null);
   const [detail, setDetail] = useState<ChatDetail>();
   const [streaming, setStreaming] = useState("");
   const [running, setRunning] = useState(false);
@@ -269,8 +533,14 @@ function Conversation({
   }, [id]);
 
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [detail?.messages.length, streaming, detail?.pending_approvals.length]);
+    const box = end.current?.parentElement;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [detail?.messages.length, streaming, detail?.pending_approvals.length, split]);
+
+  const ready = !!detail;
+  useEffect(() => {
+    if (focused && ready) input.current?.focus();
+  }, [focused, ready]);
 
   async function attach(files: File[]) {
     if (!files.length || uploading) return;
@@ -460,79 +730,121 @@ function Conversation({
     );
 
   const connector = connectors.find((c) => c.id === detail.chat.connector_id);
+  const template = `minmax(0, ${splitSizes[0]}fr) 6px minmax(0, ${splitSizes[1]}fr)`;
+  const history = (
+    <>
+      {detail.messages.length === 0 && !streaming && (
+        <p className="muted chat-hint">
+          Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files
+          and images with the paperclip, drag and drop, or paste.
+        </p>
+      )}
+      {timeline(detail).map((message) =>
+        "tool_name" in message ? (
+          <p key={message.id} className="tool-line">
+            <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
+            <MessageTime iso={message.created_at} />
+          </p>
+        ) : message.role === "tool" ? (
+          <p key={message.id} className="tool-line">
+            <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
+          </p>
+        ) : (
+          <div key={message.id} className={`message-row ${message.role}`}>
+            {(message.role !== "user" || message.content) && (
+              <div className={`message ${message.role}`}>
+                {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
+              </div>
+            )}
+            {message.attachments.length > 0 && (
+              <ul className="attachments sent" aria-label="Attachments">
+                {message.attachments.map((attachment) => (
+                  <li key={attachment.name}>
+                    <button
+                      type="button"
+                      className={attachment.kind === "image" ? "attachment image" : "attachment"}
+                      title="Show in folder"
+                      onClick={() => revealAttachment(attachment)}
+                    >
+                      {attachment.kind === "image" && (
+                        <img
+                          src={`/api/chats/${id}/attachments/${encodeURIComponent(attachment.name)}`}
+                          alt=""
+                          loading="lazy"
+                        />
+                      )}
+                      <AttachmentLabel attachment={attachment} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <MessageTime iso={message.created_at} />
+          </div>
+        ),
+      )}
+      {streaming && (
+        <div className="message assistant">
+          <Markdown text={streaming} onFile={reveal} />
+        </div>
+      )}
+      {running && !streaming && <p className="muted typing">Working…</p>}
+      {detail.pending_approvals.map((approval) => (
+        <ApprovalCard key={approval.id} approval={approval} onAnswer={(allow) => answer(approval, allow)} />
+      ))}
+    </>
+  );
 
   return (
     <section
       className={dragging ? "conversation dragging" : "conversation"}
-      aria-labelledby="chat-title"
+      aria-labelledby={`${uid}-title`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       <header className="conversation-head">
         <div className="conversation-title">
-          <label className="sr-only" htmlFor="chat-title">
+          <label className="sr-only" htmlFor={`${uid}-title`}>
             Chat title
           </label>
           <input
-            id="chat-title"
+            id={`${uid}-title`}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             onBlur={(event) => rename(event.target.value)}
             onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
           />
-          <div className="conversation-meta">
-            <span>{connector ? connector.name : "Connector removed"}</span>
-            {detail.chat.scheduled_task_id && (
-              <button
-                type="button"
-                className="folder-chip"
-                onClick={() => navigate(`/ai/scheduled/${detail.chat.scheduled_task_id}`)}
-              >
-                <Icon name="clock" /> Scheduled task
-              </button>
-            )}
-            <label>
-              <span className="sr-only">Model</span>
-              <select
-                value={detail.chat.model}
-                disabled={!connector || running || modelsLoading}
-                aria-busy={modelsLoading}
-                title={running ? "Stop the reply to change the model" : "Model"}
-                onChange={(event) => update({ model: event.target.value })}
-              >
-                <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
-              </select>
-              {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
-            </label>
-            <Switch
-              label="Thinking"
-              checked={detail.chat.capabilities.thinking.supported && detail.chat.thinking}
-              disabled={running || !detail.chat.capabilities.thinking.supported}
-              title={thinkingTitle(detail.chat, running)}
-              onChange={(thinking) => update({ thinking })}
-            />
-            <button
-              type="button"
-              className="folder-chip"
-              title={`Open in file manager: ${detail.chat.workdir}`}
-              onClick={() => reveal(detail.chat.workdir)}
-            >
-              <Icon name="folder" /> {detail.chat.folder ?? "Scratch folder (no files shared)"}
-            </button>
-            <Switch
-              className="warning"
-              label="Auto-allow"
-              checked={detail.chat.auto_allow}
-              title={
-                detail.chat.auto_allow
-                  ? "Every file change and command runs without asking"
-                  : "Ask before every file change and command"
-              }
-              onChange={changeAutoAllow}
-            />
-          </div>
         </div>
+        {pane}
+        {onPin && (
+          <IconButton
+            className={pinned ? "ghost pinned" : "ghost"}
+            icon="pin"
+            label={pinned ? "Unpin chat" : "Pin chat"}
+            onClick={onPin}
+          />
+        )}
+        {!pane &&
+          (split ? (
+            <IconButton className="ghost" icon="square" label="Close split" onClick={() => setSplit("")} />
+          ) : (
+            <div className="split-button">
+              <IconButton className="ghost" icon="columns" label="Split side by side" onClick={() => setSplit("row")} />
+              <Menu label="Split options" buttonClassName="icon ghost" button={<Icon name="chevronDown" />}>
+                {(close) => (
+                  <>
+                    <button role="menuitem" onClick={() => (close(), setSplit("row"))}>
+                      <Icon name="columns" /> Side by side
+                    </button>
+                    <button role="menuitem" onClick={() => (close(), setSplit("column"))}>
+                      <Icon name="rows" /> Stacked
+                    </button>
+                  </>
+                )}
+              </Menu>
+            </div>
+          ))}
         <IconButton
           className="ghost"
           icon={windowed ? "arrowLeft" : "externalLink"}
@@ -544,73 +856,87 @@ function Conversation({
           }
         />
         <IconButton className="danger-text" icon="trash" label="Delete chat" onClick={remove} />
+        <div className="conversation-meta">
+          <span>{connector ? connector.name : "Connector removed"}</span>
+          {detail.chat.scheduled_task_id && (
+            <button
+              type="button"
+              className="folder-chip"
+              onClick={() => navigate(`/ai/scheduled/${detail.chat.scheduled_task_id}`)}
+            >
+              <Icon name="clock" /> Scheduled task
+            </button>
+          )}
+          <label>
+            <span className="sr-only">Model</span>
+            <select
+              value={detail.chat.model}
+              disabled={!connector || running || modelsLoading}
+              aria-busy={modelsLoading}
+              title={running ? "Stop the reply to change the model" : "Model"}
+              onChange={(event) => update({ model: event.target.value })}
+            >
+              <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
+            </select>
+            {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
+          </label>
+          <Switch
+            label="Thinking"
+            checked={detail.chat.capabilities.thinking.supported && detail.chat.thinking}
+            disabled={running || !detail.chat.capabilities.thinking.supported}
+            title={thinkingTitle(detail.chat, running)}
+            onChange={(thinking) => update({ thinking })}
+          />
+          <Switch
+            className="warning"
+            label="Auto-allow"
+            checked={detail.chat.auto_allow}
+            title={
+              detail.chat.auto_allow
+                ? "Every file change and command runs without asking"
+                : "Ask before every file change and command"
+            }
+            onChange={changeAutoAllow}
+          />
+          <button
+            type="button"
+            className="folder-chip"
+            title={`Open in file manager: ${detail.chat.workdir}`}
+            onClick={() => reveal(detail.chat.workdir)}
+          >
+            <Icon name="folder" /> {detail.chat.folder ?? "Scratch folder (no files shared)"}
+          </button>
+        </div>
       </header>
 
       <p className="sr-only" role="status">
         {running ? "Assistant is replying." : announcement}
       </p>
-      <div className="messages">
-        {detail.messages.length === 0 && !streaming && (
-          <p className="muted chat-hint">
-            Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files
-            and images with the paperclip, drag and drop, or paste.
-          </p>
-        )}
-        {timeline(detail).map((message) =>
-          "tool_name" in message ? (
-            <p key={message.id} className="tool-line">
-              <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
-              <MessageTime iso={message.created_at} />
-            </p>
-          ) : message.role === "tool" ? (
-            <p key={message.id} className="tool-line">
-              <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
-            </p>
-          ) : (
-            <div key={message.id} className={`message-row ${message.role}`}>
-              {(message.role !== "user" || message.content) && (
-                <div className={`message ${message.role}`}>
-                  {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
-                </div>
-              )}
-              {message.attachments.length > 0 && (
-                <ul className="attachments sent" aria-label="Attachments">
-                  {message.attachments.map((attachment) => (
-                    <li key={attachment.name}>
-                      <button
-                        type="button"
-                        className={attachment.kind === "image" ? "attachment image" : "attachment"}
-                        title="Show in folder"
-                        onClick={() => revealAttachment(attachment)}
-                      >
-                        {attachment.kind === "image" && (
-                          <img
-                            src={`/api/chats/${id}/attachments/${encodeURIComponent(attachment.name)}`}
-                            alt=""
-                            loading="lazy"
-                          />
-                        )}
-                        <AttachmentLabel attachment={attachment} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <MessageTime iso={message.created_at} />
-            </div>
-          ),
-        )}
-        {streaming && (
-          <div className="message assistant">
-            <Markdown text={streaming} onFile={reveal} />
+      {split ? (
+        <div
+          className="split"
+          style={split === "row" ? { gridTemplateColumns: template } : { gridTemplateRows: template }}
+        >
+          <div className="messages">{history}</div>
+          <Splitter
+            vertical={split === "row"}
+            label="Resize split"
+            sizes={splitSizes}
+            index={0}
+            min={120}
+            onChange={setSplitSizes}
+          />
+          <div className="messages">
+            {history}
+            <div ref={end} />
           </div>
-        )}
-        {running && !streaming && <p className="muted typing">Working…</p>}
-        {detail.pending_approvals.map((approval) => (
-          <ApprovalCard key={approval.id} approval={approval} onAnswer={(allow) => answer(approval, allow)} />
-        ))}
-        <div ref={end} />
-      </div>
+        </div>
+      ) : (
+        <div className="messages">
+          {history}
+          <div ref={end} />
+        </div>
+      )}
 
       <ErrorText error={error} />
       {dragging && (
@@ -650,18 +976,12 @@ function Conversation({
             event.target.value = "";
           }}
         />
-        <IconButton
-          type="button"
-          icon="paperclip"
-          label="Attach files"
-          disabled={!connector || uploading || pending.length >= maxAttachments}
-          onClick={() => filePicker.current?.click()}
-        />
-        <label className="sr-only" htmlFor="chat-input">
+        <label className="sr-only" htmlFor={`${uid}-input`}>
           Message
         </label>
         <textarea
-          id="chat-input"
+          ref={input}
+          id={`${uid}-input`}
           rows={3}
           placeholder={connector ? "Message… (Enter to send, Shift+Enter for a new line)" : "This chat's connector was removed"}
           disabled={!connector}
@@ -672,15 +992,25 @@ function Conversation({
           onDragOver={onDragOver}
           onDrop={onDrop}
         />
-        {running ? (
-          <button type="button" onClick={stop}>
-            Stop
-          </button>
-        ) : (
-          <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector}>
-            <Icon name="send" /> Send
-          </button>
-        )}
+        <div className="composer-actions">
+          <IconButton
+            type="button"
+            className="ghost tip-up"
+            icon="paperclip"
+            label="Attach files"
+            disabled={!connector || uploading || pending.length >= maxAttachments}
+            onClick={() => filePicker.current?.click()}
+          />
+          {running ? (
+            <button type="button" onClick={stop}>
+              Stop
+            </button>
+          ) : (
+            <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector}>
+              <Icon name="send" /> Send
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );
