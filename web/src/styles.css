@@ -1475,6 +1475,13 @@ label.days-field {
 .chat-link[aria-current="page"] {
   background: var(--base-300);
 }
+main.chat-window {
+  padding: 16px;
+}
+.chats.windowed {
+  grid-template-columns: minmax(0, 1fr);
+  height: calc(100vh - 32px);
+}
 .chats > .skill-empty {
   align-self: center;
   margin-top: 0;

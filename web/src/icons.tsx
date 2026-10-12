@@ -49,6 +49,7 @@ const paths = {
     "M5 3v4",
     "M3 5h4",
   ],
+  externalLink: ["M15 3h6v6", "M10 14 21 3", "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"],
   clock: ["M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20", "M12 6v6l4 2"],
   calendar: [
     "M8 2v4",

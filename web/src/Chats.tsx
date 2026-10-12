@@ -99,7 +99,7 @@ export function ModelOptions({ models, current, loading }: { models: ModelOption
   );
 }
 
-export default function Chats({ id, refresh }: { id?: string; refresh: number }) {
+export default function Chats({ id, refresh, windowed }: { id?: string; refresh: number; windowed?: boolean }) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -119,7 +119,8 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
   }, [refresh, reload, id]);
 
   return (
-    <div className="chats">
+    <div className={windowed ? "chats windowed" : "chats"}>
+      {!windowed && (
       <aside className="chat-list" aria-label="Chats">
         {(connectors.length > 0 || !loaded) && (
           <button className="primary" onClick={() => setCreating(true)}>
@@ -155,11 +156,13 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
           ))}
         </nav>
       </aside>
+      )}
       {id ? (
         <Conversation
           key={id}
           id={id}
           refresh={refresh}
+          windowed={windowed}
           connectors={connectors}
           onChanged={() => setReload((value) => value + 1)}
         />
@@ -188,11 +191,13 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
 function Conversation({
   id,
   refresh,
+  windowed,
   connectors,
   onChanged,
 }: {
   id: string;
   refresh: number;
+  windowed?: boolean;
   connectors: Connector[];
   onChanged: () => void;
 }) {
@@ -528,6 +533,16 @@ function Conversation({
             />
           </div>
         </div>
+        <IconButton
+          className="ghost"
+          icon={windowed ? "arrowLeft" : "externalLink"}
+          label={windowed ? "Open main window" : "Open in new window"}
+          onClick={() =>
+            api
+              .post(windowed ? "/api/windows/main" : `/api/chats/${id}/window`, {})
+              .catch(setError)
+          }
+        />
         <IconButton className="danger-text" icon="trash" label="Delete chat" onClick={remove} />
       </header>
 

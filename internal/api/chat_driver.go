@@ -57,6 +57,7 @@ type chatManager struct {
 	mu          sync.Mutex
 	chats       map[string]*chatRuntime
 	closed      bool
+	windowID    string
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
@@ -112,7 +113,7 @@ func newChatManager(database *sql.DB, options Options) *chatManager {
 		emit = func(string, any) {}
 	}
 	return &chatManager{
-		db: database, dbPath: options.DBPath, mcpExecutable: options.mcpExecutable, emitEvent: emit, options: options,
+		db: database, dbPath: options.DBPath, mcpExecutable: options.mcpExecutable, emitEvent: emit, options: options, windowID: options.WindowID,
 		approvalTimeout: chatApprovalTimeout, approvalPollInterval: 300 * time.Millisecond,
 		idleTimeout: defaultChatIdleTimeout,
 		chats:       make(map[string]*chatRuntime),
@@ -182,9 +183,12 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if err := m.restartThinkingLocked(kind, c, rt); err != nil {
 		return ChatMessage{}, fmt.Errorf("restart chat for thinking change: %w", err)
 	}
+	if err := m.claimTurn(c.ID); err != nil {
+		return ChatMessage{}, err
+	}
 	message, err := InsertChatMessageWithAttachments(m.db, c.ID, "user", request.Text, request.Attachments)
 	if err != nil {
-		return ChatMessage{}, err
+		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
 	rt.connectorID = *c.ConnectorID
 	rt.busy = true
@@ -192,7 +196,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		rt.driver, err = start(m, c, configDir, rt)
 		if err != nil {
 			rt.busy = false
-			return message, err
+			return message, errors.Join(err, m.releaseTurn(c.ID))
 		}
 		if kind == "claude" || kind == "copilot" {
 			thinking := c.Thinking
@@ -201,12 +205,48 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	}
 	if err := rt.driver.send(request); err != nil {
 		rt.busy = false
+		if releaseErr := m.releaseTurn(c.ID); releaseErr != nil {
+			return message, errors.Join(err, releaseErr)
+		}
 		m.markRuntimeActiveLocked(c.ID, rt)
 		return message, fmt.Errorf("send chat message: %w", err)
 	}
 	m.markRuntimeActiveLocked(c.ID, rt)
 	return message, nil
 }
+
+func (m *chatManager) claimTurn(id string) error {
+	if m.windowID == "" {
+		return nil
+	}
+	return txrun(m.db, func(tx *sql.Tx) error {
+		var owner string
+		var heartbeat sql.NullString
+		err := tx.QueryRow(`SELECT t.window_id,w.heartbeat_at FROM chat_turn t LEFT JOIN app_window w ON w.id=t.window_id WHERE t.chat_id=?`, id).Scan(&owner, &heartbeat)
+		if err == nil {
+			if owner != m.windowID && heartbeat.Valid && heartbeat.String >= nowMinusWindowStale() {
+				return errChatTurnOtherWindow
+			}
+			if _, err := tx.Exec(`DELETE FROM chat_turn WHERE chat_id=?`, id); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		_, err = tx.Exec(`INSERT INTO chat_turn(chat_id,window_id,started_at) VALUES(?,?,?)`, id, m.windowID, now())
+		return err
+	})
+}
+
+func (m *chatManager) releaseTurn(id string) error {
+	if m.windowID == "" {
+		return nil
+	}
+	_, err := m.db.Exec(`DELETE FROM chat_turn WHERE chat_id=? AND window_id=?`, id, m.windowID)
+	return err
+}
+
+var errChatTurnOtherWindow = errors.New("A reply is already running in another window")
 
 func (m *chatManager) restartThinkingLocked(kind string, c chat, rt *chatRuntime) error {
 	if (kind != "claude" && kind != "copilot") || rt.driver == nil || rt.startedThinking == nil || *rt.startedThinking == c.Thinking {
@@ -294,6 +334,12 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		rt.mu.Unlock()
 	}
 	if err != nil {
+		if releaseErr := m.releaseTurn(id); releaseErr != nil {
+			log.Printf("release chat turn %s: %v", id, releaseErr)
+		}
+		return err
+	}
+	if err := m.releaseTurn(id); err != nil {
 		return err
 	}
 	m.emit(id, map[string]any{"type": "done", "message": message})
@@ -470,6 +516,9 @@ func (m *chatManager) Stop(id string) error {
 	rt.stopDone = nil
 	close(done)
 	rt.mu.Unlock()
+	if releaseErr := m.releaseTurn(id); releaseErr != nil {
+		return errors.Join(err, releaseErr)
+	}
 	m.emit(id, map[string]any{"type": "done"})
 	return err
 }

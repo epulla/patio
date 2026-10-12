@@ -33,6 +33,10 @@ type Server struct {
 	mcpConnect      mcpConnector
 	attachmentsMu   sync.Mutex
 	attachments     map[string]map[string]ChatAttachment
+	chatWindow      string
+	windowID        string
+	startWindow     func([]string) error
+	focusWindow     func()
 }
 
 type Options struct {
@@ -54,6 +58,10 @@ type Options struct {
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
 	openOAuthURL    func(string) error
+	ChatWindow      string
+	WindowID        string
+	StartWindow     func([]string) error
+	FocusWindow     func()
 }
 
 func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {
@@ -83,7 +91,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment)}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -139,6 +147,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("GET /api/chats/{id}/attachments/{name}", s.getChatAttachment)
 	m.HandleFunc("DELETE /api/chats/{id}/attachments/{name}", s.deleteChatAttachment)
 	m.HandleFunc("POST /api/chats/{id}/attachments/{name}/reveal", s.revealChatAttachment)
+	m.HandleFunc("POST /api/chats/{id}/window", s.openChatWindow)
+	m.HandleFunc("POST /api/windows/main", s.openMainWindow)
 	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
 	m.HandleFunc("POST /api/chats/{id}/stop", s.stopChat)
 	m.HandleFunc("GET /api/users", s.users)

@@ -601,6 +601,10 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusConflict, err.Error())
 		return
 	}
+	if errors.Is(err, errChatTurnOtherWindow) {
+		errw(w, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		if errors.Is(err, errChatUnsupported) || errors.Is(err, errChatConnectorMissing) {
 			errw(w, http.StatusBadRequest, err.Error())

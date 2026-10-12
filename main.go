@@ -40,6 +40,7 @@ func main() {
 	}
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
 	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
+	chatWindow := flag.String("chat", "", "open a chat in its own window")
 	flag.Parse()
 	home := ""
 	if *dbFile == "" {
@@ -64,13 +65,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	chatTitle := ""
+	if *chatWindow != "" {
+		if err := database.QueryRow(`SELECT title FROM chat WHERE id=?`, *chatWindow).Scan(&chatTitle); err != nil {
+			log.Fatalf("chat %q not found: %v", *chatWindow, err)
+		}
+	}
+	windowID := api.NewWindowID()
 	mime.AddExtensionType(".js", "text/javascript")
 
 	var appCtx context.Context
 	mux := http.NewServeMux()
 	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
-		DBPath: path,
-		Notify: func(title, message string) error { return beeep.Notify(title, message, "") },
+		DBPath:      path,
+		ChatWindow:  *chatWindow,
+		WindowID:    windowID,
+		StartWindow: func(args []string) error { return startWindow(exe, args) },
+		FocusWindow: func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
+		Notify:      func(title, message string) error { return beeep.Notify(title, message, "") },
 		Emit: func(event string, data any) {
 			wruntime.EventsEmit(appCtx, event, data)
 		},
@@ -112,6 +124,7 @@ func main() {
 	})
 	var stopBackground context.CancelFunc
 	var background sync.WaitGroup
+	windowStop := make(chan struct{})
 	// WKWebView ignores window.print(); Wails exposes native printing only from Go.
 	mux.HandleFunc("POST /api/print", func(w http.ResponseWriter, _ *http.Request) {
 		wruntime.WindowPrint(appCtx)
@@ -120,14 +133,18 @@ func main() {
 	mux.HandleFunc("/", spaHandler)
 	log.Printf("database at %s", path)
 	runErr := wails.Run(&options.App{
-		Title:  "My Tickets",
-		Width:  1280,
+		Title:  appTitle(chatTitle),
+		Width:  appWidth(*chatWindow),
 		Height: 800,
 		OnStartup: func(ctx context.Context) {
 			appCtx = ctx
+			if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
+				log.Printf("register app window: %v", err)
+			}
+			apiServer.RunWindowHeartbeat(windowStop, apiServer.FocusCurrentWindow)
 			backgroundCtx, cancel := context.WithCancel(ctx)
 			stopBackground = cancel
-			background.Add(3)
+			background.Add(1)
 			go func() {
 				defer background.Done()
 				if err := db.Watch(backgroundCtx, database, time.Second, func() {
@@ -136,22 +153,29 @@ func main() {
 					log.Printf("watch database changes: %v", err)
 				}
 			}()
-			go func() {
-				defer background.Done()
-				if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
-					log.Printf("run scheduled tasks: %v", err)
-				}
-			}()
-			go func() {
-				defer background.Done()
-				if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(title, message string) error {
-					return beeep.Notify("Reminder: "+title, message, "")
-				}); err != nil {
-					log.Printf("run reminders: %v", err)
-				}
-			}()
+			if *chatWindow == "" {
+				background.Add(2)
+				go func() {
+					defer background.Done()
+					if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
+						log.Printf("run scheduled tasks: %v", err)
+					}
+				}()
+				go func() {
+					defer background.Done()
+					if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(title, message string) error {
+						return beeep.Notify("Reminder: "+title, message, "")
+					}); err != nil {
+						log.Printf("run reminders: %v", err)
+					}
+				}()
+			}
 		},
 		OnShutdown: func(context.Context) {
+			close(windowStop)
+			if err := apiServer.UnregisterWindow(); err != nil {
+				log.Printf("unregister app window: %v", err)
+			}
 			if err := apiServer.Close(); err != nil {
 				log.Printf("close chat processes: %v", err)
 			}
@@ -170,6 +194,27 @@ func main() {
 	if runErr != nil {
 		log.Fatal(runErr)
 	}
+}
+
+func appTitle(chatTitle string) string {
+	if chatTitle != "" {
+		return chatTitle
+	}
+	return "My Tickets"
+}
+func appWidth(chatID string) int {
+	if chatID != "" {
+		return 900
+	}
+	return 1280
+}
+func startWindow(exe string, args []string) error {
+	cmd := exec.Command(exe, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 func runMCP(args []string) {

@@ -55,7 +55,7 @@ function ComingSoon({ title }: { title: string }) {
 
 export default function App() {
   const [path, setPath] = useState(currentPath);
-  const [config, setConfig] = useState<Config>({ show_hidden: false, version: "" });
+  const [config, setConfig] = useState<Config>();
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
   const [collapsed, setCollapsed] = useState(
@@ -98,8 +98,16 @@ export default function App() {
     api
       .get<Config>("/api/config")
       .then(setConfig)
-      .catch(() => undefined);
+      .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "" }));
   }, []);
+
+  if (!config) return null;
+  if (config.chat_window)
+    return (
+      <main className="chat-window">
+        <Chats id={config.chat_window} refresh={refresh} windowed />
+      </main>
+    );
 
   const boardMatch = path.match(/^\/boards\/([^/]+)$/);
   const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
