@@ -22,7 +22,7 @@ function read(): Prefs {
   return {
     mode: mode === "light" || mode === "dark" ? mode : "system",
     palette: palettes.find((p) => p.id === palette)?.id ?? "patio",
-    style: localStorage.getItem("sidebar-style") === "gradient" ? "gradient" : "flat",
+    style: localStorage.getItem("sidebar-style") === "flat" ? "flat" : "gradient",
   };
 }
 
