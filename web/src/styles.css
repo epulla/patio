@@ -1245,6 +1245,10 @@ label.days-field {
   border-color: color-mix(in oklch, var(--warning) 60%, transparent);
   background: color-mix(in oklch, var(--warning) 25%, var(--base-100));
 }
+.calendar-chip.scheduled {
+  border-color: color-mix(in oklch, var(--primary) 35%, transparent);
+  background: color-mix(in oklch, var(--primary) 12%, var(--base-100));
+}
 .calendar-chip.due {
   border-color: color-mix(in oklch, var(--error) 40%, transparent);
   background: color-mix(in oklch, var(--error) 14%, var(--base-100));

@@ -79,7 +79,16 @@ export type CalendarItem = {
   created_by: string;
   created_by_is_ai: boolean;
 };
-export type CalendarResponse = { items: CalendarItem[]; tickets: Ticket[] };
+export type CalendarScheduled = {
+  task_id: string;
+  title: string;
+  at: string;
+  run_id: string | null;
+  chat_id: string | null;
+  status: ScheduledTaskRun["status"] | null;
+  late: boolean;
+};
+export type CalendarResponse = { items: CalendarItem[]; tickets: Ticket[]; scheduled: CalendarScheduled[] };
 export type McpStatus = {
   command: string;
   args: string[];

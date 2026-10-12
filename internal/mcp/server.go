@@ -120,6 +120,22 @@ type calendarItemUpdateBody struct {
 type calendarItemIDArgs struct {
 	ID string `json:"id" jsonschema:"Calendar item UUID"`
 }
+type scheduledTaskIDArgs struct {
+	ID string `json:"id" jsonschema:"Scheduled task UUID"`
+}
+type scheduledTaskArgs struct {
+	ID          string  `json:"id,omitempty" jsonschema:"Scheduled task UUID for updates"`
+	Title       string  `json:"title" jsonschema:"Task title"`
+	Prompt      string  `json:"prompt" jsonschema:"Prompt to run"`
+	ConnectorID *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
+	Model       string  `json:"model"`
+	Folder      *string `json:"folder,omitempty"`
+	Thinking    bool    `json:"thinking"`
+	AutoAllow   *bool   `json:"auto_allow,omitempty" jsonschema:"Defaults true when omitted"`
+	Schedule    string  `json:"schedule,omitempty" jsonschema:"5-field cron in local time; exactly one of schedule or run_at"`
+	RunAt       *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
+	Enabled     *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
+}
 
 type approveArgs struct {
 	ToolName  string          `json:"tool_name"`
@@ -204,6 +220,22 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			q.Set("board_id", a.BoardID)
 		}
 		return request{http.MethodGet, "/api/calendar?" + q.Encode(), nil}
+	})
+	addGeneric(s, "list_scheduled_tasks", "List scheduled tasks", h, func(struct{}) request { return request{http.MethodGet, "/api/scheduled-tasks", nil} })
+	addGeneric(s, "get_scheduled_task", "Get scheduled task including recent runs", h, func(a scheduledTaskIDArgs) request {
+		return request{http.MethodGet, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil}
+	})
+	description := "Schedule is a 5-field cron in local time or run_at RFC3339 for one-off (exactly one); auto_allow defaults true; connector_id must come from existing connectors."
+	addGeneric(s, "create_scheduled_task", "Create scheduled task. "+description, h, func(a scheduledTaskArgs) request { return request{http.MethodPost, "/api/scheduled-tasks", a} })
+	addGeneric(s, "update_scheduled_task", "Update scheduled task; all fields are replaced. "+description, h, func(a scheduledTaskArgs) request {
+		return request{http.MethodPut, "/api/scheduled-tasks/" + url.PathEscape(a.ID), a}
+	})
+	addGenericHandler(s, "delete_scheduled_task", "Delete scheduled task", func(a scheduledTaskIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(h, request{http.MethodDelete, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	addGeneric(s, "create_calendar_item", "Create a calendar event or reminder", h, func(a createCalendarItemArgs) request {
 		return request{http.MethodPost, "/api/calendar-items", a}

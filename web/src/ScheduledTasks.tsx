@@ -328,7 +328,7 @@ function TaskEditor({
   const [model, setModel] = useState(task?.model ?? "");
   const [folder, setFolder] = useState(task?.folder ?? "");
   const [thinking, setThinking] = useState(task?.thinking ?? true);
-  const [autoAllow, setAutoAllow] = useState(task?.auto_allow ?? false);
+  const [autoAllow, setAutoAllow] = useState(task?.auto_allow ?? true);
   const [enabled, setEnabled] = useState(task?.enabled ?? true);
   const [when, setWhen] = useState(() => parseWhen(task));
   const [connectors, setConnectors] = useState<Connector[]>([]);

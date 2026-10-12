@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/robfig/cron/v3"
 )
 
 type calendarItem struct {
@@ -72,6 +75,85 @@ func scanCalendarItem(row interface{ Scan(...any) error }) (calendarItem, error)
 }
 
 const calendarItemSelect = `SELECT c.id,c.kind,c.title,c.description,c.starts_at,c.ends_at,c.all_day,c.board_id,c.ticket_id,c.created_by,u.is_ai,c.created_at,c.updated_at,c.deleted_at,c.notified_at FROM calendar_item c JOIN "user" u ON u.id=c.created_by`
+
+type scheduledCalendarItem struct {
+	TaskID string  `json:"task_id"`
+	Title  string  `json:"title"`
+	At     string  `json:"at"`
+	RunID  *string `json:"run_id"`
+	ChatID *string `json:"chat_id"`
+	Status *string `json:"status"`
+	Late   bool    `json:"late"`
+}
+
+func (s *Server) scheduledCalendar(from, to string) ([]scheduledCalendarItem, error) {
+	fromDate, err := time.ParseInLocation("2006-01-02", from, time.Local)
+	if err != nil {
+		return nil, err
+	}
+	toDate, err := time.ParseInLocation("2006-01-02", to, time.Local)
+	if err != nil {
+		return nil, err
+	}
+	end := toDate.AddDate(0, 0, 1)
+	inRange := func(t time.Time) bool { return !t.Before(fromDate) && t.Before(end) }
+	layout := "2006-01-02T15:04:05.000Z"
+	out := []scheduledCalendarItem{}
+	rows, err := s.db.Query(`SELECT r.id,r.task_id,t.title,r.scheduled_for,r.chat_id,r.status,r.late FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.scheduled_for>=? AND r.scheduled_for<? ORDER BY r.scheduled_for,r.rowid`, fromDate.UTC().Format(layout), end.UTC().Format(layout))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var x scheduledCalendarItem
+		if err := rows.Scan(&x.RunID, &x.TaskID, &x.Title, &x.At, &x.ChatID, &x.Status, &x.Late); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	tasks, err := s.db.Query(`SELECT id,title,schedule,next_run_at FROM scheduled_task WHERE enabled=1 AND next_run_at IS NOT NULL ORDER BY created_at,rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer tasks.Close()
+	for tasks.Next() {
+		var id, title, schedule, next string
+		if err := tasks.Scan(&id, &title, &schedule, &next); err != nil {
+			return nil, err
+		}
+		at, err := time.Parse(layout, next)
+		if err != nil {
+			return nil, err
+		}
+		var parsed cron.Schedule
+		if schedule != "" {
+			if parsed, err = cron.ParseStandard(schedule); err != nil {
+				return nil, err
+			}
+			if at.Before(fromDate) {
+				at = parsed.Next(fromDate.Add(-time.Second))
+			}
+		}
+		// burnedout: assumed 500 occurrence cap per task
+		for n := 0; n < 500 && at.Before(end); n++ {
+			if inRange(at) {
+				out = append(out, scheduledCalendarItem{TaskID: id, Title: title, At: at.UTC().Format(layout)})
+			}
+			if parsed == nil {
+				break
+			}
+			at = parsed.Next(at.In(time.Local))
+		}
+	}
+	if err := tasks.Err(); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At < out[j].At })
+	return out, nil
+}
 
 func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 	from, to := r.URL.Query().Get("from"), r.URL.Query().Get("to")
@@ -143,7 +225,15 @@ func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, map[string]any{"items": items, "tickets": tickets})
+	scheduled := []scheduledCalendarItem{}
+	if boardID == "" {
+		scheduled, err = s.scheduledCalendar(from, to)
+		if err != nil {
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	write(w, http.StatusOK, map[string]any{"items": items, "tickets": tickets, "scheduled": scheduled})
 }
 
 type calendarItemFields struct {

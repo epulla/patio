@@ -34,10 +34,10 @@ type scheduledTaskInput struct {
 	Model       string  `json:"model"`
 	Folder      *string `json:"folder"`
 	Thinking    bool    `json:"thinking"`
-	AutoAllow   bool    `json:"auto_allow"`
+	AutoAllow   *bool   `json:"auto_allow"`
 	Schedule    string  `json:"schedule"`
 	RunAt       *string `json:"run_at"`
-	Enabled     bool    `json:"enabled"`
+	Enabled     *bool   `json:"enabled"`
 }
 
 const scheduledTaskColumns = `id,title,prompt,connector_id,model,folder,thinking,auto_allow,schedule,run_at,enabled,next_run_at,created_at,updated_at`
@@ -102,7 +102,7 @@ func (s *Server) validateScheduledTask(in *scheduledTaskInput) (*string, error) 
 		}
 		in.Folder = &cleaned
 	}
-	return taskSchedule(in.Schedule, in.RunAt, in.Enabled, time.Now())
+	return taskSchedule(in.Schedule, in.RunAt, *in.Enabled, time.Now())
 }
 
 func (s *Server) listScheduledTasks(w http.ResponseWriter, _ *http.Request) {
@@ -167,6 +167,13 @@ func (s *Server) saveScheduledTask(w http.ResponseWriter, r *http.Request, creat
 	if decode(r, &in) != nil {
 		errw(w, 400, "invalid scheduled task JSON")
 		return
+	}
+	yes := true
+	if in.AutoAllow == nil {
+		in.AutoAllow = &yes
+	}
+	if in.Enabled == nil {
+		in.Enabled = &yes
 	}
 	next, err := s.validateScheduledTask(&in)
 	if err != nil {

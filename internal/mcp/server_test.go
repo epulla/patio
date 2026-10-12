@@ -48,6 +48,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"get_ticket": true, "update_ticket": true, "move_ticket": true, "search_tickets": true,
 		"add_comment": true, "list_calendar": true, "create_calendar_item": true,
 		"update_calendar_item": true, "delete_calendar_item": true,
+		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
 		"list_skills": true, "load_skill": true,
 	}
 	count := 0
@@ -66,11 +67,27 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 15 {
-		t.Fatalf("tool count = %d, want 15", count)
+	if count != 20 {
+		t.Fatalf("tool count = %d, want 20", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
+	}
+	createdTask := callTool(t, session, "create_scheduled_task", map[string]any{"title": "MCP scheduled", "prompt": "do work", "model": "", "thinking": false, "schedule": "0 9 * * *", "enabled": true})
+	if createdTask.IsError {
+		t.Fatalf("create scheduled task: %s", createdTask.Content[0].(*sdk.TextContent).Text)
+	}
+	var task struct {
+		ID        string `json:"id"`
+		AutoAllow bool   `json:"auto_allow"`
+	}
+	decodeText(t, createdTask, &task)
+	var tasks []struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "list_scheduled_tasks", map[string]any{}), &tasks)
+	if !task.AutoAllow || len(tasks) != 1 || tasks[0].ID != task.ID {
+		t.Fatalf("scheduled task round trip: %#v %#v", task, tasks)
 	}
 
 	boardResult := callTool(t, session, "create_board", map[string]any{

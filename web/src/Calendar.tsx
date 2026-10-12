@@ -5,6 +5,7 @@ import {
   type Board,
   type CalendarItem,
   type CalendarResponse,
+  type CalendarScheduled,
   type Ticket,
 } from "./api";
 import { ErrorText, navigate } from "./App";
@@ -75,6 +76,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
   const [data, setData] = useState<CalendarResponse>({
     items: [],
     tickets: [],
+    scheduled: [],
   });
   const [error, setError] = useState<unknown>();
   const [editing, setEditing] = useState<CalendarItem | null | undefined>();
@@ -146,7 +148,15 @@ export default function Calendar({ refresh }: { refresh: number }) {
     const tickets = data.tickets.filter(
       (ticket) => ticket.due_date?.slice(0, 10) === key,
     );
-    return { items, tickets };
+    // burnedout: assumed one chip per task per day, with a count, so hourly tasks stay readable
+    const scheduled = new Map<string, { first: CalendarScheduled; count: number }>();
+    for (const run of data.scheduled) {
+      if (dateKey(new Date(run.at)) !== key) continue;
+      const group = scheduled.get(run.task_id);
+      if (group) group.count++;
+      else scheduled.set(run.task_id, { first: run, count: 1 });
+    }
+    return { items, tickets, scheduled: [...scheduled.values()] };
   }
 
   return (
@@ -217,7 +227,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
         ))}
         {days.map((day) => {
           const key = dateKey(day);
-          const { items, tickets } = dayItems(key);
+          const { items, tickets, scheduled } = dayItems(key);
           return (
             <section
               className={`calendar-day ${view === "month" && day.getMonth() !== anchor.getMonth() ? "outside-month" : ""} ${key === today ? "today" : ""}`}
@@ -256,6 +266,9 @@ export default function Calendar({ refresh }: { refresh: number }) {
                     {item.title} <AIBadge isAI={item.created_by_is_ai} />
                   </button>
                 ))}
+                {scheduled.map(({ first, count }) => (
+                  <ScheduledChip key={first.task_id} run={first} count={count} />
+                ))}
               </div>
             </section>
           );
@@ -274,6 +287,23 @@ export default function Calendar({ refresh }: { refresh: number }) {
         />
       )}
     </div>
+  );
+}
+
+function ScheduledChip({ run, count }: { run: CalendarScheduled; count: number }) {
+  const time = new Date(run.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const status = run.status === "skipped" ? "Skipped" : run.late ? "Ran late" : run.status === "failed" ? "Failed" : "";
+  return (
+    <button
+      className="calendar-chip scheduled"
+      title={count > 1 ? `${count} runs this day, first at ${time}` : undefined}
+      onClick={() => navigate(run.chat_id && count === 1 ? `/ai/chats/${run.chat_id}` : `/ai/scheduled/${run.task_id}`)}
+    >
+      <time>{time} </time>
+      <span className="calendar-kind">AI task</span> {run.title}
+      {count > 1 && ` ×${count}`}
+      {status && ` · ${status}`}
+    </button>
   );
 }
 
