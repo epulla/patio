@@ -64,7 +64,13 @@ export default function Menu({
         {button}
       </button>
       {open && (
-        <div className="menu-list compact" role="menu" aria-label={label}>
+        <div
+          className="menu-list compact"
+          role="menu"
+          aria-label={label}
+          // WebKit doesn't focus clicked buttons, so the press would blur the menu and close it before the click.
+          onMouseDown={(event) => event.preventDefault()}
+        >
           {children(close)}
         </div>
       )}

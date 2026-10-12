@@ -160,7 +160,7 @@ function ExportMenu({ boardId }: { boardId: string }) {
         <Icon name="download" /> Export <Icon name="chevronDown" />
       </button>
       {open && (
-        <div className="menu-list" role="menu" aria-label="Export">
+        <div className="menu-list" role="menu" aria-label="Export" onMouseDown={(event) => event.preventDefault()}>
           {exportFormats.map(([format, label, hint]) => (
             <a
               key={format}
