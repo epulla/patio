@@ -50,6 +50,7 @@ const paths = {
     "M5 3v4",
     "M3 5h4",
   ],
+  clock: ["M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20", "M12 6v6l4 2"],
   calendar: [
     "M8 2v4",
     "M16 2v4",

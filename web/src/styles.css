@@ -241,6 +241,34 @@ small {
   line-height: 1.6;
   vertical-align: middle;
 }
+.run-label {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.day-picker {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.skill-editor fieldset {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.skill-editor .day-picker label {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 500;
+}
 .back {
   border: 0;
   background: none;

@@ -93,12 +93,12 @@ func TestScheduledRunCompletesChatTurn(t *testing.T) {
 	if err := database.QueryRow(`SELECT chat_id,status,late FROM scheduled_task_run WHERE id=?`, claims[0].runID).Scan(&chatID, &status, &late); err != nil {
 		t.Fatal(err)
 	}
-	var taskID string
-	if err := database.QueryRow(`SELECT scheduled_task_id FROM chat WHERE id=?`, chatID).Scan(&taskID); err != nil {
+	c, err := s.scanChat(database.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, chatID))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if taskID != id || status != "running" || late {
-		t.Fatalf("task=%q status=%q late=%v", taskID, status, late)
+	if c.ScheduledTaskID == nil || *c.ScheduledTaskID != id || c.ScheduledLate || status != "running" || late {
+		t.Fatalf("chat=%#v status=%q late=%v", c, status, late)
 	}
 	select {
 	case <-fake.input:

@@ -38,10 +38,12 @@ type ChatEvent =
 
 type ModelOption = { id: string; label: string; description?: string };
 
+export const lateTitle = "The app was closed at the scheduled time, so this ran when it opened again.";
+
 const fallbackModels: ModelOption[] = [{ id: "", label: "Default" }];
 const modelCache = new Map<string, ModelOption[]>();
 
-function useModels(connectorID: string | null | undefined) {
+export function useModels(connectorID: string | null | undefined) {
   const cached = connectorID ? modelCache.get(connectorID) : fallbackModels;
   const [state, setState] = useState({ id: connectorID, models: cached ?? fallbackModels, loading: !cached });
   useEffect(() => {
@@ -81,7 +83,7 @@ function MessageTime({ iso }: { iso: string }) {
   );
 }
 
-function ModelOptions({ models, current, loading }: { models: ModelOption[]; current: string; loading: boolean }) {
+export function ModelOptions({ models, current, loading }: { models: ModelOption[]; current: string; loading: boolean }) {
   if (loading) return <option value={current}>Loading models…</option>;
   return (
     <>
@@ -130,7 +132,20 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
               onClick={() => navigate(`/ai/chats/${chat.id}`)}
             >
               <span>{chat.title}</span>
-              <small>{new Date(chat.updated_at).toLocaleDateString()}</small>
+              <small>
+                {new Date(chat.updated_at).toLocaleDateString()}
+                {chat.scheduled_task_id && (
+                  <>
+                    {" · "}
+                    <Icon name="clock" /> Scheduled
+                  </>
+                )}
+                {chat.scheduled_late && (
+                  <span className="run-label" title={lateTitle}>
+                    Ran late
+                  </span>
+                )}
+              </small>
             </button>
           ))}
         </nav>
@@ -463,6 +478,15 @@ function Conversation({
           />
           <div className="conversation-meta">
             <span>{connector ? connector.name : "Connector removed"}</span>
+            {detail.chat.scheduled_task_id && (
+              <button
+                type="button"
+                className="folder-chip"
+                onClick={() => navigate(`/ai/scheduled/${detail.chat.scheduled_task_id}`)}
+              >
+                <Icon name="clock" /> Scheduled task
+              </button>
+            )}
             <label>
               <span className="sr-only">Model</span>
               <select

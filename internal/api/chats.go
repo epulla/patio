@@ -21,19 +21,21 @@ type allowedFolder struct {
 }
 
 type chat struct {
-	ID           string           `json:"id"`
-	ConnectorID  *string          `json:"connector_id"`
-	Title        string           `json:"title"`
-	Model        string           `json:"model"`
-	Folder       *string          `json:"folder"`
-	SessionID    *string          `json:"session_id"`
-	CreatedAt    string           `json:"created_at"`
-	UpdatedAt    string           `json:"updated_at"`
-	Workdir      string           `json:"workdir"`
-	Running      bool             `json:"running"`
-	Thinking     bool             `json:"thinking"`
-	AutoAllow    bool             `json:"auto_allow"`
-	Capabilities chatCapabilities `json:"capabilities"`
+	ID              string           `json:"id"`
+	ConnectorID     *string          `json:"connector_id"`
+	Title           string           `json:"title"`
+	Model           string           `json:"model"`
+	Folder          *string          `json:"folder"`
+	SessionID       *string          `json:"session_id"`
+	CreatedAt       string           `json:"created_at"`
+	UpdatedAt       string           `json:"updated_at"`
+	Workdir         string           `json:"workdir"`
+	Running         bool             `json:"running"`
+	Thinking        bool             `json:"thinking"`
+	AutoAllow       bool             `json:"auto_allow"`
+	Capabilities    chatCapabilities `json:"capabilities"`
+	ScheduledTaskID *string          `json:"scheduled_task_id"`
+	ScheduledLate   bool             `json:"scheduled_late"`
 }
 
 type chatCapabilities struct {
@@ -149,7 +151,7 @@ func (s *Server) deleteAllowedFolder(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.AutoAllow); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate); err != nil {
 		return c, err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -182,7 +184,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,auto_allow`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0)`
 
 func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 	rows, err := s.db.Query(`SELECT ` + chatColumns + ` FROM chat ORDER BY updated_at DESC,rowid DESC`)

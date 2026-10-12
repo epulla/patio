@@ -175,6 +175,34 @@ export type Chat = {
   thinking: boolean;
   auto_allow: boolean;
   capabilities: { thinking: { supported: boolean; reason: string } };
+  scheduled_task_id: string | null;
+  scheduled_late: boolean;
+};
+export type ScheduledTask = {
+  id: string;
+  title: string;
+  prompt: string;
+  connector_id: string | null;
+  model: string;
+  folder: string | null;
+  thinking: boolean;
+  auto_allow: boolean;
+  schedule: string;
+  run_at: string | null;
+  enabled: boolean;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type ScheduledTaskRun = {
+  id: string;
+  task_id: string;
+  chat_id: string | null;
+  scheduled_for: string;
+  status: "running" | "done" | "failed" | "skipped";
+  late: boolean;
+  error: string;
+  created_at: string;
 };
 export type ChatAttachment = { name: string; kind: "text" | "image"; mime: string; size: number };
 export type ChatMessage = {

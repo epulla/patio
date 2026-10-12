@@ -8,6 +8,7 @@ import Connectors from "./Connectors";
 import Chats from "./Chats";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
+import ScheduledTasks from "./ScheduledTasks";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import { api, type Board, type Config } from "./api";
@@ -137,6 +138,9 @@ export default function App() {
   if (skillMatch)
     page = <Skills id={skillMatch[1] && decodeURIComponent(skillMatch[1])} refresh={refresh} />;
   if (path === "/ai/mcp") page = <McpServers refresh={refresh} />;
+  const scheduledMatch = path.match(/^\/ai\/scheduled(?:\/([^/]+))?$/);
+  if (scheduledMatch)
+    page = <ScheduledTasks id={scheduledMatch[1] && decodeURIComponent(scheduledMatch[1])} refresh={refresh} />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
 
@@ -186,6 +190,7 @@ export default function App() {
             {navItem("/ai/skills", "Skills", <Icon name="sparkles" />, !!skillMatch)}
             {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp")}
           </div>
+          {navItem("/ai/scheduled", "Scheduled tasks", <Icon name="clock" />, !!scheduledMatch)}
           {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
           {boards.map((board) =>
             navItem(
