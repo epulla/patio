@@ -122,6 +122,11 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 				if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 || got.Folder != nil || got.Title != "New chat" {
 					t.Fatalf("default chat = %#v; dir stat = %v, %v", got, info, err)
 				}
+				canonicalWorkdir, err := filepath.EvalSymlinks(got.Workdir)
+				wantWorkdir, wantErr := filepath.EvalSymlinks(filepath.Join(root, "chats", got.ID))
+				if err != nil || wantErr != nil || canonicalWorkdir != wantWorkdir {
+					t.Fatalf("default workdir = %q, canonical = %q, want = %q, err = %v", got.Workdir, canonicalWorkdir, wantWorkdir, err)
+				}
 				if _, err := database.Exec(`UPDATE chat SET updated_at='same' WHERE id=?`, got.ID); err != nil {
 					t.Fatal(err)
 				}

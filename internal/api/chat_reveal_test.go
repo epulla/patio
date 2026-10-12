@@ -67,7 +67,11 @@ func TestRevealChatFile(t *testing.T) {
 		opened = append(opened, path)
 		return nil
 	}
-	fileURL := (&url.URL{Scheme: "file", Path: inside}).String()
+	filePath := filepath.ToSlash(inside)
+	if filepath.Separator == '\\' {
+		filePath = "/" + filePath
+	}
+	fileURL := (&url.URL{Scheme: "file", Path: filePath}).String()
 	tests := []struct {
 		name, path, wantPath, wantError string
 		wantStatus                      int

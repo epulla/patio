@@ -14,21 +14,26 @@ import (
 
 func TestMCPServerValidation(t *testing.T) {
 	root := t.TempDir()
-	executable := filepath.Join(root, "test-command")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\n"), 0o700); err != nil {
+	executable, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	nonExecutable := filepath.Join(root, "not-executable")
-	if err := os.WriteFile(nonExecutable, []byte("#!/bin/sh\n"), 0o600); err != nil {
+	nonExecutable := filepath.Join(root, "not-executable"+filepath.Ext(executable))
+	if err := os.WriteFile(nonExecutable, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	pathDir := filepath.Join(root, "path")
 	if err := os.Mkdir(pathDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pathDir, "found-command"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+	executableContents, err := os.ReadFile(executable)
+	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(pathDir, "found-command"+filepath.Ext(executable)), executableContents, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pathCommand := "found-command" + filepath.Ext(executable)
 	directory := filepath.Join(root, "directory")
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
@@ -42,7 +47,7 @@ func TestMCPServerValidation(t *testing.T) {
 		valid  bool
 	}{
 		{"valid absolute command", validStdio, true},
-		{"valid PATH command", func() mcpServerConfig { c := validStdio; c.Command = "found-command"; return c }(), true},
+		{"valid PATH command", func() mcpServerConfig { c := validStdio; c.Command = pathCommand; return c }(), true},
 		{"valid HTTPS", validHTTP, true},
 		{"valid localhost HTTP", func() mcpServerConfig { c := validHTTP; c.URL = "http://localhost:8080/mcp"; return c }(), true},
 		{"empty name", func() mcpServerConfig { c := validStdio; c.Name = ""; return c }(), false},

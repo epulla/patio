@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestBuildLoginCommandQuotesAndFiltersSecrets(t *testing.T) {
-	path, config := "/tmp/cli with space/claude", "/tmp/config with 'quote'"
+	path, config := filepath.Join("/tmp", "cli with space", "claude"), filepath.Join("/tmp", "config with 'quote'")
 	command, err := BuildLoginCommand("darwin", "claude", path, []string{
 		"CLAUDE_CONFIG_DIR=" + config, "COPILOT_GITHUB_TOKEN=hidden", "OTHER_SECRET=hidden",
 	})
