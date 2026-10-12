@@ -796,14 +796,6 @@ a:has(> .svg-icon) {
   cursor: grab;
   transition: border-color 0.15s;
 }
-.ticket-search-result {
-  width: 100%;
-  height: auto;
-  align-items: flex-start;
-  text-align: left;
-  white-space: normal;
-  cursor: pointer;
-}
 .ticket-card:focus-visible {
   border-color: var(--primary);
 }
@@ -1651,6 +1643,128 @@ label.days-field {
   align-items: center;
   gap: 12px;
   margin-bottom: -12px;
+}
+.ticket-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 16px 20px;
+}
+.ticket-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ticket-filter-search {
+  grid-column: span 2;
+}
+.ticket-list {
+  padding: 0;
+  overflow: hidden;
+}
+.ticket-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ticket-list li {
+  border-top: 1px solid var(--border);
+}
+.ticket-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr) 100px 100px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+  font-weight: 400;
+}
+.ticket-list li .ticket-row:hover {
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+}
+.ticket-row > span,
+.ticket-row > time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticket-row-code {
+  font: 600 13px var(--mono);
+}
+.ticket-row-title {
+  font-weight: 500;
+}
+.ticket-list-head {
+  padding-block: 8px;
+  background: var(--base-200);
+}
+.ticket-list-head button {
+  justify-content: flex-start;
+  gap: 4px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ticket-list-head button.active {
+  color: inherit;
+}
+.ticket-list-head button.asc .svg-icon {
+  transform: rotate(180deg);
+}
+.ticket-list-head .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.ticket-list-empty {
+  margin: 0;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 760px) {
+  .ticket-filter-search {
+    grid-column: 1 / -1;
+  }
+  .ticket-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    column-gap: 12px;
+    row-gap: 2px;
+  }
+  .ticket-row-title {
+    flex: 1 1 100%;
+  }
+  .ticket-row > :nth-child(n + 3) {
+    font-size: 12px;
+  }
+  .ticket-list li .ticket-row {
+    padding-left: calc(20px + var(--code-width) + 12px);
+  }
+  .ticket-row-code {
+    width: var(--code-width);
+    margin-left: calc(-12px - var(--code-width));
+  }
+  .ticket-list {
+    --code-width: 56px;
+  }
+  .ticket-row .date-label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+  }
 }
 .menu-list button {
   justify-content: flex-start;

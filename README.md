@@ -12,7 +12,7 @@ Port of the prod-tickets schema, plus a `ticket_status_transition` table that re
 - Export: board as Excel, CSV, or JSON backup; ticket as JSON or Markdown.
 - Import: a board JSON backup imports as a new board, e.g. on another computer. A colliding short name gets a suffix (`NB` -> `NB2`).
 - Print: clean printable page with history and transitions.
-- Ticket search: find tickets by title or code across all boards.
+- Ticket search: list tickets across all boards, newest first; filter by title or code, board, and created/updated dates; sort with the Most recent / Alphabetical menu or by clicking a column header.
 - Calendar: calendar items plus tickets with due dates.
 - Hidden: comments and assignee work in the API; the UI shows them only with `-show-hidden`.
 
