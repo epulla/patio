@@ -292,6 +292,8 @@ var (
 	errChatTurnRunning        = errors.New("chat turn already running")
 	errChatModelChangeBusy    = errors.New("Stop the reply before changing the model")
 	errChatThinkingChangeBusy = errors.New("Stop the reply before changing thinking")
+	errChatFolderChangeBusy   = errors.New("Stop the reply before changing the folder")
+	errChatFolderLocked       = errors.New("Start a new chat to use another folder")
 	errChatUnsupported        = errors.New("not supported yet")
 	errChatConnectorMissing   = errors.New("chat has no connector")
 	errChatManagerClosed      = errors.New("chat manager is closed")
@@ -524,11 +526,20 @@ func (m *chatManager) Stop(id string) error {
 }
 
 func (m *chatManager) ChangeModel(id string, update func() error) error {
+	return m.restart(id, errChatModelChangeBusy, update)
+}
+
+// ChangeFolder closes the runtime so the next turn starts in the new folder.
+func (m *chatManager) ChangeFolder(id string, update func() error) error {
+	return m.restart(id, errChatFolderChangeBusy, update)
+}
+
+func (m *chatManager) restart(id string, busy error, update func() error) error {
 	rt := m.runtime(id)
 	rt.mu.Lock()
 	if rt.busy || rt.stopping {
 		rt.mu.Unlock()
-		return errChatModelChangeBusy
+		return busy
 	}
 	if err := update(); err != nil {
 		rt.mu.Unlock()

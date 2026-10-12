@@ -483,6 +483,86 @@ func (s *Server) chatAttachmentWasSent(chatID, name string) (bool, error) {
 	return false, rows.Err()
 }
 
+type movedFile struct{ from, to string }
+
+// movePendingAttachments moves unsent attachments into workdir's attachments
+// folder. On failure it moves back whatever it already moved. Caller holds
+// attachmentsMu.
+func (s *Server) movePendingAttachments(c chat, workdir string) ([]movedFile, error) {
+	pending := s.attachments[c.ID]
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	dir, err := chatAttachmentsDir(workdir, true)
+	if err != nil {
+		return nil, err
+	}
+	var moved []movedFile
+	for name := range pending {
+		from, err := s.attachmentPath(c, name)
+		if err == nil {
+			to := filepath.Join(dir, name)
+			if err = moveFile(from, to); err == nil {
+				moved = append(moved, movedFile{from, to})
+				continue
+			}
+			if errors.Is(err, os.ErrExist) {
+				err = fmt.Errorf("attachments/%s already exists in the new folder: %w", name, os.ErrExist)
+			}
+		}
+		return nil, errors.Join(err, restoreMovedFiles(moved))
+	}
+	return moved, nil
+}
+
+func restoreMovedFiles(moved []movedFile) error {
+	var joined error
+	for _, file := range moved {
+		joined = errors.Join(joined, moveFile(file.to, file.from))
+	}
+	return joined
+}
+
+// moveFile never overwrites to. It hard-links when possible and falls back
+// to copy and delete, e.g. across drives.
+func moveFile(from, to string) error {
+	err := os.Link(from, to)
+	if errors.Is(err, os.ErrExist) {
+		return err
+	}
+	if err != nil {
+		if err = copyNewFile(from, to); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(from); err != nil {
+		return errors.Join(err, os.Remove(to))
+	}
+	return nil
+}
+
+func copyNewFile(from, to string) error {
+	src, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(dst, src); err == nil {
+		err = dst.Sync()
+	}
+	if closeErr := dst.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return errors.Join(err, os.Remove(to))
+	}
+	return nil
+}
+
 func (s *Server) markChatAttachmentsSent(c chat, selected map[string]bool) error {
 	pending := s.attachments[c.ID]
 	var joined error

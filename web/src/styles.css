@@ -2071,6 +2071,57 @@ main.chat-window {
   width: 14px;
   height: 14px;
 }
+.conversation-meta .menu {
+  min-width: 0;
+}
+.folder-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+}
+.folder-trail button {
+  height: 28px;
+  padding: 0 6px;
+  font-weight: 500;
+}
+.folder-trail button[aria-current] {
+  font-weight: 700;
+}
+.folder-trail span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.folder-browser {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 320px;
+  min-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+}
+.folder-browser button {
+  width: 100%;
+  justify-content: flex-start;
+  height: auto;
+  min-height: 36px;
+  padding: 6px 8px;
+  font-weight: 500;
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.folder-browser button .muted {
+  margin-left: auto;
+  font-size: 12px;
+}
+.folder-browser > .muted {
+  padding: 8px;
+}
 .messages {
   flex: 1;
   min-height: 0;

@@ -463,6 +463,7 @@ function Conversation({
 }) {
   const uid = useId();
   const [split, setSplit] = useState<"" | "row" | "column">("");
+  const [choosingFolder, setChoosingFolder] = useState(false);
   const [splitSizes, setSplitSizes] = useState([0.5, 0.5]);
   const input = useRef<HTMLTextAreaElement>(null);
   const [detail, setDetail] = useState<ChatDetail>();
@@ -680,6 +681,13 @@ function Conversation({
     if (on) void load();
   }
 
+  async function changeFolder(folder: string | null) {
+    const chat = await api.put<Chat>(`/api/chats/${id}`, { folder });
+    setDetail((current) => current && { ...current, chat: { ...current.chat, ...chat } });
+    setChoosingFolder(false);
+    setError(undefined);
+  }
+
   async function reveal(path: string) {
     try {
       await api.post(`/api/chats/${id}/reveal`, { path });
@@ -730,6 +738,7 @@ function Conversation({
     );
 
   const connector = connectors.find((c) => c.id === detail.chat.connector_id);
+  const folderLabel = detail.chat.folder ?? "Scratch folder (no files shared)";
   const template = `minmax(0, ${splitSizes[0]}fr) 6px minmax(0, ${splitSizes[1]}fr)`;
   const history = (
     <>
@@ -898,16 +907,49 @@ function Conversation({
             }
             onChange={changeAutoAllow}
           />
-          <button
-            type="button"
-            className="folder-chip"
-            title={`Open in file manager: ${detail.chat.workdir}`}
-            onClick={() => reveal(detail.chat.workdir)}
-          >
-            <Icon name="folder" /> {detail.chat.folder ?? "Scratch folder (no files shared)"}
-          </button>
+          {detail.messages.length === 0 && !running ? (
+            <Menu
+              label="Folder"
+              buttonClassName="folder-chip"
+              button={
+                <>
+                  <Icon name="folder" /> {folderLabel}
+                </>
+              }
+            >
+              {(close) => (
+                <>
+                  <button role="menuitem" onClick={() => (close(false), setChoosingFolder(true))}>
+                    <Icon name="folder" /> Change folder…
+                  </button>
+                  <button role="menuitem" onClick={() => (close(), reveal(detail.chat.workdir))}>
+                    <Icon name="externalLink" /> Open in file manager
+                  </button>
+                </>
+              )}
+            </Menu>
+          ) : (
+            <button
+              type="button"
+              className="folder-chip"
+              title={`Open in file manager: ${detail.chat.workdir}\nStart a new chat to use another folder`}
+              onClick={() => reveal(detail.chat.workdir)}
+            >
+              <Icon name="folder" /> {folderLabel}
+            </button>
+          )}
         </div>
       </header>
+      {choosingFolder && (
+        <FolderDialog
+          current={detail.chat.folder}
+          onPick={changeFolder}
+          onClose={() => setChoosingFolder(false)}
+          onSettings={() =>
+            windowed ? api.post("/api/windows/main", { path: "/settings" }).catch(setError) : navigate("/settings")
+          }
+        />
+      )}
 
       <p className="sr-only" role="status">
         {running ? "Assistant is replying." : announcement}
@@ -1089,6 +1131,132 @@ function ApprovalCard({ approval, onAnswer }: { approval: ChatApproval; onAnswer
         <button onClick={() => onAnswer(false)}>Deny</button>
       </div>
     </section>
+  );
+}
+
+type BrowsedFolder = { name: string; path: string };
+
+function FolderDialog({
+  current,
+  onPick,
+  onClose,
+  onSettings,
+}: {
+  current: string | null;
+  onPick: (folder: string | null) => Promise<void>;
+  onClose: () => void;
+  onSettings: () => void;
+}) {
+  const [roots, setRoots] = useState<AllowedFolder[]>();
+  const [trail, setTrail] = useState<BrowsedFolder[]>([]);
+  const [folders, setFolders] = useState<BrowsedFolder[]>();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const at = trail.at(-1);
+
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal();
+    api.get<AllowedFolder[]>("/api/settings/folders").then(setRoots).catch(setError);
+  }, []);
+
+  useEffect(() => {
+    if (!at) return;
+    let current = true;
+    setFolders(undefined);
+    api
+      .get<{ folders: BrowsedFolder[] }>(`/api/settings/folders/browse?path=${encodeURIComponent(at.path)}`)
+      .then((result) => current && setFolders(result.folders))
+      .catch((reason) => current && setError(reason));
+    return () => {
+      current = false;
+    };
+  }, [at?.path]);
+
+  async function pick(folder: string | null) {
+    setSaving(true);
+    try {
+      await onPick(folder);
+    } catch (reason) {
+      setError(reason);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <dialog ref={dialog} className="create-dialog" aria-labelledby="folder-dialog-title" onClose={onClose}>
+      <section className="panel create create-modal">
+        <div className="page-heading">
+          <h2 id="folder-dialog-title">Choose folder</h2>
+          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
+        </div>
+        <nav className="folder-trail" aria-label="Folder path">
+          <button type="button" className="ghost" aria-current={at ? undefined : "location"} onClick={() => setTrail([])}>
+            Folders
+          </button>
+          {trail.map((folder, index) => (
+            <span key={folder.path}>
+              <span aria-hidden="true">/</span>
+              <button
+                type="button"
+                className="ghost"
+                title={folder.path}
+                aria-current={index === trail.length - 1 ? "location" : undefined}
+                onClick={() => setTrail(trail.slice(0, index + 1))}
+              >
+                {folder.name}
+              </button>
+            </span>
+          ))}
+        </nav>
+        <ul className="folder-browser" aria-busy={at ? !folders : !roots}>
+          {!at && (
+            <li>
+              <button type="button" className="ghost" disabled={saving} onClick={() => pick(null)}>
+                <Icon name="folder" /> Scratch folder (no files shared)
+                {current === null && <span className="muted">current</span>}
+              </button>
+            </li>
+          )}
+          {(at ? folders : roots?.map((root) => ({ name: root.path, path: root.path })))?.map((folder) => (
+            <li key={folder.path}>
+              <button type="button" className="ghost" onClick={() => (setError(undefined), setTrail([...trail, folder]))}>
+                <Icon name="folder" /> {folder.name}
+                {current === folder.path && <span className="muted">current</span>}
+              </button>
+            </li>
+          ))}
+          {at && folders?.length === 0 && <li className="muted">No folders inside.</li>}
+        </ul>
+        <small className="muted">
+          Want more folders?{" "}
+          <a
+            href="/settings"
+            onClick={(event) => {
+              event.preventDefault();
+              dialog.current?.close();
+              onSettings();
+            }}
+          >
+            Add them in Settings
+          </a>
+        </small>
+        <ErrorText error={error} />
+        <div className="modal-actions">
+          <button type="button" onClick={() => dialog.current?.close()}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={!at || saving || at.path === current}
+            onClick={() => at && pick(at.path)}
+          >
+            Use this folder
+          </button>
+        </div>
+      </section>
+    </dialog>
   );
 }
 

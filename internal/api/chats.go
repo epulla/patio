@@ -635,18 +635,42 @@ func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Title     *string `json:"title"`
-		Model     *string `json:"model"`
-		Thinking  *bool   `json:"thinking"`
-		AutoAllow *bool   `json:"auto_allow"`
+		Title     *string         `json:"title"`
+		Model     *string         `json:"model"`
+		Thinking  *bool           `json:"thinking"`
+		AutoAllow *bool           `json:"auto_allow"`
+		Folder    json.RawMessage `json:"folder"`
 	}
-	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.AutoAllow == nil {
-		errw(w, 400, "title, model, thinking, or auto_allow required")
+	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.AutoAllow == nil && len(in.Folder) == 0 {
+		errw(w, 400, "title, model, thinking, auto_allow, or folder required")
 		return
 	}
 	if in.Title != nil && !required(*in.Title) {
 		errw(w, 400, "title required")
 		return
+	}
+	var folderIn *string
+	if len(in.Folder) > 0 && string(in.Folder) != "null" {
+		if err := json.Unmarshal(in.Folder, &folderIn); err != nil {
+			errw(w, 400, "folder must be an allowed folder or null")
+			return
+		}
+		cleaned, allowed, err := s.allowedFolderPath(*folderIn)
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if !allowed {
+			errw(w, 400, "folder is not allowed")
+			return
+		}
+		folderIn = &cleaned
+	}
+	if len(in.Folder) > 0 {
+		// Uploads and sends hold this lock, so the message count and
+		// pending attachments can't change while the folder moves.
+		s.attachmentsMu.Lock()
+		defer s.attachmentsMu.Unlock()
 	}
 	id := idParam(r, "id")
 	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, id))
@@ -658,7 +682,38 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	title, model, thinking, autoAllow := c.Title, c.Model, c.Thinking, c.AutoAllow
+	title, model, thinking, autoAllow, folder := c.Title, c.Model, c.Thinking, c.AutoAllow, c.Folder
+	folderChanged := len(in.Folder) > 0 && (folderIn == nil) != (c.Folder == nil) || folderIn != nil && c.Folder != nil && *folderIn != *c.Folder
+	var moved []movedFile
+	if folderChanged {
+		var count int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=?`, id).Scan(&count); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if count > 0 {
+			errw(w, http.StatusConflict, errChatFolderLocked.Error())
+			return
+		}
+		next := c
+		next.Folder = folderIn
+		next.Workdir = s.chatWorkdir(next)
+		if folderIn == nil {
+			if err := os.MkdirAll(next.Workdir, 0o700); err != nil {
+				errw(w, 500, err.Error())
+				return
+			}
+		}
+		if moved, err = s.movePendingAttachments(c, next.Workdir); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				errw(w, http.StatusConflict, err.Error())
+			} else {
+				errw(w, 500, err.Error())
+			}
+			return
+		}
+		folder = folderIn
+	}
 	if in.Title != nil {
 		title = *in.Title
 	}
@@ -675,7 +730,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	writeUpdate := func(exec interface {
 		Exec(string, ...any) (sql.Result, error)
 	}) error {
-		res, err := exec.Exec(`UPDATE chat SET title=?,model=?,thinking=?,auto_allow=?,updated_at=? WHERE id=?`, title, model, thinking, autoAllow, updated, id)
+		res, err := exec.Exec(`UPDATE chat SET title=?,model=?,thinking=?,auto_allow=?,session_id=CASE WHEN folder IS ? THEN session_id ELSE NULL END,folder=?,updated_at=? WHERE id=?`, title, model, thinking, autoAllow, folder, folder, updated, id)
 		if err != nil {
 			return err
 		}
@@ -688,29 +743,39 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	}
+	committed := false
 	update := func() error {
+		var err error
 		if in.AutoAllow == nil {
-			return writeUpdate(s.db)
+			err = writeUpdate(s.db)
+		} else {
+			err = txrun(s.db, func(tx *sql.Tx) error {
+				if err := writeUpdate(tx); err != nil {
+					return err
+				}
+				if autoAllow {
+					_, err := tx.Exec(`UPDATE chat_approval SET status='allowed',auto=1,answered_at=? WHERE chat_id=? AND status='pending'`, updated, id)
+					return err
+				}
+				return nil
+			})
 		}
-		return txrun(s.db, func(tx *sql.Tx) error {
-			if err := writeUpdate(tx); err != nil {
-				return err
-			}
-			if autoAllow {
-				_, err := tx.Exec(`UPDATE chat_approval SET status='allowed',auto=1,answered_at=? WHERE chat_id=? AND status='pending'`, updated, id)
-				return err
-			}
-			return nil
-		})
+		committed = err == nil
+		return err
 	}
-	if in.Model != nil && model != c.Model {
+	if folderChanged {
+		err = s.chats.ChangeFolder(id, update)
+	} else if in.Model != nil && model != c.Model {
 		err = s.chats.ChangeModel(id, update)
 	} else if in.Thinking != nil && thinking != c.Thinking {
 		err = s.chats.UpdateChat(id, update)
 	} else {
 		err = update()
 	}
-	if errors.Is(err, errChatModelChangeBusy) || errors.Is(err, errChatThinkingChangeBusy) {
+	if err != nil && !committed {
+		err = errors.Join(err, restoreMovedFiles(moved))
+	}
+	if errors.Is(err, errChatModelChangeBusy) || errors.Is(err, errChatThinkingChangeBusy) || errors.Is(err, errChatFolderChangeBusy) {
 		errw(w, http.StatusConflict, err.Error())
 	} else if errors.Is(err, sql.ErrNoRows) {
 		errw(w, http.StatusNotFound, "chat not found")
@@ -718,6 +783,10 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
 		c.Title, c.Model, c.Thinking, c.AutoAllow, c.UpdatedAt = title, model, thinking, autoAllow, updated
+		if folderChanged {
+			c.Folder, c.SessionID = folder, nil
+			c.Workdir = s.chatWorkdir(c)
+		}
 		write(w, http.StatusOK, c)
 	}
 }
@@ -726,14 +795,6 @@ func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) {
 	s.attachmentsMu.Lock()
 	defer s.attachmentsMu.Unlock()
 	id := idParam(r, "id")
-	var folder sql.NullString
-	if err := s.db.QueryRow(`SELECT folder FROM chat WHERE id=?`, id).Scan(&folder); errors.Is(err, sql.ErrNoRows) {
-		errw(w, 404, "chat not found")
-		return
-	} else if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
 	res, err := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
 	if err == nil {
 		var n int64
@@ -755,13 +816,12 @@ func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(s.attachments, id)
-	if !folder.Valid {
-		dir := filepath.Join(s.dbDir, "chats", id)
-		if insideConnectorDir(filepath.Join(s.dbDir, "chats"), dir) {
-			if err := os.RemoveAll(dir); err != nil {
-				errw(w, 500, err.Error())
-				return
-			}
+	// A chat may have left its scratch folder for a user folder, so always clean it up.
+	dir := filepath.Join(s.dbDir, "chats", id)
+	if insideConnectorDir(filepath.Join(s.dbDir, "chats"), dir) {
+		if err := os.RemoveAll(dir); err != nil {
+			errw(w, 500, err.Error())
+			return
 		}
 	}
 	noContent(w)

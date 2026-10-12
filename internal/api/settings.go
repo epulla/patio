@@ -203,6 +203,37 @@ func (s *Server) allowedFolderPath(path string) (string, bool, error) {
 	return cleaned, allowed, rowsErr
 }
 
+type browsedFolder struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// browseFolders lists the subfolders of an allowed folder or one inside it.
+// Dot-folders and symlinks are left out.
+func (s *Server) browseFolders(w http.ResponseWriter, r *http.Request) {
+	path, allowed, err := s.allowedFolderPath(r.URL.Query().Get("path"))
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !allowed {
+		errw(w, http.StatusBadRequest, "folder is not allowed")
+		return
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	folders := []browsedFolder{}
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			folders = append(folders, browsedFolder{Name: entry.Name(), Path: filepath.Join(path, entry.Name())})
+		}
+	}
+	write(w, http.StatusOK, map[string]any{"path": path, "folders": folders})
+}
+
 type settingsCounts struct {
 	Boards     int `json:"boards"`
 	Tickets    int `json:"tickets"`

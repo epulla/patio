@@ -126,6 +126,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/skills/import", s.importSkill)
 	m.HandleFunc("GET /api/skills/{id}/export", s.exportSkill)
 	m.HandleFunc("GET /api/settings/folders", s.listAllowedFolders)
+	m.HandleFunc("GET /api/settings/folders/browse", s.browseFolders)
 	m.HandleFunc("POST /api/settings/folders", s.addAllowedFolder)
 	m.HandleFunc("DELETE /api/settings/folders/{id}", s.deleteAllowedFolder)
 	m.HandleFunc("GET /api/scheduled-tasks", s.listScheduledTasks)
