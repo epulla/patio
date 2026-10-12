@@ -22,6 +22,7 @@ import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
+import { ConnectorRequired } from "./Connectors";
 
 type ChatDetail = {
   chat: Chat;
@@ -101,6 +102,7 @@ export function ModelOptions({ models, current, loading }: { models: ModelOption
 export default function Chats({ id, refresh }: { id?: string; refresh: number }) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<unknown>();
   const [reload, setReload] = useState(0);
@@ -110,6 +112,7 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
       .then(([chatList, connectorList]) => {
         setChats(chatList);
         setConnectors(connectorList);
+        setLoaded(true);
         setError(undefined);
       })
       .catch(setError);
@@ -161,13 +164,10 @@ export default function Chats({ id, refresh }: { id?: string; refresh: number })
       ) : (
         <section className="chat-empty">
           <h1>Chats</h1>
-          <p className="muted">
-            {connectors.length
-              ? "Pick a chat or start a new one."
-              : "Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then start a chat."}
-          </p>
-          {!connectors.length && (
-            <button onClick={() => navigate("/ai/connectors")}>Go to Connectors</button>
+          {connectors.length || !loaded ? (
+            <p className="muted">Pick a chat or start a new one.</p>
+          ) : (
+            <ConnectorRequired then="start a chat" />
           )}
         </section>
       )}

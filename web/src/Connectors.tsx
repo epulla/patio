@@ -6,8 +6,19 @@ import {
   type ConnectorQuota,
   type ConnectorStatus,
 } from "./api";
-import { ErrorText } from "./App";
+import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+
+export function ConnectorRequired({ then }: { then: string }) {
+  return (
+    <>
+      <p className="muted">
+        Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then {then}.
+      </p>
+      <button onClick={() => navigate("/ai/connectors")}>Go to Connectors</button>
+    </>
+  );
+}
 
 const kinds: { kind: ConnectorKind; label: string }[] = [
   { kind: "claude", label: "Claude Code" },

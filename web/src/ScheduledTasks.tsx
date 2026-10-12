@@ -9,6 +9,7 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 import { lateTitle, ModelOptions, useModels } from "./Chats";
+import { ConnectorRequired } from "./Connectors";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import Switch from "./Switch";
@@ -117,6 +118,7 @@ function fieldsOf(task: ScheduledTask): Fields {
 
 export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: number }) {
   const [tasks, setTasks] = useState<ScheduledTask[]>();
+  const [connectors, setConnectors] = useState<Connector[]>();
   const [sort, setSort] = useState<TaskSort>(() =>
     localStorage.getItem("scheduled-task-sort") === "name" ? "name" : "recent",
   );
@@ -124,10 +126,10 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    api
-      .get<ScheduledTask[]>("/api/scheduled-tasks")
-      .then((list) => {
+    Promise.all([api.get<ScheduledTask[]>("/api/scheduled-tasks"), api.get<Connector[]>("/api/connectors")])
+      .then(([list, connectorList]) => {
         setTasks(list);
+        setConnectors(connectorList);
         setError(undefined);
       })
       .catch(setError);
@@ -178,7 +180,8 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
     );
   }
 
-  const newButton = (
+  const noConnectors = connectors?.length === 0;
+  const newButton = !noConnectors && (
     <button className="primary" onClick={() => navigate("/ai/scheduled/new")}>
       <Icon name="plus" /> New scheduled task
     </button>
@@ -199,7 +202,17 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       </p>
       <ErrorText error={error} />
 
-      {tasks?.length === 0 && (
+      {noConnectors && (
+        <section className="panel skill-empty">
+          <span className="skill-empty-mark" aria-hidden="true">
+            <Icon name="connector" />
+          </span>
+          <h2>No connectors yet</h2>
+          <ConnectorRequired then="create a scheduled task" />
+        </section>
+      )}
+
+      {tasks?.length === 0 && !noConnectors && (
         <section className="panel skill-empty">
           <span className="skill-empty-mark" aria-hidden="true">
             <Icon name="clock" />
@@ -331,7 +344,7 @@ function TaskEditor({
   const [autoAllow, setAutoAllow] = useState(task?.auto_allow ?? true);
   const [enabled, setEnabled] = useState(task?.enabled ?? true);
   const [when, setWhen] = useState(() => parseWhen(task));
-  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [connectors, setConnectors] = useState<Connector[]>();
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [runs, setRuns] = useState<ScheduledTaskRun[]>([]);
   const [preview, setPreview] = useState<{ runs?: string[]; error?: unknown }>({});
@@ -433,6 +446,12 @@ function TaskEditor({
       <div className="page-heading">
         <h1>{task ? task.title : "New scheduled task"}</h1>
       </div>
+      {connectors?.length === 0 && (
+        <section className="panel skill-empty">
+          <ConnectorRequired then={task ? "pick it for this task" : "create a scheduled task"} />
+        </section>
+      )}
+      {(task || !!connectors?.length) && (
       <form
         className="panel skill-editor"
         onSubmit={submit}
@@ -468,12 +487,12 @@ function TaskEditor({
               value={connectorID}
               onChange={(event) => {
                 setConnectorID(event.target.value);
-                setModel(defaultModel(connectors, event.target.value));
+                setModel(defaultModel(connectors ?? [], event.target.value));
               }}
             >
-              {connectors.length === 0 && <option value="">No connector</option>}
+              {connectors?.length === 0 && <option value="">No connector</option>}
               {task && !connectorID && <option value="">Connector removed</option>}
-              {connectors.map((c) => (
+              {connectors?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} · {c.kind}
                 </option>
@@ -616,6 +635,7 @@ function TaskEditor({
           )}
         </div>
       </form>
+      )}
 
       {task && (
         <section className="stack" aria-labelledby="runs-title">
