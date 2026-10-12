@@ -7,7 +7,7 @@ Local kanban desktop app: Go + SQLite + Wails v2 + React UI. `my-tickets mcp` ex
 - Always use `pnpm`, never `npm` or `npx` (use `pnpm dlx`).
 - No CGO except the Wails desktop build on macOS/Linux; Windows and `go test` stay CGO-free. SQLite driver is `modernc.org/sqlite`.
 - No ORM, no router library, no state or CSS framework. `database/sql`, `net/http` ServeMux patterns, React with a tiny pathname router.
-- Plans live in `docs/plans/`. One commit per task.
+- Plans live in `docs/plans/`.
 - UI: no colored accent stripes on box edges (e.g. a primary `border-left` on callouts or a state-colored top border on cards). Use a plain `var(--border)` border.
 
 ## Layout
