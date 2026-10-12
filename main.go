@@ -70,6 +70,7 @@ func main() {
 	mux := http.NewServeMux()
 	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
 		DBPath: path,
+		Notify: func(title, message string) error { return beeep.Notify(title, message, "") },
 		Emit: func(event string, data any) {
 			wruntime.EventsEmit(appCtx, event, data)
 		},
@@ -126,13 +127,19 @@ func main() {
 			appCtx = ctx
 			backgroundCtx, cancel := context.WithCancel(ctx)
 			stopBackground = cancel
-			background.Add(2)
+			background.Add(3)
 			go func() {
 				defer background.Done()
 				if err := db.Watch(backgroundCtx, database, time.Second, func() {
 					wruntime.EventsEmit(ctx, "db-changed")
 				}); err != nil {
 					log.Printf("watch database changes: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
+					log.Printf("run scheduled tasks: %v", err)
 				}
 			}()
 			go func() {

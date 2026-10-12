@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -296,6 +297,26 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		return err
 	}
 	m.emit(id, map[string]any{"type": "done", "message": message})
+	var runID, title string
+	lookupErr := m.db.QueryRow(`SELECT r.id,t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status='running'`, id).Scan(&runID, &title)
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return lookupErr
+	}
+	if lookupErr == nil {
+		status, message := "done", "Scheduled task finished: "+title
+		failure := ""
+		if turnErr != nil {
+			status, message, failure = "failed", "Scheduled task failed: "+title, turnErr.Error()
+		}
+		if _, err := m.db.Exec(`UPDATE scheduled_task_run SET status=?,error=? WHERE id=? AND status='running'`, status, failure, runID); err != nil {
+			return err
+		}
+		if m.options.Notify != nil {
+			if err := m.options.Notify(message, ""); err != nil {
+				log.Printf("notify scheduled task run %s: %v", runID, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -362,6 +383,14 @@ func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName stri
 	}
 	if auto {
 		return true, nil
+	}
+	var taskTitle string
+	if err := m.db.QueryRow(`SELECT t.title FROM chat c JOIN scheduled_task t ON t.id=c.scheduled_task_id WHERE c.id=?`, chatID).Scan(&taskTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	} else if err == nil && m.options.Notify != nil {
+		if err := m.options.Notify("Scheduled task needs approval: "+taskTitle, ""); err != nil {
+			log.Printf("notify scheduled task approval for chat %s: %v", chatID, err)
+		}
 	}
 	m.emit(chatID, map[string]any{"type": "approval"})
 	timer := time.NewTimer(m.approvalTimeout)

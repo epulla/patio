@@ -25,6 +25,7 @@ type Server struct {
 	chats           *chatManager
 	revealFile      func(string) error
 	openOAuthURL    func(string) error
+	notify          func(string, string) error
 	oauthMu         sync.Mutex
 	oauthLogins     map[string]bool
 	handler         http.Handler
@@ -37,6 +38,7 @@ type Server struct {
 type Options struct {
 	DBPath string
 	Emit   func(string, any)
+	Notify func(string, string) error
 
 	processFactory  chatProcessFactory
 	commandBuilder  chatCommandBuilder
@@ -81,7 +83,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment)}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]bool), attachments: make(map[string]map[string]ChatAttachment)}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
