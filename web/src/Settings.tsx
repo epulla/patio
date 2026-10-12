@@ -204,6 +204,8 @@ function General() {
                 {about.repo_url.replace(/^https:\/\//, "")}
               </a>
             </dd>
+            <dt>Dedication</dt>
+            <dd>For Dolores, Domenica, Gary and José Martín.</dd>
           </dl>
         ) : (
           !error && <p className="muted" role="status">Loading…</p>

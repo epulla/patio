@@ -20,7 +20,7 @@ feat (re-brand): (centralized workspace) (think more a name) (nucleus? capital? 
 ## Tasks
 
 - [x] 1. Rename every identifier in code, build, and CI to patio. Check: `grep -rIi "my-tickets\|my_tickets\|mytickets" --exclude-dir={node_modules,dist,.git,bin} .` matches only this plan file; gofmt/vet/test, `pnpm --dir web build`, `wails build`, `make release` pass; smoke-test `build/bin/patio.app` with a temp DB and `patio mcp` reports server name `patio`.
-- [ ] 2. README and UI copy: tagline, AI-first intro, dedication in README and Settings → General. Check: `pnpm --dir web build` passes; Settings → General shows the dedication in the smoke-test app.
+- [x] 2. README and UI copy: tagline, AI-first intro, dedication in README and Settings → General. Check: `pnpm --dir web build` passes; Settings → General shows the dedication in the smoke-test app.
 - [ ] 3. Local cleanup (no repo change besides ticking): delete `~/Library/Application Support/my-tickets` and `my-tickets` keychain entries, after a final confirmation. Check: folder gone; `security find-generic-password -s my-tickets` finds nothing.
 - [ ] 4. Delete this plan file, `gh repo rename patio`, update `origin`. Check: `git remote -v` shows `epulla/patio`; `git push` works.
 - [ ] 5. Move checkout to `~/Desktop/projects/patio`, update the trust entries in `~/.claude.json` and `~/.codex/config.toml`, move this session. Check: `git -C ~/Desktop/projects/patio status` clean; both configs reference the new path only.

@@ -1,6 +1,6 @@
-# my-tickets
+# Patio
 
-Local kanban ticket desktop app built with Go, Wails, React, and SQLite. Chat with AI coding CLIs you already use (Claude Code, Codex, GitHub Copilot, opencode) from inside the app, and give any AI client access to your tickets through an MCP stdio subcommand.
+One window for your AI agents and your tasks. Chat with AI coding CLIs you already use (Claude Code, Codex, GitHub Copilot, opencode), connect any AI client through MCP, and run scheduled tasks alongside kanban tickets. Built with Go, Wails, React, and SQLite.
 
 Port of the prod-tickets schema, plus a `ticket_status_transition` table that records every status change for future reporting.
 
@@ -30,27 +30,27 @@ Secrets (API keys, tokens, OAuth tokens, MCP env values) are stored in the OS ke
 
 ## Install and run
 
-Download app for your OS from [Releases](https://github.com/epulla/my-tickets/releases) and open it. Linux requires GTK 3 and WebKit2GTK runtime libraries (for Ubuntu 22.04, `libgtk-3-0` and `libwebkit2gtk-4.0-37`).
+Download app for your OS from [Releases](https://github.com/epulla/patio/releases) and open it. Linux requires GTK 3 and WebKit2GTK runtime libraries (for Ubuntu 22.04, `libgtk-3-0` and `libwebkit2gtk-4.0-37`).
 
-On Linux, make downloaded binary executable with `chmod +x my-tickets-linux-amd64` before running it.
+On Linux, make downloaded binary executable with `chmod +x patio-linux-amd64` before running it.
 
 macOS release is unsigned. On first launch, right-click app and choose **Open**, or remove quarantine:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/my-tickets.app
+xattr -dr com.apple.quarantine /Applications/patio.app
 ```
 
 Optional flags: `-d path/to/file.db` selects database file; `-show-hidden` shows comments and assignee.
 
 ## Data
 
-The database is `my-tickets.db` in the OS data directory:
+The database is `patio.db` in the OS data directory:
 
 Override with `-d path/to/file.db`.
 
-- macOS: `~/Library/Application Support/my-tickets/`
-- Linux: `$XDG_DATA_HOME/my-tickets/` or `~/.local/share/my-tickets/`
-- Windows: `%LOCALAPPDATA%\my-tickets\`
+- macOS: `~/Library/Application Support/patio/`
+- Linux: `$XDG_DATA_HOME/patio/` or `~/.local/share/patio/`
+- Windows: `%LOCALAPPDATA%\patio\`
 
 Chat scratch folders and extra connector accounts live in `chats/` and `connectors/` next to the database file.
 
@@ -69,7 +69,7 @@ On macOS, install Xcode command line tools. Linux also needs GTK 3 and WebKit2GT
 
 ## AI access (MCP)
 
-MCP runs as `my-tickets mcp` over stdio and shares database with desktop app. It acts as Martin, the AI persona shown with an AI badge in app. Use `-d path` after `mcp` if database is not at default location.
+MCP runs as `patio mcp` over stdio and shares database with desktop app. It acts as Martin, the AI persona shown with an AI badge in app. Use `-d path` after `mcp` if database is not at default location.
 
 - Tools cover boards, tickets, comments, calendar items, scheduled tasks, and skills (`list_skills`, `load_skill`).
 - `create_board` accepts optional `statuses`: `[{"name":"...","type?":"classic"|"temporary","hide_after_days?":1}]`. Setting `hide_after_days` without `type` implies `temporary`; omitting both implies `classic`.
@@ -78,14 +78,14 @@ Configure client with installed executable path:
 
 | OS | `command` | `args` |
 | --- | --- | --- |
-| macOS | `/Applications/my-tickets.app/Contents/MacOS/my-tickets` | `["mcp"]` |
-| Windows | `C:\\path\\to\\my-tickets-windows-amd64.exe` | `["mcp"]` |
-| Linux | `/path/to/my-tickets-linux-amd64` | `["mcp"]` |
+| macOS | `/Applications/patio.app/Contents/MacOS/patio` | `["mcp"]` |
+| Windows | `C:\\path\\to\\patio-windows-amd64.exe` | `["mcp"]` |
+| Linux | `/path/to/patio-linux-amd64` | `["mcp"]` |
 
 Example client config:
 
 ```json
-{"mcpServers":{"my-tickets":{"command":"/Applications/my-tickets.app/Contents/MacOS/my-tickets","args":["mcp"]}}}
+{"mcpServers":{"patio":{"command":"/Applications/patio.app/Contents/MacOS/patio","args":["mcp"]}}}
 ```
 
 For a separate database, append `"-d", "path/to/file.db"` to `args`.
@@ -109,3 +109,5 @@ make test
 6. Connectors: add a Claude Code (or other CLI) connector on the existing login; the card shows account and plan.
 7. Chats: start a chat, ask for a reply, then ask it to create a file; allow once, then deny on a second try.
 8. MCP: add a server, check it turns healthy; Skills: create a skill, start a new chat, check it is used.
+
+For Dolores, Domenica, Gary and José Martín.
