@@ -11,6 +11,7 @@ import {
 import { ErrorText } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
+import { palettes, setThemePrefs, useThemePrefs, type Mode, type SidebarStyle } from "./theme";
 
 function AllowedFolders({ onChange }: { onChange: () => void }) {
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
@@ -216,6 +217,53 @@ function General() {
   );
 }
 
+function Appearance() {
+  const prefs = useThemePrefs();
+  return (
+    <section className="stack">
+      <h2>Appearance</h2>
+      <section className="panel stack">
+        <div className="defaults-fields">
+          <label>
+            Mode
+            <select value={prefs.mode} onChange={(event) => setThemePrefs({ mode: event.target.value as Mode })}>
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label>
+            Sidebar style
+            <select
+              value={prefs.style}
+              onChange={(event) => setThemePrefs({ style: event.target.value as SidebarStyle })}
+            >
+              <option value="flat">Flat</option>
+              <option value="gradient">Gradient</option>
+            </select>
+          </label>
+        </div>
+        <fieldset className="palette-picker">
+          <legend>Palette</legend>
+          {palettes.map((palette) => (
+            <label key={palette.id} className="palette-option" data-palette={palette.id}>
+              <input
+                type="radio"
+                name="palette"
+                value={palette.id}
+                checked={prefs.palette === palette.id}
+                onChange={() => setThemePrefs({ palette: palette.id })}
+              />
+              <span className="palette-swatch" aria-hidden="true" />
+              {palette.name}
+            </label>
+          ))}
+        </fieldset>
+      </section>
+    </section>
+  );
+}
+
 function Defaults({ foldersVersion }: { foldersVersion: number }) {
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -370,6 +418,8 @@ export default function Settings() {
       </div>
 
       <General />
+
+      <Appearance />
 
       <Defaults foldersVersion={foldersVersion} />
 

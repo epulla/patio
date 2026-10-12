@@ -1,15 +1,12 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --base-100: oklch(98% 0 0);
-  --base-200: oklch(95% 0 0);
-  --base-300: oklch(91% 0 0);
-  --content: oklch(0% 0 0);
-  --primary: oklch(71.9% 0.357 330.759);
-  --primary-content: oklch(14.38% 0.071 330.759);
-  --primary-text: oklch(52% 0.26 330.759);
-  --neutral: #c7cadc;
-  --neutral-content: #000616;
+  --base-100: oklch(98.6% 0.012 75);
+  --base-200: oklch(96% 0.02 72);
+  --base-300: oklch(92.5% 0.028 70);
+  --content: oklch(22% 0.03 320);
+  --neutral: oklch(89% 0.03 60);
+  --neutral-content: oklch(24% 0.03 320);
   --info: oklch(60.72% 0.227 252.05);
   --warning: oklch(91.01% 0.212 100.5);
   --warning-content: oklch(18.202% 0.042 100.5);
@@ -20,15 +17,12 @@
 }
 [data-theme="dark"] {
   color-scheme: dark;
-  --base-100: oklch(28.822% 0.022 277.508);
-  --base-200: oklch(26.805% 0.02 277.508);
-  --base-300: oklch(24.787% 0.019 277.508);
-  --content: oklch(97.747% 0.007 106.545);
-  --primary: oklch(75.461% 0.183 346.812);
-  --primary-content: oklch(15.092% 0.036 346.812);
-  --primary-text: oklch(75.461% 0.183 346.812);
-  --neutral: oklch(39.445% 0.032 275.524);
-  --neutral-content: oklch(87.889% 0.006 275.524);
+  --base-100: oklch(24% 0.035 300);
+  --base-200: oklch(21.5% 0.032 300);
+  --base-300: oklch(19% 0.03 300);
+  --content: oklch(96% 0.01 80);
+  --neutral: oklch(36% 0.04 300);
+  --neutral-content: oklch(90% 0.01 300);
   --info: oklch(88.263% 0.093 212.846);
   --warning: oklch(95.533% 0.134 112.757);
   --warning-content: oklch(19.106% 0.026 112.757);
@@ -36,6 +30,89 @@
   --error-content: oklch(13.644% 0.041 24.43);
   --radius-field: 0.5rem;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 10px -2px rgb(0 0 0 / 0.35);
+}
+/* Palettes also match descendants so Settings swatches can preview each one. */
+:root,
+[data-palette="patio"] {
+  --primary: oklch(68% 0.22 355);
+  --primary-content: oklch(18% 0.05 355);
+  --primary-text: oklch(52% 0.21 355);
+  --sidebar-from: oklch(50% 0.2 355);
+  --sidebar-to: oklch(56% 0.17 40);
+}
+[data-theme="dark"],
+[data-theme="dark"] [data-palette="patio"] {
+  --primary: oklch(76% 0.17 355);
+  --primary-content: oklch(18% 0.04 355);
+  --primary-text: oklch(78% 0.15 355);
+  --sidebar-from: oklch(36% 0.13 355);
+  --sidebar-to: oklch(38% 0.11 35);
+}
+[data-palette="mango"] {
+  --primary: oklch(72% 0.18 50);
+  --primary-content: oklch(20% 0.05 50);
+  --primary-text: oklch(52% 0.17 45);
+  --sidebar-from: oklch(52% 0.17 38);
+  --sidebar-to: oklch(56% 0.14 65);
+}
+[data-theme="dark"][data-palette="mango"],
+[data-theme="dark"] [data-palette="mango"] {
+  --primary: oklch(78% 0.15 55);
+  --primary-content: oklch(20% 0.04 55);
+  --primary-text: oklch(80% 0.13 60);
+  --sidebar-from: oklch(38% 0.12 40);
+  --sidebar-to: oklch(42% 0.1 65);
+}
+[data-palette="lagoon"] {
+  --primary: oklch(66% 0.13 195);
+  --primary-content: oklch(18% 0.04 195);
+  --primary-text: oklch(48% 0.1 200);
+  --sidebar-from: oklch(48% 0.1 190);
+  --sidebar-to: oklch(50% 0.15 255);
+}
+[data-theme="dark"][data-palette="lagoon"],
+[data-theme="dark"] [data-palette="lagoon"] {
+  --primary: oklch(78% 0.12 195);
+  --primary-content: oklch(18% 0.04 195);
+  --primary-text: oklch(80% 0.11 195);
+  --sidebar-from: oklch(36% 0.07 195);
+  --sidebar-to: oklch(36% 0.11 260);
+}
+[data-palette="grape"] {
+  --primary: oklch(62% 0.21 305);
+  --primary-content: oklch(16% 0.05 305);
+  --primary-text: oklch(50% 0.22 305);
+  --sidebar-from: oklch(45% 0.2 310);
+  --sidebar-to: oklch(45% 0.18 272);
+}
+[data-theme="dark"][data-palette="grape"],
+[data-theme="dark"] [data-palette="grape"] {
+  --primary: oklch(75% 0.15 305);
+  --primary-content: oklch(18% 0.05 305);
+  --primary-text: oklch(78% 0.13 305);
+  --sidebar-from: oklch(34% 0.13 310);
+  --sidebar-to: oklch(34% 0.12 272);
+}
+[data-palette="lime"] {
+  --primary: oklch(80% 0.19 130);
+  --primary-content: oklch(22% 0.06 130);
+  --primary-text: oklch(48% 0.13 140);
+  --sidebar-from: oklch(48% 0.13 140);
+  --sidebar-to: oklch(48% 0.09 185);
+}
+[data-theme="dark"][data-palette="lime"],
+[data-theme="dark"] [data-palette="lime"] {
+  --primary: oklch(85% 0.19 128);
+  --primary-content: oklch(22% 0.06 128);
+  --primary-text: oklch(85% 0.17 128);
+  --sidebar-from: oklch(36% 0.09 140);
+  --sidebar-to: oklch(36% 0.07 185);
+}
+:root {
+  --sidebar-bg: var(--sidebar-from);
+}
+[data-style="gradient"] {
+  --sidebar-bg: linear-gradient(170deg, var(--sidebar-from), var(--sidebar-to));
 }
 :root {
   --radius-box: 1rem;
@@ -86,8 +163,22 @@ a {
   flex-direction: column;
   gap: 8px;
   padding: 16px 12px;
-  background: var(--base-200);
-  border-right: 1px solid var(--border);
+  --content: oklch(99% 0 0);
+  --muted: oklch(99% 0 0 / 0.75);
+  --border: oklch(99% 0 0 / 0.22);
+  background: var(--sidebar-bg);
+  color: var(--content);
+}
+.sidebar :focus-visible {
+  outline-color: var(--content);
+}
+.sidebar .nav-item:hover,
+.sidebar .ghost:hover {
+  background: oklch(99% 0 0 / 0.14);
+}
+.sidebar .nav-item[aria-current="page"] {
+  background: var(--content);
+  color: var(--sidebar-from);
 }
 .sidebar-head {
   display: flex;
@@ -2673,6 +2764,50 @@ main.chat-window {
 }
 .defaults-panel .switch {
   margin-right: 0;
+}
+.palette-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.palette-picker legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.palette-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.palette-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.palette-option:has(:checked) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.palette-option:has(:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.palette-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--sidebar-from), var(--sidebar-to));
 }
 .conversation.dragging .messages {
   outline: 2px dashed var(--border);
