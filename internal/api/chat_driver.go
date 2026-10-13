@@ -61,6 +61,10 @@ type chatManager struct {
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
+	return m.chatMCPServersWithNotes(chatID, true)
+}
+
+func (m *chatManager) chatMCPServersWithNotes(chatID string, notes bool) ([]mcpServerSpec, error) {
 	if m.enabledMCPServers == nil {
 		return nil, nil
 	}
@@ -71,6 +75,9 @@ func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
 	servers := make([]mcpServerSpec, 0, len(specs))
 	for _, spec := range specs {
 		if spec.AuthError != nil || spec.Auth == "oauth" && spec.OAuthHeader == nil {
+			if !notes {
+				continue
+			}
 			message := "MCP server " + spec.Name + " skipped: sign in again"
 			if _, err := InsertChatMessage(m.db, chatID, "error", message); err != nil {
 				return nil, err
@@ -107,6 +114,7 @@ type chatRuntime struct {
 	pendingThinking strings.Builder
 	lastActivity    time.Time
 	idleTimer       *time.Timer
+	mcpSpecs        []mcpServerSpec
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -188,6 +196,36 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if err := m.restartThinkingLocked(kind, c, rt); err != nil {
 		return ChatMessage{}, fmt.Errorf("restart chat for thinking change: %w", err)
 	}
+	if rt.driver != nil {
+		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
+		if specErr != nil {
+			return ChatMessage{}, specErr
+		}
+		current, _ := json.Marshal(specs)
+		started, _ := json.Marshal(rt.mcpSpecs)
+		if string(current) != string(started) {
+			driver := rt.driver
+			rt.stopping = true
+			rt.stopDone = make(chan struct{})
+			done := rt.stopDone
+			m.stopRuntimeTimerLocked(rt)
+			rt.mu.Unlock()
+			err := driver.close()
+			rt.mu.Lock()
+			if rt.driver == driver {
+				rt.driver, rt.mcpSpecs = nil, nil
+			}
+			rt.stopping, rt.stopDone = false, nil
+			close(done)
+			if err != nil {
+				return ChatMessage{}, err
+			}
+			if _, err := InsertChatMessage(m.db, c.ID, "error", "MCP servers changed — reconnected."); err != nil {
+				return ChatMessage{}, err
+			}
+			m.emit(c.ID, map[string]any{"type": "error", "message": "MCP servers changed — reconnected."})
+		}
+	}
 	if err := m.claimTurn(c.ID); err != nil {
 		return ChatMessage{}, err
 	}
@@ -200,11 +238,17 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	rt.pendingThinking.Reset()
 	rt.busy = true
 	if rt.driver == nil {
+		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
+		if specErr != nil {
+			rt.busy = false
+			return message, errors.Join(specErr, m.releaseTurn(c.ID))
+		}
 		rt.driver, err = start(m, c, configDir, rt)
 		if err != nil {
 			rt.busy = false
 			return message, errors.Join(err, m.releaseTurn(c.ID))
 		}
+		rt.mcpSpecs = specs
 		if kind == "claude" || kind == "copilot" {
 			thinking := c.Thinking
 			rt.startedThinking = &thinking

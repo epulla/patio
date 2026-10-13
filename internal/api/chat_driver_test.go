@@ -552,6 +552,79 @@ func TestChatModelChangeClosesIdleProcessAndRestartsWithNewModel(t *testing.T) {
 	}
 }
 
+func TestOpenCodePicksUpMCPChangesOnNextSend(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	if _, err := database.Exec(`UPDATE connector SET kind='opencode' WHERE id=?`, connectorID); err != nil {
+		t.Fatal(err)
+	}
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	fake := newOpenCodeFake(t)
+	var configs []map[string]json.RawMessage
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-test", nil },
+		opencodeMajor: func(context.Context, string, []string) (int, error) { return 1, nil },
+		opencodeStarter: func(path string, args, env []string) (opencodeProcess, error) {
+			for i, item := range env {
+				if strings.HasPrefix(item, "OPENCODE_CONFIG_CONTENT=") {
+					var config map[string]json.RawMessage
+					if err := json.Unmarshal([]byte(strings.TrimPrefix(item, "OPENCODE_CONFIG_CONTENT=")), &config); err != nil {
+						return nil, err
+					}
+					var mcp map[string]json.RawMessage
+					if err := json.Unmarshal(config["mcp"], &mcp); err != nil {
+						return nil, err
+					}
+					original, _ := json.Marshal(mcp)
+					var captured map[string]json.RawMessage
+					_ = json.Unmarshal(original, &captured)
+					configs = append(configs, captured)
+					delete(mcp, "new-test")
+					config["mcp"], _ = json.Marshal(mcp)
+					content, _ := json.Marshal(config)
+					env[i] = "OPENCODE_CONFIG_CONTENT=" + string(content)
+				}
+			}
+			return fake.start(args, env)
+		},
+	})
+	addChatMCPTestServers(t, server)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	send := func(text string) {
+		t.Helper()
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": text}, nil); code != http.StatusAccepted {
+			t.Fatalf("send %q = %d", text, code)
+		}
+		fake.waitEvents(t)
+		var sessionID string
+		if err := database.QueryRow(`SELECT session_id FROM chat WHERE id=?`, chatID).Scan(&sessionID); err != nil {
+			t.Fatal(err)
+		}
+		fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": sessionID}})
+		waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	}
+	send("first")
+	send("unchanged")
+	if len(configs) != 1 {
+		t.Fatalf("unchanged MCP config restarted runtime: %d starts", len(configs))
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "new-test", "kind": "http", "url": "https://new.example.test/mcp", "enabled": true}, nil); code != http.StatusCreated {
+		t.Fatalf("add MCP server = %d", code)
+	}
+	send("after change")
+	if len(configs) != 2 || configs[1]["new-test"] == nil {
+		t.Fatalf("new runtime MCP config = %d starts, %#v", len(configs), configs)
+	}
+	var notes int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND content='MCP servers changed — reconnected.'`, chatID).Scan(&notes); err != nil || notes != 1 {
+		t.Fatalf("reconnect notes = %d, %v", notes, err)
+	}
+}
+
 func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
