@@ -118,6 +118,16 @@ type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
 	Content  string `json:"content" jsonschema:"Comment text"`
 }
+type settingsDefaultsArgs struct {
+	ConnectorID   json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
+	Folder        json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
+	Thinking      *bool           `json:"thinking,omitempty"`
+	ShowThinking  *bool           `json:"show_thinking,omitempty"`
+	MartinPersona *bool           `json:"martin_persona,omitempty"`
+}
+type listSkillsArgs struct {
+	IncludeDisabled bool `json:"include_disabled,omitempty"`
+}
 type listCalendarArgs struct {
 	From    string `json:"from" jsonschema:"Start date in YYYY-MM-DD format"`
 	To      string `json:"to" jsonschema:"End date in YYYY-MM-DD format"`
@@ -358,6 +368,28 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "add_comment", "Add a ticket comment", h, func(a commentArgs) request {
 		return request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", map[string]string{"content": a.Content}}
 	})
+	addGeneric(s, "list_comments", "List ticket comments", h, func(a ticketIDArgs) request {
+		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID) + "/comments", nil}
+	})
+	addGeneric(s, "get_ticket_history", "Get ticket history", h, func(a ticketIDArgs) request {
+		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID) + "/history", nil}
+	})
+	addGeneric(s, "list_users", "List users", h, func(struct{}) request { return request{http.MethodGet, "/api/users", nil} })
+	addGeneric(s, "get_settings_defaults", "Get chat settings defaults", h, func(struct{}) request { return request{http.MethodGet, "/api/settings/defaults", nil} })
+	addGeneric(s, "update_settings_defaults", "Update settings defaults; auto_allow cannot be changed", h, func(a settingsDefaultsArgs) request {
+		body := map[string]any{}
+		for key, value := range map[string]json.RawMessage{"connector_id": a.ConnectorID, "folder": a.Folder} {
+			if len(value) > 0 {
+				body[key] = value
+			}
+		}
+		for key, value := range map[string]*bool{"thinking": a.Thinking, "show_thinking": a.ShowThinking, "martin_persona": a.MartinPersona} {
+			if value != nil {
+				body[key] = *value
+			}
+		}
+		return request{http.MethodPut, "/api/settings/defaults", body}
+	})
 	addGeneric(s, "list_calendar", "List calendar items and tickets due in a date range", h, func(a listCalendarArgs) request {
 		q := url.Values{"from": {a.From}, "to": {a.To}}
 		if a.BoardID != "" {
@@ -427,23 +459,39 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		description = available.String()
 	}
-	sdk.AddTool[struct{}, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills"}, func(_ context.Context, _ *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills; optionally include disabled skills"}, func(_ context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		enabled, err := api.EnabledSkills(database)
+		var enabled []api.Skill
+		var err error
+		if in.IncludeDisabled {
+			data, e := doJSON(h, request{http.MethodGet, "/api/skills", nil})
+			err = e
+			if err == nil {
+				err = json.Unmarshal(data, &enabled)
+			}
+		} else {
+			enabled, err = api.EnabledSkills(database)
+		}
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
 		result := make([]struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
+			Enabled     *bool  `json:"enabled,omitempty"`
 		}, 0, len(enabled))
 		for _, skill := range enabled {
-			result = append(result, struct {
+			item := struct {
 				Name        string `json:"name"`
 				Description string `json:"description"`
-			}{skill.Name, skill.Description})
+				Enabled     *bool  `json:"enabled,omitempty"`
+			}{Name: skill.Name, Description: skill.Description}
+			if in.IncludeDisabled {
+				item.Enabled = &skill.Enabled
+			}
+			result = append(result, item)
 		}
 		data, err := json.Marshal(result)
 		if err != nil {
