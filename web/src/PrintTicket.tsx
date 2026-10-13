@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import DOMPurify from "dompurify";
 import AIBadge from "./AIBadge";
+import Markdown from "./Markdown";
 import {
   api,
   type BoardData,
@@ -115,12 +115,9 @@ export default function PrintTicket({
       </dl>
       <section className="print-section">
         <h2>Description</h2>
-        <div
-          className="print-description"
-          dangerouslySetInnerHTML={{
-            __html: DOMPurify.sanitize(ticket.description || ""),
-          }}
-        />
+        <div className="print-description">
+          <Markdown text={ticket.description} />
+        </div>
       </section>
       <section className="print-section">
         <h2>History</h2>

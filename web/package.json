@@ -8,8 +8,7 @@
     "dompurify": "latest",
     "marked": "latest",
     "react": "latest",
-    "react-dom": "latest",
-    "react-quill-new": "latest"
+    "react-dom": "latest"
   },
   "devDependencies": {
     "@types/react": "latest",

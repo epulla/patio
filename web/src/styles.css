@@ -599,65 +599,87 @@ a:has(> .svg-icon) {
   min-width: 240px;
 }
 
-/* Quill */
-.ql-toolbar.ql-snow,
-.ql-container.ql-snow {
-  border-color: var(--border);
-  font: inherit;
+/* Markdown editor */
+.md-editor {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--base-100);
+  font-weight: 400;
 }
-.ql-toolbar.ql-snow {
+.md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--base-200);
+  font-weight: 500;
 }
-.ql-container.ql-snow {
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-  background: var(--base-100);
-  font-size: 14px;
-}
-.ql-editor {
-  min-height: 120px;
-}
-.ql-editor.ql-blank::before {
+.md-toolbar .icon {
+  width: 30px;
+  height: 30px;
   color: var(--muted);
 }
-.ql-snow .ql-stroke {
-  stroke: var(--content);
-}
-.ql-snow .ql-fill {
-  fill: var(--content);
-}
-.ql-snow .ql-picker,
-.ql-snow .ql-picker-label {
+.md-toolbar .icon:hover {
   color: var(--content);
 }
-.ql-snow .ql-picker-options {
+.md-toolbar .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+.md-heading {
+  width: auto;
+  height: 30px;
+  padding-block: 0;
+  border-color: transparent;
+  background-color: transparent;
+  font-size: 13px;
+}
+.md-heading:hover {
+  background-color: var(--base-300);
+}
+.md-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border);
+}
+.md-tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--base-300);
+}
+.md-tabs button {
+  height: 26px;
+  padding: 0 10px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 12px;
+}
+.md-tabs button[aria-pressed="true"] {
   background: var(--base-100);
+  color: var(--content);
   border-color: var(--border);
 }
-.ql-snow button:hover .ql-stroke,
-.ql-snow .ql-active .ql-stroke,
-.ql-snow .ql-picker-label:hover .ql-stroke {
-  stroke: var(--primary-text);
+.md-editor textarea,
+.md-preview {
+  min-height: 120px;
+  padding: 10px 12px;
+  font-size: 14px;
 }
-.ql-snow button:hover .ql-fill,
-.ql-snow .ql-active .ql-fill {
-  fill: var(--primary-text);
-}
-.ql-snow.ql-toolbar button,
-.ql-snow .ql-toolbar button {
-  height: 24px;
+.md-editor textarea {
   border: 0;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: none;
-  padding: 3px 5px;
-}
-.ql-snow .ql-tooltip {
-  background: var(--base-100);
-  color: var(--content);
-  border-color: var(--border);
-  box-shadow: var(--shadow);
-}
-.ql-snow .ql-tooltip input[type="text"] {
-  height: 28px;
+  resize: vertical;
+  font-family: inherit;
 }
 
 /* Boards */
@@ -820,7 +842,9 @@ a:has(> .svg-icon) {
 .inline-form label,
 .ticket-form label,
 .ticket-side label,
-.ticket-main > label {
+.ticket-main > label,
+.ticket-main > .field,
+.ticket-form .field {
   display: flex;
   flex-direction: column;
   gap: 6px;

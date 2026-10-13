@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import DOMPurify from "dompurify";
-import ReactQuill from "react-quill-new";
 import AIBadge from "./AIBadge";
 import {
   api,
@@ -13,8 +11,8 @@ import {
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
 import { Icon } from "./icons";
-
-const clean = (html: string) => DOMPurify.sanitize(html || "");
+import Markdown from "./Markdown";
+import MarkdownEditor from "./MarkdownEditor";
 
 export default function TicketDetail({
   id,
@@ -51,9 +49,7 @@ export default function TicketDetail({
       // Title and description save on blur, so keep in-progress text on live refresh.
       setForm((prev) => ({
         title: preserveForm ? prev.title : current.title,
-        description: preserveForm
-          ? prev.description
-          : clean(current.description),
+        description: preserveForm ? prev.description : current.description,
         type: current.ticket_type_id || "",
         dueDate: current.due_date?.slice(0, 10) || "",
         status: current.status_id,
@@ -148,15 +144,15 @@ export default function TicketDetail({
               }
               onBlur={() => save({ title: form.title })}
             />
-            <label>
+            <div className="field">
               Description
-              <ReactQuill
-                theme="snow"
+              <MarkdownEditor
+                label="Description"
                 value={form.description}
                 onChange={(description) => setForm({ ...form, description })}
-                onBlur={() => save({ description: clean(form.description) })}
+                onBlur={() => save({ description: form.description })}
               />
-            </label>
+            </div>
           </div>
           <aside className="ticket-side">
             <label>
@@ -297,14 +293,14 @@ function Comments({
   async function add() {
     if (!content.trim()) return;
     await api.post(`/api/tickets/${ticketId}/comments`, {
-      content: clean(content),
+      content,
     });
     setContent("");
     onReload();
   }
   return (
     <section className="comments">
-      <ReactQuill theme="snow" value={content} onChange={setContent} />
+      <MarkdownEditor label="Comment" value={content} onChange={setContent} />
       <button className="primary" onClick={add}>
         <Icon name="send" /> Add comment
       </button>
@@ -314,7 +310,7 @@ function Comments({
             {comment.user_name} <AIBadge isAI={comment.user_is_ai} />
           </strong>
           <span>{formatDate(comment.created_at)}</span>
-          <div dangerouslySetInnerHTML={{ __html: clean(comment.content) }} />
+          <Markdown text={comment.content} />
         </div>
       ))}
     </section>

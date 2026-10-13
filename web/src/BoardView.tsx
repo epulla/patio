@@ -6,7 +6,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
-import ReactQuill from "react-quill-new";
+import MarkdownEditor from "./MarkdownEditor";
 import {
   api,
   type BoardData,
@@ -849,14 +849,10 @@ function NewTicket({
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
-        <label>
+        <div className="field">
           Description
-          <ReactQuill
-            theme="snow"
-            value={description}
-            onChange={setDescription}
-          />
-        </label>
+          <MarkdownEditor label="Description" value={description} onChange={setDescription} />
+        </div>
         <div className="two">
           <label>
             Type
