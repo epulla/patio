@@ -1585,6 +1585,10 @@ main:has(> .chats) {
 .chat-link[aria-current="page"] {
   background: var(--base-300);
 }
+.chat-list-end {
+  flex: none;
+  min-height: 1px;
+}
 .chat-row {
   display: flex;
   align-items: center;

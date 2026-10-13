@@ -105,14 +105,29 @@ export function ModelOptions({ models, current, loading }: { models: ModelOption
 }
 
 type Pins = { ids: string[]; cols: number[]; rows: number[] };
+type ChatPage = { chats: Chat[]; next_cursor: string | null };
 
 const maxPins = 9;
+const pageSize = 50;
 const paneType = "application/x-chat-pane";
 
 function pinLayout(ids: string[]): Pins {
   const cols = Math.ceil(Math.sqrt(ids.length));
   const rows = cols && Math.ceil(ids.length / cols);
   return { ids, cols: Array(cols).fill(1 / cols), rows: Array(rows).fill(1 / rows) };
+}
+
+// Remounted per page (key) so a still-visible sentinel fires again.
+function LoadMore({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const callback = useRef(onVisible);
+  callback.current = onVisible;
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && callback.current());
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={ref} className="chat-list-end" aria-hidden="true" />;
 }
 
 function loadPins(): Pins {
@@ -140,23 +155,68 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   const [reload, setReload] = useState(0);
   const [pins, setPins] = useState(loadPins);
   const [listOpen, setListOpen] = useState(() => localStorage.getItem("chat-list") !== "closed");
+  const [cursor, setCursor] = useState<string | null>(null);
+  const loadedCount = useRef(0);
+  const generation = useRef(0);
+  const loadingMore = useRef(false);
+  const pinsRef = useRef(pins);
+  const existingPins = useRef(new Set<string>());
 
   useEffect(() => {
-    Promise.all([api.get<Chat[]>("/api/chats"), api.get<Connector[]>("/api/connectors")])
-      .then(([chatList, connectorList]) => {
-        setChats(chatList);
+    const current = ++generation.current;
+    Promise.all([
+      api.get<ChatPage>(`/api/chats?limit=${Math.max(pageSize, loadedCount.current)}`),
+      api.get<Connector[]>("/api/connectors"),
+    ])
+      .then(([page, connectorList]) => {
+        if (current !== generation.current) return;
+        setChats(page.chats);
+        setCursor(page.next_cursor);
         setConnectors(connectorList);
         setLoaded(true);
         setError(undefined);
-        setPins((current) => {
-          const ids = current.ids.filter((pinned) => chatList.some((chat) => chat.id === pinned));
-          return ids.length === current.ids.length ? current : pinLayout(ids);
-        });
+        const listed = new Set(page.chats.map((chat) => chat.id));
+        for (const pinned of pinsRef.current.ids) {
+          if (listed.has(pinned) || existingPins.current.has(pinned)) continue;
+          api
+            .get(`/api/chats/${pinned}`)
+            .then(() => existingPins.current.add(pinned))
+            .catch((err: unknown) => {
+              if (!(err instanceof Error) || err.message !== "chat not found") return;
+              setPins((pins) => (pins.ids.includes(pinned) ? pinLayout(pins.ids.filter((x) => x !== pinned)) : pins));
+            });
+        }
       })
       .catch(setError);
   }, [refresh, reload, id]);
 
-  useEffect(() => localStorage.setItem("chat-pins", JSON.stringify(pins)), [pins]);
+  useEffect(() => {
+    loadedCount.current = chats.length;
+  }, [chats]);
+
+  useEffect(() => {
+    pinsRef.current = pins;
+    localStorage.setItem("chat-pins", JSON.stringify(pins));
+  }, [pins]);
+
+  async function loadMore() {
+    if (!cursor || loadingMore.current) return;
+    loadingMore.current = true;
+    const current = generation.current;
+    try {
+      const page = await api.get<ChatPage>(`/api/chats?limit=${pageSize}&cursor=${encodeURIComponent(cursor)}`);
+      if (current !== generation.current) return;
+      setChats((chats) => {
+        const seen = new Set(chats.map((chat) => chat.id));
+        return [...chats, ...page.chats.filter((chat) => !seen.has(chat.id))];
+      });
+      setCursor(page.next_cursor);
+    } catch (err) {
+      setError(err);
+    } finally {
+      loadingMore.current = false;
+    }
+  }
 
   function togglePin(chatID: string) {
     if (pins.ids.includes(chatID)) return setPins(pinLayout(pins.ids.filter((pinned) => pinned !== chatID)));
@@ -255,6 +315,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
               </div>
             );
           })}
+          {cursor && <LoadMore key={chats.length} onVisible={loadMore} />}
         </nav>
         )}
       </aside>
