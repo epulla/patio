@@ -481,7 +481,7 @@ func fakeTicketTools() []*mcp.Tool {
 	return tools
 }
 
-func TestLocalToolJSONFits4096Context(t *testing.T) {
+func TestLocalToolJSONFitsConfiguredLimit(t *testing.T) {
 	var raw []map[string]any
 	for _, tool := range fakeTicketTools() {
 		raw = append(raw, map[string]any{"type": "function", "function": map[string]any{
@@ -527,6 +527,38 @@ func TestLocalToolJSONFits4096Context(t *testing.T) {
 	if len(after)+len(prompt) >= localToolsMaxBytes {
 		t.Fatalf("tool JSON plus prompt = %d bytes, want under %d", len(after)+len(prompt), localToolsMaxBytes)
 	}
+}
+
+func TestLocalRuntimeToolListFits(t *testing.T) {
+	ticketTools := fakeTicketTools()
+	tools := make([]map[string]any, 0, 44+len(filetools.Tools()))
+	for i := 0; i < 44; i++ {
+		tool := ticketTools[i%len(ticketTools)]
+		definition, err := localToolDefinition(fmt.Sprintf("ticket__%s_%d", tool.Name, i), tool.Description, tool.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools = append(tools, definition)
+	}
+	for _, tool := range filetools.Tools() {
+		definition, err := localToolDefinition("file__"+tool.Name, tool.Description, json.RawMessage(tool.Parameters))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools = append(tools, definition)
+	}
+	got, err := compactLocalTools(tools)
+	if err != nil {
+		t.Fatalf("compact runtime tool list: %v", err)
+	}
+	if len(got) != len(tools) {
+		t.Fatalf("runtime tools = %d, want all %d", len(got), len(tools))
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("runtime tool definitions: %d bytes, %d tools", len(encoded), len(got))
 }
 
 func TestLocalChatAlwaysOffersToolsOpenAI(t *testing.T) {
@@ -758,7 +790,7 @@ func newOllamaChatFixture(t *testing.T, handler func(http.ResponseWriter, *http.
 			versionCalls.Add(1)
 			_, _ = fmt.Fprint(w, `{"version":"test"}`)
 		case "/api/ps":
-			_, _ = fmt.Fprint(w, `{"models":[{"name":"qwen2.5:3b","context_length":4096}]}`)
+			_, _ = fmt.Fprint(w, `{"models":[{"name":"qwen2.5:3b","context_length":4096},{"name":"thinking-model","context_length":32768}]}`)
 		case "/api/show":
 			showCalls.Add(1)
 			var request struct {
@@ -809,8 +841,9 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer native-secret" {
 			t.Errorf("native Authorization = %q", r.Header.Get("Authorization"))
 		}
-		if _, exists := request["num_ctx"]; exists {
-			t.Error("native request set num_ctx")
+		options, _ := request["options"].(map[string]any)
+		if options["num_ctx"] != float64(16384) {
+			t.Errorf("native options num_ctx = %#v, want 16384", options["num_ctx"])
 		}
 		switch calls.Add(1) {
 		case 1:
@@ -825,7 +858,7 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 			writeNDJSON(w,
 				`{"message":{"thinking":"private reasoning","content":"Reading "},"done":false}`,
 				`{"message":{"tool_calls":[{"function":{"name":"file__read_file","arguments":{"path":"hello.txt"}}}]},"done":false}`,
-				`{"done":true,"prompt_eval_count":4096}`,
+				`{"done":true,"prompt_eval_count":32768}`,
 			)
 		case 2:
 			messages, _ := request["messages"].([]any)
@@ -851,14 +884,14 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 			if !assistantCall || !toolResult {
 				t.Errorf("native tool history assistant=%v result=%v messages=%#v", assistantCall, toolResult, messages)
 			}
-			writeNDJSON(w, `{"message":{"content":"Found it"},"done":true,"prompt_eval_count":4096}`)
+			writeNDJSON(w, `{"message":{"content":"Found it"},"done":true,"prompt_eval_count":32768}`)
 		case 3:
 			if request["think"] != true {
 				t.Errorf("updated native think = %#v", request["think"])
 			}
 			writeNDJSON(w,
 				`{"message":{"thinking":"hidden", "content":"safe native-"},"done":false}`,
-				`{"message":{"content":"secret end"},"done":true,"prompt_eval_count":4096}`,
+				`{"message":{"content":"secret end"},"done":true,"prompt_eval_count":32768}`,
 			)
 		}
 	})

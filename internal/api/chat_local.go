@@ -31,7 +31,7 @@ const (
 	localSSELineLimit   = 4 << 20
 	localHistoryBudget  = 1500 * 4
 	localHistoryLimit   = 40
-	localToolsMaxBytes  = 8 << 10
+	localToolsMaxBytes  = 24 << 10
 	localDefaultContext = 4096
 	localToolNote       = "This model doesn't support tools; chatting without them."
 	localToolLimitNote  = "Tool call limit reached; stopping here."
@@ -63,6 +63,7 @@ type localRuntime struct {
 	closed         bool
 	toolsOff       bool
 	contextSize    int
+	contextLength  int
 	contextChecked bool
 }
 
@@ -244,7 +245,7 @@ func compactLocalSchema(value any) any {
 	switch item := value.(type) {
 	case map[string]any:
 		for key, nested := range item {
-			if key == "description" {
+			if key == "description" || key == "additionalProperties" {
 				delete(item, key)
 				continue
 			}
@@ -259,30 +260,14 @@ func compactLocalSchema(value any) any {
 }
 
 func compactLocalTools(tools []map[string]any) ([]map[string]any, error) {
-	compact := func(input []map[string]any) ([]map[string]any, error) {
-		data, err := json.Marshal(input)
-		if err != nil {
-			return nil, err
-		}
-		if len(data) > localToolsMaxBytes {
-			return nil, fmt.Errorf("local tool definitions exceed %d bytes", localToolsMaxBytes)
-		}
-		return input, nil
+	data, err := json.Marshal(tools)
+	if err != nil {
+		return nil, err
 	}
-	result, err := compact(tools)
-	if err == nil {
-		return result, nil
+	if len(data) > localToolsMaxBytes {
+		return nil, fmt.Errorf("local tool definitions exceed %d bytes", localToolsMaxBytes)
 	}
-	filtered := make([]map[string]any, 0, len(tools))
-	for _, tool := range tools {
-		function, _ := tool["function"].(map[string]any)
-		name, _ := function["name"].(string)
-		if strings.Contains(name, "calendar") || name == "file__duplicate" {
-			continue
-		}
-		filtered = append(filtered, tool)
-	}
-	return compact(filtered)
+	return tools, nil
 }
 
 func (d *localRuntime) send(request ChatSendRequest) error {
@@ -745,6 +730,7 @@ func (d *localRuntime) streamOllama(ctx context.Context, messages []map[string]a
 }
 
 func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []map[string]any, withTools, thinking bool, images []chatAttachmentFile) (localStreamResult, error) {
+	d.ollamaContextSize(ctx)
 	nativeMessages, err := ollamaMessages(messages)
 	if err != nil {
 		return localStreamResult{}, err
@@ -763,6 +749,13 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 		}
 	}
 	body := map[string]any{"model": d.model, "stream": true, "messages": nativeMessages}
+	if d.contextLength > 0 {
+		contextSize := d.contextLength
+		if contextSize > 16384 {
+			contextSize = 16384
+		}
+		body["options"] = map[string]any{"num_ctx": contextSize}
+	}
 	if !d.ollama || d.ollamaThinkingSupported(ctx) {
 		body["think"] = thinking
 	}
@@ -1052,20 +1045,11 @@ func (d *localRuntime) ollamaContextSize(ctx context.Context) int {
 				for _, model := range running.Models {
 					if (model.Name == d.model || model.Model == d.model) && model.ContextLength > 0 {
 						d.contextSize = model.ContextLength
+						d.contextLength = model.ContextLength
 						break
 					}
 				}
 			}
-		}
-		_ = resp.Body.Close()
-	}
-	// /api/show reports model maximum context, not active context; read it once but
-	// use the running context from /api/ps or the server's default instead.
-	selectedContext := d.contextSize
-	resp, err = request(http.MethodPost, "/api/show", map[string]string{"model": d.model})
-	if err == nil {
-		if _, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20)); readErr != nil {
-			d.contextSize = selectedContext
 		}
 		_ = resp.Body.Close()
 	}
