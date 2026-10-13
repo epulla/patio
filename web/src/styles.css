@@ -678,7 +678,7 @@ a:has(> .svg-icon) {
   border: 0;
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: none;
-  max-height: 70vh;
+  max-height: 400px;
   resize: vertical;
   font-family: inherit;
 }
@@ -1163,6 +1163,7 @@ label.days-field {
 .ticket-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  align-items: start;
   gap: 24px;
 }
 .ticket-main,
