@@ -29,6 +29,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
+import { maxPins, pinLayout, setPins, usePins } from "./pins";
 
 type ChatDetail = {
   chat: Chat;
@@ -106,18 +107,10 @@ export function ModelOptions({ models, current, loading }: { models: ModelOption
   );
 }
 
-type Pins = { ids: string[]; cols: number[]; rows: number[] };
 type ChatPage = { chats: Chat[]; next_cursor: string | null };
 
-const maxPins = 9;
 const pageSize = 50;
 const paneType = "application/x-chat-pane";
-
-function pinLayout(ids: string[]): Pins {
-  const cols = Math.ceil(Math.sqrt(ids.length));
-  const rows = cols && Math.ceil(ids.length / cols);
-  return { ids, cols: Array(cols).fill(1 / cols), rows: Array(rows).fill(1 / rows) };
-}
 
 // Remounted per page (key) so a still-visible sentinel fires again.
 function LoadMore({ onVisible }: { onVisible: () => void }) {
@@ -132,22 +125,6 @@ function LoadMore({ onVisible }: { onVisible: () => void }) {
   return <div ref={ref} className="chat-list-end" aria-hidden="true" />;
 }
 
-function loadPins(): Pins {
-  try {
-    const saved = JSON.parse(localStorage.getItem("chat-pins") ?? "null") as Partial<Pins> | null;
-    const ids: unknown = saved?.ids;
-    const cols: unknown = saved?.cols;
-    const rows: unknown = saved?.rows;
-    if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string")) return pinLayout([]);
-    const pins = pinLayout(ids.slice(0, maxPins));
-    const fits = (sizes: unknown, fresh: number[]): sizes is number[] =>
-      Array.isArray(sizes) && sizes.length === fresh.length && sizes.every((x) => typeof x === "number" && x > 0);
-    return fits(cols, pins.cols) && fits(rows, pins.rows) ? { ...pins, cols, rows } : pins;
-  } catch {
-    return pinLayout([]);
-  }
-}
-
 export default function Chats({ id, refresh, windowed }: { id?: string; refresh: number; windowed?: boolean }) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -155,7 +132,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<unknown>();
   const [reload, setReload] = useState(0);
-  const [pins, setPins] = useState(loadPins);
+  const pins = usePins();
   const [listOpen, setListOpen] = useState(() => localStorage.getItem("chat-list") !== "closed");
   const [cursor, setCursor] = useState<string | null>(null);
   const loadedCount = useRef(0);
@@ -206,7 +183,6 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
 
   useEffect(() => {
     pinsRef.current = pins;
-    localStorage.setItem("chat-pins", JSON.stringify(pins));
   }, [pins]);
 
   async function loadMore() {
