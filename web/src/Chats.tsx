@@ -879,21 +879,31 @@ function Conversation({
       )}
       {timeline(detail).map((message) =>
         "tool_name" in message ? (
-          <p key={message.id} className="tool-line">
-            <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
-            <MessageTime iso={message.created_at} />
-          </p>
+          <details key={message.id} className="tool-line">
+            <summary>
+              <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
+              <MessageTime iso={message.created_at} />
+            </summary>
+            <pre>{`${message.tool_name}\n${prettyJSON(message.input_json)}`}</pre>
+          </details>
         ) : message.role === "tool" ? (
-          <p key={message.id} className="tool-line">
-            <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
-          </p>
+          <details key={message.id} className="tool-line">
+            <summary>
+              <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
+            </summary>
+            <pre>{prettyJSON(message.content)}</pre>
+          </details>
         ) : message.role === "thinking" ? (
           detail.chat.show_thinking && <ThinkingBlock key={message.id} text={message.content} />
         ) : (
           <div key={message.id} className={`message-row ${message.role}`}>
             {(message.role !== "user" || message.content) && (
               <div className={`message ${message.role}`}>
-                {message.role === "assistant" ? <Markdown text={message.content} onFile={reveal} /> : message.content}
+                {message.role === "assistant" || message.role === "user" ? (
+                  <Markdown text={message.content} onFile={reveal} />
+                ) : (
+                  message.content
+                )}
               </div>
             )}
             {message.attachments.length > 0 && (
@@ -1301,6 +1311,14 @@ function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
   const auto = detail.auto_approvals ?? [];
   if (!auto.length) return detail.messages;
   return [...detail.messages, ...auto].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+function prettyJSON(text: string) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
 }
 
 function approvalSummary(approval: ChatApproval) {

@@ -2416,6 +2416,13 @@ main.chat-window {
 }
 .message.assistant {
   align-self: flex-start;
+}
+.message-row.assistant,
+.message.assistant {
+  max-width: none;
+}
+.message.assistant,
+.message.user {
   white-space: normal;
 }
 .markdown > :first-child {
@@ -2495,17 +2502,33 @@ main.chat-window {
 }
 .tool-line {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
-.tool-line code {
+.tool-line summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.tool-line summary::-webkit-details-marker {
+  display: none;
+}
+.tool-line summary code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tool-line pre {
+  margin: 6px 0 0 24px;
+  padding: 8px 10px;
+  max-height: 400px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--base-200);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .chat-hint,
 .typing {
