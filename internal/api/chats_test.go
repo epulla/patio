@@ -217,7 +217,7 @@ func TestChatListRuntimeApprovalAndOtherWindow(t *testing.T) {
 	var listed struct {
 		Chats []struct {
 			Running      bool `json:"running"`
-			PendingCount int `json:"pending_count"`
+			PendingCount int  `json:"pending_count"`
 			OtherWindow  bool `json:"other_window"`
 		} `json:"chats"`
 	}
