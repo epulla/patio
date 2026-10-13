@@ -6,7 +6,7 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
 import Chats from "./Chats";
-import ChatDock, { usePinnedChats } from "./ChatDock";
+import ChatDock, { statusMarks, usePinnedChats } from "./ChatDock";
 import { usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
@@ -64,7 +64,7 @@ export default function App() {
     () => localStorage.getItem("sidebar") === "closed",
   );
   const pins = usePins();
-  const pinnedChats = usePinnedChats(pins.ids, refresh);
+  const pinned = usePinnedChats(pins.ids, refresh);
   const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("chat-dock") === "open");
 
   function toggleDock(open: boolean) {
@@ -168,6 +168,8 @@ export default function App() {
   if (path === "/settings") page = <Settings />;
 
   const showDock = pins.ids.length > 0 && !chatMatch;
+  const states = Object.values(pinned.status);
+  const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
 
   const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (
     <button
@@ -231,13 +233,13 @@ export default function App() {
           {showDock && (
             <button
               className="icon ghost dock-toggle"
-              aria-label={`Pinned chats (${pins.ids.length})`}
+              aria-label={`Pinned chats (${pins.ids.length})${dockAlert === "approval" ? ", approval needed" : dockAlert === "reply" ? ", new reply" : ""}`}
               data-tip={`Pinned chats (${pins.ids.length})`}
               aria-expanded={dockOpen}
               onClick={() => toggleDock(!dockOpen)}
             >
               <Icon name="chat" />
-              <span className="dock-count" aria-hidden="true">{pins.ids.length}</span>
+              <span className="dock-count" aria-hidden="true">{dockAlert ? statusMarks[dockAlert] : pins.ids.length}</span>
             </button>
           )}
           <ThemeToggle />
@@ -245,7 +247,14 @@ export default function App() {
       </aside>
       <main>{page}</main>
       {showDock && dockOpen && (
-        <ChatDock ids={pins.ids} chats={pinnedChats} refresh={refresh} onClose={() => toggleDock(false)} />
+        <ChatDock
+          ids={pins.ids}
+          chats={pinned.chats}
+          status={pinned.status}
+          refresh={refresh}
+          onSeen={pinned.seen}
+          onClose={() => toggleDock(false)}
+        />
       )}
       {config.version && <span className="app-version">{config.version}</span>}
     </div>

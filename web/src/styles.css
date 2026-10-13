@@ -1863,6 +1863,15 @@ main.chat-window {
   white-space: nowrap;
   font-size: 12px;
 }
+.dock-dot {
+  margin-right: 4px;
+}
+.dock-dot.working {
+  color: var(--primary);
+}
+.dock-chip[aria-pressed="true"] .dock-dot {
+  color: inherit;
+}
 .dock-chip[aria-pressed="true"] {
   background: var(--primary);
   color: var(--primary-content);
