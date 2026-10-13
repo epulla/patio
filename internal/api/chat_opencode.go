@@ -187,7 +187,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	}
 	password := hex.EncodeToString(secret)
 	configValue := map[string]any{
-		"permission": map[string]string{"*": "ask", "edit": "ask", "bash": "ask", "webfetch": "ask"},
+		"permission": map[string]string{"*": "ask", "edit": "ask", "bash": "ask", "webfetch": "ask", "question": "deny"},
 		"mcp":        opencodeMCPServers(exe, mcpArgs, external),
 	}
 	if major >= 2 {
@@ -196,6 +196,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 				{"action": "edit", "resource": "*", "effect": "ask"},
 				{"action": "shell", "resource": "*", "effect": "ask"},
 				{"action": "webfetch", "resource": "*", "effect": "ask"},
+				{"action": "question", "resource": "*", "effect": "deny"},
 			},
 			"mcp": opencodeV2MCPServers(exe, mcpArgs, external),
 		}

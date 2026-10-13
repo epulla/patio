@@ -304,7 +304,7 @@ func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
 	if port == "" || decodeErr != nil || len(secret) != 32 || json.Unmarshal([]byte(configRaw), &config) != nil {
 		return nil, fmt.Errorf("missing port or server password")
 	}
-	if config.Permission["*"] != "ask" || config.Permission["edit"] != "ask" || config.Permission["bash"] != "ask" || config.Permission["webfetch"] != "ask" {
+	if config.Permission["*"] != "ask" || config.Permission["edit"] != "ask" || config.Permission["bash"] != "ask" || config.Permission["webfetch"] != "ask" || config.Permission["question"] != "deny" {
 		return nil, fmt.Errorf("unexpected permission config: %#v", config.Permission)
 	}
 	mcp := config.MCP["patio"]
@@ -726,16 +726,16 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 	if port == "" || json.Unmarshal([]byte(configRaw), &config) != nil {
 		return nil, fmt.Errorf("invalid v2 config or missing port")
 	}
-	wantPermissions := map[string]bool{"edit": false, "shell": false, "webfetch": false}
+	wantPermissions := map[string]string{"edit": "ask", "shell": "ask", "webfetch": "ask", "question": "deny"}
 	for _, rule := range config.Permissions {
-		if rule.Resource == "*" && rule.Effect == "ask" {
-			if _, ok := wantPermissions[rule.Action]; ok {
-				wantPermissions[rule.Action] = true
+		if rule.Resource == "*" {
+			if _, ok := wantPermissions[rule.Action]; ok && rule.Effect == wantPermissions[rule.Action] {
+				wantPermissions[rule.Action] = ""
 			}
 		}
 	}
 	ticket := config.MCP.Servers["patio"]
-	if len(config.MCP.Servers) != 3 || !wantPermissions["edit"] || !wantPermissions["shell"] || !wantPermissions["webfetch"] || ticket.Type != "local" || ticket.Disabled == nil || *ticket.Disabled || len(ticket.Command) != 4 {
+	if len(config.MCP.Servers) != 3 || wantPermissions["edit"] != "" || wantPermissions["shell"] != "" || wantPermissions["webfetch"] != "" || wantPermissions["question"] != "" || ticket.Type != "local" || ticket.Disabled == nil || *ticket.Disabled || len(ticket.Command) != 4 {
 		return nil, fmt.Errorf("unexpected v2 opencode config: %#v", config)
 	}
 	f.configParsed = true
