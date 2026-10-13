@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import BoardList from "./BoardList";
 import BoardView from "./BoardView";
 import TicketDetail from "./TicketDetail";
@@ -67,10 +67,38 @@ export default function App() {
   const pinned = usePinnedChats(pins.ids, refresh);
   const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("chat-dock") === "open");
 
+  const pinCount = useRef(pins.ids.length);
+  const returnFocus = useRef<HTMLElement | null>(null);
+
   function toggleDock(open: boolean) {
     localStorage.setItem("chat-dock", open ? "open" : "closed");
     setDockOpen(open);
   }
+
+  useEffect(() => {
+    if (pins.ids.length > pinCount.current) toggleDock(true);
+    pinCount.current = pins.ids.length;
+  }, [pins.ids.length]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const composer = document.querySelector<HTMLTextAreaElement>(".chat-dock textarea");
+      if (event.key === "Escape" && composer && event.target === composer) {
+        composer.blur();
+        returnFocus.current?.focus();
+        return;
+      }
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
+      if (!pins.ids.length || config?.chat_window || location.pathname.startsWith("/ai/chats")) return;
+      event.preventDefault();
+      if (!dockOpen) return toggleDock(true);
+      if (document.activeElement?.closest(".chat-dock")) return toggleDock(false);
+      returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      composer?.focus();
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  }, [pins.ids.length, dockOpen, config]);
 
   useEffect(() => {
     api
@@ -234,7 +262,7 @@ export default function App() {
             <button
               className="icon ghost dock-toggle"
               aria-label={`Pinned chats (${pins.ids.length})${dockAlert === "approval" ? ", approval needed" : dockAlert === "reply" ? ", new reply" : ""}`}
-              data-tip={`Pinned chats (${pins.ids.length})`}
+              data-tip={`Pinned chats (${pins.ids.length}) ⌘J`}
               aria-expanded={dockOpen}
               onClick={() => toggleDock(!dockOpen)}
             >
