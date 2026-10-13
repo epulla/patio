@@ -61,6 +61,10 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		return nil, err
 	}
 	servers := codexMCPServers(ticket, external)
+	codexConfig := map[string]any{"mcp_servers": servers}
+	if c.ShowThinking {
+		codexConfig["model_reasoning_summary"] = "detailed"
+	}
 	factory := m.options.codexStart
 	if factory == nil {
 		factory = func(ctx context.Context, path string, env []string, isolated bool, version, cwd string, overrides ...string) (codexClient, error) {
@@ -82,7 +86,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		var result json.RawMessage
 		err = client.Call(ctx, "thread/resume", map[string]any{
 			"threadId": driver.threadID, "approvalPolicy": "on-request", "sandbox": "read-only",
-			"config": map[string]any{"mcp_servers": servers},
+			"config": codexConfig,
 		}, &result)
 	} else {
 		var result struct {
@@ -92,7 +96,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		}
 		params := map[string]any{
 			"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "read-only",
-			"config": map[string]any{"mcp_servers": servers},
+			"config": codexConfig,
 		}
 		persona, promptErr := MartinPersonaEnabled(m.db)
 		if promptErr != nil {
@@ -115,7 +119,11 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 			client, err = start(overrides...)
 			if err == nil {
 				driver.client = client
-				params["config"] = map[string]any{"mcp_servers": codexExternalMCPServers(external)}
+				fallbackConfig := map[string]any{"mcp_servers": codexExternalMCPServers(external)}
+				if c.ShowThinking {
+					fallbackConfig["model_reasoning_summary"] = "detailed"
+				}
+				params["config"] = fallbackConfig
 				err = client.Call(ctx, "thread/start", params, &result)
 			}
 		}

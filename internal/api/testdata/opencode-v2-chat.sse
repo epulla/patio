@@ -1,5 +1,11 @@
 data: {"type":"session.execution.started","data":{"sessionID":"<SESSION>"}}
 
+data: {"type":"session.reasoning.started","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"state":{"reasoningField":"reasoning_content"}}}
+
+data: {"type":"session.reasoning.delta","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"delta":"Reason briefly. "}}
+
+data: {"type":"session.reasoning.ended","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"state":{"reasoningField":"reasoning_content"},"text":"Reason briefly."}}
+
 data: {"type":"session.text.started","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0}}
 
 data: {"type":"session.text.delta","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","ordinal":0,"delta":"Hello "}}

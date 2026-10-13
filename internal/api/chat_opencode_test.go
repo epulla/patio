@@ -101,11 +101,9 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	}
 
 	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "assistant-1", "role": "assistant"}}})
-	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "text-1", "messageID": "assistant-1", "type": "text"}}})
-	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "assistant-1", "partID": "text-1", "field": "text", "delta": "Hello "}})
-	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "assistant-1", "partID": "text-1", "field": "text", "delta": "there"}})
-	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "reasoning-1", "messageID": "assistant-1", "type": "reasoning"}}})
-	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "assistant-1", "partID": "reasoning-1", "field": "text", "delta": "hidden reasoning"}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Hello ", "time": map[string]any{"start": 1}}, "delta": "Hello "}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Hello there", "time": map[string]any{"start": 1}}, "delta": "there"}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "reasoning-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "reasoning", "text": "hidden reasoning", "time": map[string]any{"start": 1}}, "delta": "hidden reasoning"}})
 	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "user-1", "role": "user"}}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "user-text", "messageID": "user-1", "type": "text"}}})
 	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "user-1", "partID": "user-text", "field": "text", "delta": "echo must not appear"}})
@@ -483,6 +481,9 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	if _, err := database.Exec(`UPDATE chat SET model='opencode/big-pickle' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.Exec(`UPDATE chat SET show_thinking=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	resumeID := createDriverTestChat(t, database, connectorID, root)
 	if _, err := database.Exec(`UPDATE chat SET session_id='missing-session',model='opencode/big-pickle' WHERE id=?`, resumeID); err != nil {
 		t.Fatal(err)
@@ -518,6 +519,10 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
 		t.Fatalf("v2 tool summary = %q, %v", tool, err)
 	}
+	var thinking string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='thinking' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&thinking); err != nil || thinking != "Reason briefly. " {
+		t.Fatalf("v2 thinking = %q, %v", thinking, err)
+	}
 
 	for _, answer := range []struct {
 		text  string
@@ -546,6 +551,10 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	var noteCount int
 	if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, resumeID, "opencode was upgraded; earlier context was not carried over.").Scan(&noteCount); err != nil || noteCount != 1 {
 		t.Fatalf("upgrade note count = %d, %v", noteCount, err)
+	}
+	var offThinkingCount int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='thinking'`, resumeID).Scan(&offThinkingCount); err != nil || offThinkingCount != 0 {
+		t.Fatalf("thinking rows while disabled = %d, %v", offThinkingCount, err)
 	}
 
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "interrupt"}, nil); code != http.StatusAccepted {

@@ -25,7 +25,7 @@ func TestCodexTurnOverPipes(t *testing.T) {
 			connectorID := createCodexTestConnector(t, database)
 			chatID := createDriverTestChat(t, database, connectorID, root)
 			if allow {
-				if _, err := database.Exec(`UPDATE chat SET thinking=1 WHERE id=?`, chatID); err != nil {
+				if _, err := database.Exec(`UPDATE chat SET thinking=1,show_thinking=1 WHERE id=?`, chatID); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -71,6 +71,9 @@ func TestCodexTurnOverPipes(t *testing.T) {
 							return fmt.Errorf("thread/start params = %#v", params)
 						}
 						config, _ := params["config"].(map[string]any)
+						if got := config["model_reasoning_summary"]; got != map[bool]any{true: "detailed", false: nil}[allow] {
+							return fmt.Errorf("thread/start reasoning summary = %#v", got)
+						}
 						servers, _ := config["mcp_servers"].(map[string]any)
 						if len(servers) != 3 || servers["patio"] == nil || servers["disabled-test"] != nil {
 							return fmt.Errorf("thread/start missing MCP config: %#v", config)

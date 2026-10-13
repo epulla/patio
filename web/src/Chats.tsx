@@ -910,7 +910,13 @@ function Conversation({
           <Switch
             label="Show thinking"
             checked={detail.chat.show_thinking}
-            title="Show the model's reasoning above its replies"
+            title={
+              connector?.kind === "claude"
+                ? "Claude Code doesn't share its reasoning, so no thinking appears in this chat"
+                : connector?.kind === "codex"
+                  ? "Show Codex's reasoning summaries when it sends them; simple questions often have none"
+                  : "Show the model's reasoning above its replies"
+            }
             onChange={(show_thinking) => update({ show_thinking })}
           />
           <Switch

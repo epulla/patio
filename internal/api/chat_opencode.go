@@ -615,6 +615,14 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			break
 		}
 	}
+	if sid == "" && typ == "message.part.updated" {
+		var part struct {
+			SessionID string `json:"sessionID"`
+		}
+		if json.Unmarshal(props["part"], &part) == nil {
+			sid = part.SessionID
+		}
+	}
 	s.mu.Lock()
 	driver := s.chats[sid]
 	s.mu.Unlock()
@@ -688,6 +696,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 	case "message.part.updated":
 		var part struct {
 			MessageID string `json:"messageID"`
+			Delta     string `json:"delta"`
 			Part      struct {
 				MessageID string          `json:"messageID"`
 				Type      string          `json:"type"`
@@ -708,6 +717,15 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 		driver.mu.Lock()
 		role := driver.roles[part.MessageID]
+		if part.Delta != "" && role == "assistant" && driver.active {
+			switch part.Part.Type {
+			case "text":
+				driver.text.WriteString(part.Delta)
+				driver.manager.emitDelta(driver.chatID, part.Delta)
+			case "reasoning":
+				driver.manager.emitThinking(driver.chatID, part.Delta)
+			}
+		}
 		driver.mu.Unlock()
 		if role != "user" && part.Part.Type == "tool" && (part.Part.State.Status == "completed" || part.Part.State.Status == "error") {
 			toolInput := part.Part.Input
@@ -828,6 +846,18 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		return nil
 	}
 	switch typ {
+	case "session.reasoning.delta":
+		var delta struct {
+			Text string `json:"delta"`
+		}
+		if err := json.Unmarshal(event["data"], &delta); err != nil {
+			return err
+		}
+		driver.mu.Lock()
+		if driver.active {
+			driver.manager.emitThinking(driver.chatID, delta.Text)
+		}
+		driver.mu.Unlock()
 	case "session.text.delta":
 		var delta struct {
 			Text string `json:"delta"`
