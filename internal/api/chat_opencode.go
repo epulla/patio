@@ -624,6 +624,23 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			sid = part.SessionID
 		}
 	}
+	if typ == "session.created" || typ == "session.updated" {
+		var info struct {
+			ID       string `json:"id"`
+			ParentID string `json:"parentID"`
+		}
+		if err := json.Unmarshal(props["info"], &info); err != nil {
+			return err
+		}
+		if info.ID != "" && info.ParentID != "" {
+			s.mu.Lock()
+			if len(s.ancestors) >= 512 {
+				s.ancestors = make(map[string]string)
+			}
+			s.ancestors[info.ID] = info.ParentID
+			s.mu.Unlock()
+		}
+	}
 	driver, child := s.driverForSession(sid)
 	if driver != nil {
 		switch typ {
@@ -823,78 +840,98 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 // driverForSession routes subagent session events to their owning chat. API lookups
 // are bounded and performed without holding s.mu because dispatch runs on SSE reader.
 func (s *opencodeServer) driverForSession(sid string) (*opencodeRuntime, bool) {
+	if sid == "" {
+		return nil, false
+	}
 	s.mu.Lock()
 	if d := s.chats[sid]; d != nil {
 		s.mu.Unlock()
 		return d, false
 	}
 	if root, ok := s.ancestors[sid]; ok {
+		seen := map[string]bool{sid: true}
+		for s.chats[root] == nil && s.ancestors[root] != "" && !seen[root] {
+			seen[root] = true
+			root = s.ancestors[root]
+		}
 		d := s.chats[root]
 		s.mu.Unlock()
-		return d, d != nil
+		if d != nil {
+			return d, true
+		}
+		// A known parent chain can still be incomplete; API lookup remains fallback.
+	} else {
+		s.mu.Unlock()
 	}
-	s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(s.ctx, 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
 	defer cancel()
-	current := sid
-	seen := map[string]bool{sid: true}
-	root := ""
-	directory := "."
+	directories := []string{"."}
 	if s.major < 2 {
 		s.mu.Lock()
+		seenDirs := map[string]bool{".": true}
 		for _, d := range s.chats {
-			directory = d.directory
-			break
+			if d.directory != "" && !seenDirs[d.directory] {
+				seenDirs[d.directory] = true
+				directories = append(directories, d.directory)
+			}
 		}
 		s.mu.Unlock()
 	}
-	for range 8 {
-		path := "/session/" + url.PathEscape(current)
-		if s.major >= 2 {
-			path = "/api" + path
-		}
-		if s.major < 2 {
-			path += "?directory=" + url.QueryEscape(directory)
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
-		if err != nil {
-			break
-		}
-		req.SetBasicAuth("opencode", s.password)
-		resp, err := (&http.Client{Timeout: 300 * time.Millisecond}).Do(req)
-		if err != nil {
-			break
-		}
-		var body struct {
-			Data struct {
+	root, definitive := "", false
+	for _, directory := range directories {
+		current := sid
+		seen := map[string]bool{sid: true}
+		for range 8 {
+			path := "/session/" + url.PathEscape(current)
+			if s.major >= 2 {
+				path = "/api" + path
+			}
+			if s.major < 2 {
+				path += "?directory=" + url.QueryEscape(directory)
+			}
+			resp, err := s.request(ctx, http.MethodGet, path, nil)
+			if err != nil {
+				break
+			}
+			var body struct {
+				Data struct {
+					ParentID string `json:"parentID"`
+				} `json:"data"`
 				ParentID string `json:"parentID"`
-			} `json:"data"`
-			ParentID string `json:"parentID"`
+			}
+			decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body)
+			_ = resp.Body.Close()
+			if decodeErr != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				break
+			}
+			parent := body.ParentID
+			if s.major >= 2 {
+				parent = body.Data.ParentID
+			}
+			if parent == "" {
+				definitive = true
+				break
+			}
+			if seen[parent] {
+				definitive = true
+				break
+			}
+			seen[parent] = true
+			s.mu.Lock()
+			d := s.chats[parent]
+			s.mu.Unlock()
+			if d != nil {
+				root, definitive = parent, true
+				break
+			}
+			current = parent
 		}
-		decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body)
-		_ = resp.Body.Close()
-		if decodeErr != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if root != "" || definitive {
 			break
 		}
-		parent := body.ParentID
-		if s.major >= 2 {
-			parent = body.Data.ParentID
-		}
-		if parent == "" {
-			break
-		}
-		if seen[parent] {
-			break
-		}
-		seen[parent] = true
-		s.mu.Lock()
-		d := s.chats[parent]
-		s.mu.Unlock()
-		if d != nil {
-			root = parent
-			break
-		}
-		current = parent
+	}
+	if !definitive {
+		return nil, false
 	}
 	s.mu.Lock()
 	if len(s.ancestors) >= 512 {

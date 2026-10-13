@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -190,6 +191,49 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 		t.Fatalf("shared server process kills = %d; want 1 after last chat closes", fake.kills)
 	}
 	fake.mu.Unlock()
+}
+
+func TestOpenCodeV1ParentLookupRetriesAfterFailure(t *testing.T) {
+	var requests atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			http.Error(w, "temporary", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"child","parentID":"parent"}`))
+	}))
+	defer httpServer.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	parent := &opencodeRuntime{chatID: "chat", directory: "."}
+	s := &opencodeServer{major: 1, baseURL: httpServer.URL, client: httpServer.Client(), ctx: ctx, chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: make(map[string]string)}
+	if driver, _ := s.driverForSession("child"); driver != nil {
+		t.Fatal("failed lookup unexpectedly routed")
+	}
+	driver, child := s.driverForSession("child")
+	if driver != parent || !child {
+		t.Fatalf("driver=%p child=%v", driver, child)
+	}
+}
+
+func TestOpenCodeV1SessionCreatedMapsChildToParent(t *testing.T) {
+	parent := &opencodeRuntime{chatID: "chat"}
+	s := &opencodeServer{major: 1, chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: make(map[string]string)}
+	event, err := json.Marshal(map[string]any{"type": "session.created", "properties": map[string]any{"info": map[string]string{"id": "child", "parentID": "parent"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(event, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.dispatch(raw); err != nil {
+		t.Fatal(err)
+	}
+	driver, child := s.driverForSession("child")
+	if driver != parent || !child {
+		t.Fatalf("driver=%p child=%v", driver, child)
+	}
 }
 
 type openCodeFake struct {
