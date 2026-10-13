@@ -749,11 +749,7 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 		}
 	}
 	body := map[string]any{"model": d.model, "stream": true, "messages": nativeMessages}
-	if d.contextLength > 0 {
-		contextSize := d.contextLength
-		if contextSize > 16384 {
-			contextSize = 16384
-		}
+	if contextSize := d.ollamaContextSize(ctx); contextSize > 0 && d.contextLength > 0 {
 		body["options"] = map[string]any{"num_ctx": contextSize}
 	}
 	if !d.ollama || d.ollamaThinkingSupported(ctx) {
@@ -811,8 +807,9 @@ func (d *localRuntime) ollamaThinkingSupported(ctx context.Context) bool {
 }
 
 type ollamaModelCapabilities struct {
-	thinking bool
-	vision   bool
+	thinking      bool
+	vision        bool
+	contextLength int
 }
 
 var localModelCapabilities sync.Map
@@ -848,7 +845,8 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 		return ollamaModelCapabilities{}, false
 	}
 	var details struct {
-		Capabilities []string `json:"capabilities"`
+		Capabilities []string       `json:"capabilities"`
+		ModelInfo    map[string]int `json:"model_info"`
 	}
 	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&details) != nil {
 		return ollamaModelCapabilities{}, false
@@ -857,6 +855,11 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 	for _, capability := range details.Capabilities {
 		capabilities.thinking = capabilities.thinking || capability == "thinking"
 		capabilities.vision = capabilities.vision || capability == "vision"
+	}
+	for key, length := range details.ModelInfo {
+		if strings.HasSuffix(key, ".context_length") && length > capabilities.contextLength {
+			capabilities.contextLength = length
+		}
 	}
 	cached, _ := localModelCapabilities.LoadOrStore(key, capabilities)
 	return cached.(ollamaModelCapabilities), true
@@ -999,59 +1002,16 @@ func (d *localRuntime) readOllamaNDJSON(ctx context.Context, body io.Reader) (lo
 
 func (d *localRuntime) ollamaContextSize(ctx context.Context) int {
 	if d.contextChecked {
-		if d.contextSize == 0 {
-			return localDefaultContext
-		}
 		return d.contextSize
 	}
 	d.contextChecked = true
 	d.contextSize = localDefaultContext
-	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	request := func(method, path string, body any) (*http.Response, error) {
-		var reader io.Reader
-		if body != nil {
-			encoded, err := json.Marshal(body)
-			if err != nil {
-				return nil, err
-			}
-			reader = bytes.NewReader(encoded)
+	if capabilities, ok := d.ollamaModelCapabilities(ctx); ok && capabilities.contextLength > 0 {
+		d.contextLength = capabilities.contextLength
+		d.contextSize = capabilities.contextLength
+		if d.contextSize > 16384 {
+			d.contextSize = 16384
 		}
-		req, err := http.NewRequestWithContext(queryCtx, method, d.ollamaURL+path, reader)
-		if err != nil {
-			return nil, err
-		}
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		if d.secret != "" {
-			req.Header.Set("Authorization", "Bearer "+d.secret)
-		}
-		return d.client.Do(req)
-	}
-	resp, err := request(http.MethodGet, "/api/ps", nil)
-	if err == nil {
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			var running struct {
-				Models []struct {
-					Name          string `json:"name"`
-					Model         string `json:"model"`
-					ContextLength int    `json:"context_length"`
-				} `json:"models"`
-			}
-			if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&running); decodeErr != nil {
-				d.contextSize = localDefaultContext
-			} else {
-				for _, model := range running.Models {
-					if (model.Name == d.model || model.Model == d.model) && model.ContextLength > 0 {
-						d.contextSize = model.ContextLength
-						d.contextLength = model.ContextLength
-						break
-					}
-				}
-			}
-		}
-		_ = resp.Body.Close()
 	}
 	return d.contextSize
 }

@@ -842,9 +842,9 @@ func newOllamaChatFixture(t *testing.T, handler func(http.ResponseWriter, *http.
 			}
 			_ = json.NewDecoder(r.Body).Decode(&request)
 			if request.Model == "thinking-model" {
-				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools","thinking"],"model_info":{"qwen.context_length":32768}}`)
+				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools","thinking"],"model_info":{"qwen.context_length":40960}}`)
 			} else {
-				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools"],"model_info":{"qwen.context_length":32768}}`)
+				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools"],"model_info":{"qwen.context_length":40960}}`)
 			}
 		case "/api/chat":
 			var body map[string]any
@@ -1004,6 +1004,30 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 	var leaked int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND content LIKE '%native-secret%'`, chatID).Scan(&leaked); err != nil || leaked != 0 {
 		t.Fatalf("native secret-bearing messages = %d, %v", leaked, err)
+	}
+}
+
+func TestLocalOllamaNumContextUsesModelMaximum(t *testing.T) {
+	for _, model := range []string{"qwen2.5:3b", "not-loaded:3b"} {
+		t.Run(model, func(t *testing.T) {
+			var got any
+			database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
+				options, _ := request["options"].(map[string]any)
+				got = options["num_ctx"]
+				writeNDJSON(w, `{"done":true,"prompt_eval_count":1}`)
+			})
+			defer server.Close()
+			if _, err := database.Exec(`UPDATE chat SET model=? WHERE id=?`, model, chatID); err != nil {
+				t.Fatal(err)
+			}
+			if code := sendLocalMessage(t, server, chatID, "reply"); code != http.StatusAccepted {
+				t.Fatalf("send = %d", code)
+			}
+			waitLocalDone(t, events)
+			if got != float64(16384) {
+				t.Errorf("native options num_ctx = %#v, want 16384", got)
+			}
+		})
 	}
 }
 
