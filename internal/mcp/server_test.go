@@ -54,7 +54,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
 		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
 		"query_db": true, "list_connectors": true, "create_connector": true,
-		"update_connector": true, "list_connector_models": true,
+		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
+		"update_column": true, "reorder_columns": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -72,8 +73,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 32 {
-		t.Fatalf("tool count = %d, want 28", count)
+	if count != 39 {
+		t.Fatalf("tool count = %d, want 39", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -352,6 +353,86 @@ func TestMCPConnectorTools(t *testing.T) {
 	text := listed.Content[0].(*sdk.TextContent).Text
 	if strings.Contains(text, secret) || !strings.Contains(text, `"has_secret":true`) || !strings.Contains(text, `"name":"Updated"`) {
 		t.Fatalf("connector listing leaks secret or misses update: %s", text)
+	}
+}
+
+func TestMCPBoardStructure(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "board-structure.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	var board struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "create_board", map[string]any{"name": "Board", "short_name": "BS", "statuses": []map[string]any{{"name": "Todo"}}}), &board)
+	var updatedBoard struct {
+		Name string `json:"name"`
+	}
+	decodeText(t, callTool(t, session, "update_board", map[string]any{"board_id": board.ID, "name": "Renamed", "short_name": "BS", "template": ""}), &updatedBoard)
+	if updatedBoard.Name != "Renamed" {
+		t.Fatalf("updated board = %#v", updatedBoard)
+	}
+	var original struct {
+		ID string `json:"id"`
+	}
+	var data struct {
+		Statuses []struct {
+			ID string `json:"id"`
+		} `json:"statuses"`
+	}
+	decodeText(t, callTool(t, session, "get_board", map[string]any{"board_id": board.ID}), &data)
+	original.ID = data.Statuses[0].ID
+	var column struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "create_column", map[string]any{"board_id": board.ID, "name": "Empty", "type": "classic"}), &column)
+	var updatedColumn struct {
+		Name string `json:"name"`
+	}
+	decodeText(t, callTool(t, session, "update_column", map[string]any{"id": column.ID, "name": "Updated empty", "type": "classic"}), &updatedColumn)
+	if updatedColumn.Name != "Updated empty" {
+		t.Fatalf("updated column = %#v", updatedColumn)
+	}
+	order := []string{column.ID, original.ID}
+	if result := callTool(t, session, "reorder_columns", map[string]any{"board_id": board.ID, "status_ids": order}); result.IsError {
+		t.Fatalf("reorder columns: %#v", result)
+	}
+	var ticketType struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "create_ticket_type", map[string]any{"board_id": board.ID, "name": "Bug", "color": "red"}), &ticketType)
+	var updatedType struct {
+		Name string `json:"name"`
+	}
+	decodeText(t, callTool(t, session, "update_ticket_type", map[string]any{"id": ticketType.ID, "name": "Issue", "color": "blue"}), &updatedType)
+	if updatedType.Name != "Issue" {
+		t.Fatalf("updated ticket type = %#v", updatedType)
+	}
+	deleted := callTool(t, session, "delete_column", map[string]any{"id": column.ID})
+	if deleted.IsError || deleted.Content[0].(*sdk.TextContent).Text != "deleted" {
+		t.Fatalf("delete empty column: %s", deleted.Content[0].(*sdk.TextContent).Text)
+	}
+	var ticket struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "Keep", "status_id": original.ID}), &ticket)
+	blocked := callTool(t, session, "delete_column", map[string]any{"id": original.ID})
+	if !blocked.IsError || !strings.Contains(blocked.Content[0].(*sdk.TextContent).Text, "status has tickets") {
+		t.Fatalf("delete non-empty column = %#v", blocked)
 	}
 }
 

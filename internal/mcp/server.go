@@ -42,6 +42,32 @@ type createBoardBody struct {
 	ShortName string                  `json:"short_name"`
 	Statuses  []createBoardStatusBody `json:"statuses,omitempty"`
 }
+type boardUpdateArgs struct {
+	BoardID   string `json:"board_id"`
+	Name      string `json:"name"`
+	ShortName string `json:"short_name"`
+	Template  string `json:"template,omitempty"`
+}
+type columnArgs struct {
+	ID            string `json:"id,omitempty"`
+	BoardID       string `json:"board_id,omitempty"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	HideAfterDays *int   `json:"hide_after_days,omitempty"`
+}
+type reorderColumnsArgs struct {
+	BoardID   string   `json:"board_id"`
+	StatusIDs []string `json:"status_ids"`
+}
+type columnIDArgs struct {
+	ID string `json:"id"`
+}
+type ticketTypeArgs struct {
+	ID      string `json:"id,omitempty"`
+	BoardID string `json:"board_id,omitempty"`
+	Name    string `json:"name"`
+	Color   string `json:"color"`
+}
 type createTicketArgs struct {
 	BoardID      string  `json:"board_id" jsonschema:"Board UUID"`
 	Title        string  `json:"title" jsonschema:"Ticket title"`
@@ -284,6 +310,31 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			}
 		}
 		return request{http.MethodPost, "/api/boards", body}
+	})
+	addGeneric(s, "update_board", "Update board name, short name, and template", h, func(a boardUpdateArgs) request {
+		return request{http.MethodPut, "/api/boards/" + url.PathEscape(a.BoardID), map[string]any{"name": a.Name, "short_name": a.ShortName, "template": a.Template}}
+	})
+	addGeneric(s, "create_column", "Create a board column; type is classic or temporary", h, func(a columnArgs) request {
+		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/statuses", map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays}}
+	})
+	addGeneric(s, "update_column", "Update column name, type, and optional hide_after_days", h, func(a columnArgs) request {
+		return request{http.MethodPut, "/api/statuses/" + url.PathEscape(a.ID), map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays}}
+	})
+	addGeneric(s, "reorder_columns", "Set board column order", h, func(a reorderColumnsArgs) request {
+		return request{http.MethodPut, "/api/boards/" + url.PathEscape(a.BoardID) + "/status-order", map[string]any{"status_ids": a.StatusIDs}}
+	})
+	addGenericHandler(s, "delete_column", "Delete an empty column; only columns without tickets can be deleted", func(a columnIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(h, request{http.MethodDelete, "/api/statuses/" + url.PathEscape(a.ID), nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
+	})
+	addGeneric(s, "create_ticket_type", "Create a ticket type for a board", h, func(a ticketTypeArgs) request {
+		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/ticket-types", map[string]string{"name": a.Name, "color": a.Color}}
+	})
+	addGeneric(s, "update_ticket_type", "Update ticket type name and color", h, func(a ticketTypeArgs) request {
+		return request{http.MethodPut, "/api/ticket-types/" + url.PathEscape(a.ID), map[string]string{"name": a.Name, "color": a.Color}}
 	})
 	addGeneric(s, "create_ticket", "Create a ticket", h, func(a createTicketArgs) request {
 		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/tickets", a}
