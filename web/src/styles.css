@@ -1621,9 +1621,40 @@ main:has(> .chats) {
   border-radius: 4px;
   background: var(--base-100);
 }
+.chat-badges > span {
+  display: flex;
+}
 .chat-badges svg {
   width: 10px;
   height: 10px;
+}
+.badge-scheduled,
+.chat-link small .svg-icon {
+  color: var(--info);
+}
+.badge-pinned {
+  color: var(--primary);
+}
+.chat-link small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.chat-link small .svg-icon {
+  width: 12px;
+  height: 12px;
+}
+.chat-link small .run-label {
+  flex: none;
+  margin-left: 2px;
+}
+.chat-row [data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 .rail-tip {
   position: fixed;

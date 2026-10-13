@@ -301,8 +301,16 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                   {[...chat.title.trim()][0]?.toUpperCase() ?? "?"}
                   {(scheduled || pinned) && (
                     <span className="chat-badges" aria-hidden="true">
-                      {scheduled && <Icon name="clock" />}
-                      {pinned && <Icon name="pin" />}
+                      {scheduled && (
+                        <span className="badge-scheduled">
+                          <Icon name="clock" />
+                        </span>
+                      )}
+                      {pinned && (
+                        <span className="badge-pinned">
+                          <Icon name="pin" />
+                        </span>
+                      )}
                     </span>
                   )}
                 </button>

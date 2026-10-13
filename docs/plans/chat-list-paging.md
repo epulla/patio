@@ -20,6 +20,7 @@
 8. Reload (db-changed) refetches `limit=<loaded count>` in one request.
 9. Pins: unpin only when `GET /api/chats/{id}` returns 404; pinned chats beyond loaded pages fetched by id.
 10. Plan file deleted in last task.
+11. Assumed (user: "make it look good"): expanded row meta is one line with 12px icon, run label kept visible; pin tooltip anchored right; scheduled clock `--info` and pin `--primary` in both views.
 
 ## Tasks
 
