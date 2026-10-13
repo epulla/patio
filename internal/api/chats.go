@@ -36,6 +36,8 @@ type chat struct {
 	UpdatedAt       string           `json:"updated_at"`
 	Workdir         string           `json:"workdir"`
 	Running         bool             `json:"running"`
+	PendingCount    int              `json:"pending_count,omitempty"`
+	OtherWindow     bool             `json:"other_window,omitempty"`
 	Thinking        bool             `json:"thinking"`
 	ShowThinking    bool             `json:"show_thinking"`
 	AutoAllow       bool             `json:"auto_allow"`
@@ -262,6 +264,11 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		c, _, _, _, err := s.scanChatRow(rows)
 		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		c.Running = s.chats.Running(c.ID)
+		if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM chat_approval WHERE chat_id=? AND status='pending'), EXISTS(SELECT 1 FROM chat_turn t JOIN app_window w ON w.id=t.window_id WHERE t.chat_id=? AND t.window_id<>? AND w.heartbeat_at>=?)`, c.ID, c.ID, s.windowID, nowMinusWindowStale()).Scan(&c.PendingCount, &c.OtherWindow); err != nil {
 			errw(w, 500, err.Error())
 			return
 		}
