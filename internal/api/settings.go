@@ -17,6 +17,7 @@ type settingsDefaults struct {
 	Folder        *string `json:"folder"`
 	AutoAllow     bool    `json:"auto_allow"`
 	Thinking      bool    `json:"thinking"`
+	ShowThinking  bool    `json:"show_thinking"`
 	MartinPersona bool    `json:"martin_persona"`
 }
 
@@ -82,6 +83,11 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 			return defaults, err
 		}
 	}
+	if raw, ok := values["show_thinking"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.ShowThinking); err != nil {
+			return defaults, err
+		}
+	}
 	if raw, ok := values["martin_persona"]; ok {
 		if err := json.Unmarshal([]byte(raw), &defaults.MartinPersona); err != nil {
 			return defaults, err
@@ -105,9 +111,10 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		Folder        json.RawMessage `json:"folder"`
 		AutoAllow     *bool           `json:"auto_allow"`
 		Thinking      *bool           `json:"thinking"`
+		ShowThinking  *bool           `json:"show_thinking"`
 		MartinPersona *bool           `json:"martin_persona"`
 	}
-	if decode(r, &in) != nil || len(in.ConnectorID) == 0 || len(in.Folder) == 0 || in.AutoAllow == nil || in.Thinking == nil || in.MartinPersona == nil {
+	if decode(r, &in) != nil || len(in.ConnectorID) == 0 || len(in.Folder) == 0 || in.AutoAllow == nil || in.Thinking == nil || in.ShowThinking == nil || in.MartinPersona == nil {
 		errw(w, http.StatusBadRequest, "connector_id, folder, auto_allow, and thinking required")
 		return
 	}
@@ -150,6 +157,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		"folder":         folder,
 		"auto_allow":     *in.AutoAllow,
 		"thinking":       *in.Thinking,
+		"show_thinking":  *in.ShowThinking,
 		"martin_persona": *in.MartinPersona,
 	}
 	encoded := make(map[string]string, len(values))
@@ -172,7 +180,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Folder: folder, AutoAllow: *in.AutoAllow, Thinking: *in.Thinking, MartinPersona: *in.MartinPersona})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Folder: folder, AutoAllow: *in.AutoAllow, Thinking: *in.Thinking, ShowThinking: *in.ShowThinking, MartinPersona: *in.MartinPersona})
 }
 
 func (s *Server) allowedFolderPath(path string) (string, bool, error) {

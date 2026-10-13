@@ -18,7 +18,7 @@ erDiagram
   calendar_item { TEXT id; TEXT kind; TEXT title; TEXT description; TEXT starts_at; TEXT ends_at; INTEGER all_day; TEXT board_id; TEXT ticket_id; TEXT created_by; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT notified_at }
   connector { TEXT id; TEXT kind; TEXT name; TEXT config_dir; TEXT base_url; TEXT model; TEXT quota_json; TEXT created_at }
   allowed_folder { TEXT id; TEXT path; TEXT created_at }
-  chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER auto_allow; TEXT scheduled_task_id }
+  chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id }
   chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments }
   chat_approval { TEXT id; TEXT chat_id; TEXT tool_name; TEXT input_json; TEXT status; TEXT created_at; TEXT answered_at; INTEGER auto }
   mcp_server { TEXT id; TEXT name; TEXT kind; TEXT command; TEXT args_json; TEXT env_keys_json; TEXT url; TEXT auth; INTEGER enabled; TEXT created_at }

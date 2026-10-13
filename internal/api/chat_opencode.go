@@ -681,6 +681,8 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 				driver.text.WriteString(delta.Delta)
 				driver.manager.emitDelta(driver.chatID, delta.Delta)
 			}
+		} else if delta.Field == "text" && role == "assistant" && partType == "reasoning" && driver.active {
+			driver.manager.emitThinking(driver.chatID, delta.Delta)
 		}
 		driver.mu.Unlock()
 	case "message.part.updated":

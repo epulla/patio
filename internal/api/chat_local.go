@@ -957,6 +957,7 @@ func (d *localRuntime) readOllamaNDJSON(ctx context.Context, body io.Reader) (lo
 		if chunk.Error != nil {
 			return localStreamResult{}, fmt.Errorf("Ollama stream error: %v", chunk.Error)
 		}
+		d.manager.emitThinking(d.chatID, chunk.Message.Thinking)
 		emitText(chunk.Message.Content)
 		for _, tool := range chunk.Message.ToolCalls {
 			var arguments map[string]any
@@ -1085,8 +1086,10 @@ type localChunk struct {
 	Error   any `json:"error"`
 	Choices []struct {
 		Delta struct {
-			Content   string           `json:"content"`
-			ToolCalls []localToolDelta `json:"tool_calls"`
+			Content          string           `json:"content"`
+			ReasoningContent string           `json:"reasoning_content"`
+			Reasoning        string           `json:"reasoning"`
+			ToolCalls        []localToolDelta `json:"tool_calls"`
 		} `json:"delta"`
 	} `json:"choices"`
 }
@@ -1120,7 +1123,10 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 			return fmt.Errorf("local model stream error: %v", chunk.Error)
 		}
 		for _, choice := range chunk.Choices {
-			emitText(filter.feed(choice.Delta.Content))
+			d.manager.emitThinking(d.chatID, secretFilter.feed(choice.Delta.ReasoningContent+choice.Delta.Reasoning))
+			emitText(filter.feed(choice.Delta.Content, func(text string) {
+				d.manager.emitThinking(d.chatID, secretFilter.feed(text))
+			}))
 			for _, delta := range choice.Delta.ToolCalls {
 				call := calls[delta.Index]
 				if call == nil {
@@ -1171,7 +1177,7 @@ func (d *localRuntime) readSSE(ctx context.Context, body io.Reader) (localStream
 	if err := ctx.Err(); err != nil {
 		return localStreamResult{}, err
 	}
-	if rest := filter.flush(); rest != "" {
+	if rest := filter.flush(func(text string) { d.manager.emitThinking(d.chatID, secretFilter.feed(text)) }); rest != "" {
 		emitText(rest)
 	}
 	emitSafeText(secretFilter.flush())
@@ -1360,7 +1366,7 @@ type thinkFilter struct {
 	inThink bool
 }
 
-func (f *thinkFilter) feed(input string) string {
+func (f *thinkFilter) feed(input string, thinking func(string)) string {
 	f.pending += input
 	var out strings.Builder
 	for f.pending != "" {
@@ -1371,6 +1377,8 @@ func (f *thinkFilter) feed(input string) string {
 		if index := strings.Index(strings.ToLower(f.pending), marker); index >= 0 {
 			if !f.inThink {
 				out.WriteString(f.pending[:index])
+			} else {
+				thinking(f.pending[:index])
 			}
 			f.pending = f.pending[index+len(marker):]
 			f.inThink = !f.inThink
@@ -1383,15 +1391,18 @@ func (f *thinkFilter) feed(input string) string {
 		flush := len(f.pending) - keep
 		if !f.inThink {
 			out.WriteString(f.pending[:flush])
+		} else {
+			thinking(f.pending[:flush])
 		}
 		f.pending = f.pending[flush:]
 	}
 	return out.String()
 }
 
-func (f *thinkFilter) flush() string {
+func (f *thinkFilter) flush(thinking func(string)) string {
 	defer func() { f.pending = "" }()
 	if f.inThink {
+		thinking(f.pending)
 		return ""
 	}
 	return f.pending

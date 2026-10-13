@@ -294,6 +294,12 @@ func (d *codexRuntime) handleNotification(notification connectorcli.Notification
 		d.assistant.WriteString(delta)
 		d.mu.Unlock()
 		d.manager.emitDelta(d.chatID, delta)
+	case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
+		var delta string
+		if err := json.Unmarshal(params["delta"], &delta); err != nil {
+			return err
+		}
+		d.manager.emitThinking(d.chatID, delta)
 	case "item/started":
 		var item struct {
 			ID string `json:"id"`

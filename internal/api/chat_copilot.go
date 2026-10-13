@@ -304,6 +304,8 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 			d.assistantMu.Unlock()
 			d.manager.emitDelta(d.chatID, text)
 		}
+	case "agent_thought_chunk":
+		d.manager.emitThinking(d.chatID, params.Update.Content.Text)
 	case "tool_call":
 		label := params.Update.Title
 		if label == "" {

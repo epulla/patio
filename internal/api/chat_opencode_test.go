@@ -26,6 +26,9 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET show_thinking=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.Exec(`UPDATE chat SET model='openai/gpt-4.1-nano' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +120,10 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
 		t.Fatalf("tool summary = %q, %v", tool, err)
+	}
+	var thinking string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='thinking' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&thinking); err != nil || thinking != "hidden reasoning" {
+		t.Fatalf("thinking = %q, %v", thinking, err)
 	}
 	emittedMu.Lock()
 	var deltaCount, toolCount, doneCount int

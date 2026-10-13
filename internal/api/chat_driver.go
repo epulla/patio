@@ -103,6 +103,8 @@ type chatRuntime struct {
 	stopDone        chan struct{}
 	connectorID     string
 	startedThinking *bool
+	showThinking    bool
+	pendingThinking strings.Builder
 	lastActivity    time.Time
 	idleTimer       *time.Timer
 }
@@ -172,6 +174,9 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if err := m.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, c.ID).Scan(&c.Thinking); err != nil {
 		return ChatMessage{}, err
 	}
+	if err := m.db.QueryRow(`SELECT show_thinking FROM chat WHERE id=?`, c.ID).Scan(&c.ShowThinking); err != nil {
+		return ChatMessage{}, err
+	}
 	workdir, err := m.workdir(c.ID)
 	if err != nil {
 		return ChatMessage{}, err
@@ -191,6 +196,8 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
 	rt.connectorID = *c.ConnectorID
+	rt.showThinking = c.ShowThinking
+	rt.pendingThinking.Reset()
 	rt.busy = true
 	if rt.driver == nil {
 		rt.driver, err = start(m, c, configDir, rt)
@@ -302,10 +309,50 @@ var (
 func (m *chatManager) emit(id string, data any) { m.emitEvent("chat:"+id, data) }
 
 func (m *chatManager) emitDelta(id, text string) {
+	if err := m.flushThinking(id); err != nil {
+		m.emit(id, map[string]any{"type": "error", "message": err.Error()})
+	}
 	m.emit(id, map[string]any{"type": "delta", "text": text})
 }
 
+func (m *chatManager) emitThinking(id, text string) {
+	rt := m.lookupRuntime(id)
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if !rt.showThinking {
+		return
+	}
+	rt.pendingThinking.WriteString(text)
+	m.emit(id, map[string]any{"type": "thinking_delta", "text": text})
+}
+
+func (m *chatManager) flushThinking(id string) error {
+	rt := m.lookupRuntime(id)
+	if rt == nil {
+		return nil
+	}
+	rt.mu.Lock()
+	text := rt.pendingThinking.String()
+	rt.pendingThinking.Reset()
+	rt.mu.Unlock()
+	if text == "" {
+		return nil
+	}
+	message, err := InsertChatMessage(m.db, id, "thinking", text)
+	if err != nil {
+		return err
+	}
+	m.emit(id, map[string]any{"type": "thinking", "message": message})
+	return nil
+}
+
 func (m *chatManager) emitTool(id, summary string) error {
+	if err := m.flushThinking(id); err != nil {
+		return err
+	}
 	message, err := InsertChatMessage(m.db, id, "tool", summary)
 	if err != nil {
 		return err
@@ -315,6 +362,9 @@ func (m *chatManager) emitTool(id, summary string) error {
 }
 
 func (m *chatManager) emitToolResult(id, summary, result string) error {
+	if err := m.flushThinking(id); err != nil {
+		return err
+	}
 	message, err := InsertChatToolMessage(m.db, id, summary, result)
 	if err != nil {
 		return err
@@ -324,6 +374,9 @@ func (m *chatManager) emitToolResult(id, summary, result string) error {
 }
 
 func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error {
+	if err := m.flushThinking(id); err != nil {
+		return err
+	}
 	role, content := "assistant", assistantText
 	if turnErr != nil {
 		role, content = "error", turnErr.Error()

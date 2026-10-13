@@ -33,16 +33,23 @@ func TestLocalChatPlainAndThinkStripping(t *testing.T) {
 		writeSSE(w,
 			`{"choices":[{"delta":{"content":"OK<th"}}]}`,
 			`{"choices":[{"delta":{"content":"ink>private reasoning</th"}}]}`,
-			`{"choices":[{"delta":{"content":"ink> safe"},"reasoning_content":"must not show"}]}`,
+			`{"choices":[{"delta":{"content":"ink> safe","reasoning_content":"must not show"}}]}`,
 		)
 	})
 	defer handler.Close()
+	if _, err := database.Exec(`UPDATE chat SET show_thinking=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	if code := sendLocalMessage(t, handler, chatID, "reply"); code != http.StatusAccepted {
 		t.Fatalf("send = %d", code)
 	}
 	waitLocalDone(t, events)
 	if got := localAssistant(t, database, chatID); got != "OK safe" {
 		t.Fatalf("assistant = %q", got)
+	}
+	var thinking string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='thinking' ORDER BY rowid LIMIT 1`, chatID).Scan(&thinking); err != nil || !strings.Contains(thinking, "private reason") {
+		t.Fatalf("thinking = %q, %v", thinking, err)
 	}
 	var userMessage string
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user'`, chatID).Scan(&userMessage); err != nil || userMessage != "reply" {
@@ -868,6 +875,9 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "chats", chatID, "hello.txt"), []byte("hello content"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.Exec(`UPDATE chat SET show_thinking=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	if code := sendLocalMessage(t, server, chatID, "read file"); code != http.StatusAccepted {
 		t.Fatalf("native send = %d", code)
 	}
@@ -883,8 +893,15 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 		t.Fatalf("native assistant = %q, completion calls=%d", got, calls.Load())
 	}
 	var thinkingMessages int
-	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND (content LIKE '%private reasoning%' OR content LIKE '%hidden%')`, chatID).Scan(&thinkingMessages); err != nil || thinkingMessages != 0 {
-		t.Fatalf("hidden thinking messages = %d, %v", thinkingMessages, err)
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='thinking' AND content='private reasoning'`, chatID).Scan(&thinkingMessages); err != nil || thinkingMessages != 1 {
+		t.Fatalf("thinking messages = %d, %v", thinkingMessages, err)
+	}
+	var thinkingRow, toolRow int64
+	if err := database.QueryRow(`SELECT rowid FROM chat_message WHERE chat_id=? AND role='thinking' AND content='private reasoning'`, chatID).Scan(&thinkingRow); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT rowid FROM chat_message WHERE chat_id=? AND role='tool'`, chatID).Scan(&toolRow); err != nil || thinkingRow >= toolRow {
+		t.Fatalf("thinking/tool order = %d/%d, %v", thinkingRow, toolRow, err)
 	}
 	var contextNotes int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, chatID, localContextNote).Scan(&contextNotes); err != nil || contextNotes != 1 {

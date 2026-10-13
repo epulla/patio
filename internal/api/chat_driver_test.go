@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -17,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	connectorcli "patio/internal/connector"
 )
 
 func TestClaudeStreamFixture(t *testing.T) {
@@ -79,6 +82,114 @@ func TestClaudeStreamFixture(t *testing.T) {
 	}
 	if len(events) != 5 || events[0]["type"] != "delta" || events[1]["type"] != "delta" || events[2]["type"] != "tool" || events[3]["type"] != "done" || events[4]["type"] != "done" {
 		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestEmitThinkingPersistsBeforeToolOnlyWhenEnabled(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET show_thinking=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	var events []map[string]any
+	manager := newChatManager(database, Options{Emit: func(_ string, event any) { events = append(events, event.(map[string]any)) }})
+	rt := manager.runtime(chatID)
+	rt.showThinking = true
+	manager.emitThinking(chatID, "reason")
+	if err := manager.emitTool(chatID, "tool call"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.finishTurn(chatID, "answer", nil); err != nil {
+		t.Fatal(err)
+	}
+	var roles []string
+	rows, err := database.Query(`SELECT role FROM chat_message WHERE chat_id=? ORDER BY rowid`, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			t.Fatal(err)
+		}
+		roles = append(roles, role)
+	}
+	if !reflect.DeepEqual(roles, []string{"thinking", "tool", "assistant"}) {
+		t.Fatalf("roles = %v", roles)
+	}
+	if len(events) != 4 || events[0]["type"] != "thinking_delta" || events[1]["type"] != "thinking" || events[2]["type"] != "tool" || events[3]["type"] != "done" {
+		t.Fatalf("events = %#v", events)
+	}
+	if _, err := database.Exec(`DELETE FROM chat_message WHERE chat_id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	rt.showThinking = false
+	manager.emitThinking(chatID, "private")
+	if err := manager.finishTurn(chatID, "answer", nil); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='thinking'`, chatID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("thinking count = %d, %v", count, err)
+	}
+}
+
+func TestDriverThinkingOnOff(t *testing.T) {
+	for _, driverName := range []string{"claude", "codex", "copilot"} {
+		for _, enabled := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/enabled=%t", driverName, enabled), func(t *testing.T) {
+				database, _, root := chatAPI(t)
+				connectorID := createTestConnector(t, database)
+				chatID := createDriverTestChat(t, database, connectorID, root)
+				manager := newChatManager(database, Options{})
+				rt := manager.runtime(chatID)
+				rt.showThinking = enabled
+				switch driverName {
+				case "claude":
+					d := &claudeRuntime{manager: manager, chatID: chatID, runtime: rt}
+					fixture, err := os.ReadFile(filepath.Join("testdata", "claude-thinking.jsonl"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := d.parseLine(fixture[:len(fixture)-1]); err != nil {
+						t.Fatal(err)
+					}
+				case "codex":
+					d := &codexRuntime{manager: manager, chatID: chatID, runtime: rt, items: map[string]json.RawMessage{}}
+					if err := d.handleNotification(connectorcli.Notification{Method: "item/reasoning/summaryTextDelta", Params: json.RawMessage(`{"delta":"reason"}`)}); err != nil {
+						t.Fatal(err)
+					}
+				case "copilot":
+					d := &copilotRuntime{manager: manager, chatID: chatID}
+					d.handleUpdate(json.RawMessage(`{"update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"reason"}}}`))
+				}
+				if err := manager.finishTurn(chatID, "answer", nil); err != nil {
+					t.Fatal(err)
+				}
+				var roles []string
+				rows, err := database.Query(`SELECT role FROM chat_message WHERE chat_id=? ORDER BY rowid`, chatID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer rows.Close()
+				for rows.Next() {
+					var role string
+					if err := rows.Scan(&role); err != nil {
+						t.Fatal(err)
+					}
+					roles = append(roles, role)
+				}
+				want := []string{"assistant"}
+				if enabled {
+					want = []string{"thinking", "assistant"}
+				}
+				if !reflect.DeepEqual(roles, want) {
+					t.Fatalf("roles = %v, want %v", roles, want)
+				}
+			})
+		}
 	}
 }
 

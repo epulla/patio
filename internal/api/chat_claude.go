@@ -27,15 +27,16 @@ const (
 type chatCommandBuilder func(exe, dbPath, chatID, model, sessionID string) ([]string, error)
 
 type claudeRuntime struct {
-	manager     *chatManager
-	chatID      string
-	workdir     string
-	runtime     *chatRuntime
-	process     chatProcess
-	processDone chan struct{}
-	configFile  string
-	configOnce  sync.Once
-	assistant   strings.Builder
+	manager        *chatManager
+	chatID         string
+	workdir        string
+	runtime        *chatRuntime
+	process        chatProcess
+	processDone    chan struct{}
+	configFile     string
+	configOnce     sync.Once
+	assistant      strings.Builder
+	thinkingDeltas bool
 }
 
 func init() { runtimes["claude"] = startClaude }
@@ -321,8 +322,9 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			Event struct {
 				Type  string `json:"type"`
 				Delta struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
+					Type     string `json:"type"`
+					Text     string `json:"text"`
+					Thinking string `json:"thinking"`
 				} `json:"delta"`
 			} `json:"event"`
 		}
@@ -331,15 +333,19 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 		}
 		if frame.Event.Type == "content_block_delta" && frame.Event.Delta.Type == "text_delta" {
 			d.manager.emitDelta(d.chatID, frame.Event.Delta.Text)
+		} else if frame.Event.Type == "content_block_delta" && frame.Event.Delta.Type == "thinking_delta" {
+			d.thinkingDeltas = true
+			d.manager.emitThinking(d.chatID, frame.Event.Delta.Thinking)
 		}
 	case "assistant":
 		var assistant struct {
 			Message struct {
 				Content []struct {
-					Type  string          `json:"type"`
-					Text  string          `json:"text"`
-					Name  string          `json:"name"`
-					Input json.RawMessage `json:"input"`
+					Type     string          `json:"type"`
+					Text     string          `json:"text"`
+					Thinking string          `json:"thinking"`
+					Name     string          `json:"name"`
+					Input    json.RawMessage `json:"input"`
 				} `json:"content"`
 			} `json:"message"`
 		}
@@ -350,6 +356,10 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			switch block.Type {
 			case "text":
 				d.assistant.WriteString(block.Text)
+			case "thinking":
+				if !d.thinkingDeltas {
+					d.manager.emitThinking(d.chatID, block.Thinking)
+				}
 			case "tool_use":
 				args, err := compactJSON(block.Input)
 				if err != nil {
@@ -362,6 +372,7 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			}
 		}
 	case "result":
+		d.thinkingDeltas = false
 		var result struct {
 			IsError bool   `json:"is_error"`
 			Result  string `json:"result"`
