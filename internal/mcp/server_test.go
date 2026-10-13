@@ -53,7 +53,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
 		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
 		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
-		"query_db": true,
+		"query_db": true, "list_connectors": true, "create_connector": true,
+		"update_connector": true, "list_connector_models": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -71,7 +72,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 28 {
+	if count != 32 {
 		t.Fatalf("tool count = %d, want 28", count)
 	}
 	if len(expectedTools) != 0 {
@@ -313,6 +314,44 @@ func TestMCPServerToolsHideSecrets(t *testing.T) {
 				t.Fatalf("tool output leaked secret %q: %s", secret, text)
 			}
 		}
+	}
+}
+
+func TestMCPConnectorTools(t *testing.T) {
+	keyring.MockInit()
+	dbPath := filepath.Join(t.TempDir(), "connectors.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	secret := "mcp-secret-value"
+	created := callTool(t, session, "create_connector", map[string]any{"kind": "copilot", "name": "First", "secret": secret})
+	var connector struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, created, &connector)
+	callTool(t, session, "update_connector", map[string]any{"id": connector.ID, "name": "Updated"})
+	listed := callTool(t, session, "list_connectors", map[string]any{})
+	if listed.IsError {
+		t.Fatalf("list connectors: %#v", listed)
+	}
+	text := listed.Content[0].(*sdk.TextContent).Text
+	if strings.Contains(text, secret) || !strings.Contains(text, `"has_secret":true`) || !strings.Contains(text, `"name":"Updated"`) {
+		t.Fatalf("connector listing leaks secret or misses update: %s", text)
 	}
 }
 

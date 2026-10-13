@@ -173,6 +173,24 @@ type updateMCPServerArgs struct {
 	BearerToken *string            `json:"bearer_token,omitempty" jsonschema:"Optional http bearer token; write-only and never returned"`
 	Enabled     *bool              `json:"enabled,omitempty" jsonschema:"Whether server is enabled"`
 }
+type connectorIDArgs struct {
+	ID string `json:"id" jsonschema:"Connector UUID"`
+}
+type createConnectorArgs struct {
+	Kind             string  `json:"kind" jsonschema:"Connector kind: claude, codex, opencode, copilot, or local"`
+	Name             string  `json:"name" jsonschema:"Connector name"`
+	UseExistingLogin bool    `json:"use_existing_login,omitempty" jsonschema:"Use existing login instead of isolated configuration"`
+	BaseURL          string  `json:"base_url,omitempty" jsonschema:"Base URL for local connectors"`
+	Model            string  `json:"model,omitempty" jsonschema:"Default model"`
+	Secret           *string `json:"secret,omitempty" jsonschema:"Write-only API key or PAT; never returned"`
+}
+type updateConnectorArgs struct {
+	ID      string  `json:"id" jsonschema:"Connector UUID"`
+	Name    *string `json:"name,omitempty" jsonschema:"Optional new name"`
+	BaseURL *string `json:"base_url,omitempty" jsonschema:"Optional new base URL"`
+	Model   *string `json:"model,omitempty" jsonschema:"Optional new default model"`
+	Secret  *string `json:"secret,omitempty" jsonschema:"Write-only API key; never returned; empty clears secret"`
+}
 
 type approveArgs struct {
 	ToolName  string          `json:"tool_name"`
@@ -234,6 +252,19 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	})
 	addGeneric(s, "check_mcp_server", "Check MCP server connectivity and list its tools", h, func(a mcpServerIDArgs) request {
 		return request{http.MethodGet, "/api/mcp-servers/" + url.PathEscape(a.ID) + "/check", nil}
+	})
+	addGeneric(s, "list_connectors", "List AI connectors; secrets are write-only", h, func(struct{}) request { return request{http.MethodGet, "/api/connectors", nil} })
+	addGeneric(s, "create_connector", "Create an AI connector; secret is a write-only API key", h, func(a createConnectorArgs) request { return request{http.MethodPost, "/api/connectors", a} })
+	addGeneric(s, "update_connector", "Update provided connector fields; secret is write-only", h, func(a updateConnectorArgs) request {
+		return request{http.MethodPut, "/api/connectors/" + url.PathEscape(a.ID), struct {
+			Name    *string `json:"name,omitempty"`
+			BaseURL *string `json:"base_url,omitempty"`
+			Model   *string `json:"model,omitempty"`
+			Secret  *string `json:"secret,omitempty"`
+		}{a.Name, a.BaseURL, a.Model, a.Secret}}
+	})
+	addGeneric(s, "list_connector_models", "List models available from a connector", h, func(a connectorIDArgs) request {
+		return request{http.MethodGet, "/api/connectors/" + url.PathEscape(a.ID) + "/models", nil}
 	})
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
