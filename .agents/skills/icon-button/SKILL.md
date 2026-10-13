@@ -27,6 +27,7 @@ Icons are Lucide paths (ISC) in the `paths` map in `icons.tsx`, drawn on a 24×2
 ## Styles
 
 - Variant classes go in `className`: `ghost` for quiet header and toolbar actions, `danger-text` for destructive ones. `icon` is added automatically.
+- Size: every icon button is a 40×40 square (`.icon` sets `width: 40px` and `flex-shrink: 0`). Don't override width, height, or padding, and don't put it in a flex container that stretches or squashes it (e.g. `flex: 1` on the button in a column). Icon-only nav items in the collapsed sidebar follow the same 40×40 size.
 - Tooltip placement: below and centered by default. Add `tip-up` when the button sits near the bottom of a scroll area, and `tip-wide` for text longer than a few words (wraps at 260px). Inside `.sidebar`, the tooltip appears to the right.
 - The tooltip shows after 0.4s hover, and right away on keyboard focus.
 - For a tooltip on something that isn't an icon button (a help mark, a chip), set `data-tip="..."` on the element and keep a real accessible name on it.
@@ -34,6 +35,7 @@ Icons are Lucide paths (ISC) in the `paths` map in `icons.tsx`, drawn on a 24×2
 ## Checklist
 
 - Uses `IconButton`, not a custom button.
+- Renders as a 40×40 square in every layout, including collapsed sidebars and scrolling columns.
 - `label` is a clear action and matches what the button does.
 - No `title=` on the same element.
 - Reachable by keyboard; tooltip visible on focus.

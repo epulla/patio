@@ -265,7 +265,11 @@ a {
   display: none;
 }
 .sidebar.collapsed .nav-item {
+  flex: none;
+  align-self: center;
   justify-content: center;
+  width: 40px;
+  padding: 0;
 }
 .ai-nav-group {
   display: flex;
@@ -479,6 +483,7 @@ button[aria-pressed="true"] {
 }
 .icon {
   width: 40px;
+  flex-shrink: 0;
   padding: 0;
 }
 .icon.danger-text {
