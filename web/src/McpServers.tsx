@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type McpServer, type McpServerCheck } from "./api";
 import { ErrorText, navigate } from "./App";
@@ -146,7 +147,7 @@ function ServerCard({
   }
 
   async function remove() {
-    if (!confirm(`Delete MCP server "${server.name}"?`)) return;
+    if (!(await confirmDialog(`Delete MCP server "${server.name}"?`))) return;
     try {
       await api.delete(`/api/mcp-servers/${server.id}`);
       onChanged();

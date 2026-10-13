@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import {
   useEffect,
   useId,
@@ -804,7 +805,7 @@ function Conversation({
   }
 
   async function changeAutoAllow(on: boolean) {
-    if (on && !confirm("Allow every file change and command in this chat without asking? You can turn it off anytime.")) return;
+    if (on && !(await confirmDialog("Allow every file change and command in this chat without asking? You can turn it off anytime.", "Turn on auto-allow"))) return;
     await update({ auto_allow: on });
     if (on) void load();
   }
@@ -826,7 +827,7 @@ function Conversation({
   }
 
   async function remove() {
-    if (!confirm(`Delete chat "${detail?.chat.title}"?`)) return;
+    if (!(await confirmDialog(`Delete chat "${detail?.chat.title}"?`))) return;
     try {
       await api.delete(`/api/chats/${id}`);
       onChanged();

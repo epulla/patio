@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
@@ -184,7 +185,7 @@ function ConnectorCard({
   }
 
   async function remove() {
-    if (!confirm(`Delete connector "${connector.name}"?`)) return;
+    if (!(await confirmDialog(`Delete connector "${connector.name}"?`))) return;
     try {
       await api.delete(`/api/connectors/${connector.id}`);
       onDeleted();

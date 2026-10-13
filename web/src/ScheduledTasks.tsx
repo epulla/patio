@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
@@ -147,7 +148,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
   }
 
   async function remove(task: ScheduledTask) {
-    if (!confirm(`Delete scheduled task "${task.title}"?`)) return;
+    if (!(await confirmDialog(`Delete scheduled task "${task.title}"?`))) return;
     try {
       await api.delete(`/api/scheduled-tasks/${task.id}`);
       changed();
@@ -415,7 +416,7 @@ function TaskEditor({
   }
 
   async function remove() {
-    if (!task || !confirm(`Delete scheduled task "${task.title}"?`)) return;
+    if (!task || !(await confirmDialog(`Delete scheduled task "${task.title}"?`))) return;
     try {
       await api.delete(`/api/scheduled-tasks/${task.id}`);
       onDeleted();

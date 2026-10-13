@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import {
   useEffect,
   useRef,
@@ -463,7 +464,7 @@ function Settings({
     }
   }
   async function deleteBoard() {
-    if (!confirm("Delete this board?")) return;
+    if (!(await confirmDialog("Delete this board?"))) return;
     try {
       await api.delete(`/api/boards/${data.board.id}`);
       navigate("/");
@@ -609,7 +610,7 @@ function StatusRow({
     }
   }
   async function remove() {
-    if (!confirm(`Delete column "${status.name}"?`)) return;
+    if (!(await confirmDialog(`Delete column "${status.name}"?`))) return;
     try {
       await api.delete(`/api/statuses/${status.id}`);
       onReload();
@@ -758,7 +759,7 @@ function TypeRow({
     }
   }
   async function remove() {
-    if (!confirm(`Delete ticket type "${type.name}"?`)) return;
+    if (!(await confirmDialog(`Delete ticket type "${type.name}"?`))) return;
     try {
       await api.delete(`/api/ticket-types/${type.id}`);
       onReload();

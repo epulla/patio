@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import AIBadge from "./AIBadge";
 import {
@@ -378,7 +379,7 @@ function CalendarForm({
   }
 
   async function remove() {
-    if (!item || !confirm("Delete this calendar item?")) return;
+    if (!item || !(await confirmDialog("Delete this calendar item?"))) return;
     setSaving(true);
     setError(undefined);
     try {

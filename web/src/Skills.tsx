@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { api } from "./api";
 import { ErrorText, navigate } from "./App";
@@ -70,7 +71,7 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
   }
 
   async function remove(skill: Skill) {
-    if (!confirm(`Delete skill "${skill.name}"?`)) return;
+    if (!(await confirmDialog(`Delete skill "${skill.name}"?`))) return;
     try {
       await api.delete(`/api/skills/${skill.id}`);
       changed();
@@ -313,7 +314,7 @@ function SkillEditor({
   }
 
   async function remove() {
-    if (!skill || !confirm(`Delete skill "${skill.name}"?`)) return;
+    if (!skill || !(await confirmDialog(`Delete skill "${skill.name}"?`))) return;
     try {
       await api.delete(`/api/skills/${skill.id}`);
       onDeleted();
