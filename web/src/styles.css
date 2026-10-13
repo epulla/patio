@@ -270,6 +270,7 @@ a {
   justify-content: center;
   width: 40px;
   padding: 0;
+  border-radius: var(--radius-field);
 }
 .ai-nav-group {
   display: flex;
