@@ -700,6 +700,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		driver.mu.Lock()
 		role := driver.roles[delta.MessageID]
 		partType := driver.parts[delta.PartID]
+		if !child && role == "assistant" && (partType == "text" || partType == "reasoning") {
+			driver.startAutonomousTurnLocked()
+		}
 		if !child && delta.Field == "text" && role == "assistant" && partType == "text" {
 			if driver.active {
 				driver.text.WriteString(delta.Delta)
@@ -733,6 +736,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 		driver.mu.Lock()
 		role := driver.roles[part.MessageID]
+		if !child && role == "assistant" && part.Delta != "" && (part.Part.Type == "text" || part.Part.Type == "reasoning") {
+			driver.startAutonomousTurnLocked()
+		}
 		if !child && part.Delta != "" && role == "assistant" && driver.active {
 			switch part.Part.Type {
 			case "text":
@@ -743,7 +749,8 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			}
 		}
 		driver.mu.Unlock()
-		if role != "user" && part.Part.Type == "tool" && (part.Part.State.Status == "completed" || part.Part.State.Status == "error") {
+		if !child && role == "assistant" && part.Part.Type == "tool" && (part.Part.State.Status == "completed" || part.Part.State.Status == "error") {
+			driver.startAutonomousTurn()
 			toolInput := part.Part.Input
 			if len(toolInput) == 0 {
 				toolInput = part.Part.State.Input
@@ -821,6 +828,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 				return nil
 			}
 			return driver.finish(nil)
+		}
+		if status.Type == "busy" && !child {
+			driver.startAutonomousTurn()
 		}
 	case "session.error":
 		if child {
@@ -983,7 +993,8 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			return err
 		}
 		driver.mu.Lock()
-		if !child && driver.active {
+		if !child {
+			driver.startAutonomousTurnLocked()
 			driver.manager.emitThinking(driver.chatID, delta.Text)
 		}
 		driver.mu.Unlock()
@@ -995,7 +1006,8 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			return err
 		}
 		driver.mu.Lock()
-		if !child && driver.active {
+		if !child {
+			driver.startAutonomousTurnLocked()
 			driver.text.WriteString(delta.Text)
 			driver.manager.emitDelta(driver.chatID, delta.Text)
 		}
@@ -1011,6 +1023,9 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		input, err := compactJSON(tool.Input)
 		if err != nil {
 			return err
+		}
+		if !child {
+			driver.startAutonomousTurn()
 		}
 		if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(tool.Name+" "+shortText(input, 180))); err != nil {
 			return err
@@ -1051,6 +1066,10 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 				driver.fail(fmt.Errorf("answer opencode permission returned %s", resp.Status))
 			}
 		}()
+	case "session.execution.started":
+		if !child {
+			driver.startAutonomousTurn()
+		}
 	case "session.execution.succeeded", "session.execution.interrupted":
 		if child {
 			return nil
@@ -1071,6 +1090,30 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		return driver.finish(fmt.Errorf("opencode session error: %s", failure.Error.Message))
 	}
 	return nil
+}
+
+// startAutonomousTurnLocked is called with d.mu held for event-stream deltas.
+func (d *opencodeRuntime) startAutonomousTurnLocked() {
+	if d.active {
+		return
+	}
+	if err := d.manager.claimTurn(d.chatID); err != nil {
+		return
+	}
+	d.text.Reset()
+	d.active = true
+	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
+		rt.mu.Lock()
+		rt.busy = true
+		d.manager.markRuntimeActiveLocked(d.chatID, rt)
+		rt.mu.Unlock()
+	}
+}
+
+func (d *opencodeRuntime) startAutonomousTurn() {
+	d.mu.Lock()
+	d.startAutonomousTurnLocked()
+	d.mu.Unlock()
 }
 
 func (d *opencodeRuntime) finish(err error) error {

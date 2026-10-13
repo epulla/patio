@@ -140,6 +140,16 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	if deltaCount != 2 || toolCount != 1 || doneCount != 1 {
 		t.Fatalf("stream events delta=%d tool=%d done=%d", deltaCount, toolCount, doneCount)
 	}
+	fake.publish(t, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": firstSession, "status": map[string]string{"type": "busy"}}})
+	waitFor(t, func() bool { return server.chats.Running(chatID) })
+	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "late-assistant", "role": "assistant"}}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "late-text", "messageID": "late-assistant", "type": "text"}}})
+	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "late-assistant", "partID": "late-text", "field": "text", "delta": "late reply"}})
+	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "late reply" {
+		t.Fatalf("autonomous v1 assistant = %q, %v", assistant, err)
+	}
 	fake.mu.Lock()
 	for _, prompt := range fake.prompts {
 		if strings.Contains(prompt, "echo must not appear") {
@@ -611,6 +621,16 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	}
 	if strings.Contains(parentText, "child leak") {
 		t.Fatalf("child text leaked into parent reply: %q", parentText)
+	}
+
+	// A background subagent can trigger a new parent execution after prior idle.
+	fake.publish(map[string]any{"type": "session.execution.started", "data": map[string]string{"sessionID": "ses-v2-1"}})
+	waitFor(t, func() bool { return server.chats.Running(chatID) })
+	fake.publish(map[string]any{"type": "session.text.delta", "data": map[string]string{"sessionID": "ses-v2-1", "delta": "late reply"}})
+	fake.publish(map[string]any{"type": "session.execution.succeeded", "data": map[string]string{"sessionID": "ses-v2-1"}})
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&parentText); err != nil || parentText != "late reply" {
+		t.Fatalf("autonomous v2 assistant = %q, %v", parentText, err)
 	}
 
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+resumeID+"/messages", map[string]string{"text": "resume prompt"}, nil); code != http.StatusAccepted {
