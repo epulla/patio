@@ -1585,6 +1585,67 @@ main:has(> .chats) {
 .chat-link[aria-current="page"] {
   background: var(--base-300);
 }
+.chat-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-block: 2px;
+}
+.chat-initial {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-weight: 600;
+}
+.chat-initial:hover {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+.chat-initial[aria-current="page"] {
+  background: var(--base-300);
+}
+.chat-badges {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 4px;
+  background: var(--base-100);
+}
+.chat-badges svg {
+  width: 10px;
+  height: 10px;
+}
+.rail-tip {
+  position: fixed;
+  z-index: 10;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--neutral);
+  color: var(--neutral-content);
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: rail-tip 0.1s 0.4s both;
+}
+.rail-tip.focus {
+  animation: none;
+}
+@keyframes rail-tip {
+  from {
+    opacity: 0;
+  }
+}
 .chat-list-end {
   flex: none;
   min-height: 1px;

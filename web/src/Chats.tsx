@@ -161,6 +161,14 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   const loadingMore = useRef(false);
   const pinsRef = useRef(pins);
   const existingPins = useRef(new Set<string>());
+  // The rail scrolls, which would clip a CSS [data-tip] tooltip, so it is positioned fixed instead.
+  const [tip, setTip] = useState<{ text: string; top: number; left: number; focus: boolean }>();
+
+  function showTip(button: HTMLElement, text: string, focus: boolean) {
+    if (focus && !button.matches(":focus-visible")) return;
+    const rect = button.getBoundingClientRect();
+    setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 8, focus });
+  }
 
   useEffect(() => {
     const current = ++generation.current;
@@ -246,11 +254,18 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           <IconButton
             className="ghost"
             icon={listOpen ? "chevronsLeft" : "chevronsRight"}
-            label={listOpen ? "Collapse chat list" : "Expand chat list"}
+            label={
+              listOpen
+                ? "Collapse chat list"
+                : loaded && chats.length === 0 && !error
+                  ? "Expand chat list (no chats yet)"
+                  : "Expand chat list"
+            }
             aria-expanded={listOpen}
             onClick={() => {
               localStorage.setItem("chat-list", listOpen ? "closed" : "open");
               setListOpen(!listOpen);
+              setTip(undefined);
             }}
           />
         </div>
@@ -265,6 +280,41 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             aria-current={showGrid ? "page" : undefined}
             onClick={() => navigate("/ai/chats")}
           />
+        )}
+        {!listOpen && chats.length > 0 && (
+          <nav className="chat-rail" onScroll={() => setTip(undefined)}>
+            {chats.map((chat) => {
+              const pinned = pins.ids.includes(chat.id);
+              const scheduled = !!chat.scheduled_task_id;
+              return (
+                <button
+                  key={chat.id}
+                  className="chat-initial"
+                  aria-label={`${chat.title}${scheduled ? ", scheduled" : ""}${pinned ? ", pinned" : ""}`}
+                  aria-current={!showGrid && chat.id === id ? "page" : undefined}
+                  onClick={() => navigate(`/ai/chats/${chat.id}`)}
+                  onMouseEnter={(event) => showTip(event.currentTarget, chat.title, false)}
+                  onFocus={(event) => showTip(event.currentTarget, chat.title, true)}
+                  onMouseLeave={() => setTip(undefined)}
+                  onBlur={() => setTip(undefined)}
+                >
+                  {[...chat.title.trim()][0]?.toUpperCase() ?? "?"}
+                  {(scheduled || pinned) && (
+                    <span className="chat-badges" aria-hidden="true">
+                      {scheduled && <Icon name="clock" />}
+                      {pinned && <Icon name="pin" />}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {cursor && <LoadMore key={chats.length} onVisible={loadMore} />}
+          </nav>
+        )}
+        {tip && (
+          <div className={tip.focus ? "rail-tip focus" : "rail-tip"} aria-hidden="true" style={{ top: tip.top, left: tip.left }}>
+            {tip.text}
+          </div>
         )}
         <ErrorText error={error} />
         {listOpen && chats.length === 0 && !error && <p className="muted">No chats yet.</p>}
