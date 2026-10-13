@@ -238,7 +238,7 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 			query += ` WHERE updated_at < ? OR (updated_at = ? AND rowid < ?)`
 			args = append(args, updatedAt, updatedAt, rowid)
 		} else {
-			query += ` WHERE updated_at < ?`
+			query += ` WHERE updated_at <= ?`
 			args = append(args, updatedAt)
 		}
 	}

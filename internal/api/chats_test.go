@@ -191,6 +191,48 @@ func TestChatListPaging(t *testing.T) {
 	}
 }
 
+func TestChatListPagingDeletedCursorSameTimestamp(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	ids := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		var created chat
+		if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated {
+			t.Fatalf("create chat = %d", code)
+		}
+		ids = append(ids, created.ID)
+	}
+	if _, err := database.Exec(`UPDATE chat SET updated_at='same'`); err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Chats []chat  `json:"chats"`
+		Next  *string `json:"next_cursor"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?limit=1", nil, &page); code != http.StatusOK || len(page.Chats) != 1 || page.Next == nil {
+		t.Fatalf("page 1 = %d, %#v", code, page)
+	}
+	cursorID := page.Chats[0].ID
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/chats/"+cursorID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete cursor chat = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?limit=2&cursor="+url.QueryEscape(*page.Next), nil, &page); code != http.StatusOK || len(page.Chats) != 2 {
+		t.Fatalf("page after deleted cursor = %d, %#v", code, page)
+	}
+	for _, id := range ids {
+		if id == cursorID {
+			continue
+		}
+		found := false
+		for _, got := range page.Chats {
+			found = found || got.ID == id
+		}
+		if !found {
+			t.Errorf("page after deleted cursor missing chat %q: %#v", id, page.Chats)
+		}
+	}
+}
+
 func TestChatCreateAutoAllow(t *testing.T) {
 	_, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, handler.(*Server).db)
