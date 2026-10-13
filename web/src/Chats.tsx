@@ -538,10 +538,12 @@ function Splitter({
   );
 }
 
-function Conversation({
+export function Conversation({
   id,
   refresh,
   windowed,
+  compact,
+  otherWindow,
   connectors,
   pinned,
   focused,
@@ -552,6 +554,8 @@ function Conversation({
   id: string;
   refresh: number;
   windowed?: boolean;
+  compact?: boolean;
+  otherWindow?: boolean;
   connectors: Connector[];
   pinned?: boolean;
   focused?: boolean;
@@ -934,6 +938,7 @@ function Conversation({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      {!compact && (
       <header className="conversation-head">
         <div className="conversation-title">
           <label className="sr-only" htmlFor={`${uid}-title`}>
@@ -996,6 +1001,7 @@ function Conversation({
           </div>
         )}
       </header>
+      )}
       {choosingFolder && (
         <FolderDialog
           current={detail.chat.folder}
@@ -1037,6 +1043,14 @@ function Conversation({
       )}
 
       <ErrorText error={error} />
+      {otherWindow && (
+        <p className="muted dock-note">
+          Replying in another window.
+          <button type="button" className="ghost" onClick={() => api.post(`/api/chats/${id}/window`, {}).catch(setError)}>
+            Open in its window
+          </button>
+        </p>
+      )}
       {dragging && (
         <p className="drop-hint" aria-hidden="true">
           <Icon name="paperclip" /> Drop files to attach
@@ -1080,9 +1094,9 @@ function Conversation({
         <textarea
           ref={input}
           id={`${uid}-input`}
-          rows={3}
+          rows={compact ? 2 : 3}
           placeholder={connector ? "Message… (Enter to send, Shift+Enter for a new line)" : "This chat's connector was removed"}
-          disabled={!connector}
+          disabled={!connector || otherWindow}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
@@ -1173,6 +1187,7 @@ function Conversation({
             </span>
           </div>
           <div className="composer-send">
+            {!compact && (
             <label className="composer-model">
               <span className="muted">{connector ? connector.name : "Connector removed"}</span>
               <span className="sr-only">Model</span>
@@ -1186,12 +1201,13 @@ function Conversation({
               </select>
               {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
             </label>
+            )}
             {running ? (
               <button type="button" onClick={stop}>
                 <span className="spinner" aria-hidden="true" /> Stop
               </button>
             ) : (
-              <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector}>
+              <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector || otherWindow}>
                 <Icon name="send" /> Send
               </button>
             )}

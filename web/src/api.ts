@@ -183,6 +183,8 @@ export type Chat = {
   updated_at: string;
   workdir: string;
   running: boolean;
+  pending_count?: number;
+  other_window?: boolean;
   thinking: boolean;
   show_thinking: boolean;
   auto_allow: boolean;

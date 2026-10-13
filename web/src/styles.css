@@ -1826,6 +1826,68 @@ main:has(> .chats) {
 main.chat-window {
   padding: 16px;
 }
+.chat-dock {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 400px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-left: 1px solid var(--border);
+  background: var(--base-100);
+}
+.chat-dock > .conversation {
+  flex: 1;
+}
+.dock-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.dock-chips {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.dock-chip {
+  height: 28px;
+  max-width: 160px;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.dock-chip[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-content);
+}
+.dock-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.dock-toggle {
+  position: relative;
+}
+.dock-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--content);
+  color: var(--sidebar-from);
+  font: 600 10px/16px var(--mono);
+}
 .chats.windowed {
   grid-template-columns: minmax(0, 1fr);
   height: calc(100vh - 32px);
