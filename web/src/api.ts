@@ -13,6 +13,7 @@ export type ChatDefaults = {
   auto_allow: boolean;
   thinking: boolean;
   martin_persona: boolean;
+  show_thinking: boolean;
 };
 export type SettingsAbout = {
   version: string;
@@ -183,6 +184,7 @@ export type Chat = {
   workdir: string;
   running: boolean;
   thinking: boolean;
+  show_thinking: boolean;
   auto_allow: boolean;
   capabilities: { thinking: { supported: boolean; reason: string } };
   scheduled_task_id: string | null;
@@ -218,7 +220,7 @@ export type ChatAttachment = { name: string; kind: "text" | "image"; mime: strin
 export type ChatMessage = {
   id: string;
   chat_id: string;
-  role: "user" | "assistant" | "tool" | "error";
+  role: "user" | "assistant" | "tool" | "error" | "thinking";
   content: string;
   created_at: string;
   attachments: ChatAttachment[];

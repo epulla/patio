@@ -341,6 +341,11 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
               onChange={(thinking) => save({ thinking })}
             />
             <Switch
+              label="Show thinking"
+              checked={defaults.show_thinking}
+              onChange={(show_thinking) => save({ show_thinking })}
+            />
+            <Switch
               label="Martin persona (playful tone in all chats)"
               checked={defaults.martin_persona}
               onChange={(martin_persona) => save({ martin_persona })}

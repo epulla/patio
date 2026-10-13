@@ -2316,6 +2316,22 @@ main.chat-window {
   border: 1px solid color-mix(in oklch, var(--error) 45%, transparent);
   background: color-mix(in oklch, var(--error) 10%, var(--base-100));
 }
+.thinking {
+  align-self: flex-start;
+  max-width: 760px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  color: var(--muted);
+  font-size: 13px;
+}
+.thinking summary {
+  cursor: pointer;
+}
+.thinking p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
 .tool-line {
   min-width: 0;
   display: flex;

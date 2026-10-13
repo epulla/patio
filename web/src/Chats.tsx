@@ -36,7 +36,8 @@ type ChatDetail = {
 };
 type ChatEvent =
   | { type: "delta"; text: string }
-  | { type: "tool"; message: ChatMessage }
+  | { type: "thinking_delta"; text: string }
+  | { type: "tool" | "thinking"; message: ChatMessage }
   | { type: "done"; message?: ChatMessage }
   | { type: "error"; message: string }
   | { type: "approval" };
@@ -468,6 +469,7 @@ function Conversation({
   const input = useRef<HTMLTextAreaElement>(null);
   const [detail, setDetail] = useState<ChatDetail>();
   const [streaming, setStreaming] = useState("");
+  const [thinking, setThinking] = useState("");
   const [running, setRunning] = useState(false);
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
@@ -508,9 +510,12 @@ function Conversation({
       const event = data as ChatEvent;
       if (event.type === "approval") void load();
       if (event.type === "delta") setStreaming((current) => current + event.text);
-      if (event.type === "tool" || event.type === "done") {
+      if (event.type === "thinking_delta") setThinking((current) => current + event.text);
+      if (event.type === "thinking") setThinking("");
+      if (event.type === "tool" || event.type === "thinking" || event.type === "done") {
         if (event.type === "done") {
           setStreaming("");
+          setThinking("");
           setRunning(false);
           setAnnouncement("Reply received.");
           void load();
@@ -526,6 +531,7 @@ function Conversation({
       }
       if (event.type === "error") {
         setStreaming("");
+        setThinking("");
         setRunning(false);
         setError(event.message);
       }
@@ -665,7 +671,9 @@ function Conversation({
     }
   }
 
-  async function update(fields: { model: string } | { thinking: boolean } | { auto_allow: boolean }) {
+  async function update(
+    fields: { model: string } | { thinking: boolean } | { show_thinking: boolean } | { auto_allow: boolean },
+  ) {
     try {
       await api.put(`/api/chats/${id}`, fields);
       setDetail((current) => current && { ...current, chat: { ...current.chat, ...fields } });
@@ -758,6 +766,8 @@ function Conversation({
           <p key={message.id} className="tool-line">
             <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
           </p>
+        ) : message.role === "thinking" ? (
+          detail.chat.show_thinking && <ThinkingBlock key={message.id} text={message.content} />
         ) : (
           <div key={message.id} className={`message-row ${message.role}`}>
             {(message.role !== "user" || message.content) && (
@@ -792,6 +802,7 @@ function Conversation({
           </div>
         ),
       )}
+      {thinking && detail.chat.show_thinking && <ThinkingBlock text={thinking} live />}
       {streaming && (
         <div className="message assistant">
           <Markdown text={streaming} onFile={reveal} />
@@ -895,6 +906,12 @@ function Conversation({
             disabled={running || !detail.chat.capabilities.thinking.supported}
             title={thinkingTitle(detail.chat, running)}
             onChange={(thinking) => update({ thinking })}
+          />
+          <Switch
+            label="Show thinking"
+            checked={detail.chat.show_thinking}
+            title="Show the model's reasoning above its replies"
+            onChange={(show_thinking) => update({ show_thinking })}
           />
           <Switch
             className="warning"
@@ -1095,6 +1112,15 @@ function thinkingTitle(chat: Chat, running: boolean) {
   if (!supported) return reason;
   if (running) return "Stop the reply to change thinking";
   return ["Let the model reason before answering. Slower but smarter.", reason].filter(Boolean).join(" ");
+}
+
+function ThinkingBlock({ text, live }: { text: string; live?: boolean }) {
+  return (
+    <details className="thinking">
+      <summary>{live ? "Thinking…" : "Thinking"}</summary>
+      <p>{text}</p>
+    </details>
+  );
 }
 
 function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
