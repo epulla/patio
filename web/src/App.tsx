@@ -257,7 +257,6 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-foot">
-          {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
           {showDock && (
             <button
               className="icon ghost dock-toggle"
@@ -271,6 +270,7 @@ export default function App() {
             </button>
           )}
           <ThemeToggle />
+          {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
         </div>
       </aside>
       <main>{page}</main>
