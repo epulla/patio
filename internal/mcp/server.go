@@ -147,6 +147,32 @@ type scheduledTaskArgs struct {
 	RunAt       *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
 	Enabled     *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
 }
+type mcpServerIDArgs struct {
+	ID string `json:"id" jsonschema:"MCP server UUID"`
+}
+type createMCPServerArgs struct {
+	Name        string            `json:"name" jsonschema:"Server name"`
+	Kind        string            `json:"kind" jsonschema:"stdio or http"`
+	Command     string            `json:"command,omitempty" jsonschema:"stdio executable command"`
+	Args        []string          `json:"args,omitempty" jsonschema:"stdio command arguments"`
+	Env         map[string]string `json:"env,omitempty" jsonschema:"stdio environment variables; values are write-only and never returned"`
+	URL         string            `json:"url,omitempty" jsonschema:"http server URL"`
+	Auth        string            `json:"auth,omitempty" jsonschema:"http auth: none, bearer, or oauth"`
+	BearerToken string            `json:"bearer_token,omitempty" jsonschema:"http bearer token; write-only and never returned"`
+	Enabled     *bool             `json:"enabled,omitempty" jsonschema:"Whether server is enabled; defaults true"`
+}
+type updateMCPServerArgs struct {
+	ID          string             `json:"id" jsonschema:"MCP server UUID"`
+	Name        *string            `json:"name,omitempty" jsonschema:"Optional new server name"`
+	Kind        *string            `json:"kind,omitempty" jsonschema:"Optional stdio or http kind"`
+	Command     *string            `json:"command,omitempty" jsonschema:"Optional stdio executable command"`
+	Args        *[]string          `json:"args,omitempty" jsonschema:"Optional stdio command arguments"`
+	Env         *map[string]string `json:"env,omitempty" jsonschema:"Optional stdio environment variables; values are write-only and never returned"`
+	URL         *string            `json:"url,omitempty" jsonschema:"Optional http server URL"`
+	Auth        *string            `json:"auth,omitempty" jsonschema:"Optional http auth: none, bearer, or oauth"`
+	BearerToken *string            `json:"bearer_token,omitempty" jsonschema:"Optional http bearer token; write-only and never returned"`
+	Enabled     *bool              `json:"enabled,omitempty" jsonschema:"Whether server is enabled"`
+}
 
 type approveArgs struct {
 	ToolName  string          `json:"tool_name"`
@@ -188,6 +214,27 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	}
 	s := sdk.NewServer(&sdk.Implementation{Name: "patio", Version: version}, &sdk.ServerOptions{Instructions: instructions})
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
+	addGeneric(s, "list_mcp_servers", "List MCP servers; env values and bearer tokens are write-only and never returned", h, func(struct{}) request { return request{http.MethodGet, "/api/mcp-servers", nil} })
+	addGeneric(s, "create_mcp_server", "Register MCP server. stdio uses command, args, and env; http uses url, auth, and bearer_token. env and bearer_token are write-only", h, func(a createMCPServerArgs) request {
+		return request{http.MethodPost, "/api/mcp-servers", a}
+	})
+	addGeneric(s, "update_mcp_server", "Update provided MCP server fields. Disable with enabled=false. stdio uses command, args, and env; http uses url, auth, and bearer_token. env and bearer_token are write-only", h, func(a updateMCPServerArgs) request {
+		body := struct {
+			Name        *string            `json:"name,omitempty"`
+			Kind        *string            `json:"kind,omitempty"`
+			Command     *string            `json:"command,omitempty"`
+			Args        *[]string          `json:"args,omitempty"`
+			Env         *map[string]string `json:"env,omitempty"`
+			URL         *string            `json:"url,omitempty"`
+			Auth        *string            `json:"auth,omitempty"`
+			BearerToken *string            `json:"bearer_token,omitempty"`
+			Enabled     *bool              `json:"enabled,omitempty"`
+		}{a.Name, a.Kind, a.Command, a.Args, a.Env, a.URL, a.Auth, a.BearerToken, a.Enabled}
+		return request{http.MethodPut, "/api/mcp-servers/" + url.PathEscape(a.ID), body}
+	})
+	addGeneric(s, "check_mcp_server", "Check MCP server connectivity and list its tools", h, func(a mcpServerIDArgs) request {
+		return request{http.MethodGet, "/api/mcp-servers/" + url.PathEscape(a.ID) + "/check", nil}
+	})
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
 	})

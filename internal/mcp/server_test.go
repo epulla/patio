@@ -11,6 +11,7 @@ import (
 	"patio/internal/db"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/zalando/go-keyring"
 )
 
 func TestMCPToolsAndAudit(t *testing.T) {
@@ -51,6 +52,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"update_calendar_item": true, "delete_calendar_item": true,
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
 		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
+		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
 		"query_db": true,
 	}
 	count := 0
@@ -69,8 +71,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 24 {
-		t.Fatalf("tool count = %d, want 24", count)
+	if count != 28 {
+		t.Fatalf("tool count = %d, want 28", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -246,6 +248,71 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	failure := callTool(t, session, "move_ticket", map[string]any{"id": ticket.ID, "status": "missing"})
 	if !failure.IsError {
 		t.Fatal("unknown status did not return tool error")
+	}
+}
+
+func TestMCPServerToolsHideSecrets(t *testing.T) {
+	keyring.MockInit()
+	dbPath := filepath.Join(t.TempDir(), "mcp-servers.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	secrets := []string{"stdio-env-secret-723", "http-bearer-secret-941"}
+	stdio := callTool(t, session, "create_mcp_server", map[string]any{
+		"name": "Local stdio", "kind": "stdio", "command": "echo", "env": map[string]string{"TOKEN": secrets[0]},
+	})
+	var stdioServer struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, stdio, &stdioServer)
+	httpServer := callTool(t, session, "create_mcp_server", map[string]any{
+		"name": "Local http", "kind": "http", "url": "http://localhost:1234/mcp", "auth": "bearer", "bearer_token": secrets[1],
+	})
+	var httpResult struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, httpServer, &httpResult)
+	updated := callTool(t, session, "update_mcp_server", map[string]any{"id": stdioServer.ID, "enabled": false})
+	var updateResult struct {
+		Enabled bool `json:"enabled"`
+	}
+	decodeText(t, updated, &updateResult)
+	listed := callTool(t, session, "list_mcp_servers", map[string]any{})
+	var list []struct {
+		ID             string   `json:"id"`
+		Enabled        bool     `json:"enabled"`
+		EnvKeys        []string `json:"env_keys"`
+		HasBearerToken bool     `json:"has_bearer_token"`
+	}
+	decodeText(t, listed, &list)
+	if updateResult.Enabled || len(list) != 2 || list[0].Enabled || len(list[0].EnvKeys) != 1 {
+		t.Fatalf("MCP server list/update = %#v %#v", list, updateResult)
+	}
+	if !list[1].HasBearerToken {
+		t.Fatalf("HTTP server bearer token not recorded: %#v", list[1])
+	}
+	for _, result := range []*sdk.CallToolResult{stdio, httpServer, updated, listed} {
+		text := result.Content[0].(*sdk.TextContent).Text
+		for _, secret := range secrets {
+			if strings.Contains(text, secret) {
+				t.Fatalf("tool output leaked secret %q: %s", secret, text)
+			}
+		}
 	}
 }
 
