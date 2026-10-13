@@ -257,6 +257,8 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-foot">
+          {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
+          <ThemeToggle />
           {showDock && (
             <button
               className="icon ghost dock-toggle"
@@ -269,8 +271,6 @@ export default function App() {
               <span className="dock-count" aria-hidden="true">{dockAlert ? statusMarks[dockAlert] : pins.ids.length}</span>
             </button>
           )}
-          <ThemeToggle />
-          {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
         </div>
       </aside>
       <main>{page}</main>

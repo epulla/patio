@@ -256,7 +256,7 @@ a {
   flex: 1;
 }
 .sidebar.collapsed .sidebar-foot {
-  flex-direction: column;
+  flex-direction: column-reverse;
 }
 .sidebar.collapsed {
   width: auto;
