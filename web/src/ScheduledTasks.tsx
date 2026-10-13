@@ -62,12 +62,12 @@ function parseWhen(task?: ScheduledTask): When {
   let match = task.schedule.match(/^0 \*\/(\d+) \* \* \*$/);
   if (match) return { ...when, repeat: "hours", hours: Number(match[1]) };
   match = task.schedule.match(/^(\d+) (\d+) (\*|\d+) \* (\*|1-5|[0-6](?:,[0-6])*)$/);
-  if (!match || (match[3] !== "*" && match[5] !== "*")) return { ...when, repeat: "cron" };
+  if (!match || (match[3] !== "*" && match[4] !== "*")) return { ...when, repeat: "cron" };
   const time = `${pad(Number(match[2]))}:${pad(Number(match[1]))}`;
   if (match[3] !== "*") return { ...when, repeat: "monthly", time, day: Number(match[3]) };
-  if (match[5] === "*") return { ...when, repeat: "daily", time };
-  if (match[5] === "1-5") return { ...when, repeat: "weekdays", time };
-  return { ...when, repeat: "weekly", time, days: match[5].split(",").map(Number) };
+  if (match[4] === "*") return { ...when, repeat: "daily", time };
+  if (match[4] === "1-5") return { ...when, repeat: "weekdays", time };
+  return { ...when, repeat: "weekly", time, days: match[4].split(",").map(Number) };
 }
 
 function compile(when: When): { schedule: string; run_at: string | null } {
