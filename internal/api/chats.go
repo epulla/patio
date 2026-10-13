@@ -156,37 +156,45 @@ func (s *Server) deleteAllowedFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
+	c, kind, baseURL, connectorModel, err := s.scanChatRow(row)
+	if err != nil {
+		return c, err
+	}
+	if kind == "local" {
+		model := c.Model
+		if model == "" {
+			model = connectorModel
+		}
+		secret, secretErr := keyring.Get(connectorService, connectorSecret(*c.ConnectorID))
+		if secretErr != nil {
+			secret = ""
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		d := &localRuntime{connectorID: *c.ConnectorID, model: model, baseURL: baseURL, ollamaURL: ollamaOrigin(baseURL), secret: secret, ctx: ctx, client: &http.Client{}}
+		d.detectOllama()
+		if d.ollama && !d.ollamaThinkingSupported(ctx) {
+			c.Capabilities.Thinking = thinkingCapability{Reason: "This model doesn't support thinking"}
+		}
+		cancel()
+	}
+	return c, nil
+}
+
+func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string, string, string, error) {
 	var c chat
 	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate); err != nil {
-		return c, err
+		return c, "", "", "", err
 	}
 	c.Workdir = s.chatWorkdir(c)
 	c.Capabilities = chatCapabilities{Thinking: thinkingCapability{Supported: true}}
+	var kind, baseURL, connectorModel string
 	if c.ConnectorID != nil {
-		var kind, baseURL, connectorModel string
 		if err := s.db.QueryRow(`SELECT kind,base_url,model FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &baseURL, &connectorModel); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return c, err
+			return c, "", "", "", err
 		}
 		c.Capabilities = capabilitiesForKind(kind)
-		if kind == "local" {
-			model := c.Model
-			if model == "" {
-				model = connectorModel
-			}
-			secret, secretErr := keyring.Get(connectorService, connectorSecret(*c.ConnectorID))
-			if secretErr != nil {
-				secret = ""
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			d := &localRuntime{connectorID: *c.ConnectorID, model: model, baseURL: baseURL, ollamaURL: ollamaOrigin(baseURL), secret: secret, ctx: ctx, client: &http.Client{}}
-			d.detectOllama()
-			if d.ollama && !d.ollamaThinkingSupported(ctx) {
-				c.Capabilities.Thinking = thinkingCapability{Reason: "This model doesn't support thinking"}
-			}
-			cancel()
-		}
 	}
-	return c, nil
+	return c, kind, baseURL, connectorModel, nil
 }
 
 func capabilitiesForKind(kind string) chatCapabilities {
@@ -252,7 +260,7 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []chat{}
 	for rows.Next() {
-		c, err := s.scanChat(rows)
+		c, _, _, _, err := s.scanChatRow(rows)
 		if err != nil {
 			errw(w, 500, err.Error())
 			return

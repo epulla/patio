@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -188,6 +190,45 @@ func TestChatListPaging(t *testing.T) {
 	}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?cursor=bad", nil, nil); code != http.StatusBadRequest {
 		t.Fatalf("malformed cursor status = %d", code)
+	}
+}
+
+func TestChatListSkipsLocalCapabilityProbe(t *testing.T) {
+	keyring.MockInit()
+	var calls atomic.Int32
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch r.URL.Path {
+		case "/api/version":
+			_, _ = w.Write([]byte(`{"version":"test"}`))
+		case "/api/ps":
+			_, _ = w.Write([]byte(`{"models":[]}`))
+		case "/api/show":
+			_, _ = w.Write([]byte(`{"capabilities":["completion","tools"]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ollama.Close()
+	database, handler, _ := chatAPI(t)
+	connectorID := uid()
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,base_url,model,created_at) VALUES(?,'local','Local',?,'qwen3:4b',?)`, connectorID, ollama.URL, now()); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for i := 0; i < 2; i++ {
+		var created chat
+		if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated {
+			t.Fatalf("create status = %d", code)
+		}
+		ids = append(ids, created.ID)
+	}
+	calls.Store(0)
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, nil); code != http.StatusOK || calls.Load() != 0 {
+		t.Fatalf("list status/calls = %d/%d, want 200/0", code, calls.Load())
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+ids[0], nil, nil); code != http.StatusOK || calls.Load() == 0 {
+		t.Fatalf("detail status/calls = %d/%d, want 200/>0", code, calls.Load())
 	}
 }
 
