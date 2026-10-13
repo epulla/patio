@@ -1843,19 +1843,9 @@ main.chat-window {
   color: var(--muted);
   font-size: 13px;
 }
-.conversation-meta .switch {
-  margin-right: 0;
-  white-space: nowrap;
-}
 .switch:has(input:disabled) {
   opacity: 0.55;
   cursor: not-allowed;
-}
-.conversation-meta select {
-  height: 30px;
-  padding: 0 8px;
-  font-size: 13px;
-  max-width: 280px;
 }
 .skill-list {
   list-style: none;
@@ -1954,19 +1944,23 @@ main.chat-window {
   background: var(--content);
   transition: transform 0.15s;
 }
-.switch input:checked + .switch-track {
+.switch input:checked + .switch-track,
+[aria-checked="true"] > .switch-track {
   background: var(--primary);
   border-color: var(--primary);
 }
-.switch input:checked + .switch-track::after {
+.switch input:checked + .switch-track::after,
+[aria-checked="true"] > .switch-track::after {
   transform: translateX(16px);
   background: var(--primary-content);
 }
-.switch.warning input:checked + .switch-track {
+.switch.warning input:checked + .switch-track,
+.warning[aria-checked="true"] > .switch-track {
   background: var(--warning);
   border-color: var(--warning);
 }
-.switch.warning input:checked + .switch-track::after {
+.switch.warning input:checked + .switch-track::after,
+.warning[aria-checked="true"] > .switch-track::after {
   background: var(--warning-content);
 }
 .switch input:focus-visible + .switch-track {
@@ -2296,9 +2290,6 @@ main.chat-window {
   width: 14px;
   height: 14px;
 }
-.conversation-meta .menu {
-  min-width: 0;
-}
 .folder-trail {
   display: flex;
   flex-wrap: wrap;
@@ -2527,6 +2518,97 @@ main.chat-window {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+}
+.composer-tools,
+.composer-send {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.composer-send {
+  gap: 8px;
+}
+.composer-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.composer-model > .muted {
+  white-space: nowrap;
+}
+.composer-model select {
+  height: 32px;
+  max-width: 220px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.composer .menu-list {
+  top: auto;
+  right: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+}
+.settings-trigger {
+  position: relative;
+}
+.settings-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--base-100);
+}
+.chat-settings {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+}
+.menu-list .setting-row {
+  justify-content: space-between;
+  gap: 12px;
+  height: auto;
+  padding: 8px 10px;
+  white-space: normal;
+  text-align: left;
+}
+.setting-row:disabled {
+  opacity: 0.55;
+}
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.setting-text small {
+  font-weight: 400;
+  font-size: 12px;
+}
+.typing-dots::after {
+  content: "...";
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  vertical-align: bottom;
+  animation: typing-dots 1.2s steps(4, jump-none) infinite;
+}
+@keyframes typing-dots {
+  to {
+    width: 1.2em;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots::after {
+    width: auto;
+    animation: none;
+  }
 }
 @media (max-width: 760px) {
   .chats {

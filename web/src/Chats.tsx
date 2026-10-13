@@ -928,7 +928,11 @@ function Conversation({
           <Markdown text={streaming} onFile={reveal} />
         </div>
       )}
-      {running && !streaming && <p className="muted typing">Working…</p>}
+      {running && !streaming && (
+        <p className="muted typing">
+          Working<span className="typing-dots" aria-hidden="true" />
+        </p>
+      )}
       {detail.pending_approvals.map((approval) => (
         <ApprovalCard key={approval.id} approval={approval} onAnswer={(allow) => answer(approval, allow)} />
       ))}
@@ -993,9 +997,8 @@ function Conversation({
           }
         />
         <IconButton className="danger-text" icon="trash" label="Delete chat" onClick={remove} />
-        <div className="conversation-meta">
-          <span>{connector ? connector.name : "Connector removed"}</span>
-          {detail.chat.scheduled_task_id && (
+        {detail.chat.scheduled_task_id && (
+          <div className="conversation-meta">
             <button
               type="button"
               className="folder-chip"
@@ -1003,82 +1006,8 @@ function Conversation({
             >
               <Icon name="clock" /> Scheduled task
             </button>
-          )}
-          <label>
-            <span className="sr-only">Model</span>
-            <select
-              value={detail.chat.model}
-              disabled={!connector || running || modelsLoading}
-              aria-busy={modelsLoading}
-              title={running ? "Stop the reply to change the model" : "Model"}
-              onChange={(event) => update({ model: event.target.value })}
-            >
-              <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
-            </select>
-            {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
-          </label>
-          <Switch
-            label="Thinking"
-            checked={detail.chat.capabilities.thinking.supported && detail.chat.thinking}
-            disabled={running || !detail.chat.capabilities.thinking.supported}
-            title={thinkingTitle(detail.chat, running)}
-            onChange={(thinking) => update({ thinking })}
-          />
-          <Switch
-            label="Show thinking"
-            checked={detail.chat.show_thinking}
-            title={
-              connector?.kind === "claude"
-                ? "Claude Code doesn't share its reasoning, so no thinking appears in this chat"
-                : connector?.kind === "codex"
-                  ? "Show Codex's reasoning summaries when it sends them; simple questions often have none"
-                  : "Show the model's reasoning above its replies"
-            }
-            onChange={(show_thinking) => update({ show_thinking })}
-          />
-          <Switch
-            className="warning"
-            label="Auto-allow"
-            checked={detail.chat.auto_allow}
-            title={
-              detail.chat.auto_allow
-                ? "Every file change and command runs without asking"
-                : "Ask before every file change and command"
-            }
-            onChange={changeAutoAllow}
-          />
-          {detail.messages.length === 0 && !running ? (
-            <Menu
-              label="Folder"
-              buttonClassName="folder-chip"
-              button={
-                <>
-                  <Icon name="folder" /> {folderLabel}
-                </>
-              }
-            >
-              {(close) => (
-                <>
-                  <button role="menuitem" onClick={() => (close(false), setChoosingFolder(true))}>
-                    <Icon name="folder" /> Change folder…
-                  </button>
-                  <button role="menuitem" onClick={() => (close(), reveal(detail.chat.workdir))}>
-                    <Icon name="externalLink" /> Open in file manager
-                  </button>
-                </>
-              )}
-            </Menu>
-          ) : (
-            <button
-              type="button"
-              className="folder-chip"
-              title={`Open in file manager: ${detail.chat.workdir}\nStart a new chat to use another folder`}
-              onClick={() => reveal(detail.chat.workdir)}
-            >
-              <Icon name="folder" /> {folderLabel}
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </header>
       {choosingFolder && (
         <FolderDialog
@@ -1175,23 +1104,111 @@ function Conversation({
           onDrop={onDrop}
         />
         <div className="composer-actions">
-          <IconButton
-            type="button"
-            className="ghost tip-up"
-            icon="paperclip"
-            label="Attach files"
-            disabled={!connector || uploading || pending.length >= maxAttachments}
-            onClick={() => filePicker.current?.click()}
-          />
-          {running ? (
-            <button type="button" onClick={stop}>
-              Stop
-            </button>
-          ) : (
-            <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector}>
-              <Icon name="send" /> Send
-            </button>
-          )}
+          <div className="composer-tools">
+            <IconButton
+              type="button"
+              className="ghost tip-up"
+              icon="paperclip"
+              label="Attach files"
+              disabled={!connector || uploading || pending.length >= maxAttachments}
+              onClick={() => filePicker.current?.click()}
+            />
+            {detail.messages.length === 0 && !running ? (
+              <span className="tip-up" data-tip={`Folder: ${folderLabel}`}>
+                <Menu label={`Folder: ${folderLabel}`} buttonClassName="icon ghost" button={<Icon name="folder" />}>
+                  {(close) => (
+                    <>
+                      <button role="menuitem" onClick={() => (close(false), setChoosingFolder(true))}>
+                        <Icon name="folder" /> Change folder…
+                      </button>
+                      <button role="menuitem" onClick={() => (close(), reveal(detail.chat.workdir))}>
+                        <Icon name="externalLink" /> Open in file manager
+                      </button>
+                    </>
+                  )}
+                </Menu>
+              </span>
+            ) : (
+              <IconButton
+                type="button"
+                className="ghost tip-up tip-wide"
+                icon="folder"
+                label={`Open in file manager: ${folderLabel}. Start a new chat to use another folder.`}
+                onClick={() => reveal(detail.chat.workdir)}
+              />
+            )}
+            <span className="tip-up" data-tip="Chat settings">
+              <Menu
+                label={detail.chat.auto_allow ? "Chat settings (auto-allow is on)" : "Chat settings"}
+                buttonClassName="icon ghost settings-trigger"
+                button={
+                  <>
+                    <Icon name="settings" />
+                    {detail.chat.auto_allow && <span className="settings-dot" aria-hidden="true" />}
+                  </>
+                }
+              >
+                {() => (
+                  <div className="chat-settings">
+                    <SettingRow
+                      label="Thinking"
+                      hint={thinkingTitle(detail.chat, running)}
+                      checked={detail.chat.capabilities.thinking.supported && detail.chat.thinking}
+                      disabled={running || !detail.chat.capabilities.thinking.supported}
+                      onChange={(thinking) => update({ thinking })}
+                    />
+                    <SettingRow
+                      label="Show thinking"
+                      hint={
+                        connector?.kind === "claude"
+                          ? "Claude Code doesn't share its reasoning, so no thinking appears in this chat"
+                          : connector?.kind === "codex"
+                            ? "Show Codex's reasoning summaries when it sends them; simple questions often have none"
+                            : "Show the model's reasoning above its replies"
+                      }
+                      checked={detail.chat.show_thinking}
+                      onChange={(show_thinking) => update({ show_thinking })}
+                    />
+                    <SettingRow
+                      label="Auto-allow"
+                      warning
+                      hint={
+                        detail.chat.auto_allow
+                          ? "Every file change and command runs without asking"
+                          : "Ask before every file change and command"
+                      }
+                      checked={detail.chat.auto_allow}
+                      onChange={changeAutoAllow}
+                    />
+                  </div>
+                )}
+              </Menu>
+            </span>
+          </div>
+          <div className="composer-send">
+            <label className="composer-model">
+              <span className="muted">{connector ? connector.name : "Connector removed"}</span>
+              <span className="sr-only">Model</span>
+              <select
+                value={detail.chat.model}
+                disabled={!connector || running || modelsLoading}
+                aria-busy={modelsLoading}
+                onChange={(event) => update({ model: event.target.value })}
+              >
+                <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
+              </select>
+              {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
+            </label>
+            {running ? (
+              <button type="button" onClick={stop}>
+                <span className="spinner" aria-hidden="true" /> Stop
+              </button>
+            ) : (
+              <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector}>
+                <Icon name="send" /> Send
+              </button>
+            )}
+          </div>
         </div>
       </form>
     </section>
@@ -1227,6 +1244,39 @@ function AttachmentLabel({ attachment }: { attachment: ChatAttachment }) {
       <span className="attachment-name">{attachment.name}</span>
       <span className="muted">{formatBytes(attachment.size)}</span>
     </span>
+  );
+}
+
+function SettingRow({
+  label,
+  hint,
+  checked,
+  disabled,
+  warning,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  disabled?: boolean;
+  warning?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      disabled={disabled}
+      className={warning ? "setting-row warning" : "setting-row"}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="setting-text">
+        <span>{label}</span>
+        <small className="muted">{hint}</small>
+      </span>
+      <span className="switch-track" aria-hidden="true" />
+    </button>
   );
 }
 
