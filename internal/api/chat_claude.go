@@ -372,7 +372,7 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 				if err != nil {
 					return err
 				}
-				content := strings.TrimSpace(block.Name + " " + shortText(args, 180))
+				content := strings.TrimSpace(block.Name + " " + shortText(args, toolInputLimit))
 				if err := d.manager.emitTool(d.chatID, content); err != nil {
 					return err
 				}
@@ -440,6 +440,8 @@ func compactJSON(raw json.RawMessage) (string, error) {
 	}
 	return compact.String(), nil
 }
+
+const toolInputLimit = 20000
 
 func shortText(value string, limit int) string {
 	runes := []rune(strings.ReplaceAll(strings.ReplaceAll(value, "\n", " "), "\r", " "))

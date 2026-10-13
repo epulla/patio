@@ -1313,11 +1313,13 @@ function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
   return [...detail.messages, ...auto].sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-function prettyJSON(text: string) {
+function prettyJSON(text: string): string {
   try {
     return JSON.stringify(JSON.parse(text), null, 2);
   } catch {
-    return text;
+    // Tool lines are stored as "<tool name> <json>".
+    const space = text.indexOf(" ");
+    return space > 0 && text[space + 1] === "{" ? `${text.slice(0, space)}\n${prettyJSON(text.slice(space + 1))}` : text;
   }
 }
 

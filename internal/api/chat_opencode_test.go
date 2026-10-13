@@ -108,7 +108,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "user-text", "messageID": "user-1", "type": "text"}}})
 	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "user-1", "partID": "user-text", "field": "text", "delta": "echo must not appear"}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{
-		"sessionID": firstSession, "part": map[string]any{"id": "tool-1", "messageID": "assistant-1", "type": "tool", "tool": "write", "state": map[string]any{"status": "completed", "input": map[string]any{"path": "hello.txt"}}},
+		"sessionID": firstSession, "part": map[string]any{"id": "tool-1", "messageID": "assistant-1", "type": "tool", "tool": "write", "state": map[string]any{"status": "completed", "input": map[string]any{"path": strings.Repeat("x", 1000)}}},
 	}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-2", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Done.", "time": map[string]any{"start": 2}}, "delta": "Done."}})
 	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
@@ -117,7 +117,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "Checking:\n\nDone." {
 		t.Fatalf("assistant stored as %q, %v", assistant, err)
 	}
-	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"`+strings.Repeat("x", 1000)+`"}` {
 		t.Fatalf("tool summary = %q, %v", tool, err)
 	}
 	var thinking string

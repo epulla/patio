@@ -757,7 +757,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			if err != nil {
 				return err
 			}
-			if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(part.Part.Tool+" "+shortText(input, 180))); err != nil {
+			if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(part.Part.Tool+" "+shortText(input, toolInputLimit))); err != nil {
 				return err
 			}
 		}
@@ -1024,7 +1024,7 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		if !child {
 			driver.startAutonomousTurn()
 		}
-		if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(tool.Name+" "+shortText(input, 180))); err != nil {
+		if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(tool.Name+" "+shortText(input, toolInputLimit))); err != nil {
 			return err
 		}
 	case "permission.asked":

@@ -468,7 +468,7 @@ func codexItemSummary(itemType string, data map[string]json.RawMessage) string {
 			details = append(details, value)
 		}
 	}
-	return shortText(strings.TrimSpace(itemType+" "+strings.Join(details, " ")), 180)
+	return shortText(strings.TrimSpace(itemType+" "+strings.Join(details, " ")), toolInputLimit)
 }
 
 func codexError(value any, fallback string) error {
