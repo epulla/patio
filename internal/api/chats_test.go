@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -137,10 +138,13 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 	if _, err := database.Exec(`UPDATE chat SET updated_at=CASE WHEN rowid=(SELECT MIN(rowid) FROM chat) THEN '2020' ELSE '2021' END`); err != nil {
 		t.Fatal(err)
 	}
-	var chats []chat
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &chats); code != http.StatusOK || len(chats) != 2 {
-		t.Fatalf("list status/chats = %d, %#v", code, chats)
+	var listed struct {
+		Chats []chat `json:"chats"`
 	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 2 {
+		t.Fatalf("list status/chats = %d, %#v", code, listed.Chats)
+	}
+	chats := listed.Chats
 	if chats[0].UpdatedAt != "2021" {
 		t.Fatalf("timestamp chat order = %#v", chats)
 	}
@@ -151,8 +155,39 @@ func TestChatCreateValidationAndListOrder(t *testing.T) {
 	if err := database.QueryRow(`SELECT id FROM chat ORDER BY rowid DESC LIMIT 1`).Scan(&newest); err != nil {
 		t.Fatal(err)
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &chats); code != http.StatusOK || chats[0].ID != newest {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || listed.Chats[0].ID != newest {
 		t.Fatalf("equal timestamp chat order = %#v, want first %q", chats, newest)
+	}
+}
+
+func TestChatListPaging(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	for i := 0; i < 3; i++ {
+		var created chat
+		if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated {
+			t.Fatalf("create chat = %d", code)
+		}
+		if _, err := database.Exec(`UPDATE chat SET updated_at=? WHERE id=?`, string(rune('a'+i)), created.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var page struct {
+		Chats []chat  `json:"chats"`
+		Next  *string `json:"next_cursor"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?limit=2", nil, &page); code != http.StatusOK || len(page.Chats) != 2 || page.Next == nil {
+		t.Fatalf("page 1 = %d, %#v", code, page)
+	}
+	if page.Chats[0].UpdatedAt != "c" || page.Chats[1].UpdatedAt != "b" {
+		t.Fatalf("page 1 order = %#v", page.Chats)
+	}
+	firstIDs := []string{page.Chats[0].ID, page.Chats[1].ID}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?limit=2&cursor="+url.QueryEscape(*page.Next), nil, &page); code != http.StatusOK || len(page.Chats) != 1 || page.Next != nil || page.Chats[0].ID == firstIDs[0] || page.Chats[0].ID == firstIDs[1] {
+		t.Fatalf("page 2 = %d, %#v", code, page)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?cursor=bad", nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("malformed cursor status = %d", code)
 	}
 }
 
@@ -244,8 +279,10 @@ func TestChatThinkingUpdate(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || !created.Thinking {
 		t.Fatalf("create chat = %d, %#v", code, created)
 	}
-	var listed []chat
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed) != 1 || !listed[0].Thinking {
+	var listed struct {
+		Chats []chat `json:"chats"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 1 || !listed.Chats[0].Thinking {
 		t.Fatalf("list chats = %d, %#v", code, listed)
 	}
 	updated := true

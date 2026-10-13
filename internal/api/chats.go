@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -208,8 +209,42 @@ func (s *Server) chatWorkdir(c chat) string {
 
 const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0)`
 
-func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
-	rows, err := s.db.Query(`SELECT ` + chatColumns + ` FROM chat ORDER BY updated_at DESC,rowid DESC`)
+func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			errw(w, 400, "invalid limit")
+			return
+		}
+		limit = max(1, min(value, 1000))
+	}
+	query := `SELECT ` + chatColumns + ` FROM chat`
+	args := []any{}
+	if values, present := r.URL.Query()["cursor"]; present {
+		cursor := values[0]
+		updatedAt, id, ok := strings.Cut(cursor, "|")
+		if !ok {
+			errw(w, 400, "invalid cursor")
+			return
+		}
+		var rowid int64
+		err := s.db.QueryRow(`SELECT rowid FROM chat WHERE id=?`, id).Scan(&rowid)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			errw(w, 500, err.Error())
+			return
+		}
+		if err == nil {
+			query += ` WHERE updated_at < ? OR (updated_at = ? AND rowid < ?)`
+			args = append(args, updatedAt, updatedAt, rowid)
+		} else {
+			query += ` WHERE updated_at < ?`
+			args = append(args, updatedAt)
+		}
+	}
+	query += ` ORDER BY updated_at DESC,rowid DESC LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -228,7 +263,13 @@ func (s *Server) listChats(w http.ResponseWriter, _ *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	write(w, 200, out)
+	if len(out) > limit {
+		out = out[:limit]
+		last := out[len(out)-1]
+		write(w, 200, map[string]any{"chats": out, "next_cursor": last.UpdatedAt + "|" + last.ID})
+		return
+	}
+	write(w, 200, map[string]any{"chats": out, "next_cursor": nil})
 }
 
 func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
