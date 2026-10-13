@@ -37,6 +37,7 @@ type claudeRuntime struct {
 	configOnce     sync.Once
 	assistant      strings.Builder
 	thinkingDeltas bool
+	textDeltas     bool
 }
 
 func init() { runtimes["claude"] = startClaude }
@@ -332,7 +333,8 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			return err
 		}
 		if frame.Event.Type == "content_block_delta" && frame.Event.Delta.Type == "text_delta" {
-			d.manager.emitDelta(d.chatID, frame.Event.Delta.Text)
+			d.textDeltas = true
+			d.assistant.WriteString(d.manager.emitDelta(d.chatID, frame.Event.Delta.Text))
 		} else if frame.Event.Type == "content_block_delta" && frame.Event.Delta.Type == "thinking_delta" {
 			d.thinkingDeltas = true
 			d.manager.emitThinking(d.chatID, frame.Event.Delta.Thinking)
@@ -355,7 +357,12 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 		for _, block := range assistant.Message.Content {
 			switch block.Type {
 			case "text":
-				d.assistant.WriteString(block.Text)
+				if !d.textDeltas {
+					if d.assistant.Len() > 0 {
+						d.assistant.WriteString("\n\n")
+					}
+					d.assistant.WriteString(block.Text)
+				}
 			case "thinking":
 				if !d.thinkingDeltas {
 					d.manager.emitThinking(d.chatID, block.Thinking)
@@ -373,6 +380,7 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 		}
 	case "result":
 		d.thinkingDeltas = false
+		d.textDeltas = false
 		var result struct {
 			IsError bool   `json:"is_error"`
 			Result  string `json:"result"`

@@ -102,19 +102,21 @@ func mcpSpecHeaders(spec mcpServerSpec) map[string]string {
 }
 
 type chatRuntime struct {
-	mu              sync.Mutex
-	driver          chatRuntimeDriver
-	busy            bool
-	stopping        bool
-	changingModel   bool
-	stopDone        chan struct{}
-	connectorID     string
-	startedThinking *bool
-	showThinking    bool
-	pendingThinking strings.Builder
-	lastActivity    time.Time
-	idleTimer       *time.Timer
-	mcpSpecs        []mcpServerSpec
+	mu               sync.Mutex
+	driver           chatRuntimeDriver
+	busy             bool
+	stopping         bool
+	changingModel    bool
+	stopDone         chan struct{}
+	connectorID      string
+	startedThinking  *bool
+	showThinking     bool
+	pendingThinking  strings.Builder
+	assistantHasText bool
+	toolAfterText    bool
+	lastActivity     time.Time
+	idleTimer        *time.Timer
+	mcpSpecs         []mcpServerSpec
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -236,6 +238,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	rt.connectorID = *c.ConnectorID
 	rt.showThinking = c.ShowThinking
 	rt.pendingThinking.Reset()
+	rt.assistantHasText, rt.toolAfterText = false, false
 	rt.busy = true
 	if rt.driver == nil {
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
@@ -352,11 +355,24 @@ var (
 
 func (m *chatManager) emit(id string, data any) { m.emitEvent("chat:"+id, data) }
 
-func (m *chatManager) emitDelta(id, text string) {
+func (m *chatManager) emitDelta(id, text string) string {
+	rt := m.lookupRuntime(id)
+	if rt != nil {
+		rt.mu.Lock()
+		if text != "" && rt.toolAfterText {
+			text = "\n\n" + text
+			rt.toolAfterText = false
+		}
+		if text != "" {
+			rt.assistantHasText = true
+		}
+		rt.mu.Unlock()
+	}
 	if err := m.flushThinking(id); err != nil {
 		m.emit(id, map[string]any{"type": "error", "message": err.Error()})
 	}
 	m.emit(id, map[string]any{"type": "delta", "text": text})
+	return text
 }
 
 func (m *chatManager) emitThinking(id, text string) {
@@ -394,6 +410,7 @@ func (m *chatManager) flushThinking(id string) error {
 }
 
 func (m *chatManager) emitTool(id, summary string) error {
+	m.markToolAfterText(id)
 	if err := m.flushThinking(id); err != nil {
 		return err
 	}
@@ -406,6 +423,7 @@ func (m *chatManager) emitTool(id, summary string) error {
 }
 
 func (m *chatManager) emitToolResult(id, summary, result string) error {
+	m.markToolAfterText(id)
 	if err := m.flushThinking(id); err != nil {
 		return err
 	}
@@ -415,6 +433,14 @@ func (m *chatManager) emitToolResult(id, summary, result string) error {
 	}
 	m.emit(id, map[string]any{"type": "tool", "message": message})
 	return nil
+}
+
+func (m *chatManager) markToolAfterText(id string) {
+	if rt := m.lookupRuntime(id); rt != nil {
+		rt.mu.Lock()
+		rt.toolAfterText = rt.toolAfterText || rt.assistantHasText
+		rt.mu.Unlock()
+	}
 }
 
 func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error {
@@ -429,6 +455,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
 		rt.busy = false
+		rt.assistantHasText, rt.toolAfterText = false, false
 		m.markRuntimeActiveLocked(id, rt)
 		rt.mu.Unlock()
 	}

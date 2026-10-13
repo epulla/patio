@@ -705,8 +705,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 		if !child && delta.Field == "text" && role == "assistant" && partType == "text" {
 			if driver.active {
-				driver.text.WriteString(delta.Delta)
-				driver.manager.emitDelta(driver.chatID, delta.Delta)
+				driver.text.WriteString(driver.manager.emitDelta(driver.chatID, delta.Delta))
 			}
 		} else if !child && delta.Field == "text" && role == "assistant" && partType == "reasoning" && driver.active {
 			driver.manager.emitThinking(driver.chatID, delta.Delta)
@@ -742,8 +741,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		if !child && part.Delta != "" && role == "assistant" && driver.active {
 			switch part.Part.Type {
 			case "text":
-				driver.text.WriteString(part.Delta)
-				driver.manager.emitDelta(driver.chatID, part.Delta)
+				driver.text.WriteString(driver.manager.emitDelta(driver.chatID, part.Delta))
 			case "reasoning":
 				driver.manager.emitThinking(driver.chatID, part.Delta)
 			}
@@ -1008,8 +1006,7 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		driver.mu.Lock()
 		if !child {
 			driver.startAutonomousTurnLocked()
-			driver.text.WriteString(delta.Text)
-			driver.manager.emitDelta(driver.chatID, delta.Text)
+			driver.text.WriteString(driver.manager.emitDelta(driver.chatID, delta.Text))
 		}
 		driver.mu.Unlock()
 	case "session.tool.called":

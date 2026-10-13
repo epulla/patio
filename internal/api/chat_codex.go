@@ -299,9 +299,9 @@ func (d *codexRuntime) handleNotification(notification connectorcli.Notification
 			return err
 		}
 		d.mu.Lock()
+		delta = d.manager.emitDelta(d.chatID, delta)
 		d.assistant.WriteString(delta)
 		d.mu.Unlock()
-		d.manager.emitDelta(d.chatID, delta)
 	case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
 		var delta string
 		if err := json.Unmarshal(params["delta"], &delta); err != nil {

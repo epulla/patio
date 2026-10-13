@@ -102,8 +102,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	}
 
 	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "assistant-1", "role": "assistant"}}})
-	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Hello ", "time": map[string]any{"start": 1}}, "delta": "Hello "}})
-	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Hello there", "time": map[string]any{"start": 1}}, "delta": "there"}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Checking:", "time": map[string]any{"start": 1}}, "delta": "Checking:"}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "reasoning-1", "sessionID": firstSession, "messageID": "assistant-1", "type": "reasoning", "text": "hidden reasoning", "time": map[string]any{"start": 1}}, "delta": "hidden reasoning"}})
 	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "user-1", "role": "user"}}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "user-text", "messageID": "user-1", "type": "text"}}})
@@ -111,10 +110,11 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{
 		"sessionID": firstSession, "part": map[string]any{"id": "tool-1", "messageID": "assistant-1", "type": "tool", "tool": "write", "state": map[string]any{"status": "completed", "input": map[string]any{"path": "hello.txt"}}},
 	}})
+	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-2", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Done.", "time": map[string]any{"start": 2}}, "delta": "Done."}})
 	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
 	var assistant, tool string
-	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "Hello there" {
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "Checking:\n\nDone." {
 		t.Fatalf("assistant stored as %q, %v", assistant, err)
 	}
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
@@ -126,10 +126,12 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	}
 	emittedMu.Lock()
 	var deltaCount, toolCount, doneCount int
+	var streamed strings.Builder
 	for _, event := range emitted {
 		switch event["type"] {
 		case "delta":
 			deltaCount++
+			streamed.WriteString(event["text"].(string))
 		case "tool":
 			toolCount++
 		case "done":
@@ -139,6 +141,9 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	emittedMu.Unlock()
 	if deltaCount != 2 || toolCount != 1 || doneCount != 1 {
 		t.Fatalf("stream events delta=%d tool=%d done=%d", deltaCount, toolCount, doneCount)
+	}
+	if got := streamed.String(); got != "Checking:\n\nDone." {
+		t.Fatalf("streamed assistant = %q", got)
 	}
 	fake.publish(t, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": firstSession, "status": map[string]string{"type": "busy"}}})
 	waitFor(t, func() bool { return server.chats.Running(chatID) })

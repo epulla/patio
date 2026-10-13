@@ -300,9 +300,9 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 		text := params.Update.Content.Text
 		if text != "" {
 			d.assistantMu.Lock()
+			text = d.manager.emitDelta(d.chatID, text)
 			d.assistant.WriteString(text)
 			d.assistantMu.Unlock()
-			d.manager.emitDelta(d.chatID, text)
 		}
 	case "agent_thought_chunk":
 		d.manager.emitThinking(d.chatID, params.Update.Content.Text)
