@@ -541,15 +541,48 @@ func TestLocalCreateBoardToolSummaryIncludesShortName(t *testing.T) {
 }
 
 func TestLocalRuntimeToolListFits(t *testing.T) {
-	ticketTools := fakeTicketTools()
-	tools := make([]map[string]any, 0, 44+len(filetools.Tools()))
-	for i := 0; i < 44; i++ {
-		tool := ticketTools[i%len(ticketTools)]
-		definition, err := localToolDefinition(fmt.Sprintf("ticket__%s_%d", tool.Name, i), tool.Description, tool.InputSchema)
+	dbPath := filepath.Join(t.TempDir(), "mcp.db")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	session, cleanup, err := connectMCP(ctx, mcpServerSpec{Kind: "stdio", Command: "go", Args: []string{"run", "../..", "mcp", "-d", dbPath}})
+	if err != nil {
+		t.Fatalf("connect real ticket MCP server: %v", err)
+	}
+	defer cleanup()
+	var tools []map[string]any
+	cursor := ""
+	foundCreateBoard := false
+	for {
+		page, err := session.ListTools(ctx, &mcp.ListToolsParams{Cursor: cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
-		tools = append(tools, definition)
+		for _, tool := range page.Tools {
+			definition, err := localToolDefinition("ticket__"+tool.Name, tool.Description, tool.InputSchema)
+			if err != nil {
+				t.Fatalf("local definition for %s: %v", tool.Name, err)
+			}
+			if tool.Name == "create_board" {
+				foundCreateBoard = true
+				params := definition["function"].(map[string]any)["parameters"].(map[string]any)
+				properties := params["properties"].(map[string]any)
+				shortName := properties["short_name"].(map[string]any)
+				if shortName["description"] == nil || shortName["description"] == "" {
+					t.Fatal("local create_board schema omitted short_name property description")
+				}
+			}
+			tools = append(tools, definition)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(tools) == 0 {
+		t.Fatal("real ticket MCP server returned no tools")
+	}
+	if !foundCreateBoard {
+		t.Fatal("real ticket MCP server omitted create_board")
 	}
 	for _, tool := range filetools.Tools() {
 		definition, err := localToolDefinition("file__"+tool.Name, tool.Description, json.RawMessage(tool.Parameters))

@@ -245,7 +245,7 @@ func compactLocalSchema(value any) any {
 	switch item := value.(type) {
 	case map[string]any:
 		for key, nested := range item {
-			if key == "description" || key == "additionalProperties" {
+			if key == "additionalProperties" {
 				delete(item, key)
 				continue
 			}
