@@ -846,7 +846,7 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 	}
 	var details struct {
 		Capabilities []string       `json:"capabilities"`
-		ModelInfo    map[string]int `json:"model_info"`
+		ModelInfo    map[string]any `json:"model_info"`
 	}
 	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&details) != nil {
 		return ollamaModelCapabilities{}, false
@@ -856,9 +856,10 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 		capabilities.thinking = capabilities.thinking || capability == "thinking"
 		capabilities.vision = capabilities.vision || capability == "vision"
 	}
-	for key, length := range details.ModelInfo {
-		if strings.HasSuffix(key, ".context_length") && length > capabilities.contextLength {
-			capabilities.contextLength = length
+	for key, value := range details.ModelInfo {
+		length, ok := value.(float64)
+		if ok && strings.HasSuffix(key, ".context_length") && length > float64(capabilities.contextLength) {
+			capabilities.contextLength = int(length)
 		}
 	}
 	cached, _ := localModelCapabilities.LoadOrStore(key, capabilities)

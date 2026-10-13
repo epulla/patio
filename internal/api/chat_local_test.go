@@ -842,9 +842,9 @@ func newOllamaChatFixture(t *testing.T, handler func(http.ResponseWriter, *http.
 			}
 			_ = json.NewDecoder(r.Body).Decode(&request)
 			if request.Model == "thinking-model" {
-				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools","thinking"],"model_info":{"qwen.context_length":40960}}`)
+				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools","thinking"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960,"qwen3.rope.freq_base":1000000.0,"qwen3.layers":[1,2,3]}}`)
 			} else {
-				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools"],"model_info":{"qwen.context_length":40960}}`)
+				_, _ = fmt.Fprint(w, `{"capabilities":["completion","tools"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960,"qwen3.rope.freq_base":1000000.0,"qwen3.layers":[1,2,3]}}`)
 			}
 		case "/api/chat":
 			var body map[string]any
