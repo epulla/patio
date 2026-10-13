@@ -202,3 +202,44 @@ func TestWatchDetectsChangesFromAnotherConnection(t *testing.T) {
 		t.Fatal("watch did not return after cancellation")
 	}
 }
+
+func TestTransactionWritesAfterReadWhileAnotherProcessWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	app, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+	mcp, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mcp.Close() })
+	if _, err := app.Exec(`CREATE TABLE counter (n INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := mcp.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM counter`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	otherWrite := make(chan error, 1)
+	go func() {
+		_, err := app.Exec(`INSERT INTO counter (n) VALUES (1)`)
+		otherWrite <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	if _, err := tx.Exec(`INSERT INTO counter (n) VALUES (?)`, n+1); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("write after read in transaction: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-otherWrite; err != nil {
+		t.Fatalf("concurrent write: %v", err)
+	}
+}
