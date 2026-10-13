@@ -1838,13 +1838,14 @@ main.chat-window {
   padding: 12px;
   border-left: 1px solid var(--border);
   background: var(--base-100);
+  z-index: 1;
 }
 .chat-dock > .conversation {
   flex: 1;
 }
 .dock-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 4px;
 }
 .dock-chips {
@@ -1855,9 +1856,12 @@ main.chat-window {
   min-width: 0;
 }
 .dock-chip {
+  display: block;
   height: 28px;
   max-width: 160px;
   padding: 0 10px;
+  line-height: 26px;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
