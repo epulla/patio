@@ -57,6 +57,7 @@ type opencodeServer struct {
 	done        chan struct{}
 	mu          sync.Mutex
 	chats       map[string]*opencodeRuntime
+	ancestors   map[string]string
 	refs        int
 }
 
@@ -218,7 +219,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	ctx, cancel := context.WithCancel(context.Background())
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
 	server := &opencodeServer{connectorID: connectorID, registryKey: registryKey, inputKey: inputKey, major: major, baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
-		ctx: ctx, cancel: cancel, done: make(chan struct{}), chats: make(map[string]*opencodeRuntime), refs: 1}
+		ctx: ctx, cancel: cancel, done: make(chan struct{}), chats: make(map[string]*opencodeRuntime), ancestors: make(map[string]string), refs: 1}
 	if err := server.ready(); err != nil {
 		cancel()
 		_ = process.Kill()
@@ -623,9 +624,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			sid = part.SessionID
 		}
 	}
-	s.mu.Lock()
-	driver := s.chats[sid]
-	s.mu.Unlock()
+	driver, child := s.driverForSession(sid)
 	if driver != nil {
 		switch typ {
 		case "message.updated":
@@ -684,12 +683,12 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		driver.mu.Lock()
 		role := driver.roles[delta.MessageID]
 		partType := driver.parts[delta.PartID]
-		if delta.Field == "text" && role == "assistant" && partType == "text" {
+		if !child && delta.Field == "text" && role == "assistant" && partType == "text" {
 			if driver.active {
 				driver.text.WriteString(delta.Delta)
 				driver.manager.emitDelta(driver.chatID, delta.Delta)
 			}
-		} else if delta.Field == "text" && role == "assistant" && partType == "reasoning" && driver.active {
+		} else if !child && delta.Field == "text" && role == "assistant" && partType == "reasoning" && driver.active {
 			driver.manager.emitThinking(driver.chatID, delta.Delta)
 		}
 		driver.mu.Unlock()
@@ -717,7 +716,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 		driver.mu.Lock()
 		role := driver.roles[part.MessageID]
-		if part.Delta != "" && role == "assistant" && driver.active {
+		if !child && part.Delta != "" && role == "assistant" && driver.active {
 			switch part.Part.Type {
 			case "text":
 				driver.text.WriteString(part.Delta)
@@ -789,6 +788,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}()
 	case "session.idle", "session.status":
 		if typ == "session.idle" {
+			if child {
+				return nil
+			}
 			return driver.finish(nil)
 		}
 		var status struct {
@@ -798,9 +800,15 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			return err
 		}
 		if status.Type == "idle" {
+			if child {
+				return nil
+			}
 			return driver.finish(nil)
 		}
 	case "session.error":
+		if child {
+			return nil
+		}
 		var failure struct {
 			Error any `json:"error"`
 		}
@@ -810,6 +818,92 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		return driver.finish(fmt.Errorf("opencode session error: %v", failure.Error))
 	}
 	return nil
+}
+
+// driverForSession routes subagent session events to their owning chat. API lookups
+// are bounded and performed without holding s.mu because dispatch runs on SSE reader.
+func (s *opencodeServer) driverForSession(sid string) (*opencodeRuntime, bool) {
+	s.mu.Lock()
+	if d := s.chats[sid]; d != nil {
+		s.mu.Unlock()
+		return d, false
+	}
+	if root, ok := s.ancestors[sid]; ok {
+		d := s.chats[root]
+		s.mu.Unlock()
+		return d, d != nil
+	}
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(s.ctx, 300*time.Millisecond)
+	defer cancel()
+	current := sid
+	seen := map[string]bool{sid: true}
+	root := ""
+	directory := "."
+	if s.major < 2 {
+		s.mu.Lock()
+		for _, d := range s.chats {
+			directory = d.directory
+			break
+		}
+		s.mu.Unlock()
+	}
+	for range 8 {
+		path := "/session/" + url.PathEscape(current)
+		if s.major >= 2 {
+			path = "/api" + path
+		}
+		if s.major < 2 {
+			path += "?directory=" + url.QueryEscape(directory)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
+		if err != nil {
+			break
+		}
+		req.SetBasicAuth("opencode", s.password)
+		resp, err := (&http.Client{Timeout: 300 * time.Millisecond}).Do(req)
+		if err != nil {
+			break
+		}
+		var body struct {
+			Data struct {
+				ParentID string `json:"parentID"`
+			} `json:"data"`
+			ParentID string `json:"parentID"`
+		}
+		decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body)
+		_ = resp.Body.Close()
+		if decodeErr != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			break
+		}
+		parent := body.ParentID
+		if s.major >= 2 {
+			parent = body.Data.ParentID
+		}
+		if parent == "" {
+			break
+		}
+		if seen[parent] {
+			break
+		}
+		seen[parent] = true
+		s.mu.Lock()
+		d := s.chats[parent]
+		s.mu.Unlock()
+		if d != nil {
+			root = parent
+			break
+		}
+		current = parent
+	}
+	s.mu.Lock()
+	if len(s.ancestors) >= 512 {
+		s.ancestors = make(map[string]string)
+	}
+	s.ancestors[sid] = root
+	d := s.chats[root]
+	s.mu.Unlock()
+	return d, d != nil
 }
 
 func opencodeSessionNotFound(resp *http.Response) bool {
@@ -839,9 +933,7 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 	if sid == "" {
 		return nil
 	}
-	s.mu.Lock()
-	driver := s.chats[sid]
-	s.mu.Unlock()
+	driver, child := s.driverForSession(sid)
 	if driver == nil {
 		return nil
 	}
@@ -854,7 +946,7 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			return err
 		}
 		driver.mu.Lock()
-		if driver.active {
+		if !child && driver.active {
 			driver.manager.emitThinking(driver.chatID, delta.Text)
 		}
 		driver.mu.Unlock()
@@ -866,7 +958,7 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			return err
 		}
 		driver.mu.Lock()
-		if driver.active {
+		if !child && driver.active {
 			driver.text.WriteString(delta.Text)
 			driver.manager.emitDelta(driver.chatID, delta.Text)
 		}
@@ -923,8 +1015,14 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			}
 		}()
 	case "session.execution.succeeded", "session.execution.interrupted":
+		if child {
+			return nil
+		}
 		return driver.finish(nil)
 	case "session.execution.failed":
+		if child {
+			return nil
+		}
 		var failure struct {
 			Error struct {
 				Message string `json:"message"`

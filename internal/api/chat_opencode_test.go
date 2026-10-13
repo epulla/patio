@@ -539,6 +539,35 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 		fake.waitPermission(t, answer.want)
 		waitFor(t, func() bool { return !server.chats.Running(chatID) })
 	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "interrupt"}, nil); code != http.StatusAccepted {
+		t.Fatalf("subagent turn send status = %d", code)
+	}
+	fake.publish(map[string]any{"type": "permission.asked", "data": map[string]any{"sessionID": "child-session", "id": "child-permission", "action": "shell"}})
+	approvalID := fake.waitApproval(t, database, chatID)
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": true}, nil); code != http.StatusOK {
+		t.Fatalf("child approval status = %d", code)
+	}
+	fake.waitPermission(t, "once")
+	fake.publish(map[string]any{"type": "session.text.delta", "data": map[string]any{"sessionID": "child-session", "delta": "child leak"}})
+	fake.publish(map[string]any{"type": "session.execution.succeeded", "data": map[string]string{"sessionID": "child-session"}})
+	time.Sleep(50 * time.Millisecond)
+	if !server.chats.Running(chatID) {
+		t.Fatal("child completion finished parent turn")
+	}
+	fake.mu.Lock()
+	if fake.permissionSessions["child-permission"] != "child-session" {
+		t.Fatalf("permission replied to %q", fake.permissionSessions["child-permission"])
+	}
+	fake.mu.Unlock()
+	fake.publish(map[string]any{"type": "session.execution.succeeded", "data": map[string]string{"sessionID": "ses-v2-1"}})
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	var parentText string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&parentText); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(parentText, "child leak") {
+		t.Fatalf("child text leaked into parent reply: %q", parentText)
+	}
 
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+resumeID+"/messages", map[string]string{"text": "resume prompt"}, nil); code != http.StatusAccepted {
 		t.Fatalf("v2 resumed chat send status = %d", code)
@@ -577,22 +606,23 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 }
 
 type openCodeV2Fake struct {
-	t              *testing.T
-	mu             sync.Mutex
-	events         chan []byte
-	password       string
-	creates        int
-	directory      string
-	model          string
-	configParsed   bool
-	interrupts     int
-	promptSessions []string
-	permissions    map[string]string
-	permissionDone chan string
+	t                  *testing.T
+	mu                 sync.Mutex
+	events             chan []byte
+	password           string
+	creates            int
+	directory          string
+	model              string
+	configParsed       bool
+	interrupts         int
+	promptSessions     []string
+	permissions        map[string]string
+	permissionSessions map[string]string
+	permissionDone     chan string
 }
 
 func newOpenCodeV2Fake(t *testing.T) *openCodeV2Fake {
-	return &openCodeV2Fake{t: t, events: make(chan []byte, 64), permissions: make(map[string]string), permissionDone: make(chan string, 4)}
+	return &openCodeV2Fake{t: t, events: make(chan []byte, 64), permissions: make(map[string]string), permissionSessions: make(map[string]string), permissionDone: make(chan string, 4)}
 }
 
 func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
@@ -700,6 +730,15 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 		}
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/session/"), "/")
 		sid := parts[0]
+		if r.Method == http.MethodGet && len(parts) == 1 {
+			parent := ""
+			if sid == "child-session" {
+				parent = "ses-v2-1"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"id": sid, "parentID": parent}})
+			return
+		}
 		if len(parts) == 2 && parts[1] == "prompt" {
 			var body struct {
 				Text string `json:"text"`
@@ -740,6 +779,7 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 			}
 			f.mu.Lock()
 			f.permissions[parts[2]] = body.Decision
+			f.permissionSessions[parts[2]] = sid
 			f.mu.Unlock()
 			f.permissionDone <- parts[2]
 			typeName := "session.execution.succeeded"
