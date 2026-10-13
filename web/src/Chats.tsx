@@ -24,6 +24,7 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
@@ -968,21 +969,18 @@ function Conversation({
           (split ? (
             <IconButton className="ghost" icon="square" label="Close split" onClick={() => setSplit("")} />
           ) : (
-            <div className="split-button">
-              <IconButton className="ghost" icon="columns" label="Split side by side" onClick={() => setSplit("row")} />
-              <Menu label="Split options" buttonClassName="icon ghost" button={<Icon name="chevronDown" />}>
-                {(close) => (
-                  <>
-                    <button role="menuitem" onClick={() => (close(), setSplit("row"))}>
-                      <Icon name="columns" /> Side by side
-                    </button>
-                    <button role="menuitem" onClick={() => (close(), setSplit("column"))}>
-                      <Icon name="rows" /> Stacked
-                    </button>
-                  </>
-                )}
-              </Menu>
-            </div>
+            <SplitButton icon="columns" label="Split side by side" menuLabel="Split options" onClick={() => setSplit("row")}>
+              {(close) => (
+                <>
+                  <button role="menuitem" onClick={() => (close(), setSplit("row"))}>
+                    <Icon name="columns" /> Side by side
+                  </button>
+                  <button role="menuitem" onClick={() => (close(), setSplit("column"))}>
+                    <Icon name="rows" /> Stacked
+                  </button>
+                </>
+              )}
+            </SplitButton>
           ))}
         <IconButton
           className="ghost"

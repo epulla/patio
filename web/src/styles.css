@@ -1716,6 +1716,26 @@ main:has(> .chats) {
 }
 .split-button {
   display: flex;
+  border-radius: var(--radius-field);
+}
+.split-button:hover,
+.split-button:focus-within {
+  background: var(--base-300);
+}
+.split-button > button {
+  border-radius: var(--radius-field) 0 0 var(--radius-field);
+}
+.split-button .split-toggle {
+  width: 24px;
+  border-radius: 0 var(--radius-field) var(--radius-field) 0;
+}
+.split-button:is(:hover, :focus-within) .split-toggle {
+  border-left-color: var(--border);
+}
+.split-button > button:hover,
+.split-button .split-toggle:hover,
+.split-button .split-toggle[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--content) 10%, var(--base-300));
 }
 .split {
   flex: 1;
