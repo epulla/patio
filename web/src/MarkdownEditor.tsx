@@ -1,4 +1,4 @@
-import { useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { IconButton } from "./icons";
 import Markdown from "./Markdown";
 
@@ -17,6 +17,13 @@ export default function MarkdownEditor({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, preview]);
 
   function edit(start: number, end: number, text: string, selectFrom: number, selectTo: number) {
     onChange(value.slice(0, start) + text + value.slice(end));

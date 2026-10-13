@@ -670,7 +670,7 @@ a:has(> .svg-icon) {
 }
 .md-editor textarea,
 .md-preview {
-  min-height: 120px;
+  min-height: 200px;
   padding: 10px 12px;
   font-size: 14px;
 }
@@ -678,6 +678,7 @@ a:has(> .svg-icon) {
   border: 0;
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: none;
+  max-height: 70vh;
   resize: vertical;
   font-family: inherit;
 }
