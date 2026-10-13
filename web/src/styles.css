@@ -264,6 +264,9 @@ a {
 .sidebar.collapsed .nav-label {
   display: none;
 }
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+}
 .ai-nav-group {
   display: flex;
   flex-direction: column;
@@ -1634,6 +1637,15 @@ main:has(> .chats) {
 }
 .badge-pinned {
   color: var(--primary);
+}
+.chat-link .chat-link-pinned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-link-pinned .svg-icon {
+  width: 16px;
+  height: 16px;
 }
 .chat-link small {
   display: flex;

@@ -334,7 +334,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
               aria-current={showGrid ? "page" : undefined}
               onClick={() => navigate("/ai/chats")}
             >
-              <span>
+              <span className="chat-link-pinned">
                 <Icon name="boards" /> Pinned ({pins.ids.length})
               </span>
             </button>
