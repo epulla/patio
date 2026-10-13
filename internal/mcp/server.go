@@ -305,7 +305,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
 		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
 	})
-	addGeneric(s, "create_board", "Create a board. Column type may be classic or temporary; without type, hide_after_days selects temporary, otherwise classic. Temporary columns default to 1 hide_after_days.", h, func(a createBoardArgs) request {
+	addGeneric(s, "create_board", "Create a board with a name and a required short_name code like MP. Column type may be classic or temporary; without type, hide_after_days selects temporary, otherwise classic. Temporary columns default to 1 hide_after_days.", h, func(a createBoardArgs) request {
 		body := createBoardBody{Name: a.Name, ShortName: a.ShortName}
 		if a.Statuses != nil {
 			body.Statuses = make([]createBoardStatusBody, len(a.Statuses))

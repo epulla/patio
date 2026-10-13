@@ -529,6 +529,17 @@ func TestLocalToolJSONFitsConfiguredLimit(t *testing.T) {
 	}
 }
 
+func TestLocalCreateBoardToolSummaryIncludesShortName(t *testing.T) {
+	definition, err := localToolDefinition("create_board", "Create a board with a name and a required short_name code like MP. Column type may be classic or temporary; without type, hide_after_days selects temporary, otherwise classic. Temporary columns default to 1 hide_after_days.", map[string]any{"type": "object"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := definition["function"].(map[string]any)
+	if !strings.Contains(function["description"].(string), "short_name") {
+		t.Fatalf("local create_board description = %q, want short_name", function["description"])
+	}
+}
+
 func TestLocalRuntimeToolListFits(t *testing.T) {
 	ticketTools := fakeTicketTools()
 	tools := make([]map[string]any, 0, 44+len(filetools.Tools()))
