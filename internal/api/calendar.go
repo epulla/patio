@@ -45,7 +45,13 @@ func parseCalendarTime(v string, allDay bool) (string, time.Time, error) {
 	}
 	t, err := time.Parse(time.RFC3339, v)
 	if err != nil {
-		return "", time.Time{}, errors.New("timed values must be RFC3339")
+		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04"} {
+			t, err = time.ParseInLocation(layout, v, time.Local)
+			if err == nil {
+				return t.UTC().Format("2006-01-02T15:04:05.000Z"), t, nil
+			}
+		}
+		return "", time.Time{}, errors.New("times need a timezone offset or local time, e.g. 2026-10-13T10:00:00-05:00 or 2026-10-13T10:00:00; use YYYY-MM-DD for all-day items")
 	}
 	return t.UTC().Format("2006-01-02T15:04:05.000Z"), t, nil
 }

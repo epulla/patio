@@ -137,9 +137,9 @@ type createCalendarItemArgs struct {
 	Kind        string  `json:"kind" jsonschema:"event or reminder"`
 	Title       string  `json:"title" jsonschema:"Calendar item title"`
 	Description string  `json:"description,omitempty" jsonschema:"Optional description"`
-	StartsAt    string  `json:"starts_at" jsonschema:"Start time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
-	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional end time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
-	AllDay      bool    `json:"all_day,omitempty" jsonschema:"True for all-day items using YYYY-MM-DD dates; omit or false for timed items using RFC3339 with offset"`
+	StartsAt    string  `json:"starts_at" jsonschema:"Start time; use YYYY-MM-DD for all-day items, timed items accept RFC3339 with optional offset (local time if omitted)"`
+	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional end time; use YYYY-MM-DD for all-day items, timed items accept RFC3339 with optional offset (local time if omitted)"`
+	AllDay      bool    `json:"all_day,omitempty" jsonschema:"True for all-day items using YYYY-MM-DD dates; omit or false for timed items, whose offset is optional (local time if omitted)"`
 	BoardID     *string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
 	TicketID    *string `json:"ticket_id,omitempty" jsonschema:"Optional linked ticket UUID"`
 }
@@ -148,9 +148,9 @@ type updateCalendarItemArgs struct {
 	Kind        *string `json:"kind,omitempty" jsonschema:"Optional event or reminder"`
 	Title       *string `json:"title,omitempty" jsonschema:"Optional new title"`
 	Description *string `json:"description,omitempty" jsonschema:"Optional new description"`
-	StartsAt    *string `json:"starts_at,omitempty" jsonschema:"Optional new start time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
-	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional new end time; use YYYY-MM-DD for all-day items, RFC3339 with offset for timed items"`
-	AllDay      *bool   `json:"all_day,omitempty" jsonschema:"Optional all-day flag; dates use YYYY-MM-DD, timed values use RFC3339 with offset"`
+	StartsAt    *string `json:"starts_at,omitempty" jsonschema:"Optional new start time; use YYYY-MM-DD for all-day items, timed items accept RFC3339 with optional offset (local time if omitted)"`
+	EndsAt      *string `json:"ends_at,omitempty" jsonschema:"Optional new end time; use YYYY-MM-DD for all-day items, timed items accept RFC3339 with optional offset (local time if omitted)"`
+	AllDay      *bool   `json:"all_day,omitempty" jsonschema:"Optional all-day flag; dates use YYYY-MM-DD, timed values accept an optional offset (local time if omitted)"`
 	BoardID     *string `json:"board_id,omitempty" jsonschema:"Optional board UUID"`
 	TicketID    *string `json:"ticket_id,omitempty" jsonschema:"Optional linked ticket UUID"`
 }
