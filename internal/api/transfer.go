@@ -421,7 +421,7 @@ func (s *Server) exportTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+t.Ticket.Code+`.md"`)
-	fmt.Fprintf(w, "# %s (%s)\n\n- Status: %s\n- Type: %s\n- Created: %s\n- Updated: %s\n- Due date: %s\n\n%s\n\n## History\n", t.Ticket.Title, t.Ticket.Code, t.StatusName, t.TypeName, t.Ticket.Created, t.Ticket.Updated, ptrText(t.Ticket.DueDate), plain(t.Ticket.Description))
+	fmt.Fprintf(w, "# %s (%s)\n\n- Status: %s\n- Type: %s\n- Created: %s\n- Updated: %s\n- Due date: %s\n\n%s\n\n## History\n", t.Ticket.Title, t.Ticket.Code, t.StatusName, t.TypeName, t.Ticket.Created, t.Ticket.Updated, ptrText(t.Ticket.DueDate), t.Ticket.Description)
 	for _, h := range t.History {
 		name := h.UserName
 		if h.IsAI {

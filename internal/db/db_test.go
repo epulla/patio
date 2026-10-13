@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 20 {
-		t.Fatalf("migration count = %d, want 20", migrations)
+	if migrations != 21 {
+		t.Fatalf("migration count = %d, want 21", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -141,6 +141,58 @@ func TestThinkingMigrationUpdatesExistingChatsAndRemovesTools(t *testing.T) {
 	var missingColumnErr error = database.QueryRow(`SELECT tools FROM chat`).Scan(new(int))
 	if missingColumnErr == nil || !strings.Contains(strings.ToLower(missingColumnErr.Error()), "no such column") {
 		t.Errorf("tools column query error = %v", missingColumnErr)
+	}
+}
+
+func TestMarkdownMigrationConvertsHTMLOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "markdown.db")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for version, entry := range entries[:20] {
+		script, err := migrations.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(string(script)); err != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), err)
+		}
+		if _, err := legacy.Exec(fmt.Sprintf("PRAGMA user_version=%d", version+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := legacy.Exec(`PRAGMA foreign_keys=OFF`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`INSERT INTO ticket(id,title,description,status_id,board_id,reporter_id) VALUES('html','HTML','<p>Hello <strong>world</strong></p><ol><li data-list="bullet">Item</li></ol>','todo','board','local'), ('markdown','Markdown','**already markdown**','todo','board','local')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var converted, unchanged string
+	if err := database.QueryRow(`SELECT description FROM ticket WHERE id='html'`).Scan(&converted); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT description FROM ticket WHERE id='markdown'`).Scan(&unchanged); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(converted, "**world**") || !strings.Contains(converted, "- Item") {
+		t.Fatalf("converted description = %q", converted)
+	}
+	if unchanged != "**already markdown**" {
+		t.Fatalf("markdown changed to %q", unchanged)
 	}
 }
 

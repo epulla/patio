@@ -6,9 +6,12 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	_ "modernc.org/sqlite"
 )
 
@@ -49,6 +52,11 @@ func Open(path string) (*sql.DB, error) {
 			return closeOnError(fmt.Errorf("begin migration: %w", err))
 		}
 		if _, err = tx.Exec(string(script)); err == nil {
+			if version+1 == 21 {
+				err = convertLegacyMarkdown(tx)
+			}
+		}
+		if err == nil {
 			_, err = tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", version+1))
 		}
 		if err != nil {
@@ -65,6 +73,54 @@ func Open(path string) (*sql.DB, error) {
 		return closeOnError(fmt.Errorf("seed local user: %w", err))
 	}
 	return db, nil
+}
+
+var htmlTag = regexp.MustCompile(`<\s*[a-zA-Z][^>]*>`)
+
+func convertLegacyMarkdown(tx *sql.Tx) error {
+	for _, tableColumn := range [][2]string{{"ticket", "description"}, {"ticket_comment", "content"}} {
+		query := fmt.Sprintf(`SELECT rowid, %s FROM %s WHERE instr(%s, '<') > 0`, tableColumn[1], tableColumn[0], tableColumn[1])
+		rows, err := tx.Query(query)
+		if err != nil {
+			return err
+		}
+		type item struct {
+			id   int64
+			text string
+		}
+		var items []item
+		for rows.Next() {
+			var v item
+			if err := rows.Scan(&v.id, &v.text); err != nil {
+				rows.Close()
+				return err
+			}
+			if htmlTag.MatchString(v.text) {
+				items = append(items, v)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, v := range items {
+			html := v.text
+			if strings.Contains(html, `data-list="bullet"`) {
+				html = strings.ReplaceAll(strings.ReplaceAll(html, "<ol", "<ul"), "</ol>", "</ul>")
+			}
+			converted, err := htmltomarkdown.ConvertString(html)
+			if err != nil {
+				return fmt.Errorf("convert %s row %d: %w", tableColumn[0], v.id, err)
+			}
+			if _, err := tx.Exec(fmt.Sprintf(`UPDATE %s SET %s=? WHERE rowid=?`, tableColumn[0], tableColumn[1]), converted, v.id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Watch calls changed when another connection commits. data_version is per connection, so it pins one.
