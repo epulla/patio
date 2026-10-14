@@ -11,6 +11,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type UIEvent,
 } from "react";
 import Markdown from "./Markdown";
 import Menu from "./Menu";
@@ -646,6 +647,21 @@ export function Conversation({
     if (box) box.scrollTop = box.scrollHeight;
   }, [detail?.messages.length, streaming, detail?.pending_approvals.length, split]);
 
+  const [away, setAway] = useState(false);
+  const onMessagesScroll = (event: UIEvent<HTMLDivElement>) => {
+    const box = event.currentTarget;
+    setAway(box.scrollHeight - box.scrollTop - box.clientHeight > 200);
+  };
+  const jump = away && (
+    <button
+      type="button"
+      className="jump-latest"
+      onClick={() => end.current?.scrollIntoView({ behavior: "smooth", block: "end" })}
+    >
+      <Icon name="chevronDown" /> Jump to latest
+    </button>
+  );
+
   const ready = !!detail;
   useEffect(() => {
     if (focused && ready) input.current?.focus();
@@ -976,14 +992,16 @@ export function Conversation({
             min={120}
             onChange={setSplitSizes}
           />
-          <div className="messages">
+          <div className="messages" onScroll={onMessagesScroll}>
             {history}
+            {jump}
             <div ref={end} />
           </div>
         </div>
       ) : (
-        <div className="messages">
+        <div className="messages" onScroll={onMessagesScroll}>
           {history}
+          {jump}
           <div ref={end} />
         </div>
       )}

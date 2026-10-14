@@ -3277,3 +3277,20 @@ main.chat-window {
   width: 24px;
   height: 24px;
 }
+.jump-latest {
+  position: sticky;
+  bottom: 8px;
+  align-self: center;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: var(--base-100);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  z-index: 2;
+}
+.jump-latest .svg-icon {
+  width: 16px;
+  height: 16px;
+}
