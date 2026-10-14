@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 export default function Menu({
   label,
@@ -14,6 +14,7 @@ export default function Menu({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const items = () => [
     ...(root.current?.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]') ?? []),
   ];
@@ -26,6 +27,13 @@ export default function Menu({
     };
     document.addEventListener("mousedown", outside);
     return () => document.removeEventListener("mousedown", outside);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!open || !el) return;
+    const overflow = el.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+    if (overflow > 0) el.style.translate = `${-overflow}px 0`;
   }, [open]);
 
   function close(focusTrigger = true) {
@@ -65,6 +73,7 @@ export default function Menu({
       </button>
       {open && (
         <div
+          ref={list}
           className="menu-list compact"
           role="menu"
           aria-label={label}
