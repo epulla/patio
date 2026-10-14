@@ -8,6 +8,10 @@ export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" 
 export type ChatStatus = "working" | "approval" | "reply";
 export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", reply: "check" };
 const statusLabels: Record<ChatStatus, string> = { working: "working", approval: "waiting for approval", reply: "new reply" };
+const minWidth = 320;
+const maxWidth = 720;
+const defaultWidth = 400;
+const clampWidth = (width: number) => Math.min(maxWidth, Math.max(minWidth, Math.round(width)));
 
 export function usePinnedChats(ids: string[], refresh: number) {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -67,7 +71,14 @@ export default function ChatDock({
 }) {
   const [active, setActive] = useState(ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
   const current = ids.includes(active) ? active : ids[0];
+
+  function resize(next: number) {
+    const clamped = clampWidth(next);
+    localStorage.setItem("chat-dock-width", String(clamped));
+    setWidth(clamped);
+  }
 
   useEffect(() => {
     if (status[current] === "reply") onSeen(current);
@@ -81,7 +92,34 @@ export default function ChatDock({
   }, [refresh]);
 
   return (
-    <aside className="chat-dock" aria-label="Pinned chats">
+    <aside className="chat-dock" aria-label="Pinned chats" style={{ width }}>
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-label="Resize pinned chats"
+        aria-orientation="vertical"
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
+        aria-valuenow={width}
+        className="splitter dock-resize"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          const element = event.currentTarget;
+          element.focus();
+          const start = width;
+          const origin = event.clientX;
+          element.setPointerCapture(event.pointerId);
+          element.onpointermove = (moved) => resize(start + origin - moved.clientX);
+          element.onlostpointercapture = () => (element.onpointermove = null);
+        }}
+        onDoubleClick={() => resize(defaultWidth)}
+        onKeyDown={(event) => {
+          const step = ({ ArrowLeft: 24, ArrowRight: -24 } as Record<string, number>)[event.key];
+          if (!step) return;
+          event.preventDefault();
+          resize(width + step);
+        }}
+      />
       <div className="dock-head">
         <div className="dock-chips">
           {ids.map((id) => {
