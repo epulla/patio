@@ -84,6 +84,9 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	if !slices.Contains(fake.promptSessions, "resume-session") {
 		t.Fatalf("reused session was not prompted: %v", fake.promptSessions)
 	}
+	if len(fake.prompts) < 2 || strings.Contains(fake.prompts[1], "You are Martin") {
+		t.Fatalf("reused session prompt unexpectedly contains persona: %q", fake.prompts)
+	}
 	if len(fake.directories) < 3 {
 		t.Fatalf("directory query missing from session calls: %v", fake.directories)
 	}
@@ -659,6 +662,17 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='thinking'`, resumeID).Scan(&offThinkingCount); err != nil || offThinkingCount != 0 {
 		t.Fatalf("thinking rows while disabled = %d, %v", offThinkingCount, err)
 	}
+	fake.mu.Lock()
+	var resumePrompts []string
+	for _, prompt := range fake.prompts {
+		if strings.HasSuffix(prompt, "resume prompt") {
+			resumePrompts = append(resumePrompts, prompt)
+		}
+	}
+	fake.mu.Unlock()
+	if len(resumePrompts) != 2 || !strings.Contains(resumePrompts[1], "You are Martin") {
+		t.Fatalf("recreated session prompt = %q; want persona", resumePrompts)
+	}
 
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "interrupt"}, nil); code != http.StatusAccepted {
 		t.Fatalf("v2 interrupt send status = %d", code)
@@ -751,6 +765,7 @@ type openCodeV2Fake struct {
 	configParsed       bool
 	interrupts         int
 	promptSessions     []string
+	prompts            []string
 	permissions        map[string]string
 	permissionSessions map[string]string
 	permissionDone     chan string
@@ -913,6 +928,7 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 			f.mu.Lock()
 			f.promptAt = time.Now()
 			f.promptSessions = append(f.promptSessions, sid)
+			f.prompts = append(f.prompts, body.Text)
 			f.mu.Unlock()
 			if sid == "missing-session" {
 				w.Header().Set("Content-Type", "application/json")

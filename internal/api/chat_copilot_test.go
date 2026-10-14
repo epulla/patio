@@ -177,6 +177,7 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 	chatID := createDriverTestChat(t, database, connectorID, root)
 	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
 	loaded := make(chan string, 2)
+	prompts := make(chan string, 2)
 	launch := 0
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath:      filepath.Join(root, "test.db"),
@@ -190,7 +191,7 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 				t.Errorf("Copilot args = %v, want %v", args, want)
 			}
 			process := processes[launch]
-			go serveThinkingCopilot(process, launch, loaded)
+			go serveThinkingCopilot(process, launch, loaded, prompts)
 			launch++
 			return process, nil
 		},
@@ -223,6 +224,19 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Copilot did not resume session")
 	}
+	for i := range 2 {
+		select {
+		case got := <-prompts:
+			if i == 0 && !strings.Contains(got, "You are Martin") {
+				t.Fatalf("new session prompt missing persona: %q", got)
+			}
+			if i == 1 && strings.Contains(got, "You are Martin") {
+				t.Fatalf("resumed session prompt contains persona: %q", got)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("Copilot prompt was not received")
+		}
+	}
 	select {
 	case <-processes[0].done:
 	case <-time.After(time.Second):
@@ -230,7 +244,7 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 	}
 }
 
-func serveThinkingCopilot(process *pipeChatProcess, index int, loaded chan<- string) {
+func serveThinkingCopilot(process *pipeChatProcess, index int, loaded chan<- string, prompts chan<- string) {
 	for line := range process.input {
 		var request acpMessage
 		if json.Unmarshal([]byte(line), &request) != nil {
@@ -249,6 +263,15 @@ func serveThinkingCopilot(process *pipeChatProcess, index int, loaded chan<- str
 			loaded <- request.Method + ":" + sessionID
 			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{"sessionId": "session-thinking-copilot"}})
 		case "session/prompt":
+			var params struct {
+				Prompt []struct {
+					Text string `json:"text"`
+				} `json:"prompt"`
+			}
+			_ = json.Unmarshal(request.Params, &params)
+			if len(params.Prompt) > 0 {
+				prompts <- params.Prompt[0].Text
+			}
 			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "session-thinking-copilot", "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"text": "OK"}}}})
 			writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{"stopReason": "end_turn"}})
 		}

@@ -80,6 +80,7 @@ type opencodeRuntime struct {
 	closed        bool
 	release       sync.Once
 	firstPrompt   bool
+	personaPrompt bool
 	mcpNames      []string
 }
 
@@ -111,7 +112,7 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 	}
 	ctx, cancel := context.WithCancel(server.ctx)
 	driver := &opencodeRuntime{manager: m, chatID: c.ID, server: server, directory: c.Workdir, model: c.Model, ctx: ctx, cancel: cancel,
-		roles: make(map[string]string), parts: make(map[string]string), firstPrompt: true}
+		roles: make(map[string]string), parts: make(map[string]string), firstPrompt: true, personaPrompt: c.SessionID == nil || *c.SessionID == ""}
 	driver.mcpNames = []string{"patio"}
 	for _, spec := range external {
 		driver.mcpNames = append(driver.mcpNames, spec.Name)
@@ -381,9 +382,9 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		d.discardTurn()
 		return err
 	}
-	if d.firstPrompt {
+	if d.personaPrompt {
 		request.Text = ChatSystemPrompt(persona) + "\n\n" + request.Text
-		d.firstPrompt = false
+		d.personaPrompt = false
 	}
 	parts := opencodePromptParts(request.Text, files)
 	body := map[string]any{"parts": parts}
@@ -414,6 +415,7 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 			d.server.chats[d.session] = d
 			d.server.mu.Unlock()
 			d.storedSession = false
+			d.personaPrompt = true
 			const note = "opencode was upgraded; earlier context was not carried over."
 			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err != nil {
 				d.discardTurn()

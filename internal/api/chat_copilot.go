@@ -78,7 +78,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 		return nil, fmt.Errorf("start copilot: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external, firstPrompt: true}
+	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external, firstPrompt: c.SessionID == nil || *c.SessionID == ""}
 	d.client = newACPClient(process.Stdin(), process.Stdout(), d.handleMessage)
 	go d.watch()
 	if err := d.initialize(c); err != nil {
