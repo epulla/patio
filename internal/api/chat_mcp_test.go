@@ -35,7 +35,7 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	stdio := mcpServerSpec{Name: "stdio-test", Kind: "stdio", Command: "/bin/test", Args: []string{"--fixture"}, Env: map[string]string{"TOKEN": "stdio-secret"}}
 	token := "Bearer http-secret"
 	httpServer := mcpServerSpec{Name: "http-test", Kind: "http", URL: "https://mcp.example.test/mcp", OAuthHeader: &token}
-	ticket := map[string]any{"command": "/app/patio", "args": []string{"mcp", "-d", "/data/test.db"}}
+	ticket := map[string]any{"command": "/app/patio", "args": []string{"mcp", "-d", "/data/test.db", "-in-app"}}
 	external := []mcpServerSpec{stdio, httpServer}
 
 	claude := claudeMCPServers(ticket, external)
@@ -82,7 +82,7 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	}
 	opencodeV2 := opencodeV2MCPServers("/app/patio", ticket["args"].([]string), external)["servers"].(map[string]any)
 	opencodeV2Ticket := opencodeV2["patio"].(map[string]any)
-	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/patio", "mcp", "-d", "/data/test.db"}) {
+	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/patio", "mcp", "-d", "/data/test.db", "-in-app"}) {
 		t.Fatalf("opencode v2 ticket config = %#v", opencodeV2Ticket)
 	}
 	opencodeV2Stdio := opencodeV2["stdio-test"].(map[string]any)

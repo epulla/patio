@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestMCPServerToolsHideSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +328,7 @@ func TestMCPConnectorTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +364,7 @@ func TestMCPBoardStructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database)
+	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +459,7 @@ func TestMCPSkillTools(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database)
+	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,27 +533,34 @@ func TestMCPSkillTools(t *testing.T) {
 }
 
 func TestMCPInstructions(t *testing.T) {
-	server, err := NewServer(nil, "dev", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	serverTransport, clientTransport := sdk.NewInMemoryTransports()
-	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
-		t.Fatal(err)
-	}
-	client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(context.Background(), clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := session.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
-	got := session.InitializeResult().Instructions
-	if !strings.Contains(got, "After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply.") || !strings.Contains(got, "You are Martin") || !strings.Contains(got, "/tickets/<ticket id>") {
-		t.Fatalf("instructions = %q", got)
+	for _, inApp := range []bool{false, true} {
+		t.Run(fmt.Sprintf("in-app-%t", inApp), func(t *testing.T) {
+			server, err := NewServer(nil, "dev", nil, inApp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			serverTransport, clientTransport := sdk.NewInMemoryTransports()
+			if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+				t.Fatal(err)
+			}
+			client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil)
+			session, err := client.Connect(context.Background(), clientTransport, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := session.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			got := session.InitializeResult().Instructions
+			if !strings.Contains(got, "call create_skill") || !strings.Contains(got, "Your changes are labeled AI") {
+				t.Fatalf("instructions missing hints: %q", got)
+			}
+			if strings.Contains(got, "You are Martin") == inApp || strings.Contains(got, "/tickets/<ticket id>") == inApp {
+				t.Fatalf("instructions persona mismatch: %q", got)
+			}
+		})
 	}
 }
 
@@ -567,7 +575,7 @@ func TestCheck(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database)
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
 	if err != nil {
 		t.Fatal(err)
 	}

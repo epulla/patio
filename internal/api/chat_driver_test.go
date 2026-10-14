@@ -403,7 +403,7 @@ func TestAutoAllowResolvesPendingApprovalWhileRunning(t *testing.T) {
 
 func TestBuildClaudeArgs(t *testing.T) {
 	configPath, err := writeClaudeMCPConfig(t.TempDir(), map[string]any{"patio": map[string]any{
-		"type": "stdio", "command": "/app/mt", "args": []string{"mcp", "-d", "/data/board.db", "-approve-chat", "chat-id"},
+		"type": "stdio", "command": "/app/mt", "args": []string{"mcp", "-d", "/data/board.db", "-approve-chat", "chat-id", "-in-app"},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +440,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := config.Servers["patio"]
-	if server.Command != "/app/mt" || !reflect.DeepEqual(server.Args, []string{"mcp", "-d", "/data/board.db", "-approve-chat", "chat-id"}) {
+	if server.Command != "/app/mt" || !reflect.DeepEqual(server.Args, []string{"mcp", "-d", "/data/board.db", "-approve-chat", "chat-id", "-in-app"}) {
 		t.Fatalf("MCP server config = %#v", server)
 	}
 }

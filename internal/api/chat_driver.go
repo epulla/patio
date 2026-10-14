@@ -555,7 +555,7 @@ func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
 			return nil, err
 		}
 	}
-	return map[string]any{"command": exe, "args": []string{"mcp", "-d", m.dbPath}}, nil
+	return map[string]any{"command": exe, "args": []string{"mcp", "-d", m.dbPath, "-in-app"}}, nil
 }
 
 func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName string, input json.RawMessage) (bool, error) {

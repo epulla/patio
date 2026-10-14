@@ -239,17 +239,18 @@ type ApprovalOptions struct {
 	ChatID       string
 	Timeout      time.Duration
 	PollInterval time.Duration
+	InApp        bool
 }
 
-func NewServer(h http.Handler, version string, database *sql.DB) (*sdk.Server, error) {
-	return newServer(h, version, database, nil)
+func NewServer(h http.Handler, version string, database *sql.DB, inApp bool) (*sdk.Server, error) {
+	return newServer(h, version, database, nil, inApp)
 }
 
 func NewServerWithApproval(h http.Handler, version string, options ApprovalOptions) (*sdk.Server, error) {
-	return newServer(h, version, options.DB, &options)
+	return newServer(h, version, options.DB, &options, options.InApp)
 }
 
-func newServer(h http.Handler, version string, database *sql.DB, approval *ApprovalOptions) (*sdk.Server, error) {
+func newServer(h http.Handler, version string, database *sql.DB, approval *ApprovalOptions, inApp bool) (*sdk.Server, error) {
 	var skills []api.Skill
 	if database != nil {
 		var err error
@@ -258,11 +259,14 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	persona, err := api.MartinPersonaEnabled(database)
-	if err != nil {
-		return nil, fmt.Errorf("load Martin persona setting: %w", err)
+	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply."
+	if !inApp {
+		persona, err := api.MartinPersonaEnabled(database)
+		if err != nil {
+			return nil, fmt.Errorf("load Martin persona setting: %w", err)
+		}
+		instructions = api.ChatSystemPrompt(persona) + " " + instructions
 	}
-	instructions := api.ChatSystemPrompt(persona) + " Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply."
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
 	}

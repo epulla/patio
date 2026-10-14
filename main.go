@@ -279,6 +279,7 @@ func runMCP(args []string) {
 	flags := flag.NewFlagSet("mcp", flag.ExitOnError)
 	dbFile := flags.String("d", "", "database file path (default: per-OS data directory)")
 	approveChat := flags.String("approve-chat", "", "enable Claude approval tool for chat ID")
+	inApp := flags.Bool("in-app", false, "omit chat persona from MCP instructions")
 	if err := flags.Parse(args); err != nil {
 		log.Fatal(err)
 	}
@@ -326,10 +327,10 @@ func runMCP(args []string) {
 			log.Fatalf("approval chat %q not found", *approveChat)
 		}
 		server, err = mcpserver.NewServerWithApproval(handler, version, mcpserver.ApprovalOptions{
-			DB: database, ChatID: *approveChat, Timeout: 10 * time.Minute, PollInterval: 300 * time.Millisecond,
+			DB: database, ChatID: *approveChat, Timeout: 10 * time.Minute, PollInterval: 300 * time.Millisecond, InApp: *inApp,
 		})
 	} else {
-		server, err = mcpserver.NewServer(handler, version, database)
+		server, err = mcpserver.NewServer(handler, version, database, *inApp)
 	}
 	if err != nil {
 		log.Fatalf("create MCP server: %v", err)

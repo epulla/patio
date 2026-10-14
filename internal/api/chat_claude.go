@@ -69,7 +69,7 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 	}
 	configPath := ""
 	if m.options.commandBuilder == nil {
-		ticket := map[string]any{"type": "stdio", "command": exe, "args": []string{"mcp", "-d", m.dbPath, "-approve-chat", c.ID}}
+		ticket := map[string]any{"type": "stdio", "command": exe, "args": []string{"mcp", "-d", m.dbPath, "-approve-chat", c.ID, "-in-app"}}
 		configPath, err = writeClaudeMCPConfig(m.dbDir, claudeMCPServers(ticket, external))
 		if err != nil {
 			return nil, err
