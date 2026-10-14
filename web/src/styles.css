@@ -1142,6 +1142,7 @@ label.days-field {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  container-type: inline-size;
 }
 .ticket-shell {
   display: flex;
@@ -1165,6 +1166,11 @@ label.days-field {
   grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
   align-items: start;
   gap: 24px;
+}
+@container (max-width: 900px) {
+  .ticket-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .ticket-main,
 .ticket-side {
