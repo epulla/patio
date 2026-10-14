@@ -642,15 +642,22 @@ export function Conversation({
     return () => unsubscribe?.();
   }, [id]);
 
+  // Follow new output only while the reader is at the bottom, so scrolling up to read isn't interrupted.
+  const atBottom = useRef(true);
+  useEffect(() => {
+    atBottom.current = true;
+  }, [id]);
   useEffect(() => {
     const box = end.current?.parentElement;
-    if (box) box.scrollTop = box.scrollHeight;
+    if (box && atBottom.current) box.scrollTop = box.scrollHeight;
   }, [detail?.messages.length, streaming, detail?.pending_approvals.length, split]);
 
   const [away, setAway] = useState(false);
   const onMessagesScroll = (event: UIEvent<HTMLDivElement>) => {
     const box = event.currentTarget;
-    setAway(box.scrollHeight - box.scrollTop - box.clientHeight > 200);
+    const distance = box.scrollHeight - box.scrollTop - box.clientHeight;
+    atBottom.current = distance < 80;
+    setAway(distance > 200);
   };
   const jump = away && (
     <button
@@ -739,6 +746,7 @@ export function Conversation({
     if ((!value && !pending.length) || running || uploading || !detail) return;
     setError(undefined);
     setRunning(true);
+    atBottom.current = true;
     try {
       const message = await api.post<ChatMessage>(`/api/chats/${id}/messages`, {
         text: value,
