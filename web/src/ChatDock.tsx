@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, type Chat, type Connector } from "./api";
+import { api, type Board, type Chat, type Connector, type Ticket } from "./api";
 import { navigate } from "./App";
-import { Conversation } from "./Chats";
+import { Conversation, type PageContext } from "./Chats";
 import { Icon, IconButton, type IconName } from "./icons";
 import { pinAriaShortcut, pinNumber, pinShortcut } from "./pins";
 
@@ -12,6 +12,7 @@ const statusLabels: Record<ChatStatus, string> = { working: "working", approval:
 const minWidth = 320;
 const maxWidth = 720;
 const defaultWidth = 400;
+const linkText = (text: string) => text.replace(/[[\]\\]/g, "\\$&");
 const clampWidth = (width: number) => Math.min(maxWidth, Math.max(minWidth, Math.round(width)));
 
 export function usePinnedChats(ids: string[], refresh: number) {
@@ -60,6 +61,7 @@ export default function ChatDock({
   chats,
   status,
   refresh,
+  page,
   onSeen,
   onClose,
 }: {
@@ -67,6 +69,7 @@ export default function ChatDock({
   chats: Chat[];
   status: Record<string, ChatStatus | undefined>;
   refresh: number;
+  page?: { kind: "ticket" | "board"; id: string };
   onSeen: (id: string) => void;
   onClose: () => void;
 }) {
@@ -74,7 +77,31 @@ export default function ChatDock({
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
   const [focusRequest, setFocusRequest] = useState<string>();
+  const [loaded, setLoaded] = useState<{ key: string; context: PageContext }>();
   const current = ids.includes(active) ? active : ids[0];
+  const pageKey = page && `${page.kind}:${page.id}`;
+  const context = loaded && loaded.key === pageKey ? loaded.context : undefined;
+
+  useEffect(() => {
+    if (!page || !pageKey) return;
+    let live = true;
+    const load: Promise<PageContext> =
+      page.kind === "ticket"
+        ? api.get<Ticket>(`/api/tickets/${page.id}`).then((ticket) => ({
+            icon: "ticket",
+            label: ticket.code,
+            line: `Viewing ticket [${linkText(`${ticket.code}: ${ticket.title}`)}](/tickets/${ticket.id})`,
+          }))
+        : api.get<Board>(`/api/boards/${page.id}`).then((board) => ({
+            icon: "boards",
+            label: board.name,
+            line: `Viewing board [${linkText(board.name)}](/boards/${board.id})`,
+          }));
+    load.then((context) => live && setLoaded({ key: pageKey, context })).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [pageKey, refresh]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -176,6 +203,7 @@ export default function ChatDock({
         connectors={connectors}
         compact
         focused={focusRequest === current}
+        context={context}
         otherWindow={chats.find((chat) => chat.id === current)?.other_window}
         onChanged={() => undefined}
       />

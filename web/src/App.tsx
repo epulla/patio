@@ -284,6 +284,13 @@ export default function App() {
           chats={pinned.chats}
           status={pinned.status}
           refresh={refresh}
+          page={
+            ticketMatch
+              ? { kind: "ticket", id: decodeURIComponent(ticketMatch[1]) }
+              : boardMatch
+                ? { kind: "board", id: decodeURIComponent(boardMatch[1]) }
+                : undefined
+          }
           onSeen={pinned.seen}
           onClose={() => toggleDock(false)}
         />

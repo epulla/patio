@@ -1910,6 +1910,23 @@ main.chat-window {
 .pin-kbd {
   flex: none;
 }
+.context-chip {
+  height: 28px;
+  max-width: 160px;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.context-chip .svg-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.context-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .dock-chip .pin-kbd {
   padding: 0 4px;
   font-size: 10px;

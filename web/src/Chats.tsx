@@ -27,7 +27,7 @@ import {
   type Connector,
 } from "./api";
 import { ErrorText, navigate } from "./App";
-import { Icon, IconButton } from "./icons";
+import { Icon, IconButton, type IconName } from "./icons";
 import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
@@ -540,12 +540,18 @@ function Splitter({
   );
 }
 
+export type PageContext = { icon: IconName; label: string; line: string };
+
+// Last page context sent per chat, so the same page isn't repeated on every message.
+const sentContext = new Map<string, string>();
+
 export function Conversation({
   id,
   refresh,
   windowed,
   compact,
   otherWindow,
+  context,
   connectors,
   pinned,
   focused,
@@ -558,6 +564,7 @@ export function Conversation({
   windowed?: boolean;
   compact?: boolean;
   otherWindow?: boolean;
+  context?: PageContext;
   connectors: Connector[];
   pinned?: boolean;
   focused?: boolean;
@@ -575,6 +582,8 @@ export function Conversation({
   const [thinking, setThinking] = useState("");
   const [running, setRunning] = useState(false);
   const [text, setText] = useState("");
+  const [contextOff, setContextOff] = useState<string>();
+  const contextOn = !!context && contextOff !== context.line;
   const [title, setTitle] = useState("");
   const [error, setError] = useState<unknown>();
   const [missing, setMissing] = useState(false);
@@ -748,10 +757,12 @@ export function Conversation({
     setRunning(true);
     atBottom.current = true;
     try {
+      const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
       const message = await api.post<ChatMessage>(`/api/chats/${id}/messages`, {
-        text: value,
+        text: prefix + value,
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
+      if (prefix) sentContext.set(id, context!.line);
       setText("");
       setPending([]);
       setDetail((current) =>
@@ -1157,6 +1168,20 @@ export function Conversation({
                 )}
               </Menu>
             </span>
+            {context && (
+              <button
+                type="button"
+                className="context-chip tip-up"
+                aria-pressed={contextOn}
+                aria-label={`Share ${context.label} with the agent`}
+                data-tip={contextOn ? "Sharing this page with the agent. Click to stop" : "Click to share this page with the agent"}
+                onClick={() => setContextOff(contextOn ? context.line : undefined)}
+              >
+                <Icon name={context.icon} />
+                <span className="context-label">{context.label}</span>
+                {contextOn && <Icon name="x" />}
+              </button>
+            )}
           </div>
           <div className="composer-send">
             <div className="composer-model">
