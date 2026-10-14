@@ -3,6 +3,7 @@ import { api, type Chat, type Connector } from "./api";
 import { navigate } from "./App";
 import { Conversation } from "./Chats";
 import { Icon, IconButton, type IconName } from "./icons";
+import { pinAriaShortcut, pinNumber, pinShortcut } from "./pins";
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
 export type ChatStatus = "working" | "approval" | "reply";
@@ -72,7 +73,22 @@ export default function ChatDock({
   const [active, setActive] = useState(ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
+  const [focusRequest, setFocusRequest] = useState<string>();
   const current = ids.includes(active) ? active : ids[0];
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const n = pinNumber(event, ids.length);
+      if (!n) return;
+      event.preventDefault();
+      const target = ids[n - 1];
+      if (target === current) document.querySelector<HTMLTextAreaElement>(".chat-dock textarea")?.focus();
+      setActive(target);
+      setFocusRequest(target);
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  }, [ids, current]);
 
   function resize(next: number) {
     const clamped = clampWidth(next);
@@ -122,7 +138,7 @@ export default function ChatDock({
       />
       <div className="dock-head">
         <div className="dock-chips">
-          {ids.map((id) => {
+          {ids.map((id, index) => {
             const title = chats.find((chat) => chat.id === id)?.title ?? "Chat";
             const state = status[id];
             return (
@@ -131,8 +147,12 @@ export default function ChatDock({
                 className="dock-chip"
                 aria-pressed={id === current}
                 aria-label={state ? `${title}, ${statusLabels[state]}` : title}
+                aria-keyshortcuts={pinAriaShortcut(index + 1)}
                 onClick={() => setActive(id)}
               >
+                <kbd className="pin-kbd" aria-hidden="true">
+                  {pinShortcut(index + 1)}
+                </kbd>
                 {state && (
                   <span className="dock-dot" data-state={state} aria-hidden="true">
                     <Icon name={statusIcons[state]} />
@@ -155,6 +175,7 @@ export default function ChatDock({
         refresh={refresh}
         connectors={connectors}
         compact
+        focused={focusRequest === current}
         otherWindow={chats.find((chat) => chat.id === current)?.other_window}
         onChanged={() => undefined}
       />

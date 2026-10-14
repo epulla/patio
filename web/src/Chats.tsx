@@ -32,7 +32,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { maxPins, pinLayout, setPins, usePins } from "./pins";
+import { maxPins, pinLayout, pinNumber, pinShortcut, setPins, usePins } from "./pins";
 
 type ChatDetail = {
   chat: Chat;
@@ -203,6 +203,19 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   }
 
   const showGrid = !windowed && pins.ids.length > 0 && (!id || pins.ids.includes(id));
+
+  useEffect(() => {
+    if (!showGrid) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const n = pinNumber(event, pins.ids.length);
+      if (!n) return;
+      event.preventDefault();
+      navigate(`/ai/chats/${pins.ids[n - 1]}`);
+      document.querySelectorAll<HTMLTextAreaElement>(".grid-pane textarea")[n - 1]?.focus();
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  }, [showGrid, pins.ids]);
   const tracks = (sizes: number[]) => sizes.map((size) => `minmax(240px, ${size}fr)`).join(" 6px ");
 
   return (
@@ -384,6 +397,9 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                     >
                       <Icon name="grip" />
                     </span>
+                    <kbd className="pin-kbd" data-tip={`Focus this chat with ${pinShortcut(index + 1)}`}>
+                      {pinShortcut(index + 1)}
+                    </kbd>
                     {pins.ids.length > 1 && (
                       <Menu label="Move chat" buttonClassName="icon ghost" button={<Icon name="more" />}>
                         {(close) => (

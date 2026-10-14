@@ -4,6 +4,17 @@ export type Pins = { ids: string[]; cols: number[]; rows: number[] };
 
 export const maxPins = 9;
 
+const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+export const pinShortcut = (n: number) => (mac ? `⌘${n}` : `Ctrl+${n}`);
+export const pinAriaShortcut = (n: number) => (mac ? `Meta+${n}` : `Control+${n}`);
+
+// Returns N for Cmd/Ctrl+N when N is a pinned position, else 0.
+export function pinNumber(event: KeyboardEvent, count: number) {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return 0;
+  const n = Number(event.key);
+  return Number.isInteger(n) && n >= 1 && n <= count ? n : 0;
+}
+
 export function pinLayout(ids: string[]): Pins {
   const cols = Math.ceil(Math.sqrt(ids.length));
   const rows = cols && Math.ceil(ids.length / cols);

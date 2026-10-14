@@ -1907,7 +1907,15 @@ main.chat-window {
   background: var(--primary);
   color: var(--primary-content);
 }
-.dock-kbd {
+.pin-kbd {
+  flex: none;
+}
+.dock-chip .pin-kbd {
+  padding: 0 4px;
+  font-size: 10px;
+}
+.dock-kbd,
+.pin-kbd {
   padding: 1px 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
