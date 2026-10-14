@@ -2730,10 +2730,8 @@ main.chat-window {
   height: 14px;
 }
 .model-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2746,12 +2744,6 @@ main.chat-window {
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
   font-weight: 400;
 }
-.model-pop.up {
-  top: auto;
-  right: 0;
-  bottom: calc(100% + 6px);
-  left: auto;
-}
 .model-pop input {
   height: 34px;
   font-size: 13px;
@@ -2762,6 +2754,7 @@ main.chat-window {
   list-style: none;
 }
 .model-pop > ul {
+  min-height: 0;
   max-height: 320px;
   overflow-y: auto;
 }
@@ -2773,7 +2766,7 @@ main.chat-window {
 }
 .model-pop [role="option"] {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   padding: 6px 10px 6px 4px;
   border-radius: var(--radius-field);
@@ -2786,13 +2779,16 @@ main.chat-window {
 .model-check {
   flex: none;
   width: 16px;
-  align-self: center;
 }
 .model-check .svg-icon {
   width: 14px;
   height: 14px;
 }
-.model-name {
+.model-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 .model-description {

@@ -1,7 +1,10 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { Icon } from "./icons";
 
 export type ModelOption = { id: string; label: string; description?: string };
+
+const popWidth = 320;
+const popHeight = 390;
 
 const provider = (id: string) => (id.includes("/") ? id.slice(0, id.indexOf("/")) : "");
 const shortLabel = (m: ModelOption) => (m.label === m.id && provider(m.id) ? m.id.slice(provider(m.id).length + 1) : m.label);
@@ -24,6 +27,7 @@ export default function ModelPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [place, setPlace] = useState<CSSProperties>({});
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -41,11 +45,19 @@ export default function ModelPicker({
 
   useEffect(() => {
     if (!open) return;
-    const outside = (event: MouseEvent) => {
+    const outside = (event: Event) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
+    const resize = () => setOpen(false);
+    // The popup is fixed-positioned to escape dialog overflow, so any outside scroll would detach it.
     document.addEventListener("mousedown", outside);
-    return () => document.removeEventListener("mousedown", outside);
+    document.addEventListener("scroll", outside, true);
+    addEventListener("resize", resize);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("scroll", outside, true);
+      removeEventListener("resize", resize);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -53,6 +65,17 @@ export default function ModelPicker({
   }, [open, active, query]);
 
   function show() {
+    const rect = trigger.current!.getBoundingClientRect();
+    const above = rect.top - 22;
+    const below = innerHeight - rect.bottom - 22;
+    const openUp = (up ? above < popHeight : below < popHeight) ? above > below : up;
+    setPlace({
+      ...(openUp ? { bottom: innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
+      ...(up
+        ? { right: Math.max(16, innerWidth - rect.right) }
+        : { left: Math.max(16, Math.min(rect.left, innerWidth - popWidth - 16)) }),
+      maxHeight: openUp ? above : below,
+    });
     setQuery("");
     setActive(Math.max(0, ordered.findIndex((m) => m.id === value)));
     setOpen(true);
@@ -108,7 +131,8 @@ export default function ModelPicker({
       </button>
       {open && (
         <div
-          className={up ? "model-pop up" : "model-pop"}
+          className="model-pop"
+          style={place}
           // Keep focus in the search box when clicking options or padding.
           onMouseDown={(event) => event.target instanceof HTMLInputElement || event.preventDefault()}
         >
@@ -146,8 +170,10 @@ export default function ModelPicker({
                         onClick={() => pick(model)}
                       >
                         <span className="model-check">{model.id === value && <Icon name="check" />}</span>
-                        <span className="model-name">{shortLabel(model)}</span>
-                        {model.description && <span className="model-description muted">{model.description}</span>}
+                        <span className="model-text">
+                          <span>{shortLabel(model)}</span>
+                          {model.description && <span className="model-description muted">{model.description}</span>}
+                        </span>
                       </li>
                     );
                   })}

@@ -38,6 +38,8 @@ Always get models from `useModels` (`web/src/Chats.tsx`): it caches per connecto
 - ↑/↓ move the active option (wraps), Enter picks, Esc closes and returns focus to the trigger, hover sets the active option, outside click or tabbing away closes.
 - ARIA: trigger `aria-haspopup="listbox"`; search input `role="combobox"` with `aria-controls` and `aria-activedescendant`; options `role="option"` with `aria-selected`.
 - The popup keeps focus in the search box on mouse down (except on the input itself).
+- The popup is `position: fixed`, placed from the trigger's rect when opened, so dialogs and `overflow: auto` panels can't clip it. It opens in its preferred direction (`up` or down) unless that side has less than ~390px and the other side has more, caps its height to the space left, and closes on outside scroll or window resize instead of drifting.
+- Options stack name over a muted description; long names wrap instead of squeezing beside the description.
 
 ## Layout rules
 
