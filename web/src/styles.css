@@ -1856,22 +1856,37 @@ main.chat-window {
   min-width: 0;
 }
 .dock-chip {
-  display: block;
+  flex: 1 1 0;
+  min-width: 72px;
+  justify-content: flex-start;
+  gap: 4px;
   height: 28px;
   max-width: 160px;
   padding: 0 10px;
-  line-height: 26px;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 12px;
 }
-.dock-dot {
-  margin-right: 4px;
+.dock-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.dock-dot.working {
+.dock-dot {
+  flex: none;
+  display: flex;
+}
+.dock-dot .svg-icon,
+.dock-count .svg-icon {
+  width: 12px;
+  height: 12px;
+}
+.dock-dot[data-state="working"] {
   color: var(--primary);
+}
+.dock-dot[data-state="working"] .svg-icon {
+  fill: currentColor;
+}
+.dock-dot[data-state="approval"] {
+  color: var(--warning);
 }
 .dock-chip[aria-pressed="true"] .dock-dot {
   color: inherit;
@@ -1879,6 +1894,14 @@ main.chat-window {
 .dock-chip[aria-pressed="true"] {
   background: var(--primary);
   color: var(--primary-content);
+}
+.dock-kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font: 500 11px var(--mono);
+  cursor: default;
 }
 .dock-note {
   display: flex;
@@ -1893,13 +1916,14 @@ main.chat-window {
   position: absolute;
   top: 2px;
   right: 2px;
-  min-width: 16px;
+  width: 16px;
   height: 16px;
-  padding: 0 4px;
   border-radius: 8px;
   background: var(--content);
   color: var(--sidebar-from);
-  font: 600 10px/16px var(--mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .chats.windowed {
   grid-template-columns: minmax(0, 1fr);

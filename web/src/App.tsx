@@ -6,7 +6,7 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
 import Chats from "./Chats";
-import ChatDock, { statusMarks, usePinnedChats } from "./ChatDock";
+import ChatDock, { dockShortcut, statusIcons, usePinnedChats } from "./ChatDock";
 import { usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
@@ -263,12 +263,16 @@ export default function App() {
             <button
               className="icon ghost dock-toggle"
               aria-label={`Pinned chats (${pins.ids.length})${dockAlert === "approval" ? ", approval needed" : dockAlert === "reply" ? ", new reply" : ""}`}
-              data-tip={`Pinned chats (${pins.ids.length}) ⌘J`}
+              data-tip={`Pinned chats (${pins.ids.length}) ${dockShortcut}`}
               aria-expanded={dockOpen}
               onClick={() => toggleDock(!dockOpen)}
             >
-              <Icon name="chat" />
-              <span className="dock-count" aria-hidden="true">{dockAlert ? statusMarks[dockAlert] : pins.ids.length}</span>
+              <Icon name="panelRight" />
+              {dockAlert && (
+                <span className="dock-count" aria-hidden="true">
+                  <Icon name={statusIcons[dockAlert]} />
+                </span>
+              )}
             </button>
           )}
         </div>

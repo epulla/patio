@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { api, type Chat, type Connector } from "./api";
 import { navigate } from "./App";
 import { Conversation } from "./Chats";
-import { IconButton } from "./icons";
+import { Icon, IconButton, type IconName } from "./icons";
 
+export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
 export type ChatStatus = "working" | "approval" | "reply";
-export const statusMarks: Record<ChatStatus, string> = { working: "●", approval: "✋", reply: "✓" };
+export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", reply: "check" };
 const statusLabels: Record<ChatStatus, string> = { working: "working", approval: "waiting for approval", reply: "new reply" };
 
 export function usePinnedChats(ids: string[], refresh: number) {
@@ -95,17 +96,20 @@ export default function ChatDock({
                 onClick={() => setActive(id)}
               >
                 {state && (
-                  <span className={`dock-dot ${state}`} aria-hidden="true">
-                    {statusMarks[state]}
+                  <span className="dock-dot" data-state={state} aria-hidden="true">
+                    <Icon name={statusIcons[state]} />
                   </span>
                 )}
-                {title}
+                <span className="dock-title">{title}</span>
               </button>
             );
           })}
         </div>
         <IconButton className="ghost" icon="externalLink" label="Open in Chats" onClick={() => navigate(`/ai/chats/${current}`)} />
-        <IconButton className="ghost" icon="chevronsRight" label="Close dock" onClick={onClose} />
+        <kbd className="dock-kbd" title={`Toggle pinned chats with ${dockShortcut}`}>
+          {dockShortcut}
+        </kbd>
+        <IconButton className="ghost" icon="chevronsRight" label={`Close dock (${dockShortcut})`} onClick={onClose} />
       </div>
       <Conversation
         key={current}
