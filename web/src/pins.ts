@@ -8,6 +8,15 @@ const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 export const pinShortcut = (n: number) => (mac ? `⌘${n}` : `Ctrl+${n}`);
 export const pinAriaShortcut = (n: number) => (mac ? `Meta+${n}` : `Control+${n}`);
 
+export const unpinShortcut = mac ? "⌘⇧U" : "Ctrl+Shift+U";
+export const unpinAriaShortcut = mac ? "Meta+Shift+U" : "Control+Shift+U";
+export const isUnpinKey = (event: KeyboardEvent) =>
+  (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "u";
+
+export function unpin(id: string) {
+  setPins((pins) => pinLayout(pins.ids.filter((pinned) => pinned !== id)));
+}
+
 // Returns N for Cmd/Ctrl+N when N is a pinned position, else 0.
 export function pinNumber(event: KeyboardEvent, count: number) {
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return 0;

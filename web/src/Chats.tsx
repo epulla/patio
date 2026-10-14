@@ -32,7 +32,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { maxPins, pinLayout, pinNumber, pinShortcut, setPins, usePins } from "./pins";
+import { isUnpinKey, maxPins, pinLayout, pinNumber, pinShortcut, setPins, unpin, usePins } from "./pins";
 
 type ChatDetail = {
   chat: Chat;
@@ -207,6 +207,13 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   useEffect(() => {
     if (!showGrid) return;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isUnpinKey(event)) {
+        const pane = document.activeElement?.closest(".grid-pane");
+        const index = pane ? [...document.querySelectorAll(".grid-pane")].indexOf(pane) : pins.ids.indexOf(id ?? "");
+        if (index < 0) return;
+        event.preventDefault();
+        return unpin(pins.ids[index]);
+      }
       const n = pinNumber(event, pins.ids.length);
       if (!n) return;
       event.preventDefault();
@@ -215,7 +222,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
-  }, [showGrid, pins.ids]);
+  }, [showGrid, pins.ids, id]);
   const tracks = (sizes: number[]) => sizes.map((size) => `minmax(240px, ${size}fr)`).join(" 6px ");
 
   return (

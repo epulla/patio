@@ -3,7 +3,7 @@ import { api, type Board, type Chat, type Connector, type Ticket } from "./api";
 import { navigate } from "./App";
 import { Conversation, type PageContext } from "./Chats";
 import { Icon, IconButton, type IconName } from "./icons";
-import { pinAriaShortcut, pinNumber, pinShortcut } from "./pins";
+import { isUnpinKey, pinAriaShortcut, pinNumber, pinShortcut, unpin, unpinAriaShortcut, unpinShortcut } from "./pins";
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
 export type ChatStatus = "working" | "approval" | "reply";
@@ -105,6 +105,10 @@ export default function ChatDock({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isUnpinKey(event)) {
+        event.preventDefault();
+        return unpinChat(current);
+      }
       const n = pinNumber(event, ids.length);
       if (!n) return;
       event.preventDefault();
@@ -116,6 +120,12 @@ export default function ChatDock({
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [ids, current]);
+
+  function unpinChat(id: string) {
+    const index = ids.indexOf(id);
+    if (id === current) setActive(ids[index + 1] ?? ids[index - 1]);
+    unpin(id);
+  }
 
   function resize(next: number) {
     const clamped = clampWidth(next);
@@ -169,24 +179,32 @@ export default function ChatDock({
             const title = chats.find((chat) => chat.id === id)?.title ?? "Chat";
             const state = status[id];
             return (
-              <button
-                key={id}
-                className="dock-chip"
-                aria-pressed={id === current}
-                aria-label={state ? `${title}, ${statusLabels[state]}` : title}
-                aria-keyshortcuts={pinAriaShortcut(index + 1)}
-                onClick={() => setActive(id)}
-              >
-                <kbd className="pin-kbd" aria-hidden="true">
-                  {pinShortcut(index + 1)}
-                </kbd>
-                {state && (
-                  <span className="dock-dot" data-state={state} aria-hidden="true">
-                    <Icon name={statusIcons[state]} />
-                  </span>
-                )}
-                <span className="dock-title">{title}</span>
-              </button>
+              <div key={id} className="dock-chip-wrap">
+                <button
+                  className="dock-chip"
+                  aria-pressed={id === current}
+                  aria-label={state ? `${title}, ${statusLabels[state]}` : title}
+                  aria-keyshortcuts={pinAriaShortcut(index + 1)}
+                  onClick={() => setActive(id)}
+                >
+                  <kbd className="pin-kbd" aria-hidden="true">
+                    {pinShortcut(index + 1)}
+                  </kbd>
+                  {state && (
+                    <span className="dock-dot" data-state={state} aria-hidden="true">
+                      <Icon name={statusIcons[state]} />
+                    </span>
+                  )}
+                  <span className="dock-title">{title}</span>
+                </button>
+                <IconButton
+                  className="ghost dock-unpin"
+                  icon="pin"
+                  label={`Unpin ${title} (${unpinShortcut})`}
+                  aria-keyshortcuts={id === current ? unpinAriaShortcut : undefined}
+                  onClick={() => unpinChat(id)}
+                />
+              </div>
             );
           })}
         </div>

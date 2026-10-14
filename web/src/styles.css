@@ -1867,15 +1867,47 @@ main.chat-window {
   gap: 4px;
   min-width: 0;
 }
-.dock-chip {
+.dock-chip-wrap {
+  position: relative;
+  display: flex;
   flex: 1 1 0;
   min-width: 72px;
+  max-width: 160px;
+}
+.dock-chip {
+  flex: 1;
+  min-width: 0;
   justify-content: flex-start;
   gap: 4px;
   height: 28px;
-  max-width: 160px;
   padding: 0 10px;
   font-size: 12px;
+}
+.dock-unpin.icon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+}
+.dock-unpin .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.dock-chip-wrap:is(:hover, :focus-within) .dock-unpin,
+.dock-chip[aria-pressed="true"] + .dock-unpin {
+  opacity: 1;
+}
+.dock-chip-wrap:is(:hover, :focus-within) .dock-chip,
+.dock-chip[aria-pressed="true"] {
+  padding-right: 28px;
+}
+.dock-chip[aria-pressed="true"] + .dock-unpin {
+  color: var(--primary-content);
 }
 .dock-title {
   min-width: 0;
