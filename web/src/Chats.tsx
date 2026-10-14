@@ -1,5 +1,6 @@
 import { confirmDialog } from "./confirm";
 import {
+  memo,
   useEffect,
   useId,
   useRef,
@@ -857,62 +858,7 @@ export function Conversation({
           and images with the paperclip, drag and drop, or paste.
         </p>
       )}
-      {timeline(detail).map((message) =>
-        "tool_name" in message ? (
-          <details key={message.id} className="tool-line">
-            <summary>
-              <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
-              <MessageTime iso={message.created_at} />
-            </summary>
-            <pre>{`${message.tool_name}\n${prettyJSON(message.input_json)}`}</pre>
-          </details>
-        ) : message.role === "tool" ? (
-          <details key={message.id} className="tool-line">
-            <summary>
-              <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
-            </summary>
-            <pre>{prettyJSON(message.content)}</pre>
-          </details>
-        ) : message.role === "thinking" ? (
-          detail.chat.show_thinking && <ThinkingBlock key={message.id} text={message.content} />
-        ) : (
-          <div key={message.id} className={`message-row ${message.role}`}>
-            {(message.role !== "user" || message.content) && (
-              <div className={`message ${message.role}`}>
-                {message.role === "assistant" || message.role === "user" ? (
-                  <Markdown text={message.content} onFile={reveal} />
-                ) : (
-                  message.content
-                )}
-              </div>
-            )}
-            {message.attachments.length > 0 && (
-              <ul className="attachments sent" aria-label="Attachments">
-                {message.attachments.map((attachment) => (
-                  <li key={attachment.name}>
-                    <button
-                      type="button"
-                      className={attachment.kind === "image" ? "attachment image" : "attachment"}
-                      title="Show in folder"
-                      onClick={() => revealAttachment(attachment)}
-                    >
-                      {attachment.kind === "image" && (
-                        <img
-                          src={`/api/chats/${id}/attachments/${encodeURIComponent(attachment.name)}`}
-                          alt=""
-                          loading="lazy"
-                        />
-                      )}
-                      <AttachmentLabel attachment={attachment} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <MessageTime iso={message.created_at} />
-          </div>
-        ),
-      )}
+      <Timeline chatId={id} detail={detail} onError={setError} />
       {thinking && detail.chat.show_thinking && <ThinkingBlock text={thinking} live />}
       {streaming && (
         <div className="message assistant">
@@ -1303,6 +1249,98 @@ function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
   const auto = detail.auto_approvals ?? [];
   if (!auto.length) return detail.messages;
   return [...detail.messages, ...auto].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+// Memoized so typing and streamed deltas don't re-render hundreds of past messages.
+const Timeline = memo(function Timeline({
+  chatId,
+  detail,
+  onError,
+}: {
+  chatId: string;
+  detail: ChatDetail;
+  onError: (reason: unknown) => void;
+}) {
+  async function reveal(path: string) {
+    try {
+      await api.post(`/api/chats/${chatId}/reveal`, { path });
+      onError(undefined);
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+  async function revealAttachment(attachment: ChatAttachment) {
+    try {
+      await api.post(`/api/chats/${chatId}/attachments/${encodeURIComponent(attachment.name)}/reveal`, {});
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+  return (
+    <>
+    {timeline(detail).map((message) =>
+      "tool_name" in message ? (
+        <ToolLine key={message.id} body={() => `${message.tool_name}\n${prettyJSON(message.input_json)}`}>
+          <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
+          <MessageTime iso={message.created_at} />
+        </ToolLine>
+      ) : message.role === "tool" ? (
+        <ToolLine key={message.id} body={() => prettyJSON(message.content)}>
+          <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
+        </ToolLine>
+      ) : message.role === "thinking" ? (
+        detail.chat.show_thinking && <ThinkingBlock key={message.id} text={message.content} />
+      ) : (
+        <div key={message.id} className={`message-row ${message.role}`}>
+          {(message.role !== "user" || message.content) && (
+            <div className={`message ${message.role}`}>
+              {message.role === "assistant" || message.role === "user" ? (
+                <Markdown text={message.content} onFile={reveal} />
+              ) : (
+                message.content
+              )}
+            </div>
+          )}
+          {message.attachments.length > 0 && (
+            <ul className="attachments sent" aria-label="Attachments">
+              {message.attachments.map((attachment) => (
+                <li key={attachment.name}>
+                  <button
+                    type="button"
+                    className={attachment.kind === "image" ? "attachment image" : "attachment"}
+                    title="Show in folder"
+                    onClick={() => revealAttachment(attachment)}
+                  >
+                    {attachment.kind === "image" && (
+                      <img
+                        src={`/api/chats/${chatId}/attachments/${encodeURIComponent(attachment.name)}`}
+                        alt=""
+                        loading="lazy"
+                      />
+                    )}
+                    <AttachmentLabel attachment={attachment} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <MessageTime iso={message.created_at} />
+        </div>
+      ),
+    )}
+    </>
+  );
+});
+
+// Formats the full input only when expanded; tool inputs can be 20k chars and chats have hundreds.
+function ToolLine({ body, children }: { body: () => string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="tool-line" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>{children}</summary>
+      {open && <pre>{body()}</pre>}
+    </details>
+  );
 }
 
 function prettyJSON(text: string): string {

@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useMemo, type MouseEvent } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { navigate } from "./App";
@@ -7,9 +7,10 @@ const appRoute =
   /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
 
 export default function Markdown({ text, onFile }: { text: string; onFile?: (path: string) => void }) {
-  const html = DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), {
-    FORBID_TAGS: ["img"],
-  });
+  const html = useMemo(
+    () => DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), { FORBID_TAGS: ["img"] }),
+    [text],
+  );
   function onClick(event: MouseEvent<HTMLDivElement>) {
     const link = (event.target as HTMLElement).closest("a");
     const href = link?.getAttribute("href");
