@@ -2310,7 +2310,8 @@ main.chat-window {
   flex-direction: column;
   gap: 16px;
 }
-.skill-editor label:not(.switch) {
+.skill-editor label:not(.switch),
+.skill-editor .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2702,10 +2703,103 @@ main.chat-window {
 .composer-model > .muted {
   white-space: nowrap;
 }
-.composer-model select {
+.composer-model .model-trigger {
   height: 32px;
   max-width: 220px;
-  padding: 0 8px;
+  font-size: 13px;
+}
+.model-picker {
+  position: relative;
+  min-width: 0;
+}
+.model-trigger {
+  justify-content: space-between;
+  width: 100%;
+  max-width: 260px;
+  padding: 0 10px 0 12px;
+  background: var(--base-100);
+  font-weight: 400;
+}
+.model-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model-trigger .svg-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.model-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 6px;
+  background: var(--base-100);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+  font-weight: 400;
+}
+.model-pop.up {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: auto;
+}
+.model-pop input {
+  height: 34px;
+  font-size: 13px;
+}
+.model-pop ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.model-pop > ul {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.model-group {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.model-pop [role="option"] {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px 6px 4px;
+  border-radius: var(--radius-field);
+  font-size: 13px;
+  cursor: pointer;
+}
+.model-pop [role="option"][data-active] {
+  background: var(--base-200);
+}
+.model-check {
+  flex: none;
+  width: 16px;
+  align-self: center;
+}
+.model-check .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.model-name {
+  overflow-wrap: anywhere;
+}
+.model-description {
+  font-size: 12px;
+}
+.model-empty {
+  padding: 8px 10px;
   font-size: 13px;
 }
 .composer .menu-list {

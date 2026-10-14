@@ -15,6 +15,7 @@ import {
 } from "react";
 import Markdown from "./Markdown";
 import Menu from "./Menu";
+import ModelPicker, { type ModelOption } from "./ModelPicker";
 import {
   api,
   type AllowedFolder,
@@ -46,8 +47,6 @@ type ChatEvent =
   | { type: "done"; message?: ChatMessage }
   | { type: "error"; message: string }
   | { type: "approval" };
-
-type ModelOption = { id: string; label: string; description?: string };
 
 export const lateTitle = "The app was closed at the scheduled time, so this ran when it opened again.";
 
@@ -91,21 +90,6 @@ function MessageTime({ iso }: { iso: string }) {
     <time className="message-time" dateTime={iso} title={date.toLocaleString()}>
       {date.toLocaleString(undefined, options)}
     </time>
-  );
-}
-
-export function ModelOptions({ models, current, loading }: { models: ModelOption[]; current: string; loading: boolean }) {
-  if (loading) return <option value={current}>Loading models…</option>;
-  return (
-    <>
-      {models.map((m) => (
-        <option key={m.id} value={m.id}>
-          {m.label}
-          {m.description ? ` · ${m.description}` : ""}
-        </option>
-      ))}
-      {current && !models.some((m) => m.id === current) && <option value={current}>{current}</option>}
-    </>
   );
 }
 
@@ -1159,21 +1143,17 @@ export function Conversation({
             </span>
           </div>
           <div className="composer-send">
-            {!compact && (
-            <label className="composer-model">
-              <span className="muted">{connector ? connector.name : "Connector removed"}</span>
-              <span className="sr-only">Model</span>
-              <select
+            <div className="composer-model">
+              {!compact && <span className="muted">{connector ? connector.name : "Connector removed"}</span>}
+              <ModelPicker
+                up
+                models={models}
                 value={detail.chat.model}
-                disabled={!connector || running || modelsLoading}
-                aria-busy={modelsLoading}
-                onChange={(event) => update({ model: event.target.value })}
-              >
-                <ModelOptions models={models} current={detail.chat.model} loading={modelsLoading} />
-              </select>
-              {modelsLoading && <span className="sr-only" role="status">Loading models</span>}
-            </label>
-            )}
+                loading={modelsLoading}
+                disabled={!connector || running}
+                onChange={(model) => update({ model })}
+              />
+            </div>
             {running ? (
               <button type="button" onClick={stop}>
                 <span className="spinner" aria-hidden="true" /> Stop
@@ -1605,19 +1585,12 @@ function NewChatDialog({
               ))}
             </select>
           </label>
-          <label>
+          <div className="field">
             <span className="label-row">
               Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
             </span>
-            <select
-              value={model}
-              disabled={modelsLoading}
-              aria-busy={modelsLoading}
-              onChange={(event) => setModel(event.target.value)}
-            >
-              <ModelOptions models={models} current={model} loading={modelsLoading} />
-            </select>
-          </label>
+            <ModelPicker models={models} value={model} loading={modelsLoading} onChange={setModel} />
+          </div>
           <label className="wide">
             Folder
             <select value={folder} onChange={(event) => setFolder(event.target.value)}>

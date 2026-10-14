@@ -9,7 +9,8 @@ import {
   type ScheduledTaskRun,
 } from "./api";
 import { ErrorText, navigate } from "./App";
-import { lateTitle, ModelOptions, useModels } from "./Chats";
+import { lateTitle, useModels } from "./Chats";
+import ModelPicker from "./ModelPicker";
 import { ConnectorRequired } from "./Connectors";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
@@ -490,19 +491,12 @@ function TaskEditor({
               ))}
             </select>
           </label>
-          <label>
+          <div className="field">
             <span className="label-row">
               Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
             </span>
-            <select
-              value={model}
-              disabled={modelsLoading}
-              aria-busy={modelsLoading}
-              onChange={(event) => setModel(event.target.value)}
-            >
-              <ModelOptions models={models} current={model} loading={modelsLoading} />
-            </select>
-          </label>
+            <ModelPicker models={models} value={model} loading={modelsLoading} onChange={setModel} />
+          </div>
           <label className="grow">
             Folder
             <select value={folder} onChange={(event) => setFolder(event.target.value)}>
