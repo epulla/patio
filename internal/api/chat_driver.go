@@ -102,14 +102,17 @@ func mcpSpecHeaders(spec mcpServerSpec) map[string]string {
 }
 
 type chatRuntime struct {
-	mu               sync.Mutex
-	driver           chatRuntimeDriver
-	busy             bool
-	stopping         bool
-	changingModel    bool
-	stopDone         chan struct{}
-	connectorID      string
-	startedThinking  *bool
+	mu              sync.Mutex
+	driver          chatRuntimeDriver
+	busy            bool
+	stopping        bool
+	changingModel   bool
+	stopDone        chan struct{}
+	connectorID     string
+	startedThinking *bool
+	// streamMu guards the fields below. Drivers emit deltas while holding their own lock,
+	// and Send holds mu while calling the driver, so these must not need mu.
+	streamMu         sync.Mutex
 	showThinking     bool
 	pendingThinking  strings.Builder
 	assistantHasText bool
@@ -236,9 +239,11 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
 	rt.connectorID = *c.ConnectorID
+	rt.streamMu.Lock()
 	rt.showThinking = c.ShowThinking
 	rt.pendingThinking.Reset()
 	rt.assistantHasText, rt.toolAfterText = false, false
+	rt.streamMu.Unlock()
 	rt.busy = true
 	if rt.driver == nil {
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
@@ -358,7 +363,7 @@ func (m *chatManager) emit(id string, data any) { m.emitEvent("chat:"+id, data) 
 func (m *chatManager) emitDelta(id, text string) string {
 	rt := m.lookupRuntime(id)
 	if rt != nil {
-		rt.mu.Lock()
+		rt.streamMu.Lock()
 		if text != "" && rt.toolAfterText {
 			text = "\n\n" + text
 			rt.toolAfterText = false
@@ -366,7 +371,7 @@ func (m *chatManager) emitDelta(id, text string) string {
 		if text != "" {
 			rt.assistantHasText = true
 		}
-		rt.mu.Unlock()
+		rt.streamMu.Unlock()
 	}
 	if err := m.flushThinking(id); err != nil {
 		m.emit(id, map[string]any{"type": "error", "message": err.Error()})
@@ -380,12 +385,15 @@ func (m *chatManager) emitThinking(id, text string) {
 	if rt == nil {
 		return
 	}
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	if !rt.showThinking {
+	rt.streamMu.Lock()
+	show := rt.showThinking
+	if show {
+		rt.pendingThinking.WriteString(text)
+	}
+	rt.streamMu.Unlock()
+	if !show {
 		return
 	}
-	rt.pendingThinking.WriteString(text)
 	m.emit(id, map[string]any{"type": "thinking_delta", "text": text})
 }
 
@@ -394,10 +402,10 @@ func (m *chatManager) flushThinking(id string) error {
 	if rt == nil {
 		return nil
 	}
-	rt.mu.Lock()
+	rt.streamMu.Lock()
 	text := rt.pendingThinking.String()
 	rt.pendingThinking.Reset()
-	rt.mu.Unlock()
+	rt.streamMu.Unlock()
 	if text == "" {
 		return nil
 	}
@@ -437,9 +445,9 @@ func (m *chatManager) emitToolResult(id, summary, result string) error {
 
 func (m *chatManager) markToolAfterText(id string) {
 	if rt := m.lookupRuntime(id); rt != nil {
-		rt.mu.Lock()
+		rt.streamMu.Lock()
 		rt.toolAfterText = rt.toolAfterText || rt.assistantHasText
-		rt.mu.Unlock()
+		rt.streamMu.Unlock()
 	}
 }
 
@@ -455,7 +463,9 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
 		rt.busy = false
+		rt.streamMu.Lock()
 		rt.assistantHasText, rt.toolAfterText = false, false
+		rt.streamMu.Unlock()
 		m.markRuntimeActiveLocked(id, rt)
 		rt.mu.Unlock()
 	}

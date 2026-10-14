@@ -136,6 +136,28 @@ func TestEmitThinkingPersistsBeforeToolOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
+// Send holds rt.mu while a driver starts a turn; a driver goroutine emitting deltas must not wait on it.
+func TestStreamEmitsDoNotWaitOnRuntimeLock(t *testing.T) {
+	database, _, root := chatAPI(t)
+	chatID := createDriverTestChat(t, database, createTestConnector(t, database), root)
+	manager := newChatManager(database, Options{Emit: func(string, any) {}})
+	rt := manager.runtime(chatID)
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		manager.emitThinking(chatID, "reason")
+		manager.markToolAfterText(chatID)
+		manager.emitDelta(chatID, "text")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream emit blocked on rt.mu")
+	}
+}
+
 func TestDriverThinkingOnOff(t *testing.T) {
 	for _, driverName := range []string{"claude", "codex", "copilot"} {
 		for _, enabled := range []bool{true, false} {
