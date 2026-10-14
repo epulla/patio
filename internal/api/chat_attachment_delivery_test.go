@@ -208,6 +208,7 @@ func (*attachmentCodexClient) Models(context.Context) ([]connectorcli.Model, err
 func (*attachmentCodexClient) Notifications() <-chan connectorcli.Notification      { return nil }
 func (*attachmentCodexClient) Requests() <-chan connectorcli.Request                { return nil }
 func (*attachmentCodexClient) Respond(json.RawMessage, any) error                   { return nil }
+func (*attachmentCodexClient) RespondError(json.RawMessage, int, string) error      { return nil }
 func (*attachmentCodexClient) Close() error                                         { return nil }
 
 func TestCodexSendWritesLocalImageInputItem(t *testing.T) {

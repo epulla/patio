@@ -233,6 +233,136 @@ func TestCodexTurnOverPipes(t *testing.T) {
 	}
 }
 
+func TestCodexMCPRequestsOverPipe(t *testing.T) {
+	tests := []struct {
+		name, method, wantResult string
+		params                   json.RawMessage
+		manual, allow            bool
+		wantError                string
+	}{
+		{name: "auto allow", method: "mcpServer/elicitation/request", params: json.RawMessage(`{"threadId":"01a13b67-9cc2-7262-a8db-f04fd1c14bc3","turnId":"01a13b67-9d7a-7801-8a29-ea16139e486d","serverName":"patio","mode":"form","_meta":{"codex_approval_kind":"mcp_tool_call","persist":["session","always"],"tool_description":"List all boards","tool_params":{},"tool_params_display":[]},"message":"Allow the patio MCP server to run tool \"list_boards\"?","requestedSchema":{"type":"object","properties":{}}}`), wantResult: `{"action":"accept"}`, allow: true},
+		{name: "manual allow", method: "mcpServer/elicitation/request", params: json.RawMessage(`{"threadId":"01a13b67-9cc2-7262-a8db-f04fd1c14bc3","turnId":"01a13b67-9d7a-7801-8a29-ea16139e486d","serverName":"patio","mode":"form","_meta":{"codex_approval_kind":"mcp_tool_call","persist":["session","always"],"tool_description":"List all boards","tool_params":{},"tool_params_display":[]},"message":"Allow the patio MCP server to run tool \"list_boards\"?","requestedSchema":{"type":"object","properties":{}}}`), wantResult: `{"action":"accept"}`, manual: true, allow: true},
+		{name: "manual deny", method: "mcpServer/elicitation/request", params: json.RawMessage(`{"threadId":"01a13b67-9cc2-7262-a8db-f04fd1c14bc3","turnId":"01a13b67-9d7a-7801-8a29-ea16139e486d","serverName":"patio","mode":"form","_meta":{"codex_approval_kind":"mcp_tool_call","persist":["session","always"],"tool_description":"List all boards","tool_params":{},"tool_params_display":[]},"message":"Allow the patio MCP server to run tool \"list_boards\"?","requestedSchema":{"type":"object","properties":{}}}`), wantResult: `{"action":"decline"}`, manual: true},
+		{name: "form elicitation", method: "mcpServer/elicitation/request", params: json.RawMessage(`{"serverName":"patio","mode":"form","_meta":{"codex_approval_kind":"form","tool_params":{}},"message":"Please provide input"}`), wantResult: `{"action":"cancel"}`, wantError: "MCP server patio asked for input"},
+		{name: "unsupported method", method: "item/tool/requestUserInput", wantError: "unsupported by Patio: item/tool/requestUserInput"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			database, handler, root := chatAPI(t)
+			server := handler.(*Server)
+			connectorID := createCodexTestConnector(t, database)
+			chatID := createDriverTestChat(t, database, connectorID, root)
+			if !test.manual && test.allow {
+				if _, err := database.Exec(`UPDATE chat SET auto_allow=1 WHERE id=?`, chatID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var mu sync.Mutex
+			var output []byte
+			pipe, err := pipeCodexClient(context.Background(), func(read *bufio.Reader, write io.Writer) error {
+				init, err := readCodexRequest(read, "initialize")
+				if err != nil {
+					return err
+				}
+				if err := writeCodexResponse(write, init.ID, map[string]any{}); err != nil {
+					return err
+				}
+				if err := expectCodexNotification(read, "initialized"); err != nil {
+					return err
+				}
+				line, err := json.Marshal(map[string]any{"id": 77, "method": test.method, "params": test.params})
+				if err != nil {
+					return err
+				}
+				if _, err := write.Write(append(line, '\n')); err != nil {
+					return err
+				}
+				response, err := read.ReadBytes('\n')
+				if err == nil {
+					mu.Lock()
+					output = response
+					mu.Unlock()
+				}
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			driver := &codexRuntime{manager: server.chats, chatID: chatID, client: pipe.client, ctx: context.Background(), items: map[string]json.RawMessage{}}
+			select {
+			case request := <-pipe.client.Requests():
+				go driver.handleRequest(request)
+			case <-time.After(time.Second):
+				t.Fatal("pipe request not received")
+			}
+			if test.manual {
+				var approvalID string
+				waitFor(t, func() bool {
+					return database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&approvalID) == nil
+				})
+				if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": test.allow}, nil); code != http.StatusOK {
+					t.Fatalf("answer approval status = %d", code)
+				}
+			}
+			select {
+			case err := <-pipe.serverDone:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("pipe response timed out")
+			}
+			mu.Lock()
+			got := strings.TrimSpace(string(output))
+			mu.Unlock()
+			var response map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(got), &response); err != nil {
+				t.Fatalf("response line %q: %v", got, err)
+			}
+			if test.wantResult != "" {
+				var result map[string]string
+				if err := json.Unmarshal(response["result"], &result); err != nil {
+					t.Fatal(err)
+				}
+				encoded, _ := json.Marshal(result)
+				if string(encoded) != test.wantResult {
+					t.Fatalf("response result = %s, want %s", encoded, test.wantResult)
+				}
+			} else {
+				var rpcErr struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				}
+				if err := json.Unmarshal(response["error"], &rpcErr); err != nil || rpcErr.Code != -32601 || !strings.Contains(rpcErr.Message, test.method) {
+					t.Fatalf("response error = %#v, %v", rpcErr, err)
+				}
+			}
+			var notes []string
+			rows, err := database.Query(`SELECT content FROM chat_message WHERE chat_id=? AND role='error'`, chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for rows.Next() {
+				var note string
+				if err := rows.Scan(&note); err != nil {
+					t.Fatal(err)
+				}
+				notes = append(notes, note)
+			}
+			if err := rows.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if test.wantError == "" && len(notes) != 0 {
+				t.Fatalf("unexpected error messages: %v", notes)
+			}
+			if test.wantError != "" && (len(notes) != 1 || !strings.Contains(notes[0], test.wantError)) {
+				t.Fatalf("error messages = %v, want note containing %q", notes, test.wantError)
+			}
+			_ = pipe.client.Close()
+		})
+	}
+}
+
 func TestLowestCodexEffortSelection(t *testing.T) {
 	models := []connectorcli.Model{
 		{ID: "other", Efforts: []string{"minimal"}},
@@ -292,6 +422,7 @@ func (c *effortTestCodexClient) Models(context.Context) ([]connectorcli.Model, e
 func (*effortTestCodexClient) Notifications() <-chan connectorcli.Notification { return nil }
 func (*effortTestCodexClient) Requests() <-chan connectorcli.Request           { return nil }
 func (*effortTestCodexClient) Respond(json.RawMessage, any) error              { return nil }
+func (*effortTestCodexClient) RespondError(json.RawMessage, int, string) error { return nil }
 func (*effortTestCodexClient) Close() error                                    { return nil }
 
 func TestCodexThreadResumeWithoutPrompt(t *testing.T) {

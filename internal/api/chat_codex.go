@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ type codexClient interface {
 	Notifications() <-chan connectorcli.Notification
 	Requests() <-chan connectorcli.Request
 	Respond(json.RawMessage, any) error
+	RespondError(json.RawMessage, int, string) error
 	Close() error
 }
 
@@ -406,8 +408,59 @@ func (d *codexRuntime) handleRequest(request connectorcli.Request) {
 			decision = "accept"
 		}
 		result = map[string]string{"decision": decision}
+	case "mcpServer/elicitation/request":
+		var params struct {
+			ServerName string `json:"serverName"`
+			Message    string `json:"message"`
+			Meta       struct {
+				Kind       string          `json:"codex_approval_kind"`
+				ToolParams json.RawMessage `json:"tool_params"`
+			} `json:"_meta"`
+		}
+		if err := json.Unmarshal(request.Params, &params); err != nil {
+			d.finish(err)
+			return
+		}
+		if params.Meta.Kind == "mcp_tool_call" {
+			start := strings.Index(params.Message, `tool "`)
+			if start < 0 {
+				d.finish(errors.New("Codex MCP approval missing tool name"))
+				return
+			}
+			start += len(`tool "`)
+			end := strings.Index(params.Message[start:], `"`)
+			if end < 0 {
+				d.finish(errors.New("Codex MCP approval missing tool name"))
+				return
+			}
+			allowed, err := d.manager.requestApproval(d.ctx, d.chatID, params.ServerName+"."+params.Message[start:start+end], params.Meta.ToolParams)
+			if err != nil {
+				d.finish(err)
+				return
+			}
+			action := "decline"
+			if allowed {
+				action = "accept"
+			}
+			result = map[string]string{"action": action}
+		} else {
+			note := fmt.Sprintf("MCP server %s asked for input; Patio doesn't support that yet", params.ServerName)
+			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
+				d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
+			}
+			log.Printf("unsupported Codex MCP elicitation from server %q", params.ServerName)
+			result = map[string]string{"action": "cancel"}
+		}
 	default:
-		result = map[string]string{"decision": "decline"}
+		message := "unsupported by Patio: " + request.Method
+		log.Printf("unsupported Codex request method %q", request.Method)
+		if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", message); err == nil {
+			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": message})
+		}
+		if err := d.client.RespondError(request.ID, -32601, message); err != nil {
+			d.finish(fmt.Errorf("respond to Codex request: %w", err))
+		}
+		return
 	}
 	if err := d.client.Respond(request.ID, result); err != nil {
 		d.finish(fmt.Errorf("respond to Codex request: %w", err))

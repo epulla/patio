@@ -139,6 +139,22 @@ func (c *Client) Respond(id json.RawMessage, result any) error {
 	}{id, result})
 }
 
+func (c *Client) RespondError(id json.RawMessage, code int, message string) error {
+	if len(id) == 0 || !json.Valid(id) {
+		return fmt.Errorf("invalid app-server request id")
+	}
+	return c.write(struct {
+		ID    json.RawMessage `json:"id"`
+		Error struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}{ID: id, Error: struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}{Code: code, Message: message}})
+}
+
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	var response struct {
 		Data []struct {
