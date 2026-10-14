@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -79,6 +80,7 @@ type opencodeRuntime struct {
 	closed        bool
 	release       sync.Once
 	firstPrompt   bool
+	mcpNames      []string
 }
 
 var opencodeServers = struct {
@@ -110,6 +112,10 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 	ctx, cancel := context.WithCancel(server.ctx)
 	driver := &opencodeRuntime{manager: m, chatID: c.ID, server: server, directory: c.Workdir, model: c.Model, ctx: ctx, cancel: cancel,
 		roles: make(map[string]string), parts: make(map[string]string), firstPrompt: true}
+	driver.mcpNames = []string{"patio"}
+	for _, spec := range external {
+		driver.mcpNames = append(driver.mcpNames, spec.Name)
+	}
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.session = *c.SessionID
 		driver.storedSession = true
@@ -350,6 +356,9 @@ func (d *opencodeRuntime) createSession() error {
 }
 
 func (d *opencodeRuntime) send(request ChatSendRequest) error {
+	if d.firstPrompt {
+		d.waitMCP()
+	}
 	files, err := loadChatAttachmentFiles(d.directory, request.Attachments)
 	if err != nil {
 		return err
@@ -418,6 +427,109 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		return err
 	}
 	return nil
+}
+
+func (d *opencodeRuntime) waitMCP() {
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(d.ctx, 15*time.Second)
+	defer cancel()
+	notes := make(map[string]string)
+	defer func() {
+		for _, name := range d.mcpNames {
+			if note, ok := notes[name]; ok {
+				if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
+					d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
+				}
+			}
+		}
+	}()
+	var lastErr error
+	firstPoll := true
+	needsCatalogSettle := false
+	for {
+		endpoint := "/mcp?directory=" + url.QueryEscape(d.directory)
+		if d.server.major >= 2 {
+			endpoint = "/api/mcp?location%5Bdirectory%5D=" + url.QueryEscape(d.directory)
+		}
+		resp, err := d.server.request(ctx, http.MethodGet, endpoint, nil)
+		if err == nil {
+			var states map[string]struct {
+				Status string `json:"status"`
+				Error  string `json:"error"`
+			}
+			if d.server.major >= 2 {
+				var result struct {
+					Data []struct {
+						Name   string `json:"name"`
+						Status struct {
+							Status string `json:"status"`
+							Error  string `json:"error"`
+						} `json:"status"`
+					} `json:"data"`
+				}
+				err = json.NewDecoder(resp.Body).Decode(&result)
+				_ = resp.Body.Close()
+				states = make(map[string]struct {
+					Status string `json:"status"`
+					Error  string `json:"error"`
+				})
+				for _, item := range result.Data {
+					states[item.Name] = struct {
+						Status string `json:"status"`
+						Error  string `json:"error"`
+					}{item.Status.Status, item.Status.Error}
+				}
+			} else {
+				err = json.NewDecoder(resp.Body).Decode(&states)
+				_ = resp.Body.Close()
+			}
+			if err == nil {
+				settled := true
+				for _, name := range d.mcpNames {
+					state, ok := states[name]
+					if !ok || state.Status == "pending" {
+						settled = false
+						continue
+					}
+					if state.Status == "failed" || state.Status == "needs_auth" {
+						notes[name] = fmt.Sprintf("MCP server %s unavailable: %s", name, state.Error)
+					}
+				}
+				if firstPoll && !settled {
+					needsCatalogSettle = true
+				}
+				firstPoll = false
+				if settled {
+					if needsCatalogSettle {
+						// burnedout: assumed 1s; OpenCode adds tools to the catalog shortly after reporting connected
+						timer := time.NewTimer(time.Second)
+						select {
+						case <-ctx.Done():
+							timer.Stop()
+							log.Printf("OpenCode MCP wait timed out after %s", time.Since(started))
+							return
+						case <-timer.C:
+						}
+					}
+					log.Printf("OpenCode MCP ready after %s", time.Since(started))
+					break
+				}
+			}
+			lastErr = err
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				log.Printf("OpenCode MCP status failed after %s: %v", time.Since(started), lastErr)
+			} else {
+				log.Printf("OpenCode MCP wait timed out after %s", time.Since(started))
+			}
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func opencodePromptParts(text string, files []chatAttachmentFile) []any {

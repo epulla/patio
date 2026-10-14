@@ -327,6 +327,11 @@ func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if f.auth(w, r) {
+			_, _ = w.Write([]byte(`{"patio":{"status":"connected"},"stdio-test":{"status":"connected"},"http-test":{"status":"connected"}}`))
+		}
+	})
 	mux.HandleFunc("/doc", func(w http.ResponseWriter, r *http.Request) {
 		if f.auth(w, r) {
 			w.WriteHeader(http.StatusOK)
@@ -674,6 +679,67 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	}
 }
 
+func TestOpenCodeV2WaitsForMCPAndNotesFailure(t *testing.T) {
+	for _, mode := range []string{"delayed", "failed"} {
+		t.Run(mode, func(t *testing.T) {
+			database, _, root := chatAPI(t)
+			connectorID := createTestConnector(t, database)
+			_, _ = database.Exec(`UPDATE connector SET kind='opencode' WHERE id=?`, connectorID)
+			chatID := createDriverTestChat(t, database, connectorID, root)
+			fake := newOpenCodeV2Fake(t)
+			fake.mcpMode = mode
+			var emittedMu sync.Mutex
+			var emitted []map[string]any
+			server := New(database, "local", false, "dev", root, Options{
+				DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
+				opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+				opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
+				Emit: func(_ string, event any) {
+					emittedMu.Lock()
+					emitted = append(emitted, event.(map[string]any))
+					emittedMu.Unlock()
+				},
+			})
+			addChatMCPTestServers(t, server)
+			t.Cleanup(func() { _ = server.Close() })
+			if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "first"}, nil); code != http.StatusAccepted {
+				t.Fatalf("send status = %d", code)
+			}
+			waitFor(t, func() bool { fake.mu.Lock(); defer fake.mu.Unlock(); return !fake.promptAt.IsZero() })
+			fake.mu.Lock()
+			settledAt, promptAt := fake.settledAt, fake.promptAt
+			fake.mu.Unlock()
+			if settledAt.IsZero() || promptAt.Before(settledAt) {
+				t.Fatalf("prompt at %v before settled at %v", promptAt, settledAt)
+			}
+			if mode == "delayed" && promptAt.Sub(settledAt) < time.Second {
+				t.Fatalf("prompt followed MCP settle by %s, want at least 1s", promptAt.Sub(settledAt))
+			}
+			if mode == "failed" {
+				var note string
+				if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='error' LIMIT 1`, chatID).Scan(&note); err != nil || !strings.HasPrefix(note, "MCP server stdio-test unavailable:") {
+					t.Fatalf("MCP note = %q, %v", note, err)
+				}
+				var noteCount int
+				if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='error' AND content=?`, chatID, note).Scan(&noteCount); err != nil || noteCount != 1 {
+					t.Fatalf("MCP note count = %d, %v", noteCount, err)
+				}
+				emittedMu.Lock()
+				emittedCount := 0
+				for _, event := range emitted {
+					if event["type"] == "error" && strings.HasPrefix(event["message"].(string), "MCP server stdio-test unavailable:") {
+						emittedCount++
+					}
+				}
+				emittedMu.Unlock()
+				if emittedCount != 1 {
+					t.Fatalf("failed MCP note emissions = %d, want 1", emittedCount)
+				}
+			}
+		})
+	}
+}
+
 type openCodeV2Fake struct {
 	t                  *testing.T
 	mu                 sync.Mutex
@@ -688,6 +754,11 @@ type openCodeV2Fake struct {
 	permissions        map[string]string
 	permissionSessions map[string]string
 	permissionDone     chan string
+	mcpMode            string
+	mcpCalls           int
+	mcpStarted         time.Time
+	settledAt          time.Time
+	promptAt           time.Time
 }
 
 func newOpenCodeV2Fake(t *testing.T) *openCodeV2Fake {
@@ -695,6 +766,7 @@ func newOpenCodeV2Fake(t *testing.T) *openCodeV2Fake {
 }
 
 func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
+	f.mcpStarted = time.Now()
 	var port, configRaw string
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == "--port" {
@@ -748,6 +820,29 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 		if f.auth(w, r) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"version":"2.0.26"}`))
+		}
+	})
+	mux.HandleFunc("/api/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if f.auth(w, r) {
+			f.mu.Lock()
+			f.mcpCalls++
+			body := `{"location":{},"data":[{"name":"patio","status":{"status":"connected"}},{"name":"stdio-test","status":{"status":"connected"}},{"name":"http-test","status":{"status":"connected"}}]}`
+			if f.mcpMode == "delayed" && f.mcpCalls == 1 {
+				body = `{"location":{},"data":[]}`
+			} else if f.mcpMode == "delayed" && time.Since(f.mcpStarted) < 300*time.Millisecond {
+				body = `{"location":{},"data":[{"name":"patio","status":{"status":"pending"}},{"name":"stdio-test","status":{"status":"pending"}},{"name":"http-test","status":{"status":"pending"}}]}`
+			} else if f.mcpMode == "failed" {
+				status := "connected"
+				if f.mcpCalls < 5 {
+					status = "pending"
+				}
+				body = fmt.Sprintf(`{"location":{},"data":[{"name":"patio","status":{"status":"connected"}},{"name":"stdio-test","status":{"status":"failed","error":"bad credentials"}},{"name":"http-test","status":{"status":"%s"}}]}`, status)
+			}
+			if !strings.Contains(body, `"pending"`) && !strings.Contains(body, `"data":[]`) {
+				f.settledAt = time.Now()
+			}
+			f.mu.Unlock()
+			_, _ = w.Write([]byte(body))
 		}
 	})
 	mux.HandleFunc("/api/event", func(w http.ResponseWriter, r *http.Request) {
@@ -816,6 +911,7 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 				f.t.Errorf("decode v2 prompt body: %v", err)
 			}
 			f.mu.Lock()
+			f.promptAt = time.Now()
 			f.promptSessions = append(f.promptSessions, sid)
 			f.mu.Unlock()
 			if sid == "missing-session" {
