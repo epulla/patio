@@ -2461,7 +2461,8 @@ main.chat-window {
   padding: 4px 2px;
 }
 .message {
-  max-width: 760px;
+  max-width: min(760px, 100%);
+  min-width: 0;
   padding: 10px 14px;
   border-radius: var(--radius-box);
   white-space: pre-wrap;
@@ -2473,7 +2474,8 @@ main.chat-window {
   background: var(--base-300);
 }
 .message-row {
-  max-width: 760px;
+  max-width: min(760px, 100%);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-self: flex-start;
@@ -2496,7 +2498,7 @@ main.chat-window {
 }
 .message-row.assistant,
 .message.assistant {
-  max-width: none;
+  max-width: 100%;
 }
 .message.assistant,
 .message.user {
