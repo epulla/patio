@@ -30,6 +30,7 @@ export default function Picker({
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const typed = useRef({ text: "", at: 0 });
+  const opensUp = useRef(false);
   const id = useId();
 
   const options: PickerOption[] = empty === undefined ? items : [{ id: "", name: empty }, ...items];
@@ -54,14 +55,20 @@ export default function Picker({
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
     const resize = () => setOpen(false);
-    // Fixed-positioned to escape dialog overflow, so any outside scroll would detach it.
+    // Fixed-positioned to escape dialog overflow, so it follows the trigger on outside scroll.
+    const scroll = (event: Event) => {
+      if (root.current?.contains(event.target as Node)) return;
+      const rect = trigger.current?.getBoundingClientRect();
+      if (!rect || rect.bottom < 0 || rect.top > innerHeight) return setOpen(false);
+      position(opensUp.current);
+    };
     document.addEventListener("mousedown", outside);
-    document.addEventListener("scroll", outside, true);
+    document.addEventListener("scroll", scroll, true);
     addEventListener("resize", resize);
     list.current?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("mousedown", outside);
-      document.removeEventListener("scroll", outside, true);
+      document.removeEventListener("scroll", scroll, true);
       removeEventListener("resize", resize);
     };
   }, [open]);
@@ -70,11 +77,12 @@ export default function Picker({
     if (open) document.getElementById(optionID(active))?.scrollIntoView({ block: "nearest" });
   }, [open, active]);
 
-  function show() {
+  function position(up?: boolean) {
     const rect = trigger.current!.getBoundingClientRect();
     const above = rect.top - 22;
     const below = innerHeight - rect.bottom - 22;
-    const up = below < popHeight && above > below;
+    up ??= below < popHeight && above > below;
+    opensUp.current = up;
     setPlace({
       ...(up ? { bottom: innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
       left: rect.left,
@@ -82,6 +90,10 @@ export default function Picker({
       maxWidth: innerWidth - rect.left - 16,
       maxHeight: Math.min(popHeight, up ? above : below),
     });
+  }
+
+  function show() {
+    position();
     setActive(Math.max(0, options.findIndex((option) => option.id === value)));
     setOpen(true);
   }

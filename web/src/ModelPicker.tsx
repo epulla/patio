@@ -56,6 +56,7 @@ export default function ModelPicker({
   const [pins, setPins] = useState<string[]>([]);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const opensUp = useRef(false);
   const id = useId();
 
   const all = value && !models.some((m) => m.id === value) ? [...models, { id: value, label: value }] : models;
@@ -86,13 +87,19 @@ export default function ModelPicker({
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
     const resize = () => setOpen(false);
-    // The popup is fixed-positioned to escape dialog overflow, so any outside scroll would detach it.
+    // The popup is fixed-positioned to escape dialog overflow, so it follows the trigger on outside scroll.
+    const scroll = (event: Event) => {
+      if (root.current?.contains(event.target as Node)) return;
+      const rect = trigger.current?.getBoundingClientRect();
+      if (!rect || rect.bottom < 0 || rect.top > innerHeight) return setOpen(false);
+      position(opensUp.current);
+    };
     document.addEventListener("mousedown", outside);
-    document.addEventListener("scroll", outside, true);
+    document.addEventListener("scroll", scroll, true);
     addEventListener("resize", resize);
     return () => {
       document.removeEventListener("mousedown", outside);
-      document.removeEventListener("scroll", outside, true);
+      document.removeEventListener("scroll", scroll, true);
       removeEventListener("resize", resize);
     };
   }, [open]);
@@ -101,11 +108,12 @@ export default function ModelPicker({
     if (open) document.getElementById(optionID(active))?.scrollIntoView({ block: "nearest" });
   }, [open, active, query]);
 
-  function show() {
+  function position(openUp?: boolean) {
     const rect = trigger.current!.getBoundingClientRect();
     const above = rect.top - 22;
     const below = innerHeight - rect.bottom - 22;
-    const openUp = (up ? above < popHeight : below < popHeight) ? above > below : up;
+    openUp ??= (up ? above < popHeight : below < popHeight) ? above > below : !!up;
+    opensUp.current = openUp;
     setPlace({
       ...(openUp ? { bottom: innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
       ...(up
@@ -113,6 +121,10 @@ export default function ModelPicker({
         : { left: Math.max(16, Math.min(rect.left, innerWidth - popWidth - 16)) }),
       maxHeight: openUp ? above : below,
     });
+  }
+
+  function show() {
+    position();
     setQuery("");
     setPins(pinKind ? loadPins(pinKind) : []);
     setActive(Math.max(0, ordered.findIndex((m) => m.id === value)));
