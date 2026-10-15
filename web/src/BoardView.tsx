@@ -75,6 +75,9 @@ export default function BoardView({
             value={query}
             onChange={(event) => search(event.target.value)}
           />
+          <button className="primary" onClick={() => navigate(`/boards/${id}/new`)}>
+            <Icon name="plus" /> New ticket
+          </button>
           <ExportMenu boardId={id} />
           <button onClick={() => setSettings(!settings)}>
             <Icon name={settings ? "x" : "settings"} />
@@ -804,25 +807,6 @@ function NewTicket({
   onDone: () => void;
   onError: (error: unknown) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    try {
-      await api.post(`/api/boards/${data.board.id}/tickets`, {
-        title,
-        description,
-        status_id: statusId,
-        ticket_type_id: type || null,
-        due_date: dueDate || null,
-      });
-      onDone();
-    } catch (error) {
-      onError(error);
-    }
-  }
   return (
     <div
       className="modal"
@@ -831,48 +815,116 @@ function NewTicket({
       aria-labelledby="new-ticket-title"
       onKeyDown={(event) => event.key === "Escape" && onDone()}
     >
-      <form className="panel ticket-form" onSubmit={submit}>
-        <div className="page-heading">
-          <h2 id="new-ticket-title">New ticket</h2>
-          <IconButton
-            type="button"
-            className="ghost"
-            icon="x"
-            label="Close"
-            onClick={onDone}
-          />
+      <TicketForm data={data} statusId={statusId} onCreated={onDone} onClose={onDone} onError={onError} />
+    </div>
+  );
+}
+
+export function NewTicketPage({ boardId }: { boardId: string }) {
+  const [data, setData] = useState<BoardData>();
+  const [error, setError] = useState<unknown>();
+  useEffect(() => {
+    api.get<BoardData>(`/api/boards/${boardId}/data`).then(setData).catch(setError);
+  }, [boardId]);
+  const back = () => navigate(`/boards/${boardId}`);
+  if (!data)
+    return (
+      <div className="loading">
+        Loading board...
+        <ErrorText error={error} />
+      </div>
+    );
+  return (
+    <div className="stack">
+      <button className="back" onClick={back}>
+        <Icon name="arrowLeft" /> {data.board.name}
+      </button>
+      <ErrorText error={error} />
+      <TicketForm
+        data={data}
+        onCreated={(ticket) => navigate(`/tickets/${ticket.id}`)}
+        onClose={back}
+        onError={setError}
+      />
+    </div>
+  );
+}
+
+function TicketForm({
+  data,
+  statusId,
+  onCreated,
+  onClose,
+  onError,
+}: {
+  data: BoardData;
+  statusId?: string;
+  onCreated: (ticket: Ticket) => void;
+  onClose: () => void;
+  onError: (error: unknown) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [type, setType] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      onCreated(
+        await api.post<Ticket>(`/api/boards/${data.board.id}/tickets`, {
+          title,
+          description,
+          ...(statusId ? { status_id: statusId } : {}),
+          ticket_type_id: type || null,
+          due_date: dueDate || null,
+        }),
+      );
+    } catch (error) {
+      onError(error);
+    }
+  }
+  return (
+    <form className="panel ticket-form" onSubmit={submit}>
+      <div className="page-heading">
+        <h2 id="new-ticket-title">New ticket</h2>
+        <IconButton
+          type="button"
+          className="ghost"
+          icon="x"
+          label="Close"
+          onClick={onClose}
+        />
+      </div>
+      <label>
+        Title
+        <input
+          autoFocus
+          required
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+      </label>
+      <div className="field">
+        Description
+        <MarkdownEditor label="Description" value={description} onChange={setDescription} />
+      </div>
+      <div className="two">
+        <div className="field">
+          Type
+          <Picker label="Type" empty="No type" options={data.ticket_types} value={type} onChange={setType} />
         </div>
         <label>
-          Title
+          Due date
           <input
-            autoFocus
-            required
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            type="date"
+            value={dueDate}
+            onChange={(event) => setDueDate(event.target.value)}
           />
         </label>
-        <div className="field">
-          Description
-          <MarkdownEditor label="Description" value={description} onChange={setDescription} />
-        </div>
-        <div className="two">
-          <div className="field">
-            Type
-            <Picker label="Type" empty="No type" options={data.ticket_types} value={type} onChange={setType} />
-          </div>
-          <label>
-            Due date
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-            />
-          </label>
-        </div>
-        <button className="primary">
-          <Icon name="plus" /> Create ticket
-        </button>
-      </form>
-    </div>
+      </div>
+      <button className="primary">
+        <Icon name="plus" /> Create ticket
+      </button>
+    </form>
   );
 }

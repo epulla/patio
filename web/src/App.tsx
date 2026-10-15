@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import BoardList from "./BoardList";
-import BoardView from "./BoardView";
+import BoardView, { NewTicketPage } from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
@@ -179,6 +179,7 @@ export default function App() {
     );
 
   const boardMatch = path.match(/^\/boards\/([^/]+)$/);
+  const newTicketMatch = path.match(/^\/boards\/([^/]+)\/new$/);
   const printMatch = path.match(/^\/print\/tickets\/([^/]+)$/);
   const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
   const isCalendar = path === "/calendar";
@@ -190,6 +191,7 @@ export default function App() {
     page = (
       <BoardView id={decodeURIComponent(boardMatch[1])} refresh={refresh} />
     );
+  if (newTicketMatch) page = <NewTicketPage key={newTicketMatch[1]} boardId={decodeURIComponent(newTicketMatch[1])} />;
   if (printMatch)
     page = (
       <PrintTicket id={decodeURIComponent(printMatch[1])} refresh={refresh} />
@@ -281,7 +283,7 @@ export default function App() {
               `/boards/${board.id}`,
               board.name,
               board.short_name.slice(0, 2),
-              boardMatch?.[1] === board.id,
+              (boardMatch ?? newTicketMatch)?.[1] === board.id,
             ),
           )}
         </nav>
