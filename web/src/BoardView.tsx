@@ -626,14 +626,15 @@ function StatusRow({
         value={name}
         onChange={(event) => setName(event.target.value)}
       />
-      <select
-        aria-label={`${status.name} type`}
+      <Picker
+        label={`${status.name} type`}
+        options={[
+          { id: "classic", name: "Classic" },
+          { id: "temporary", name: "Temporary" },
+        ]}
         value={type}
-        onChange={(event) => setType(event.target.value as Status["type"])}
-      >
-        <option value="classic">Classic</option>
-        <option value="temporary">Temporary</option>
-      </select>
+        onChange={(value) => setType(value as Status["type"])}
+      />
       <DaysField
         label={`${status.name} hide after days`}
         value={hideAfterDays}

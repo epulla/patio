@@ -9,6 +9,7 @@ import { api, type Board } from "./api";
 import { ErrorText, navigate } from "./App";
 import { DaysField } from "./BoardView";
 import { Icon, IconButton } from "./icons";
+import Picker from "./Picker";
 
 type NewColumn = {
   name: string;
@@ -203,14 +204,15 @@ function CreateBoard({
                   value={column.name}
                   onChange={(event) => updateColumn(index, { name: event.target.value })}
                 />
-                <select
-                  aria-label={`Column ${index + 1} type`}
+                <Picker
+                  label={`Column ${index + 1} type`}
+                  options={[
+                    { id: "classic", name: "Classic" },
+                    { id: "temporary", name: "Temporary" },
+                  ]}
                   value={column.type}
-                  onChange={(event) => updateColumn(index, { type: event.target.value as NewColumn["type"] })}
-                >
-                  <option value="classic">Classic</option>
-                  <option value="temporary">Temporary</option>
-                </select>
+                  onChange={(type) => updateColumn(index, { type: type as NewColumn["type"] })}
+                />
                 <DaysField
                   label={`Column ${index + 1} hide after days`}
                   value={column.hide_after_days}

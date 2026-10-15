@@ -1120,6 +1120,10 @@ a:has(> .svg-icon) {
 .type-row > input:first-child {
   flex: 1;
 }
+.type-row > .picker {
+  flex: none;
+  width: 140px;
+}
 .preview-title {
   margin: 8px 0 0;
   font-size: 13px;
