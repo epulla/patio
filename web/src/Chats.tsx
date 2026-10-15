@@ -1195,6 +1195,7 @@ export function Conversation({
               {!compact && <span className="muted">{connector ? connector.name : "Connector removed"}</span>}
               <ModelPicker
                 up
+                pinKind={connector?.kind}
                 models={models}
                 value={detail.chat.model}
                 loading={modelsLoading}
@@ -1637,7 +1638,13 @@ function NewChatDialog({
             <span className="label-row">
               Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
             </span>
-            <ModelPicker models={models} value={model} loading={modelsLoading} onChange={setModel} />
+            <ModelPicker
+              models={models}
+              value={model}
+              loading={modelsLoading}
+              pinKind={connectors.find((c) => c.id === connectorID)?.kind}
+              onChange={setModel}
+            />
           </div>
           <label className="wide">
             Folder

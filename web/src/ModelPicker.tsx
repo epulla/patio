@@ -9,12 +9,34 @@ const popHeight = 390;
 const provider = (id: string) => (id.includes("/") ? id.slice(0, id.indexOf("/")) : "");
 const shortLabel = (m: ModelOption) => (m.label === m.id && provider(m.id) ? m.id.slice(provider(m.id).length + 1) : m.label);
 
+const pinsKey = "model-pins";
+
+function loadPins(kind: string): string[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(pinsKey) ?? "{}")?.[kind];
+    return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePins(kind: string, ids: string[]) {
+  let all: Record<string, string[]> = {};
+  try {
+    all = JSON.parse(localStorage.getItem(pinsKey) ?? "{}") ?? {};
+  } catch {
+    // Corrupt pins are dropped; they are a UI preference only.
+  }
+  localStorage.setItem(pinsKey, JSON.stringify({ ...all, [kind]: ids }));
+}
+
 export default function ModelPicker({
   models,
   value,
   loading,
   disabled,
   up,
+  pinKind,
   onChange,
 }: {
   models: ModelOption[];
@@ -22,12 +44,15 @@ export default function ModelPicker({
   loading: boolean;
   disabled?: boolean;
   up?: boolean;
+  /** Connector kind; pinned models are remembered per kind. */
+  pinKind?: string;
   onChange: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [place, setPlace] = useState<CSSProperties>({});
+  const [pins, setPins] = useState<string[]>([]);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -36,11 +61,19 @@ export default function ModelPicker({
   const current = all.find((m) => m.id === value);
   const q = query.trim().toLowerCase();
   const visible = all.filter((m) => !q || [m.id, m.label, m.description ?? ""].some((text) => text.toLowerCase().includes(q)));
-  const groups = [...new Set(visible.map((m) => provider(m.id)))].map((name) => ({
+  const pinned = pins.flatMap((pin) => visible.filter((m) => m.id === pin));
+  const providers = [...new Set(visible.map((m) => provider(m.id)))].map((name) => ({
     name,
     models: visible.filter((m) => provider(m.id) === name),
   }));
+  // The unnamed group (e.g. "Default") has no header, so it stays above "Pinned".
+  const groups = [
+    ...providers.filter((group) => !group.name),
+    ...(pinned.length ? [{ name: "Pinned", models: pinned }] : []),
+    ...providers.filter((group) => group.name),
+  ];
   const ordered = groups.flatMap((group) => group.models);
+  const starts = groups.map((_, i) => groups.slice(0, i).reduce((n, group) => n + group.models.length, 0));
   const optionID = (index: number) => `${id}-option-${index}`;
 
   useEffect(() => {
@@ -77,6 +110,7 @@ export default function ModelPicker({
       maxHeight: openUp ? above : below,
     });
     setQuery("");
+    setPins(pinKind ? loadPins(pinKind) : []);
     setActive(Math.max(0, ordered.findIndex((m) => m.id === value)));
     setOpen(true);
   }
@@ -89,6 +123,13 @@ export default function ModelPicker({
   function pick(model: ModelOption) {
     if (model.id !== value) onChange(model.id);
     close();
+  }
+
+  function togglePin(model: ModelOption) {
+    if (!pinKind) return;
+    const next = pins.includes(model.id) ? pins.filter((id) => id !== model.id) : [...pins, model.id];
+    savePins(pinKind, next);
+    setPins(next);
   }
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -153,12 +194,13 @@ export default function ModelPicker({
           />
           <ul id={`${id}-list`} role="listbox" aria-label="Models">
             {ordered.length === 0 && <li className="model-empty muted">No models match “{query.trim()}”</li>}
-            {groups.map((group) => (
-              <li key={group.name} role="presentation">
+            {groups.map((group, g) => (
+              <li key={g} role="presentation">
                 {group.name && <div className="model-group muted">{group.name}</div>}
                 <ul role="group" aria-label={group.name || undefined}>
-                  {group.models.map((model) => {
-                    const index = ordered.indexOf(model);
+                  {group.models.map((model, m) => {
+                    const index = starts[g] + m;
+                    const isPinned = pins.includes(model.id);
                     return (
                       <li
                         key={model.id}
@@ -174,6 +216,21 @@ export default function ModelPicker({
                           <span>{shortLabel(model)}</span>
                           {model.description && <span className="model-description muted">{model.description}</span>}
                         </span>
+                        {pinKind && model.id && (
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            className="model-pin"
+                            aria-label={`${isPinned ? "Unpin" : "Pin"} ${model.label}`}
+                            aria-pressed={isPinned}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              togglePin(model);
+                            }}
+                          >
+                            <Icon name="pin" />
+                          </button>
+                        )}
                       </li>
                     );
                   })}

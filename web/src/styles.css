@@ -2909,10 +2909,38 @@ main.chat-window {
 }
 .model-text {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.model-pin {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin: -4px -6px -4px 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+}
+.model-pin .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.model-pop [role="option"][data-active] .model-pin,
+.model-pin[aria-pressed="true"] {
+  opacity: 1;
+}
+.model-pin[aria-pressed="true"] {
+  color: var(--primary);
+  background: transparent;
+  border-color: transparent;
+}
+.model-pin:hover {
+  background: var(--base-300);
 }
 .model-description {
   font-size: 12px;
