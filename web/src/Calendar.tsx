@@ -11,6 +11,7 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+import Picker from "./Picker";
 
 type Draft = {
   kind: "event" | "reminder";
@@ -197,17 +198,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
           </div>
           <label>
             Board
-            <select
-              value={boardID}
-              onChange={(event) => setBoardID(event.target.value)}
-            >
-              <option value="">All boards</option>
-              {boards.map((board) => (
-                <option key={board.id} value={board.id}>
-                  {board.name}
-                </option>
-              ))}
-            </select>
+            <Picker label="Board" empty="All boards" options={boards} value={boardID} onChange={setBoardID} />
           </label>
         </div>
       </div>
@@ -401,15 +392,15 @@ function CalendarForm({
       <form className="calendar-form" onSubmit={submit}>
         <label>
           Kind
-          <select
+          <Picker
+            label="Kind"
+            options={[
+              { id: "event", name: "Event" },
+              { id: "reminder", name: "Reminder" },
+            ]}
             value={draft.kind}
-            onChange={(event) =>
-              setDraft({ ...draft, kind: event.target.value as Draft["kind"] })
-            }
-          >
-            <option value="event">Event</option>
-            <option value="reminder">Reminder</option>
-          </select>
+            onChange={(kind) => setDraft({ ...draft, kind: kind as Draft["kind"] })}
+          />
         </label>
         <label>
           Title
@@ -461,19 +452,13 @@ function CalendarForm({
         </label>
         <label>
           Board (optional)
-          <select
+          <Picker
+            label="Board"
+            empty="No board"
+            options={boards}
             value={draft.board_id}
-            onChange={(event) =>
-              setDraft({ ...draft, board_id: event.target.value })
-            }
-          >
-            <option value="">No board</option>
-            {boards.map((board) => (
-              <option key={board.id} value={board.id}>
-                {board.name}
-              </option>
-            ))}
-          </select>
+            onChange={(board_id) => setDraft({ ...draft, board_id })}
+          />
         </label>
         <div className="calendar-form-actions">
           <button className="primary" disabled={saving}>
