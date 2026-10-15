@@ -34,6 +34,7 @@ import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
 import { isUnpinKey, maxPins, pinLayout, pinNumber, pinShortcut, setPins, unpin, usePins } from "./pins";
 import Picker from "./Picker";
+import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 
 type ChatDetail = {
   chat: Chat;
@@ -146,6 +147,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
       .then(([page, connectorList]) => {
         if (current !== generation.current) return;
         setChats(page.chats);
+        syncChatStatus(page.chats);
         setCursor(page.next_cursor);
         setConnectors(connectorList);
         setLoaded(true);
@@ -180,6 +182,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     try {
       const page = await api.get<ChatPage>(`/api/chats?limit=${pageSize}&cursor=${encodeURIComponent(cursor)}`);
       if (current !== generation.current) return;
+      syncChatStatus(page.chats);
       setChats((chats) => {
         const seen = new Set(chats.map((chat) => chat.id));
         return [...chats, ...page.chats.filter((chat) => !seen.has(chat.id))];
@@ -205,6 +208,9 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   }
 
   const showGrid = !windowed && pins.ids.length > 0 && (!id || pins.ids.includes(id));
+  const status = useChatStatus(chats.map((chat) => chat.id));
+  const visible = (showGrid ? pins.ids : id ? [id] : []).join();
+  useEffect(() => visible.split(",").forEach(markSeen), [visible, status]);
 
   useEffect(() => {
     if (!showGrid) return;
@@ -272,11 +278,12 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             {chats.map((chat) => {
               const pinned = pins.ids.includes(chat.id);
               const scheduled = !!chat.scheduled_task_id;
+              const state = status[chat.id];
               return (
                 <button
                   key={chat.id}
                   className="chat-initial"
-                  aria-label={`${chat.title}${scheduled ? ", scheduled" : ""}${pinned ? ", pinned" : ""}`}
+                  aria-label={`${chat.title}${state ? `, ${statusLabels[state]}` : ""}${scheduled ? ", scheduled" : ""}${pinned ? ", pinned" : ""}`}
                   aria-current={!showGrid && chat.id === id ? "page" : undefined}
                   onClick={() => navigate(`/ai/chats/${chat.id}`)}
                   onMouseEnter={(event) => showTip(event.currentTarget, chat.title, false)}
@@ -285,8 +292,13 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                   onBlur={() => setTip(undefined)}
                 >
                   {[...chat.title.trim()][0]?.toUpperCase() ?? "?"}
-                  {(scheduled || pinned) && (
+                  {(state || scheduled || pinned) && (
                     <span className="chat-badges" aria-hidden="true">
+                      {state && (
+                        <span className="dock-dot" data-state={state}>
+                          <Icon name={statusIcons[state]} />
+                        </span>
+                      )}
                       {scheduled && (
                         <span className="badge-scheduled">
                           <Icon name="clock" />
@@ -327,6 +339,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           )}
           {chats.map((chat) => {
             const pinned = pins.ids.includes(chat.id);
+            const state = status[chat.id];
             return (
               <div key={chat.id} className="chat-row">
                 <button
@@ -334,7 +347,15 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                   aria-current={!showGrid && chat.id === id ? "page" : undefined}
                   onClick={() => navigate(`/ai/chats/${chat.id}`)}
                 >
-                  <span>{chat.title}</span>
+                  <span className="chat-link-title">
+                    {state && (
+                      <span className="dock-dot" data-state={state} aria-hidden="true">
+                        <Icon name={statusIcons[state]} />
+                      </span>
+                    )}
+                    <span>{chat.title}</span>
+                    {state && <span className="sr-only">, {statusLabels[state]}</span>}
+                  </span>
                   <small>
                     {new Date(chat.updated_at).toLocaleDateString()}
                     {chat.scheduled_task_id && (

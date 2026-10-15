@@ -1695,6 +1695,11 @@ main:has(> .chats) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.chat-link .chat-link-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .chat-link:hover {
   background: color-mix(in oklch, var(--primary) 12%, transparent);
 }
@@ -1740,7 +1745,8 @@ main:has(> .chats) {
 .chat-badges > span {
   display: flex;
 }
-.chat-badges svg {
+.chat-badges svg,
+.chat-badges .dock-dot .svg-icon {
   width: 10px;
   height: 10px;
 }
