@@ -796,6 +796,10 @@ a:has(> .svg-icon) {
   font-size: 13px;
   line-height: 1.5;
 }
+.callout.warning {
+  background: color-mix(in oklch, var(--warning) 22%, var(--base-100));
+  border-color: color-mix(in oklch, var(--warning) 70%, transparent);
+}
 .modal-actions {
   grid-column: 1 / -1;
   display: flex;

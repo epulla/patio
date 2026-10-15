@@ -410,6 +410,7 @@ function ChatCleanup() {
         {settings ? (
           <>
             <Switch
+              className="warning"
               label="Delete old chats automatically"
               checked={settings.enabled}
               onChange={(enabled) => save({ enabled })}
@@ -429,6 +430,11 @@ function ChatCleanup() {
               />
               <span>days</span>
             </label>
+            {settings.enabled && (
+              <p className="callout warning" role="note">
+                ⚠️ This permanently deletes chats. Pin any chat you want to keep.
+              </p>
+            )}
           </>
         ) : (
           !error && <p className="muted" role="status">Loading…</p>
