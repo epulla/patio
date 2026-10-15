@@ -392,6 +392,47 @@ func TestChatGetMessagesDeleteAndApproval(t *testing.T) {
 	}
 }
 
+func TestChatDetailVersion(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var created chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated {
+		t.Fatalf("create chat = %d", code)
+	}
+	path := "/api/chats/" + created.ID
+	var got struct {
+		Version string `json:"version"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, path, nil, &got); code != http.StatusOK || got.Version == "" {
+		t.Fatalf("get chat version = %d, %q", code, got.Version)
+	}
+	if code, body := requestRaw(t, handler, http.MethodGet, path+"?version="+url.QueryEscape(got.Version), nil); code != http.StatusOK || strings.TrimSpace(body) != `{"unchanged":true}` {
+		t.Fatalf("unchanged chat = %d, %s", code, body)
+	}
+	version := got.Version
+	if _, err := InsertChatMessage(database, created.ID, "user", "new message"); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, path, nil, &got); code != http.StatusOK || got.Version == version {
+		t.Fatalf("message changed version = %d, %q", code, got.Version)
+	}
+	version = got.Version
+	approvalID := uid()
+	if _, err := database.Exec(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,created_at) VALUES(?,?,?, '{}',?)`, approvalID, created.ID, "write", now()); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, path, nil, &got); code != http.StatusOK || got.Version == version {
+		t.Fatalf("approval changed version = %d, %q", code, got.Version)
+	}
+	version = got.Version
+	if code := requestJSON(t, handler, http.MethodPost, path+"/approvals/"+approvalID, map[string]bool{"allow": true}, nil); code != http.StatusOK {
+		t.Fatalf("answer approval = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, path, nil, &got); code != http.StatusOK || got.Version == version {
+		t.Fatalf("answered approval changed version = %d, %q", code, got.Version)
+	}
+}
+
 func TestChatThinkingUpdate(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)

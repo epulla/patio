@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -486,7 +488,20 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, rowsErr.Error())
 		return
 	}
-	write(w, 200, map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals, "auto_approvals": autoApprovals})
+	response := map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals, "auto_approvals": autoApprovals}
+	data, err := json.Marshal(response)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	digest := sha256.Sum256(data)
+	version := hex.EncodeToString(digest[:8])
+	if r.URL.Query().Get("version") == version && version != "" {
+		write(w, 200, map[string]bool{"unchanged": true})
+		return
+	}
+	response["version"] = version
+	write(w, 200, response)
 }
 
 func (s *Server) revealChatFile(w http.ResponseWriter, r *http.Request) {
