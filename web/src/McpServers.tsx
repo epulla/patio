@@ -4,6 +4,7 @@ import { api, type McpServer, type McpServerCheck } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
+import Picker from "./Picker";
 
 export default function McpServers({ refresh }: { refresh: number }) {
   const [servers, setServers] = useState<McpServer[]>([]);
@@ -301,10 +302,16 @@ function ServerDialog({
           </label>
           <label>
             Type
-            <select value={kind} disabled={!!server} onChange={(event) => setKind(event.target.value as McpServer["kind"])}>
-              <option value="http">Remote URL (HTTP)</option>
-              <option value="stdio">Local command (stdio)</option>
-            </select>
+            <Picker
+              label="Type"
+              options={[
+                { id: "http", name: "Remote URL (HTTP)" },
+                { id: "stdio", name: "Local command (stdio)" },
+              ]}
+              value={kind}
+              disabled={!!server}
+              onChange={(k) => setKind(k as McpServer["kind"])}
+            />
           </label>
 
           {kind === "stdio" ? (
@@ -355,11 +362,16 @@ function ServerDialog({
               </label>
               <label>
                 Sign-in
-                <select value={auth} onChange={(event) => setAuth(event.target.value as McpServer["auth"])}>
-                  <option value="none">None</option>
-                  <option value="bearer">Access token</option>
-                  <option value="oauth">OAuth (sign in with browser)</option>
-                </select>
+                <Picker
+                  label="Sign-in"
+                  options={[
+                    { id: "none", name: "None" },
+                    { id: "bearer", name: "Access token" },
+                    { id: "oauth", name: "OAuth (sign in with browser)" },
+                  ]}
+                  value={auth}
+                  onChange={(a) => setAuth(a as McpServer["auth"])}
+                />
               </label>
               {auth === "bearer" && (
                 <label>
