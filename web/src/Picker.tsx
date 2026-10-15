@@ -6,17 +6,21 @@ const popHeight = 280;
 export type PickerOption = { id: string; name: string; color?: string };
 
 export default function Picker({
+  id: triggerID,
   label,
   options: items,
   empty,
   value,
+  disabled,
   onChange,
 }: {
+  id?: string;
   label: string;
   options: PickerOption[];
   /** Label of an extra option with id "", e.g. "No type". */
   empty?: string;
   value: string;
+  disabled?: boolean;
   onChange: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -53,7 +57,7 @@ export default function Picker({
     document.addEventListener("mousedown", outside);
     document.addEventListener("scroll", outside, true);
     addEventListener("resize", resize);
-    list.current?.focus();
+    list.current?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("mousedown", outside);
       document.removeEventListener("scroll", outside, true);
@@ -73,7 +77,8 @@ export default function Picker({
     setPlace({
       ...(up ? { bottom: innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
       left: rect.left,
-      width: rect.width,
+      minWidth: rect.width,
+      maxWidth: innerWidth - rect.left - 16,
       maxHeight: Math.min(popHeight, up ? above : below),
     });
     setActive(Math.max(0, options.findIndex((option) => option.id === value)));
@@ -127,11 +132,13 @@ export default function Picker({
     >
       <button
         ref={trigger}
+        id={triggerID}
         type="button"
         className="picker-trigger"
         aria-label={`${label}: ${current?.name ?? "none"}`}
         aria-haspopup="listbox"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => (open ? close() : show())}
         onKeyDown={triggerKeyDown}
       >
@@ -149,6 +156,8 @@ export default function Picker({
           aria-activedescendant={optionID(active)}
           style={place}
           onKeyDown={listKeyDown}
+          // An enclosing <label> would otherwise re-click the trigger and reopen the list.
+          onClick={(event) => event.preventDefault()}
         >
           {options.map((option, index) => (
             <li

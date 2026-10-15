@@ -1032,6 +1032,7 @@ a:has(> .svg-icon) {
 .picker-pop {
   position: fixed;
   z-index: 30;
+  width: max-content;
   margin: 0;
   padding: 6px;
   list-style: none;
@@ -1045,6 +1046,7 @@ a:has(> .svg-icon) {
 }
 .picker-pop [role="option"] {
   display: flex;
+  overflow-wrap: anywhere;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
