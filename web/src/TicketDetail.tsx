@@ -13,6 +13,7 @@ import { type Config, ErrorText, formatDate, navigate } from "./App";
 import { Icon } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
+import TypePicker from "./TypePicker";
 
 export default function TicketDetail({
   id,
@@ -172,23 +173,17 @@ export default function TicketDetail({
               </select>
             </label>
             <div className="ticket-details">
-              <label>
+              <div className="field">
                 Type
-                <select
+                <TypePicker
+                  types={board?.ticket_types ?? []}
                   value={form.type}
-                  onChange={(event) => {
-                    setForm({ ...form, type: event.target.value });
-                    save({ ticket_type_id: event.target.value || null });
+                  onChange={(type) => {
+                    setForm({ ...form, type });
+                    save({ ticket_type_id: type || null });
                   }}
-                >
-                  <option value="">No type</option>
-                  {board?.ticket_types.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                />
+              </div>
               <label>
                 Due date
                 <input

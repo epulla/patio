@@ -843,6 +843,7 @@ a:has(> .svg-icon) {
 .inline-form label,
 .ticket-form label,
 .ticket-side label,
+.ticket-side .field,
 .ticket-main > label,
 .ticket-main > .field,
 .ticket-form .field {
@@ -1006,6 +1007,59 @@ a:has(> .svg-icon) {
   border-radius: 999px;
   background: var(--type-color);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--content) 20%, transparent);
+}
+.type-none::before {
+  background: transparent;
+}
+.type-trigger {
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 10px 0 12px;
+  background: var(--base-100);
+  font-weight: 400;
+}
+.type-trigger .type {
+  font-weight: 400;
+  overflow: hidden;
+}
+.type-trigger .svg-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.type-pop {
+  position: fixed;
+  z-index: 30;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--base-100);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+  outline: none;
+}
+.type-pop [role="option"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius-field);
+  font-size: 13px;
+  cursor: pointer;
+}
+.type-pop [role="option"][data-active] {
+  background: var(--base-200);
+}
+.type-pop .type {
+  font-weight: 400;
+}
+.type-pop .svg-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 .add-ticket,
 .add-column {

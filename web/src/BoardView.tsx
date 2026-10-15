@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import MarkdownEditor from "./MarkdownEditor";
+import TypePicker from "./TypePicker";
 import {
   api,
   type BoardData,
@@ -854,20 +855,10 @@ function NewTicket({
           <MarkdownEditor label="Description" value={description} onChange={setDescription} />
         </div>
         <div className="two">
-          <label>
+          <div className="field">
             Type
-            <select
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-            >
-              <option value="">No type</option>
-              {data.ticket_types.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <TypePicker types={data.ticket_types} value={type} onChange={setType} />
+          </div>
           <label>
             Due date
             <input
