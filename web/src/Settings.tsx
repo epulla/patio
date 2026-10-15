@@ -363,6 +363,82 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
   );
 }
 
+type ChatCleanupSettings = { enabled: boolean; days: number };
+
+function ChatCleanup() {
+  const [settings, setSettings] = useState<ChatCleanupSettings>();
+  const [days, setDays] = useState("");
+  const [error, setError] = useState<unknown>();
+
+  useEffect(() => {
+    api
+      .get<ChatCleanupSettings>("/api/settings/chat-cleanup")
+      .then((loaded) => {
+        setSettings(loaded);
+        setDays(String(loaded.days));
+      })
+      .catch(setError);
+  }, []);
+
+  async function save(change: Partial<ChatCleanupSettings>) {
+    if (!settings) return;
+    try {
+      const saved = await api.put<ChatCleanupSettings>("/api/settings/chat-cleanup", { ...settings, ...change });
+      setSettings(saved);
+      setDays(String(saved.days));
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  function saveDays() {
+    const value = Number(days);
+    if (!settings || value === settings.days) return;
+    if (!Number.isInteger(value) || value < 1 || value > 3650) return setDays(String(settings.days));
+    void save({ days: value });
+  }
+
+  return (
+    <section className="stack">
+      <h2>Chat cleanup</h2>
+      <p className="muted">
+        Deletes chats whose last message is older than the set number of days, at startup and once a day. Pinned and
+        running chats are kept. Ticket links to deleted chats stop working.
+      </p>
+      <section className="panel stack defaults-panel">
+        {settings ? (
+          <>
+            <Switch
+              label="Delete old chats automatically"
+              checked={settings.enabled}
+              onChange={(enabled) => save({ enabled })}
+            />
+            <label className="days-field">
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                step={1}
+                aria-label="Delete chats older than"
+                value={days}
+                disabled={!settings.enabled}
+                onChange={(event) => setDays(event.target.value)}
+                onBlur={saveDays}
+                onKeyDown={(event) => event.key === "Enter" && saveDays()}
+              />
+              <span>days</span>
+            </label>
+          </>
+        ) : (
+          !error && <p className="muted" role="status">Loading…</p>
+        )}
+        <ErrorText error={error} />
+      </section>
+    </section>
+  );
+}
+
 export default function Settings() {
   const [foldersVersion, setFoldersVersion] = useState(0);
   const [status, setStatus] = useState<McpStatus>();
@@ -435,6 +511,7 @@ export default function Settings() {
       <Appearance />
 
       <Defaults foldersVersion={foldersVersion} />
+      <ChatCleanup />
 
       <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
 

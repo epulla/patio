@@ -3474,6 +3474,9 @@ main.chat-window {
 .defaults-panel .switch {
   margin-right: 0;
 }
+.defaults-panel .days-field {
+  align-self: flex-start;
+}
 .palette-picker {
   display: flex;
   flex-wrap: wrap;

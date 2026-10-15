@@ -170,6 +170,17 @@ export default function App() {
       .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "", open_path: "" }));
   }, []);
 
+  // Pins live only in the UI, so the cleanup request carries them; the server skips it when cleanup is off.
+  const pinIds = useRef(pins.ids);
+  pinIds.current = pins.ids;
+  useEffect(() => {
+    if (!config || config.chat_window) return;
+    const run = () => api.post("/api/chats/cleanup", { keep: pinIds.current }).catch(() => undefined);
+    run();
+    const timer = setInterval(run, 24 * 60 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [config]);
+
   if (!config) return null;
   if (config.chat_window)
     return (
