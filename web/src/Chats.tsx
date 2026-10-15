@@ -33,9 +33,13 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { isUnpinKey, maxPins, pinLayout, pinNumber, pinShortcut, setPins, unpin, usePins } from "./pins";
+import { isUnpinKey, maxPins, pinLayout, pinNumber, pinShortcut, setPins, unpin, unpinAriaShortcut, unpinShortcut, usePins } from "./pins";
 import Picker from "./Picker";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
+
+const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+const newChatShortcut = mac ? "⌘N" : "Ctrl+N";
+const newChatAriaShortcut = mac ? "Meta+N" : "Control+N";
 
 type ChatDetail = {
   chat: Chat;
@@ -255,6 +259,18 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [showGrid, pins.ids, id]);
+
+  useEffect(() => {
+    if (windowed || (loaded && !connectors.length)) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "n") return;
+      event.preventDefault();
+      if (document.querySelector("dialog[open]")) return;
+      setCreating(true);
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  }, [windowed, loaded, connectors.length]);
   const tracks = (sizes: number[]) => sizes.map((size) => `minmax(240px, ${size}fr)`).join(" 6px ");
 
   return (
@@ -263,7 +279,12 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
       <aside className={listOpen ? "chat-list" : "chat-list collapsed"} aria-label="Chats">
         <div className="chat-list-head">
           {listOpen && (connectors.length > 0 || !loaded) && (
-            <button className="primary" onClick={() => setCreating(true)}>
+            <button
+              className="primary"
+              data-tip={`New chat (${newChatShortcut})`}
+              aria-keyshortcuts={newChatAriaShortcut}
+              onClick={() => setCreating(true)}
+            >
               <Icon name="plus" /> New chat
             </button>
           )}
@@ -286,7 +307,13 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           />
         </div>
         {!listOpen && (connectors.length > 0 || !loaded) && (
-          <IconButton className="ghost" icon="plus" label="New chat" onClick={() => setCreating(true)} />
+          <IconButton
+            className="ghost"
+            icon="plus"
+            label={`New chat (${newChatShortcut})`}
+            aria-keyshortcuts={newChatAriaShortcut}
+            onClick={() => setCreating(true)}
+          />
         )}
         {!listOpen && pins.ids.length > 0 && (
           <IconButton
@@ -1022,7 +1049,8 @@ export function Conversation({
           <IconButton
             className={pinned ? "ghost pinned" : "ghost"}
             icon="pin"
-            label={pinned ? "Unpin chat" : "Pin chat"}
+            label={pinned ? `Unpin chat (${unpinShortcut})` : "Pin chat"}
+            aria-keyshortcuts={pinned ? unpinAriaShortcut : undefined}
             onClick={onPin}
           />
         )}
