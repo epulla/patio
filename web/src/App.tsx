@@ -14,6 +14,7 @@ import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
+import Notifications from "./Notifications";
 import { api, type Board, type Config } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
@@ -299,6 +300,13 @@ export default function App() {
   if (path === "/settings") page = <Settings />;
 
   const showDock = pins.ids.length > 0 && !chatMatch;
+  const onScreen = (link: string) => {
+    if (link === path) return true;
+    const id = link.match(/^\/ai\/chats\/([^/]+)$/)?.[1];
+    if (!id || !pins.ids.includes(id)) return false;
+    // Pinned chats are on screen in the Chats grid (shown for a pinned or no chat) or in the open dock.
+    return chatMatch ? !chatMatch[1] || pins.ids.includes(chatMatch[1]) : dockOpen;
+  };
   const states = pins.ids.map((id) => pinned.status[id]);
   const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
 
@@ -382,6 +390,7 @@ export default function App() {
         <div className="sidebar-foot">
           {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
           <ThemeToggle />
+          <Notifications refresh={refresh} onScreen={onScreen} />
           {showDock && (
             <button
               className="icon ghost dock-toggle"

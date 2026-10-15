@@ -294,7 +294,7 @@ function ConnectorCard({
   );
 }
 
-function formatAgo(value: string) {
+export function formatAgo(value: string) {
   const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60_000);
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes} min ago`;

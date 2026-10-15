@@ -3670,3 +3670,119 @@ main.chat-window {
   width: 16px;
   height: 16px;
 }
+.notifications .menu-list {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  width: 340px;
+}
+.notifications .menu > .notif-toggle {
+  position: relative;
+}
+.notifications .menu > .notif-toggle .svg-icon {
+  width: 18px;
+  height: 18px;
+}
+.notif-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-content);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 8px 10px;
+}
+.notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.notif-empty {
+  margin: 4px 10px 8px;
+}
+.notif-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.notif-item:hover,
+.notif-item:focus-visible {
+  background: var(--base-200);
+}
+.notif-item[data-unread] .notif-title {
+  font-weight: 600;
+}
+.notif-item[data-unread] .notif-title::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  vertical-align: middle;
+}
+.notif-body {
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+.notif-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  pointer-events: none;
+}
+.notif-toast {
+  display: flex;
+  align-items: flex-start;
+  padding: 4px;
+  background: var(--base-100);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+  pointer-events: auto;
+}
+.notif-toast .notif-item {
+  flex: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .notif-toast {
+    animation: notif-in 0.2s ease-out;
+  }
+}
+@keyframes notif-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
