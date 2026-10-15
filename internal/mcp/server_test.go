@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -206,6 +207,9 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	}
 	if changeTitle != "Martin moved AI-1 to Done" || changeLink != "/tickets/"+ticket.ID {
 		t.Fatalf("move notification=%q %q", changeTitle, changeLink)
+	}
+	if title, link, ok := mcpChange(request{http.MethodDelete, "/api/tickets/AI-10", nil}, nil); !ok || title != "Martin deleted AI-10" || link != "/tickets/AI-10" {
+		t.Fatalf("delete notification = %q %q %v", title, link, ok)
 	}
 	var changesBefore int
 	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='change'`).Scan(&changesBefore); err != nil {

@@ -782,13 +782,6 @@ func mcpChange(r request, response []byte) (string, string, bool) {
 	}
 	verb := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodDelete: "deleted"}[r.method]
 	target := ""
-	var payload map[string]any
-	if r.body != nil {
-		b, err := json.Marshal(r.body)
-		if err != nil || json.Unmarshal(b, &payload) != nil {
-			payload = nil
-		}
-	}
 	var result map[string]any
 	if json.Unmarshal(response, &result) != nil {
 		result = nil
@@ -841,6 +834,8 @@ func mcpChange(r request, response []byte) (string, string, bool) {
 					title += " to " + status
 				}
 			}
+		} else if r.method == http.MethodDelete {
+			title = "Martin deleted " + code
 		} else if r.method == http.MethodPost {
 			title = "Martin created " + code
 		} else {
