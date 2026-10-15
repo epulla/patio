@@ -9,6 +9,7 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+import Picker from "./Picker";
 
 export function ConnectorRequired({ then }: { then: string }) {
   return (
@@ -441,13 +442,13 @@ function ConnectorDialog({
         <form onSubmit={submit}>
           <label>
             Type
-            <select value={kind} disabled={editing} onChange={(event) => changeKind(event.target.value as ConnectorKind)}>
-              {kinds.map((k) => (
-                <option key={k.kind} value={k.kind}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
+            <Picker
+              label="Type"
+              options={kinds.map((k) => ({ id: k.kind, name: k.label }))}
+              value={kind}
+              disabled={editing}
+              onChange={(k) => changeKind(k as ConnectorKind)}
+            />
           </label>
           <label>
             Name
@@ -499,19 +500,14 @@ function ConnectorDialog({
             <>
               <label>
                 Server
-                <select
+                <Picker
+                  label="Server"
+                  options={[...presets.map((p) => ({ id: p.url, name: p.label })), { id: "", name: "Custom" }]}
                   value={presets.find((p) => p.url === baseURL)?.url ?? ""}
-                  onChange={(event) => {
-                    if (event.target.value) setBaseURL(event.target.value);
+                  onChange={(url) => {
+                    if (url) setBaseURL(url);
                   }}
-                >
-                  {presets.map((p) => (
-                    <option key={p.url} value={p.url}>
-                      {p.label}
-                    </option>
-                  ))}
-                  <option value="">Custom</option>
-                </select>
+                />
               </label>
               <label>
                 Base URL
@@ -548,15 +544,17 @@ function ConnectorDialog({
                   )}
                 </span>
                 {models ? (
-                  <select id="local-model" value={model} onChange={(event) => setModel(event.target.value)}>
-                    {models.length === 0 && <option value="">No models found</option>}
-                    {models.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                    {model && !models.includes(model) && <option value={model}>{model} (not found)</option>}
-                  </select>
+                  <Picker
+                    id="local-model"
+                    label="Model"
+                    empty={models.length === 0 ? "No models found" : undefined}
+                    options={[
+                      ...models.map((id) => ({ id, name: id })),
+                      ...(model && !models.includes(model) ? [{ id: model, name: `${model} (not found)` }] : []),
+                    ]}
+                    value={model}
+                    onChange={setModel}
+                  />
                 ) : (
                   <input id="local-model" value={model} placeholder="Type a model" onChange={(event) => setModel(event.target.value)} />
                 )}
