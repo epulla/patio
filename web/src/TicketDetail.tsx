@@ -297,7 +297,7 @@ function Comments({
       <button className="primary" onClick={add}>
         <Icon name="send" /> Add comment
       </button>
-      {comments.map((comment) => (
+      {[...comments].reverse().map((comment) => (
         <div className="comment" key={comment.id}>
           <strong>
             {comment.user_name} <AIBadge isAI={comment.user_is_ai} />
