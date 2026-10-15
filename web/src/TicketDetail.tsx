@@ -13,7 +13,7 @@ import { type Config, ErrorText, formatDate, navigate } from "./App";
 import { Icon } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
-import TypePicker from "./TypePicker";
+import Picker from "./Picker";
 
 export default function TicketDetail({
   id,
@@ -156,27 +156,25 @@ export default function TicketDetail({
             </div>
           </div>
           <aside className="ticket-side">
-            <label>
+            <div className="field">
               Status
-              <select
+              <Picker
+                label="Status"
+                options={board?.statuses ?? []}
                 value={form.status}
-                onChange={(event) => {
-                  setForm({ ...form, status: event.target.value });
-                  save({ status_id: event.target.value });
+                onChange={(status) => {
+                  setForm({ ...form, status });
+                  save({ status_id: status });
                 }}
-              >
-                {board?.statuses.map((status) => (
-                  <option key={status.id} value={status.id}>
-                    {status.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
             <div className="ticket-details">
               <div className="field">
                 Type
-                <TypePicker
-                  types={board?.ticket_types ?? []}
+                <Picker
+                  label="Type"
+                  empty="No type"
+                  options={board?.ticket_types ?? []}
                   value={form.type}
                   onChange={(type) => {
                     setForm({ ...form, type });

@@ -1,17 +1,21 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { TicketType } from "./api";
 import { Icon } from "./icons";
 
 const popHeight = 280;
 
-const swatch = (color?: string) => ({ "--type-color": color ?? "transparent" }) as CSSProperties;
+export type PickerOption = { id: string; name: string; color?: string };
 
-export default function TypePicker({
-  types,
+export default function Picker({
+  label,
+  options: items,
+  empty,
   value,
   onChange,
 }: {
-  types: TicketType[];
+  label: string;
+  options: PickerOption[];
+  /** Label of an extra option with id "", e.g. "No type". */
+  empty?: string;
   value: string;
   onChange: (id: string) => void;
 }) {
@@ -23,8 +27,20 @@ export default function TypePicker({
   const list = useRef<HTMLUListElement>(null);
   const id = useId();
 
-  const options = [{ id: "", name: "No type", color: "" }, ...types];
-  const current = types.find((type) => type.id === value);
+  const options: PickerOption[] = empty === undefined ? items : [{ id: "", name: empty }, ...items];
+  const current = options.find((option) => option.id === value);
+  const dots = items.some((option) => option.color);
+  const text = (option?: PickerOption) =>
+    dots ? (
+      <span
+        className={option?.color ? "type" : "type type-none"}
+        style={{ "--type-color": option?.color ?? "transparent" } as CSSProperties}
+      >
+        {option?.name}
+      </span>
+    ) : (
+      <span>{option?.name}</span>
+    );
   const optionID = (index: number) => `${id}-option-${index}`;
 
   useEffect(() => {
@@ -60,7 +76,7 @@ export default function TypePicker({
       width: rect.width,
       maxHeight: Math.min(popHeight, up ? above : below),
     });
-    setActive(Math.max(0, options.findIndex((type) => type.id === value)));
+    setActive(Math.max(0, options.findIndex((option) => option.id === value)));
     setOpen(true);
   }
 
@@ -103,7 +119,7 @@ export default function TypePicker({
 
   return (
     <div
-      className="type-picker"
+      className="picker"
       ref={root}
       onBlur={(event) => {
         if (!root.current?.contains(event.relatedTarget)) setOpen(false);
@@ -112,43 +128,40 @@ export default function TypePicker({
       <button
         ref={trigger}
         type="button"
-        className="type-trigger"
+        className="picker-trigger"
+        aria-label={`${label}: ${current?.name ?? "none"}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => (open ? close() : show())}
         onKeyDown={triggerKeyDown}
       >
-        <span className={current ? "type" : "type type-none"} style={swatch(current?.color)}>
-          {current ? current.name : "No type"}
-        </span>
+        {text(current)}
         <Icon name="chevronDown" />
       </button>
       {open && (
         <ul
           ref={list}
           id={`${id}-list`}
-          className="type-pop"
+          className="picker-pop"
           role="listbox"
           tabIndex={-1}
-          aria-label="Ticket type"
+          aria-label={label}
           aria-activedescendant={optionID(active)}
           style={place}
           onKeyDown={listKeyDown}
         >
-          {options.map((type, index) => (
+          {options.map((option, index) => (
             <li
-              key={type.id}
+              key={option.id}
               id={optionID(index)}
               role="option"
-              aria-selected={type.id === value}
+              aria-selected={option.id === value}
               data-active={index === active || undefined}
               onMouseMove={() => setActive(index)}
-              onClick={() => pick(type.id)}
+              onClick={() => pick(option.id)}
             >
-              <span className={type.id ? "type" : "type type-none"} style={swatch(type.color)}>
-                {type.name}
-              </span>
-              {type.id === value && <Icon name="check" />}
+              {text(option)}
+              {option.id === value && <Icon name="check" />}
             </li>
           ))}
         </ul>

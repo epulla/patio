@@ -1010,23 +1010,23 @@ a:has(> .svg-icon) {
 .type-none::before {
   background: transparent;
 }
-.type-trigger {
+.picker-trigger {
   justify-content: space-between;
   width: 100%;
   padding: 0 10px 0 12px;
   background: var(--base-100);
   font-weight: 400;
 }
-.type-trigger .type {
+.picker-trigger .type {
   font-weight: 400;
   overflow: hidden;
 }
-.type-trigger .svg-icon {
+.picker-trigger .svg-icon {
   flex: none;
   width: 14px;
   height: 14px;
 }
-.type-pop {
+.picker-pop {
   position: fixed;
   z-index: 30;
   margin: 0;
@@ -1037,9 +1037,10 @@ a:has(> .svg-icon) {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+  font-weight: 400;
   outline: none;
 }
-.type-pop [role="option"] {
+.picker-pop [role="option"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1049,13 +1050,13 @@ a:has(> .svg-icon) {
   font-size: 13px;
   cursor: pointer;
 }
-.type-pop [role="option"][data-active] {
+.picker-pop [role="option"][data-active] {
   background: var(--base-200);
 }
-.type-pop .type {
+.picker-pop .type {
   font-weight: 400;
 }
-.type-pop .svg-icon {
+.picker-pop .svg-icon {
   flex: none;
   width: 14px;
   height: 14px;

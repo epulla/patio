@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import MarkdownEditor from "./MarkdownEditor";
-import TypePicker from "./TypePicker";
+import Picker from "./Picker";
 import {
   api,
   type BoardData,
@@ -857,7 +857,7 @@ function NewTicket({
         <div className="two">
           <div className="field">
             Type
-            <TypePicker types={data.ticket_types} value={type} onChange={setType} />
+            <Picker label="Type" empty="No type" options={data.ticket_types} value={type} onChange={setType} />
           </div>
           <label>
             Due date
