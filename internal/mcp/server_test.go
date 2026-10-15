@@ -200,6 +200,25 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		t.Fatalf("calendar items after delete = %#v, want none", remaining.Items)
 	}
 	callTool(t, session, "move_ticket", map[string]any{"id": ticket.ID, "status": "done"})
+	var changeTitle, changeLink string
+	if err := database.QueryRow(`SELECT title,link FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&changeTitle, &changeLink); err != nil {
+		t.Fatal(err)
+	}
+	if changeTitle != "Martin moved AI-1 to Done" || changeLink != "/tickets/"+ticket.ID {
+		t.Fatalf("move notification=%q %q", changeTitle, changeLink)
+	}
+	var changesBefore int
+	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='change'`).Scan(&changesBefore); err != nil {
+		t.Fatal(err)
+	}
+	callTool(t, session, "list_boards", map[string]any{})
+	var changesAfter int
+	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='change'`).Scan(&changesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if changesAfter != changesBefore {
+		t.Fatalf("read-only tool created change notification: before=%d after=%d", changesBefore, changesAfter)
+	}
 	getResult := callTool(t, session, "get_ticket", map[string]any{"id": ticket.ID})
 	var got struct {
 		StatusID string `json:"status_id"`

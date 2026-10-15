@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -709,13 +710,15 @@ func moveHandler(h http.Handler) func(moveTicketArgs) (*sdk.CallToolResult, erro
 			return nil, err
 		}
 		status := in.Status
+		statusLabel := in.Status
 		for _, candidate := range board.Statuses {
 			if strings.EqualFold(candidate.Name, status) {
 				status = candidate.ID
+				statusLabel = candidate.Name
 				break
 			}
 		}
-		return do(h, request{http.MethodPut, "/api/tickets/" + url.PathEscape(in.ID) + "/move", struct {
+		return do(h, request{method: http.MethodPut, path: "/api/tickets/" + url.PathEscape(in.ID) + "/move?mcp_status_label=" + url.QueryEscape(statusLabel), body: struct {
 			StatusID string `json:"status_id"`
 			Index    int    `json:"index"`
 		}{status, math.MaxInt32}}) // API clamps to column length: append at end
@@ -749,7 +752,131 @@ func doJSON(h http.Handler, r request) ([]byte, error) {
 	if res.Code < 200 || res.Code >= 300 {
 		return nil, apiError(data, res.Code)
 	}
+	if r.method == http.MethodPost || r.method == http.MethodPut || r.method == http.MethodDelete {
+		if notifier, ok := h.(interface {
+			Notify(string, string, string, string, bool) error
+		}); ok {
+			if title, link, write := mcpChange(r, data); write {
+				if err := notifier.Notify("change", title, "", link, false); err != nil {
+					log.Printf("store MCP change notification: %v", err)
+				}
+			}
+		}
+	}
 	return data, nil
+}
+
+func mcpChange(r request, response []byte) (string, string, bool) {
+	parts := strings.Split(strings.SplitN(r.path, "?", 2)[0], "/")
+	resource := ""
+	for i := 1; i < len(parts); i++ {
+		if parts[i] == "api" {
+			if i+1 < len(parts) {
+				resource = parts[i+1]
+			}
+			break
+		}
+	}
+	if resource == "" {
+		return "", "", false
+	}
+	verb := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodDelete: "deleted"}[r.method]
+	target := ""
+	var payload map[string]any
+	if r.body != nil {
+		b, err := json.Marshal(r.body)
+		if err != nil || json.Unmarshal(b, &payload) != nil {
+			payload = nil
+		}
+	}
+	var result map[string]any
+	if json.Unmarshal(response, &result) != nil {
+		result = nil
+	}
+	title := ""
+	if strings.Contains(r.path, "/comments") {
+		for i, part := range parts {
+			if part == "tickets" && i+1 < len(parts) {
+				return "Martin commented on " + parts[i+1], "/tickets/" + parts[i+1], true
+			}
+		}
+	}
+	if strings.Contains(r.path, "/tickets") && resource == "boards" && r.method == http.MethodPost && result != nil {
+		id, _ := result["id"].(string)
+		code, _ := result["code"].(string)
+		if id != "" {
+			if code == "" {
+				code = id
+			}
+			return "Martin created " + code, "/tickets/" + id, true
+		}
+	}
+	switch resource {
+	case "tickets":
+		id := ""
+		for i, p := range parts {
+			if p == "tickets" && i+1 < len(parts) {
+				id = parts[i+1]
+				break
+			}
+		}
+		if id == "" && result != nil {
+			id, _ = result["id"].(string)
+		}
+		code := id
+		if result != nil {
+			if v, ok := result["code"].(string); ok && v != "" {
+				code = v
+			}
+		}
+		if code != "" {
+			target = code
+		}
+		if strings.Contains(r.path, "/move") {
+			title = "Martin moved " + code
+			if parsed, err := url.Parse(r.path); err == nil && parsed.Query().Get("mcp_status_label") != "" {
+				title += " to " + parsed.Query().Get("mcp_status_label")
+			} else if result != nil {
+				if status, ok := result["status_name"].(string); ok && status != "" {
+					title += " to " + status
+				}
+			}
+		} else if r.method == http.MethodPost {
+			title = "Martin created " + code
+		} else {
+			title = "Martin updated " + code
+		}
+		if id != "" {
+			return title, "/tickets/" + id, true
+		}
+	case "comments":
+		id := ""
+		for i, p := range parts {
+			if p == "tickets" && i+1 < len(parts) {
+				id = parts[i+1]
+			}
+		}
+		return "Martin commented on " + id, "/tickets/" + id, true
+	case "boards", "statuses", "ticket-types", "skills", "scheduled-tasks", "connectors", "mcp-servers", "calendar-items", "board-order":
+		if resource == "boards" && len(parts) > 3 && parts[3] != "" && r.method == http.MethodPut {
+			return "Martin updated board " + parts[3], "/boards/" + parts[3], true
+		}
+		if result != nil {
+			if id, ok := result["id"].(string); ok {
+				target = "/boards/" + id
+				if resource == "scheduled-tasks" {
+					target = "/ai/scheduled/" + id
+				}
+				if resource == "calendar-items" {
+					target = "/calendar"
+				}
+			}
+		}
+		return "Martin " + verb + " " + strings.ReplaceAll(strings.TrimSuffix(resource, "s"), "-", " "), target, true
+	default:
+		return "", "", false
+	}
+	return "Martin " + verb + " " + resource, "", true
 }
 
 func apiError(data []byte, code int) error {
