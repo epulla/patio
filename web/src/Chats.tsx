@@ -464,13 +464,18 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                       onDragStart={(event) => {
                         event.dataTransfer.setData(paneType, String(index));
                         event.dataTransfer.effectAllowed = "move";
-                        const head = event.currentTarget.closest(".conversation-head");
-                        if (head) {
-                          const rect = head.getBoundingClientRect();
-                          event.dataTransfer.setDragImage(head, event.clientX - rect.left, event.clientY - rect.top);
-                        }
-                        // Defer so the drag preview is captured before the pane dims.
-                        setTimeout(() => setDrag({ from: index }));
+                        // WebKit snapshots only painted pixels, so drag a solid card instead of the transparent header.
+                        const ghost = document.createElement("div");
+                        ghost.className = "pane-drag-ghost";
+                        ghost.textContent =
+                          event.currentTarget.closest(".conversation-head")?.querySelector("input")?.value || "Chat";
+                        document.body.append(ghost);
+                        event.dataTransfer.setDragImage(ghost, 20, 20);
+                        // Defer so the preview is captured before the card is removed and the pane dims.
+                        setTimeout(() => {
+                          ghost.remove();
+                          setDrag({ from: index });
+                        });
                       }}
                       onDragEnd={() => setDrag(undefined)}
                     >

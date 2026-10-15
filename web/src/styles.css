@@ -1915,6 +1915,22 @@ main:has(> .chats) {
 .pane-grip:active {
   cursor: grabbing;
 }
+.pane-drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: 0;
+  max-width: 280px;
+  padding: 10px 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--base-100);
+  color: var(--content);
+  font: 600 14px var(--font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: var(--shadow);
+}
 .grid-pane > section {
   flex: 1;
   min-width: 0;
