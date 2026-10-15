@@ -1809,6 +1809,12 @@ main:has(> .chats) {
 .rail-tip.focus {
   animation: none;
 }
+.rail-tip.wide {
+  width: max-content;
+  max-width: 260px;
+  white-space: normal;
+  line-height: 1.4;
+}
 @keyframes rail-tip {
   from {
     opacity: 0;

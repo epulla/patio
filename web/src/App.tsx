@@ -68,6 +68,14 @@ export default function App() {
   const pinned = usePinnedChats(pins.ids, refresh);
   const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("chat-dock") === "open");
   const [dockFocus, setDockFocus] = useState<{ id: string }>();
+  // The nav scrolls, which would clip a CSS [data-tip] tooltip, so it is positioned fixed instead.
+  const [tip, setTip] = useState<{ text: string; top: number; left: number; focus: boolean }>();
+
+  function showTip(button: HTMLElement, text: string, focus: boolean) {
+    if (focus && !button.matches(":focus-visible")) return;
+    const rect = button.getBoundingClientRect();
+    setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 8, focus });
+  }
 
   const pinCount = useRef(pins.ids.length);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -223,7 +231,10 @@ export default function App() {
       className="nav-item"
       aria-label={label}
       aria-current={active ? "page" : undefined}
-      title={label}
+      onMouseEnter={(event) => showTip(event.currentTarget, label, false)}
+      onFocus={(event) => showTip(event.currentTarget, label, true)}
+      onMouseLeave={() => setTip(undefined)}
+      onBlur={() => setTip(undefined)}
       onClick={() => navigate(to)}
     >
       <span className="nav-mark">{mark}</span>
@@ -247,7 +258,7 @@ export default function App() {
             }}
           />
         </div>
-        <nav>
+        <nav onScroll={() => setTip(undefined)}>
           {navItem("/", "Boards", <Icon name="boards" />, path === "/")}
           {navItem("/tickets", "Tickets", <Icon name="ticket" />, isTickets)}
           {navItem("/calendar", "Calendar", <Icon name="calendar" />, isCalendar)}
@@ -294,6 +305,11 @@ export default function App() {
             </button>
           )}
         </div>
+        {tip && (
+          <div className={tip.focus ? "rail-tip wide focus" : "rail-tip wide"} aria-hidden="true" style={{ top: tip.top, left: tip.left }}>
+            {tip.text}
+          </div>
+        )}
       </aside>
       <main>{page}</main>
       {showDock && dockOpen && (
