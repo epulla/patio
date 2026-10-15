@@ -10,6 +10,7 @@ import {
   type User,
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
+import DueBadge from "./DueBadge";
 import { Icon } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
@@ -190,6 +191,10 @@ export default function TicketDetail({
                     save({ due_date: event.target.value || null });
                   }}
                 />
+                {form.dueDate &&
+                  board?.statuses.find((status) => status.id === form.status)?.type !== "temporary" && (
+                    <DueBadge date={form.dueDate} />
+                  )}
               </label>
               {config.show_hidden && (
                 <label>
