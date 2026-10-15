@@ -634,6 +634,7 @@ function Splitter({
       onPointerDown={(event) => {
         event.preventDefault();
         const element = event.currentTarget;
+        element.focus();
         const start = sizes;
         const origin = vertical ? event.clientX : event.clientY;
         element.setPointerCapture(event.pointerId);
