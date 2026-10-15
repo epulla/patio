@@ -12,6 +12,7 @@ import { ErrorText } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 import { palettes, setThemePrefs, useThemePrefs, type Mode, type SidebarStyle } from "./theme";
+import Picker from "./Picker";
 
 function AllowedFolders({ onChange }: { onChange: () => void }) {
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
@@ -226,21 +227,28 @@ function Appearance() {
         <div className="defaults-fields">
           <label>
             Mode
-            <select value={prefs.mode} onChange={(event) => setThemePrefs({ mode: event.target.value as Mode })}>
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
+            <Picker
+              label="Mode"
+              options={[
+                { id: "system", name: "System" },
+                { id: "light", name: "Light" },
+                { id: "dark", name: "Dark" },
+              ]}
+              value={prefs.mode}
+              onChange={(mode) => setThemePrefs({ mode: mode as Mode })}
+            />
           </label>
           <label>
             Sidebar style
-            <select
+            <Picker
+              label="Sidebar style"
+              options={[
+                { id: "flat", name: "Flat" },
+                { id: "gradient", name: "Gradient" },
+              ]}
               value={prefs.style}
-              onChange={(event) => setThemePrefs({ style: event.target.value as SidebarStyle })}
-            >
-              <option value="flat">Flat</option>
-              <option value="gradient">Gradient</option>
-            </select>
+              onChange={(style) => setThemePrefs({ style: style as SidebarStyle })}
+            />
           </label>
         </div>
         <fieldset className="palette-picker">
@@ -305,28 +313,23 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
             <div className="defaults-fields">
               <label>
                 Connector
-                <select
+                <Picker
+                  label="Connector"
+                  empty="First connector"
+                  options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
                   value={defaults.connector_id ?? ""}
-                  onChange={(event) => save({ connector_id: event.target.value || null })}
-                >
-                  <option value="">First connector</option>
-                  {connectors.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} · {c.kind}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => save({ connector_id: id || null })}
+                />
               </label>
               <label>
                 Folder
-                <select value={defaults.folder ?? ""} onChange={(event) => save({ folder: event.target.value || null })}>
-                  <option value="">Scratch folder (no files shared)</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.path}>
-                      {f.path}
-                    </option>
-                  ))}
-                </select>
+                <Picker
+                  label="Folder"
+                  empty="Scratch folder (no files shared)"
+                  options={folders.map((f) => ({ id: f.path, name: f.path }))}
+                  value={defaults.folder ?? ""}
+                  onChange={(folder) => save({ folder: folder || null })}
+                />
               </label>
             </div>
             <Switch
