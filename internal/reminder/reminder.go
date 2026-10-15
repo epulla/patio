@@ -12,6 +12,9 @@ import (
 
 type Item struct {
 	ID          string
+	Kind        string
+	BoardID     sql.NullString
+	TicketID    sql.NullString
 	Title       string
 	Description string
 	StartsAt    string
@@ -58,10 +61,10 @@ func selectDue(ctx context.Context, tx *sql.Tx, now time.Time) (items []Item, er
 	timedAt := now.UTC().Format("2006-01-02T15:04:05.000Z")
 	localDate := now.Format("2006-01-02")
 	rows, err := tx.QueryContext(ctx, `
-		SELECT c.id, c.title, c.description, c.starts_at
+		SELECT c.id, c.kind, c.title, c.description, c.starts_at, c.board_id, c.ticket_id
 		FROM calendar_item c
 		LEFT JOIN board b ON b.id = c.board_id
-		WHERE c.kind = 'reminder'
+		WHERE c.kind IN ('reminder','event')
 		  AND c.deleted_at IS NULL
 		  AND c.notified_at IS NULL
 		  AND (c.board_id IS NULL OR (b.id IS NOT NULL AND b.deleted_at IS NULL))
@@ -75,7 +78,7 @@ func selectDue(ctx context.Context, tx *sql.Tx, now time.Time) (items []Item, er
 	}()
 	for rows.Next() {
 		var item Item
-		if err := rows.Scan(&item.ID, &item.Title, &item.Description, &item.StartsAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Description, &item.StartsAt, &item.BoardID, &item.TicketID); err != nil {
 			return nil, fmt.Errorf("scan due reminder: %w", err)
 		}
 		items = append(items, item)
@@ -86,7 +89,7 @@ func selectDue(ctx context.Context, tx *sql.Tx, now time.Time) (items []Item, er
 	return items, nil
 }
 
-func Run(ctx context.Context, database *sql.DB, every time.Duration, notify func(title, message string) error) error {
+func Run(ctx context.Context, database *sql.DB, every time.Duration, notify func(Item, string) error) error {
 	if every <= 0 {
 		return fmt.Errorf("reminder interval must be positive")
 	}
@@ -101,7 +104,7 @@ func Run(ctx context.Context, database *sql.DB, every time.Duration, notify func
 				message = item.StartsAt
 			}
 			// Claims commit before notification; failed notifications still fire once.
-			if err := notify(item.Title, message); err != nil {
+			if err := notify(item, message); err != nil {
 				log.Printf("notify reminder %s: %v", item.ID, err)
 			}
 		}

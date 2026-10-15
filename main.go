@@ -160,6 +160,26 @@ func main() {
 			background.Add(1)
 			go func() {
 				defer background.Done()
+				purge := func() {
+					if err := apiServer.PurgeNotifications(); err != nil {
+						log.Printf("purge notifications: %v", err)
+					}
+				}
+				purge()
+				ticker := time.NewTicker(24 * time.Hour)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-backgroundCtx.Done():
+						return
+					case <-ticker.C:
+						purge()
+					}
+				}
+			}()
+			background.Add(1)
+			go func() {
+				defer background.Done()
 				if err := db.Watch(backgroundCtx, database, time.Second, func() {
 					wruntime.EventsEmit(ctx, "db-changed")
 				}); err != nil {
@@ -176,8 +196,15 @@ func main() {
 				}()
 				go func() {
 					defer background.Done()
-					if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(title, message string) error {
-						return beeep.Notify("Reminder: "+title, message, "")
+					if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(item reminder.Item, message string) error {
+						title := item.Title
+						if item.Kind == "reminder" {
+							title = "Reminder: " + title
+						}
+						if err := apiServer.Notify("calendar", title, message, "/calendar", true); err != nil {
+							return err
+						}
+						return nil
 					}); err != nil {
 						log.Printf("run reminders: %v", err)
 					}

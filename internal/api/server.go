@@ -99,10 +99,14 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	}
 	opts.version = version
 	s.chats = newChatManager(db, opts)
+	s.chats.notify = s.Notify
 	s.chats.dbDir = s.dbDir
 	s.chats.enabledMCPServers = s.enabledMCPServers
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/config", s.config)
+	m.HandleFunc("GET /api/notifications", s.listNotifications)
+	m.HandleFunc("POST /api/notifications/{id}/read", s.readNotification)
+	m.HandleFunc("POST /api/notifications/read-all", s.readAllNotifications)
 	m.HandleFunc("GET /api/connectors", s.listConnectors)
 	m.HandleFunc("GET /api/connectors/{id}/status", s.connectorStatus)
 	m.HandleFunc("GET /api/connectors/{id}/quota", s.connectorQuota)

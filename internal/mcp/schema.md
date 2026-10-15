@@ -28,6 +28,7 @@ erDiagram
   scheduled_task_run { TEXT id; TEXT task_id; TEXT chat_id; TEXT scheduled_for; TEXT status; INTEGER late; TEXT error; TEXT created_at }
   app_window { TEXT id; TEXT chat_id; INTEGER pid; TEXT heartbeat_at; TEXT focus_at; TEXT focus_path }
   chat_turn { TEXT chat_id; TEXT window_id; TEXT started_at }
+  notification { TEXT id; TEXT kind; TEXT title; TEXT body; TEXT link; TEXT created_at; TEXT read_at }
 ```
 
 Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.

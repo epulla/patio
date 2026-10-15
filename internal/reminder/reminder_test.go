@@ -44,7 +44,7 @@ func TestDue(t *testing.T) {
 		wantDue   bool
 	}{
 		{id: "future-timed", kind: "reminder", startsAt: timedFuture, boardID: sql.NullString{String: "active-board", Valid: true}},
-		{id: "event", kind: "event", startsAt: timedPast, boardID: sql.NullString{String: "active-board", Valid: true}},
+		{id: "event", kind: "event", startsAt: timedPast, boardID: sql.NullString{String: "active-board", Valid: true}, wantDue: true},
 		{id: "deleted", kind: "reminder", startsAt: timedPast, deletedAt: sql.NullString{String: "2026-01-01T00:00:00Z", Valid: true}, boardID: sql.NullString{String: "active-board", Valid: true}},
 		{id: "all-day-today", kind: "reminder", startsAt: now.Format("2006-01-02"), allDay: 1, boardID: sql.NullString{String: "active-board", Valid: true}, wantDue: true},
 		{id: "past-timed", kind: "reminder", startsAt: timedPast, boardID: sql.NullString{String: "active-board", Valid: true}, wantDue: true},
@@ -63,12 +63,7 @@ func TestDue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var want []string
-	for _, test := range tests {
-		if test.wantDue {
-			want = append(want, test.id)
-		}
-	}
+	want := []string{"all-day-today", "event", "past-timed"}
 	if len(got) != len(want) {
 		t.Fatalf("Due() returned %d items, want %d: %+v", len(got), len(want), got)
 	}
@@ -118,5 +113,43 @@ func TestDueClaimErrorRollsBack(t *testing.T) {
 	}
 	if notified.Valid {
 		t.Errorf("notified_at = %q after failed claim, want NULL", notified.String)
+	}
+}
+
+func TestRunNotifiesDueEventOnce(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "events.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := database.Exec(`INSERT INTO calendar_item(id,kind,title,starts_at,created_by) VALUES('event','event','Launch',?,'local')`, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	notified := 0
+	err = Run(ctx, database, time.Hour, func(item Item, _ string) error {
+		if item.Kind != "event" {
+			t.Errorf("kind = %q, want event", item.Kind)
+		}
+		notified++
+		cancel()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if notified != 1 {
+		t.Fatalf("event notifications = %d, want 1", notified)
+	}
+	items, err := Due(context.Background(), database, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("event was claimed more than once: %+v", items)
 	}
 }

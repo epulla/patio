@@ -173,6 +173,11 @@ func (s *Server) startScheduled(claim scheduledClaim) error {
 		return err
 	}
 	_, err = s.chats.Send(c, kind, configDir, ChatSendRequest{Text: t.Prompt})
+	if err == nil {
+		if notifyErr := s.Notify("scheduled", "Scheduled task started: "+t.Title, "", "/ai/scheduled/"+t.ID, false); notifyErr != nil {
+			log.Printf("notify scheduled task start %s: %v", t.ID, notifyErr)
+		}
+	}
 	return err
 }
 
@@ -180,9 +185,7 @@ func (s *Server) failScheduled(claim scheduledClaim, cause error) {
 	if _, err := s.db.Exec(`UPDATE scheduled_task_run SET status='failed',error=? WHERE id=? AND status='running'`, cause.Error(), claim.runID); err != nil {
 		log.Printf("fail scheduled task run %s: %v", claim.runID, err)
 	}
-	if s.notify != nil {
-		if err := s.notify("Scheduled task failed: "+claim.task.Title, ""); err != nil {
-			log.Printf("notify scheduled task run %s: %v", claim.runID, err)
-		}
+	if err := s.Notify("scheduled", "Scheduled task failed: "+claim.task.Title, cause.Error(), "/ai/scheduled/"+claim.task.ID, true); err != nil {
+		log.Printf("notify scheduled task run %s: %v", claim.runID, err)
 	}
 }
