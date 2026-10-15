@@ -6,7 +6,8 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
 import Chats from "./Chats";
-import ChatDock, { dockShortcut, statusIcons, usePinnedChats } from "./ChatDock";
+import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
+import { statusIcons } from "./chatStatus";
 import { usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
@@ -196,7 +197,7 @@ export default function App() {
   if (path === "/settings") page = <Settings />;
 
   const showDock = pins.ids.length > 0 && !chatMatch;
-  const states = Object.values(pinned.status);
+  const states = pins.ids.map((id) => pinned.status[id]);
   const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
 
   const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (

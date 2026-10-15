@@ -2,13 +2,11 @@ import { useEffect, useState } from "react";
 import { api, type Board, type Chat, type Connector, type Ticket } from "./api";
 import { navigate } from "./App";
 import { Conversation, type PageContext } from "./Chats";
-import { Icon, IconButton, type IconName } from "./icons";
+import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
+import { Icon, IconButton } from "./icons";
 import { isUnpinKey, pinAriaShortcut, pinNumber, pinShortcut, unpin, unpinAriaShortcut, unpinShortcut } from "./pins";
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
-export type ChatStatus = "working" | "approval" | "reply";
-export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", reply: "check" };
-const statusLabels: Record<ChatStatus, string> = { working: "working", approval: "waiting for approval", reply: "new reply" };
 const minWidth = 320;
 const maxWidth = 720;
 const defaultWidth = 400;
@@ -17,7 +15,7 @@ const clampWidth = (width: number) => Math.min(maxWidth, Math.max(minWidth, Math
 
 export function usePinnedChats(ids: string[], refresh: number) {
   const [chats, setChats] = useState<Chat[]>([]);
-  const [status, setStatus] = useState<Record<string, ChatStatus | undefined>>({});
+  const status = useChatStatus(ids);
   const key = ids.join();
 
   useEffect(() => {
@@ -28,32 +26,12 @@ export function usePinnedChats(ids: string[], refresh: number) {
       .then((page) => {
         const pinned = page.chats.filter((chat) => key.split(",").includes(chat.id));
         setChats(pinned);
-        setStatus((current) =>
-          Object.fromEntries(
-            pinned.map((chat) => [
-              chat.id,
-              chat.pending_count ? "approval" : chat.running ? "working" : current[chat.id] === "reply" ? "reply" : undefined,
-            ]),
-          ),
-        );
+        syncChatStatus(pinned);
       })
       .catch(() => undefined);
   }, [key, refresh]);
 
-  useEffect(() => {
-    if (!key) return;
-    const unsubscribes = key.split(",").map((id) =>
-      window.runtime?.EventsOn(`chat:${id}`, (data) => {
-        const type = (data as { type: string }).type;
-        const next = type === "approval" ? "approval" : type === "done" ? "reply" : type === "error" ? undefined : "working";
-        setStatus((current) => ({ ...current, [id]: next }));
-      }),
-    );
-    return () => unsubscribes.forEach((unsubscribe) => unsubscribe?.());
-  }, [key]);
-
-  const seen = (id: string) => setStatus((current) => ({ ...current, [id]: undefined }));
-  return { chats, status, seen };
+  return { chats, status, seen: markSeen };
 }
 
 export default function ChatDock({
