@@ -50,6 +50,7 @@ type chatManager struct {
 	enabledMCPServers    func() ([]mcpServerSpec, error)
 	emitEvent            func(string, any)
 	options              Options
+	notify               func(string, string, string, string, bool) error
 	approvalTimeout      time.Duration
 	approvalPollInterval time.Duration
 	// burnedout: assumed 10-minute idle timeout for all chat kinds
@@ -479,8 +480,8 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		return err
 	}
 	m.emit(id, map[string]any{"type": "done", "message": message})
-	var runID, title string
-	lookupErr := m.db.QueryRow(`SELECT r.id,t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status='running'`, id).Scan(&runID, &title)
+	var runID, taskID, title string
+	lookupErr := m.db.QueryRow(`SELECT r.id,t.id,t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status='running'`, id).Scan(&runID, &taskID, &title)
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return lookupErr
 	}
@@ -493,10 +494,22 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		if _, err := m.db.Exec(`UPDATE scheduled_task_run SET status=?,error=? WHERE id=? AND status='running'`, status, failure, runID); err != nil {
 			return err
 		}
-		if m.options.Notify != nil {
-			if err := m.options.Notify(message, ""); err != nil {
+		if m.notify != nil {
+			if err := m.notify("scheduled", message, "", "/ai/scheduled/"+taskID, true); err != nil {
 				log.Printf("notify scheduled task run %s: %v", runID, err)
 			}
+		}
+	} else if turnErr == nil && m.notify != nil {
+		var title string
+		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
+			return err
+		}
+		if err := m.notify("chat", title, "Reply finished", "/ai/chats/"+id, false); err != nil {
+			log.Printf("notify finished chat %s: %v", id, err)
+		}
+	} else if turnErr != nil && m.notify != nil {
+		if err := m.notify("chat", "Chat failed", turnErr.Error(), "/ai/chats/"+id, false); err != nil {
+			log.Printf("notify failed chat %s: %v", id, err)
 		}
 	}
 	return nil
@@ -566,12 +579,21 @@ func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName stri
 	if auto {
 		return true, nil
 	}
-	var taskTitle string
-	if err := m.db.QueryRow(`SELECT t.title FROM chat c JOIN scheduled_task t ON t.id=c.scheduled_task_id WHERE c.id=?`, chatID).Scan(&taskTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	var taskTitle, taskID string
+	if err := m.db.QueryRow(`SELECT t.title,t.id FROM chat c JOIN scheduled_task t ON t.id=c.scheduled_task_id WHERE c.id=?`, chatID).Scan(&taskTitle, &taskID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
-	} else if err == nil && m.options.Notify != nil {
-		if err := m.options.Notify("Scheduled task needs approval: "+taskTitle, ""); err != nil {
-			log.Printf("notify scheduled task approval for chat %s: %v", chatID, err)
+	}
+	if m.notify != nil {
+		var title string
+		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, chatID).Scan(&title); err != nil {
+			return false, err
+		}
+		link, kind, noticeTitle := "/ai/chats/"+chatID, "chat", title+" needs approval"
+		if taskTitle != "" {
+			link, kind, noticeTitle = "/ai/scheduled/"+taskID, "scheduled", "Scheduled task needs approval: "+taskTitle
+		}
+		if err := m.notify(kind, noticeTitle, "", link, true); err != nil {
+			log.Printf("notify chat approval %s: %v", chatID, err)
 		}
 	}
 	m.emit(chatID, map[string]any{"type": "approval"})

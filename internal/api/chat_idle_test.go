@@ -21,6 +21,26 @@ func TestChatRuntimeClosesAfterIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestFinishedChatStoresNotification(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	id := createDriverTestChat(t, database, connectorID, root)
+	server := New(database, "local", false, "dev", root)
+	if err := server.chats.finishTurn(id, "reply", nil); err != nil {
+		t.Fatal(err)
+	}
+	var kind, title, body, link string
+	if err := database.QueryRow(`SELECT kind,title,body,link FROM notification`).Scan(&kind, &title, &body, &link); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "chat" || title == "" || body != "Reply finished" || link != "/ai/chats/"+id {
+		t.Fatalf("notification=%q %q %q %q", kind, title, body, link)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestChatRuntimeStaysOpenWhileBusy(t *testing.T) {
 	manager, c, driver := newIdleTestManager(t, 40*time.Millisecond)
 	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {

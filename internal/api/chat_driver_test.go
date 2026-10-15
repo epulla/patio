@@ -233,11 +233,12 @@ func TestRequestApproval(t *testing.T) {
 			connectorID := createTestConnector(t, database)
 			chatID := createDriverTestChat(t, database, connectorID, root)
 			events := make(chan any, 1)
+			nativeCalls := 0
 			server := New(database, "local", false, "dev", root, Options{Emit: func(name string, event any) {
 				if name == "chat:"+chatID {
 					events <- event
 				}
-			}})
+			}, Notify: func(string, string) error { nativeCalls++; return nil }})
 			server.chats.approvalPollInterval = time.Millisecond
 			server.chats.approvalTimeout = 30 * time.Millisecond
 			ctx, cancel := context.WithCancel(context.Background())
@@ -267,6 +268,17 @@ func TestRequestApproval(t *testing.T) {
 			}
 			if approvalID == "" {
 				t.Fatal("approval row was not inserted")
+			}
+			deadline = time.Now().Add(time.Second)
+			for nativeCalls == 0 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			var notificationCount int
+			if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='chat' AND link=?`, "/ai/chats/"+chatID).Scan(&notificationCount); err != nil {
+				t.Fatal(err)
+			}
+			if notificationCount != 1 || nativeCalls != 1 {
+				t.Fatalf("approval notifications=%d native calls=%d, want 1 each", notificationCount, nativeCalls)
 			}
 			select {
 			case event := <-events:
