@@ -33,6 +33,7 @@ import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
 import { isUnpinKey, maxPins, pinLayout, pinNumber, pinShortcut, setPins, unpin, usePins } from "./pins";
+import Picker from "./Picker";
 
 type ChatDetail = {
   chat: Chat;
@@ -1622,17 +1623,16 @@ function NewChatDialog({
         <form onSubmit={submit}>
           <label>
             Connector
-            <select required value={connectorID} onChange={(event) => {
-                setConnectorID(event.target.value);
-                setModel(defaultModel(event.target.value));
-              }}>
-              {connectors.length === 0 && <option value="">No chat connector</option>}
-              {connectors.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {c.kind}
-                </option>
-              ))}
-            </select>
+            <Picker
+              label="Connector"
+              empty={connectors.length === 0 ? "No chat connector" : undefined}
+              options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
+              value={connectorID}
+              onChange={(id) => {
+                setConnectorID(id);
+                setModel(defaultModel(id));
+              }}
+            />
           </label>
           <div className="field">
             <span className="label-row">
@@ -1648,14 +1648,13 @@ function NewChatDialog({
           </div>
           <label className="wide">
             Folder
-            <select value={folder} onChange={(event) => setFolder(event.target.value)}>
-              <option value="">Scratch folder (no files shared)</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.path}>
-                  {f.path}
-                </option>
-              ))}
-            </select>
+            <Picker
+              label="Folder"
+              empty="Scratch folder (no files shared)"
+              options={folders.map((f) => ({ id: f.path, name: f.path }))}
+              value={folder}
+              onChange={setFolder}
+            />
             {folders.length === 0 && <small>Add folders in Settings → Allowed folders.</small>}
           </label>
           <div className="modal-actions">
