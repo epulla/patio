@@ -59,6 +59,9 @@ type reorderColumnsArgs struct {
 	BoardID   string   `json:"board_id"`
 	StatusIDs []string `json:"status_ids"`
 }
+type reorderBoardsArgs struct {
+	BoardIDs []string `json:"board_ids"`
+}
 type columnIDArgs struct {
 	ID string `json:"id"`
 }
@@ -272,6 +275,9 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	}
 	s := sdk.NewServer(&sdk.Implementation{Name: "patio", Version: version}, &sdk.ServerOptions{Instructions: instructions})
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
+	addGeneric(s, "reorder_boards", "Set sidebar board order", h, func(a reorderBoardsArgs) request {
+		return request{http.MethodPut, "/api/board-order", map[string]any{"board_ids": a.BoardIDs}}
+	})
 	addGeneric(s, "list_mcp_servers", "List MCP servers; env values and bearer tokens are write-only and never returned", h, func(struct{}) request { return request{http.MethodGet, "/api/mcp-servers", nil} })
 	addGeneric(s, "create_mcp_server", "Register MCP server. stdio uses command, args, and env; http uses url, auth, and bearer_token. env and bearer_token are write-only", h, func(a createMCPServerArgs) request {
 		return request{http.MethodPost, "/api/mcp-servers", a}

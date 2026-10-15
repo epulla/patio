@@ -101,6 +101,31 @@ func TestConfigReturnsVersion(t *testing.T) {
 	}
 }
 
+func TestBoardOrderAndReorderEndpoint(t *testing.T) {
+	_, handler := newAPI(t)
+	first := createBoard(t, handler, "ONE", []string{"Todo"})
+	second := createBoard(t, handler, "TWO", []string{"Todo"})
+	var boards []testBoard
+	if code := requestJSON(t, handler, http.MethodGet, "/api/boards", nil, &boards); code != http.StatusOK {
+		t.Fatalf("GET /api/boards status = %d", code)
+	}
+	if len(boards) != 2 || boards[0].ID != second.ID || boards[1].ID != first.ID {
+		t.Fatalf("initial board order = %#v", boards)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/board-order", map[string]any{"board_ids": []string{first.ID, second.ID}}, nil); code != http.StatusNoContent {
+		t.Fatalf("PUT /api/board-order status = %d", code)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/boards", nil, &boards); code != http.StatusOK {
+		t.Fatalf("GET /api/boards status = %d", code)
+	}
+	if boards[0].ID != first.ID || boards[1].ID != second.ID {
+		t.Fatalf("reordered boards = %#v", boards)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/board-order", map[string]any{"board_ids": []string{first.ID}}, nil); code != http.StatusBadRequest {
+		t.Fatalf("mismatched board order status = %d, want 400", code)
+	}
+}
+
 func requestJSON(t *testing.T, handler http.Handler, method, path string, body any, out any) int {
 	t.Helper()
 	var input *bytes.Reader

@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -590,6 +591,65 @@ func (s *Server) statusOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	noContent(w)
 }
+
+func (s *Server) boardOrder(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs []string `json:"board_ids"`
+	}
+	if decode(r, &in) != nil {
+		errw(w, 400, "invalid JSON")
+		return
+	}
+	e := txrun(s.db, func(tx *sql.Tx) error {
+		rows, e := tx.Query(`SELECT id FROM board WHERE deleted_at IS NULL`)
+		if e != nil {
+			return e
+		}
+		ids := map[string]bool{}
+		for rows.Next() {
+			var id string
+			if e := rows.Scan(&id); e != nil {
+				rows.Close()
+				return e
+			}
+			ids[id] = true
+		}
+		if e := rows.Err(); e != nil {
+			rows.Close()
+			return e
+		}
+		if e := rows.Close(); e != nil {
+			return e
+		}
+		if len(in.IDs) != len(ids) {
+			return errBoardIDsMismatch
+		}
+		for _, id := range in.IDs {
+			if !ids[id] {
+				return errBoardIDsMismatch
+			}
+			delete(ids, id)
+		}
+		if len(ids) != 0 {
+			return errBoardIDsMismatch
+		}
+		for position, id := range in.IDs {
+			if _, e := tx.Exec(`UPDATE board SET position=? WHERE id=?`, position, id); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	if e == errBoardIDsMismatch {
+		errw(w, 400, "board_ids must match boards")
+	} else if e != nil {
+		errw(w, 500, e.Error())
+	} else {
+		noContent(w)
+	}
+}
+
+var errBoardIDsMismatch = errors.New("board_ids must match boards")
 
 func (s *Server) createType(w http.ResponseWriter, r *http.Request) {
 	var in struct {

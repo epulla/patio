@@ -159,6 +159,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/{id}/stop", s.stopChat)
 	m.HandleFunc("GET /api/users", s.users)
 	m.HandleFunc("GET /api/boards", s.boards)
+	m.HandleFunc("PUT /api/board-order", s.boardOrder)
 	m.HandleFunc("POST /api/boards", s.createBoard)
 	m.HandleFunc("GET /api/boards/{id}", s.board)
 	m.HandleFunc("PUT /api/boards/{id}", s.updateBoard)

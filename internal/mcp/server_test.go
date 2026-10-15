@@ -56,7 +56,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
 		"query_db": true, "list_connectors": true, "create_connector": true,
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
-		"update_column": true, "reorder_columns": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
+		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
 	}
 	count := 0
@@ -75,8 +75,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 44 {
-		t.Fatalf("tool count = %d, want 44", count)
+	if count != 45 {
+		t.Fatalf("tool count = %d, want 45", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -412,6 +412,9 @@ func TestMCPBoardStructure(t *testing.T) {
 	order := []string{column.ID, original.ID}
 	if result := callTool(t, session, "reorder_columns", map[string]any{"board_id": board.ID, "status_ids": order}); result.IsError {
 		t.Fatalf("reorder columns: %#v", result)
+	}
+	if result := callTool(t, session, "reorder_boards", map[string]any{"board_ids": []string{board.ID}}); result.IsError {
+		t.Fatalf("reorder boards: %#v", result)
 	}
 	var ticketType struct {
 		ID string `json:"id"`
