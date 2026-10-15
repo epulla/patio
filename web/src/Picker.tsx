@@ -29,6 +29,7 @@ export default function Picker({
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const typed = useRef({ text: "", at: 0 });
   const id = useId();
 
   const options: PickerOption[] = empty === undefined ? items : [{ id: "", name: empty }, ...items];
@@ -95,7 +96,31 @@ export default function Picker({
     close();
   }
 
+  const typing = () => Date.now() - typed.current.at < 500;
+  const printable = (event: KeyboardEvent) =>
+    event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
+
+  // Native-select type-ahead: typed letters jump to a matching option; repeating one letter cycles.
+  function typeAhead(key: string, from: number) {
+    const text = (typing() ? typed.current.text : "") + key.toLowerCase();
+    typed.current = { text, at: Date.now() };
+    const cycle = [...text].every((char) => char === text[0]);
+    const prefix = cycle ? text[0] : text;
+    for (let i = 0; i < options.length; i++) {
+      const index = (from + (cycle ? 1 : 0) + i) % options.length;
+      if (options[index].name.toLowerCase().startsWith(prefix)) return index;
+    }
+    return -1;
+  }
+
   function triggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (printable(event) && event.key !== " ") {
+      event.preventDefault();
+      const index = typeAhead(event.key, Math.max(0, options.findIndex((option) => option.id === value)));
+      show();
+      if (index >= 0) setActive(index);
+      return;
+    }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
     show();
@@ -107,6 +132,12 @@ export default function Picker({
       return close();
     }
     if (event.key === "Tab") return setOpen(false);
+    if (printable(event) && (event.key !== " " || typing())) {
+      event.preventDefault();
+      const index = typeAhead(event.key, active);
+      if (index >= 0) setActive(index);
+      return;
+    }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       return pick(options[active].id);
