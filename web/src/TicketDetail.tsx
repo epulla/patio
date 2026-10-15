@@ -196,21 +196,19 @@ export default function TicketDetail({
               {config.show_hidden && (
                 <label>
                   Assignee
-                  <select
+                  <Picker
+                    label="Assignee"
+                    empty="Unassigned"
+                    options={users.map((user) => ({
+                      id: user.id,
+                      name: `${user.name} ${user.last_name}${user.is_ai ? " (AI)" : ""}`,
+                    }))}
                     value={form.assignee}
-                    onChange={(event) => {
-                      setForm({ ...form, assignee: event.target.value });
-                      save({ assignee_id: event.target.value || null });
+                    onChange={(assignee) => {
+                      setForm({ ...form, assignee });
+                      save({ assignee_id: assignee || null });
                     }}
-                  >
-                    <option value="">Unassigned</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name} {user.last_name}
-                        {user.is_ai ? " (AI)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               )}
               <dl>

@@ -3,6 +3,7 @@ import { api, type Board, type SearchTicket } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon } from "./icons";
 import Menu from "./Menu";
+import Picker from "./Picker";
 
 type Column = "code" | "title" | "board" | "status" | "created" | "updated";
 type Sort = { column: Column; dir: "asc" | "desc" };
@@ -99,12 +100,7 @@ export default function Tickets({ refresh }: { refresh: number }) {
         </label>
         <label>
           Board
-          <select value={boardID} onChange={(event) => setBoardID(event.target.value)}>
-            <option value="">All boards</option>
-            {boards.map((board) => (
-              <option key={board.id} value={board.id}>{board.name}</option>
-            ))}
-          </select>
+          <Picker label="Board" empty="All boards" options={boards} value={boardID} onChange={setBoardID} />
         </label>
         {dateField("created_from", "Created from")}
         {dateField("created_to", "Created to")}
