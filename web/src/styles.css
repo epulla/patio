@@ -1750,6 +1750,12 @@ main:has(> .chats) {
   width: 10px;
   height: 10px;
 }
+/* The dot icon's circle fills a third of its box; enlarge it to match the pin's weight. */
+.chat-badges .dock-dot[data-state="working"] .svg-icon {
+  width: 18px;
+  height: 18px;
+  margin: -4px;
+}
 .badge-scheduled,
 .chat-link small .svg-icon {
   color: var(--info);
