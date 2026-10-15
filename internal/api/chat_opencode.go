@@ -383,7 +383,7 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		return err
 	}
 	if d.personaPrompt {
-		request.Text = ChatSystemPrompt(persona) + "\n\n" + request.Text
+		request.Text = ChatSystemPrompt(persona, d.chatID) + "\n\n" + request.Text
 		d.personaPrompt = false
 	}
 	parts := opencodePromptParts(request.Text, files)

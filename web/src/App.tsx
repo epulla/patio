@@ -67,6 +67,7 @@ export default function App() {
   const pins = usePins();
   const pinned = usePinnedChats(pins.ids, refresh);
   const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("chat-dock") === "open");
+  const [dockFocus, setDockFocus] = useState<{ id: string }>();
 
   const pinCount = useRef(pins.ids.length);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -74,6 +75,7 @@ export default function App() {
   function toggleDock(open: boolean) {
     localStorage.setItem("chat-dock", open ? "open" : "closed");
     setDockOpen(open);
+    if (!open) setDockFocus(undefined);
   }
 
   useEffect(() => {
@@ -102,6 +104,18 @@ export default function App() {
   }, [pins.ids.length, dockOpen, config]);
 
   useEffect(() => {
+    const onChatLink = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (!pins.ids.includes(id) || config?.chat_window || location.pathname.startsWith("/ai/chats"))
+        return navigate(`/ai/chats/${id}`);
+      toggleDock(true);
+      setDockFocus({ id });
+    };
+    addEventListener("open-chat-link", onChatLink);
+    return () => removeEventListener("open-chat-link", onChatLink);
+  }, [pins.ids, config]);
+
+  useEffect(() => {
     api
       .get<Board[]>("/api/boards")
       .then(setBoards)
@@ -109,7 +123,10 @@ export default function App() {
   }, [path, refresh]);
 
   useEffect(() => {
-    const onPopState = () => setPath(currentPath());
+    const onPopState = () => {
+      setPath(currentPath());
+      setDockFocus(undefined);
+    };
     addEventListener("popstate", onPopState);
     return () => removeEventListener("popstate", onPopState);
   }, []);
@@ -285,6 +302,7 @@ export default function App() {
           chats={pinned.chats}
           status={pinned.status}
           refresh={refresh}
+          focus={dockFocus}
           page={
             ticketMatch
               ? { kind: "ticket", id: decodeURIComponent(ticketMatch[1]) }

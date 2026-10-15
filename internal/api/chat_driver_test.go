@@ -408,7 +408,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := buildClaudeArgsWithConfig("sonnet", "session-id", configPath)
+	args := buildClaudeArgsWithConfig("sonnet", "session-id", configPath, "chat-id")
 	joined := strings.Join(args, " ")
 	for _, want := range []string{"-p", "--append-system-prompt", "/tickets/<ticket id>", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__patio__approve", "--resume session-id"} {
 		if !strings.Contains(joined, want) {
@@ -455,7 +455,7 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 		findClaude:     func() (string, error) { return "claude-test", nil },
 		commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil },
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
-			if path != "claude-test" || len(args) != 3 || args[1] != "--append-system-prompt" || !strings.Contains(args[2], "/tickets/<ticket id>") || cwd != filepath.Join(root, "chats", chatID) {
+			if path != "claude-test" || len(args) != 3 || args[1] != "--append-system-prompt" || !strings.Contains(args[2], "/tickets/<ticket id>") || !strings.Contains(args[2], "/ai/chats/<chat id>") || !strings.Contains(args[2], "This chat's ID is "+chatID) || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("process launch = %q %#v %q", path, args, cwd)
 			}
 			return fake, nil

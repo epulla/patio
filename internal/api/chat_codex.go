@@ -106,7 +106,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 			_ = client.Close()
 			return nil, promptErr
 		}
-		params["developerInstructions"] = ChatSystemPrompt(persona)
+		params["developerInstructions"] = ChatSystemPrompt(persona, c.ID)
 		if c.Model != "" {
 			params["model"] = c.Model
 		}

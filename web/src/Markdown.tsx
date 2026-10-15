@@ -17,7 +17,9 @@ export default function Markdown({ text, onFile }: { text: string; onFile?: (pat
     if (!href) return;
     event.preventDefault();
     const route = href.split(/[?#]/, 1)[0];
-    if (route === "/" || appRoute.test(route)) navigate(href);
+    const chat = route.match(/^\/ai\/chats\/([^/]+)$/);
+    if (chat) dispatchEvent(new CustomEvent("open-chat-link", { detail: chat[1] }));
+    else if (route === "/" || appRoute.test(route)) navigate(href);
     else if (/^https?:\/\//i.test(href)) {
       if (window.runtime) window.runtime.BrowserOpenURL(href);
       else window.open(href, "_blank", "noopener");

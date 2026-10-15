@@ -6,15 +6,19 @@ import (
 )
 
 const (
-	chatLinkRules = "In patio, reply in Markdown. Link tickets as [CODE: Title](/tickets/<ticket id>) and boards as [Board name](/boards/<board id>), using returned IDs only; never invent IDs."
+	chatLinkRules = "In patio, reply in Markdown. Link tickets as [CODE: Title](/tickets/<ticket id>), boards as [Board name](/boards/<board id>), and chats as [Chat title](/ai/chats/<chat id>), using returned IDs only; never invent IDs."
 	martinPersona = "You are Martin, playful, joyful AI companion for everyday/weekly tasks. Be supportive, concise, joke sometimes, recommend."
 )
 
-func ChatSystemPrompt(enabled bool) string {
-	if enabled {
-		return martinPersona + " " + chatLinkRules
+func ChatSystemPrompt(enabled bool, chatID string) string {
+	id := ""
+	if chatID != "" {
+		id = " This chat's ID is " + chatID + "."
 	}
-	return "You are a neutral assistant. " + chatLinkRules
+	if enabled {
+		return martinPersona + " " + chatLinkRules + id
+	}
+	return "You are a neutral assistant. " + chatLinkRules + id
 }
 
 func MartinPersonaEnabled(db *sql.DB) (bool, error) {

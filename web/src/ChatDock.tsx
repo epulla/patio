@@ -39,6 +39,7 @@ export default function ChatDock({
   chats,
   status,
   refresh,
+  focus,
   page,
   onSeen,
   onClose,
@@ -47,6 +48,7 @@ export default function ChatDock({
   chats: Chat[];
   status: Record<string, ChatStatus | undefined>;
   refresh: number;
+  focus?: { id: string };
   page?: { kind: "ticket" | "board"; id: string };
   onSeen: (id: string) => void;
   onClose: () => void;
@@ -98,6 +100,13 @@ export default function ChatDock({
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [ids, current]);
+
+  useEffect(() => {
+    if (!focus) return;
+    if (focus.id === current) document.querySelector<HTMLTextAreaElement>(".chat-dock textarea")?.focus();
+    setActive(focus.id);
+    setFocusRequest(focus.id);
+  }, [focus]);
 
   function unpinChat(id: string) {
     const index = ids.indexOf(id);

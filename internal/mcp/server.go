@@ -265,7 +265,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		if err != nil {
 			return nil, fmt.Errorf("load Martin persona setting: %w", err)
 		}
-		instructions = api.ChatSystemPrompt(persona) + " " + instructions
+		instructions = api.ChatSystemPrompt(persona, "") + " " + instructions
 	}
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."

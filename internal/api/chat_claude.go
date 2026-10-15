@@ -74,13 +74,13 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		if err != nil {
 			return nil, err
 		}
-		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath, persona)
+		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath, c.ID, persona)
 	} else {
 		args, err = m.options.commandBuilder(exe, m.dbPath, c.ID, c.Model, stringValue(c.SessionID))
 		if err != nil {
 			return nil, err
 		}
-		args = append(args, "--append-system-prompt", ChatSystemPrompt(persona))
+		args = append(args, "--append-system-prompt", ChatSystemPrompt(persona, c.ID))
 	}
 	factory := m.options.processFactory
 	if factory == nil {
@@ -110,12 +110,12 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func buildClaudeArgsWithConfig(model, sessionID, configPath string, persona ...bool) []string {
+func buildClaudeArgsWithConfig(model, sessionID, configPath, chatID string, persona ...bool) []string {
 	enabled := true
 	if len(persona) > 0 {
 		enabled = persona[0]
 	}
-	args := []string{"-p", "--append-system-prompt", ChatSystemPrompt(enabled), "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	args := []string{"-p", "--append-system-prompt", ChatSystemPrompt(enabled, chatID), "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}

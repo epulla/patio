@@ -183,7 +183,7 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 		if err != nil {
 			return err
 		}
-		request.Text = ChatSystemPrompt(persona) + "\n\n" + request.Text
+		request.Text = ChatSystemPrompt(persona, d.chatID) + "\n\n" + request.Text
 		d.firstPrompt = false
 	}
 	result, err := d.client.callAsync("session/prompt", map[string]any{
