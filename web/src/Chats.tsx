@@ -143,6 +143,24 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 8, focus });
   }
 
+  // With a single connector the dialog has nothing to choose, so create the chat with its defaults.
+  const startingChat = useRef(false);
+  async function newChat() {
+    if (connectors.length !== 1) return setCreating(true);
+    if (startingChat.current) return;
+    startingChat.current = true;
+    try {
+      const defaults = await api.get<ChatDefaults>("/api/settings/defaults");
+      const id = connectors[0].id;
+      const chat = await createChat({ connector_id: id, model: connectorModel(connectors, id), folder: defaults.folder || null });
+      navigate(`/ai/chats/${chat.id}`);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      startingChat.current = false;
+    }
+  }
+
   useEffect(() => {
     const current = ++generation.current;
     Promise.all([
@@ -266,11 +284,11 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "n") return;
       event.preventDefault();
       if (document.querySelector("dialog[open]")) return;
-      setCreating(true);
+      newChat();
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
-  }, [windowed, loaded, connectors.length]);
+  }, [windowed, loaded, connectors]);
   const tracks = (sizes: number[]) => sizes.map((size) => `minmax(240px, ${size}fr)`).join(" 6px ");
 
   return (
@@ -283,7 +301,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
               className="primary"
               data-tip={`New chat (${newChatShortcut})`}
               aria-keyshortcuts={newChatAriaShortcut}
-              onClick={() => setCreating(true)}
+              onClick={newChat}
             >
               <Icon name="plus" /> New chat
             </button>
@@ -312,7 +330,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             icon="plus"
             label={`New chat (${newChatShortcut})`}
             aria-keyshortcuts={newChatAriaShortcut}
-            onClick={() => setCreating(true)}
+            onClick={newChat}
           />
         )}
         {!listOpen && pins.ids.length > 0 && (
@@ -1671,6 +1689,11 @@ function FolderDialog({
   );
 }
 
+const connectorModel = (connectors: Connector[], id: string) =>
+  connectors.find((c) => c.id === id && c.kind === "local")?.model ?? "";
+
+const createChat = (body: { connector_id: string; model: string; folder: string | null }) => api.post<Chat>("/api/chats", body);
+
 function NewChatDialog({
   connectors,
   onClose,
@@ -1680,7 +1703,7 @@ function NewChatDialog({
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
-  const defaultModel = (id: string) => connectors.find((c) => c.id === id && c.kind === "local")?.model ?? "";
+  const defaultModel = (id: string) => connectorModel(connectors, id);
   const [connectorID, setConnectorID] = useState(connectors[0]?.id ?? "");
   const [model, setModel] = useState(() => defaultModel(connectors[0]?.id ?? ""));
   const { models, loading: modelsLoading } = useModels(connectorID);
@@ -1707,12 +1730,7 @@ function NewChatDialog({
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
-      const chat = await api.post<Chat>("/api/chats", {
-        connector_id: connectorID,
-        model,
-        folder: folder || null,
-      });
-      onCreated(chat);
+      onCreated(await createChat({ connector_id: connectorID, model, folder: folder || null }));
     } catch (reason) {
       setError(reason);
     }
