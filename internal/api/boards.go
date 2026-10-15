@@ -43,7 +43,7 @@ func (s *Server) boardBy(q interface{ QueryRow(string, ...any) *sql.Row }, id st
 	return scanBoard(q.QueryRow(`SELECT id,name,short_name,template,created_at,updated_at FROM board WHERE id=? AND deleted_at IS NULL`, id))
 }
 func (s *Server) boards(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT id,name,short_name,template,created_at,updated_at FROM board WHERE deleted_at IS NULL ORDER BY created_at DESC`)
+	rows, e := s.db.Query(`SELECT id,name,short_name,template,created_at,updated_at FROM board WHERE deleted_at IS NULL ORDER BY position ASC, created_at DESC`)
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -140,7 +140,7 @@ func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
 	id, t := uid(), now()
 	var b board
 	e := txrun(s.db, func(tx *sql.Tx) error {
-		if _, e := tx.Exec(`INSERT INTO board(id,name,short_name,template,created_at,updated_at) VALUES(?,?,?,?,?,?)`, id, name, short, template, t, t); e != nil {
+		if _, e := tx.Exec(`INSERT INTO board(id,name,short_name,template,created_at,updated_at,position) VALUES(?,?,?,?,?,?,COALESCE((SELECT MIN(position) FROM board WHERE deleted_at IS NULL),0)-1)`, id, name, short, template, t, t); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(`INSERT INTO board_counter(last_number,board_id) VALUES(0,?)`, id); e != nil {

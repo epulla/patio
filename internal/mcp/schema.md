@@ -3,7 +3,7 @@
 ```mermaid
 erDiagram
   user { TEXT id; TEXT name; TEXT last_name; TEXT email; INTEGER email_verified; TEXT id_card; TEXT phone; TEXT image; TEXT role; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER is_ai }
-  board { TEXT id; TEXT name; TEXT short_name; TEXT template; TEXT created_at; TEXT updated_at; TEXT deleted_at }
+  board { TEXT id; TEXT name; TEXT short_name; TEXT template; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER position }
   status { TEXT id; TEXT name; TEXT type; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket_type { TEXT id; TEXT name; TEXT color; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket { TEXT id; TEXT title; TEXT description; INTEGER number; TEXT code; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT due_date; TEXT status_updated_at; TEXT status_id; TEXT board_id; TEXT ticket_type_id; TEXT reporter_id; TEXT assignee_id }
@@ -30,4 +30,4 @@ erDiagram
   chat_turn { TEXT chat_id; TEXT window_id; TEXT started_at }
 ```
 
-Ordering is stored in JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.
+Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.

@@ -598,7 +598,7 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 			short = base + suffix
 		}
 		bid := uid()
-		if _, e := tx.Exec(`INSERT INTO board(id,name,short_name,template,created_at,updated_at) VALUES(?,?,?,?,?,?)`, bid, b.Board.Name, short, b.Board.Template, b.Board.Created, b.Board.Updated); e != nil {
+		if _, e := tx.Exec(`INSERT INTO board(id,name,short_name,template,created_at,updated_at,position) VALUES(?,?,?,?,?,?,COALESCE((SELECT MIN(position) FROM board WHERE deleted_at IS NULL),0)-1)`, bid, b.Board.Name, short, b.Board.Template, b.Board.Created, b.Board.Updated); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(`INSERT INTO board_counter(last_number,board_id) VALUES(?,?)`, 0, bid); e != nil {

@@ -41,6 +41,9 @@ func TestBoardJSONRoundTripAndCollision(t *testing.T) {
 		t.Fatalf("markdown status transition = %q", md.Body.String())
 	}
 	other, otherHandler := newAPI(t)
+	if _, err := other.Exec(`INSERT INTO board(id,name,short_name,created_at,updated_at) VALUES('existing','Existing','OLD','2000','2000')`); err != nil {
+		t.Fatal(err)
+	}
 	w := transferRequest(t, otherHandler, http.MethodPost, "/api/import", backup)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("import status = %d: %s", w.Code, w.Body)
@@ -48,6 +51,13 @@ func TestBoardJSONRoundTripAndCollision(t *testing.T) {
 	var imported testBoard
 	if err := json.NewDecoder(w.Body).Decode(&imported); err != nil {
 		t.Fatal(err)
+	}
+	var listed []testBoard
+	if code := requestJSON(t, otherHandler, http.MethodGet, "/api/boards", nil, &listed); code != http.StatusOK {
+		t.Fatalf("GET /api/boards status = %d", code)
+	}
+	if len(listed) != 2 || listed[0].ID != imported.ID || listed[1].ID != "existing" {
+		t.Fatalf("imported board order = %#v", listed)
 	}
 	for _, table := range []string{"status", "ticket_type", "ticket", "ticket_history", "ticket_status_transition", "ticket_comment"} {
 		var count int
