@@ -985,8 +985,37 @@ a:has(> .svg-icon) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.ticket-card .due {
+.due-badge {
+  align-self: flex-start;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.due-badge[data-tip]::after {
+  left: 0;
+  transform: none;
+}
+.due-badge.far {
+  background: color-mix(in oklch, var(--info) 12%, var(--base-100));
+  border-color: color-mix(in oklch, var(--info) 30%, transparent);
+}
+.due-badge.near {
+  background: color-mix(in oklch, var(--info) 30%, var(--base-100));
+  border-color: color-mix(in oklch, var(--info) 60%, transparent);
+  font-weight: 700;
+}
+.due-badge.today {
+  background: var(--warning);
+  color: var(--warning-content);
+  font-weight: 700;
+}
+.due-badge.overdue {
+  background: var(--error);
+  color: var(--error-content);
+  font-weight: 700;
 }
 .ticket-meta {
   display: flex;

@@ -6,6 +6,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
+import DueBadge from "./DueBadge";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
 import {
@@ -387,6 +388,7 @@ function Column({
             key={ticket.id}
             ticket={ticket}
             types={types}
+            done={status.type === "temporary"}
             onDrag={dragStart}
           />
         ))}
@@ -404,10 +406,12 @@ function Column({
 function Card({
   ticket,
   types,
+  done,
   onDrag,
 }: {
   ticket: Ticket;
   types: TicketType[];
+  done: boolean;
   onDrag: (event: DragEvent, kind: string, id: string) => void;
 }) {
   const type = types.find((item) => item.id === ticket.ticket_type_id);
@@ -424,9 +428,7 @@ function Card({
       onKeyDown={(event) => event.key === "Enter" && open()}
     >
       <h4>{ticket.title}</h4>
-      {ticket.due_date && (
-        <small className="due">Due {ticket.due_date.slice(0, 10)}</small>
-      )}
+      {ticket.due_date && !done && <DueBadge date={ticket.due_date} />}
       <div className="ticket-meta">
         {type ? (
           <span
