@@ -15,6 +15,7 @@ import { ConnectorRequired } from "./Connectors";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import Switch from "./Switch";
+import Picker from "./Picker";
 
 type Repeat = "once" | "hours" | "daily" | "weekdays" | "weekly" | "monthly" | "cron";
 type When = { repeat: Repeat; at: string; time: string; hours: number; days: number[]; day: number; cron: string };
@@ -474,22 +475,16 @@ function TaskEditor({
         <div className="skill-fields">
           <label>
             Connector
-            <select
-              required
+            <Picker
+              label="Connector"
+              empty={connectors?.length === 0 ? "No connector" : task && !connectorID ? "Connector removed" : undefined}
+              options={(connectors ?? []).map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
               value={connectorID}
-              onChange={(event) => {
-                setConnectorID(event.target.value);
-                setModel(defaultModel(connectors ?? [], event.target.value));
+              onChange={(id) => {
+                setConnectorID(id);
+                setModel(defaultModel(connectors ?? [], id));
               }}
-            >
-              {connectors?.length === 0 && <option value="">No connector</option>}
-              {task && !connectorID && <option value="">Connector removed</option>}
-              {connectors?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {c.kind}
-                </option>
-              ))}
-            </select>
+            />
           </label>
           <div className="field">
             <span className="label-row">
@@ -505,22 +500,28 @@ function TaskEditor({
           </div>
           <label className="grow">
             Folder
-            <select value={folder} onChange={(event) => setFolder(event.target.value)}>
-              <option value="">Scratch folder (no files shared)</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.path}>
-                  {f.path}
-                </option>
-              ))}
-              {folder && !folders.some((f) => f.path === folder) && <option value={folder}>{folder}</option>}
-            </select>
+            <Picker
+              label="Folder"
+              empty="Scratch folder (no files shared)"
+              options={[
+                ...folders.map((f) => ({ id: f.path, name: f.path })),
+                ...(folder && !folders.some((f) => f.path === folder) ? [{ id: folder, name: folder }] : []),
+              ]}
+              value={folder}
+              onChange={setFolder}
+            />
           </label>
           <label>
             Mode
-            <select value={autoAllow ? "auto" : "ask"} onChange={(event) => setAutoAllow(event.target.value === "auto")}>
-              <option value="ask">Ask before changes</option>
-              <option value="auto">Auto-allow everything</option>
-            </select>
+            <Picker
+              label="Mode"
+              options={[
+                { id: "ask", name: "Ask before changes" },
+                { id: "auto", name: "Auto-allow everything" },
+              ]}
+              value={autoAllow ? "auto" : "ask"}
+              onChange={(mode) => setAutoAllow(mode === "auto")}
+            />
           </label>
         </div>
         <p className="muted">
@@ -534,13 +535,12 @@ function TaskEditor({
           <legend>Schedule</legend>
           <label>
             Repeat
-            <select value={when.repeat} onChange={(event) => set({ repeat: event.target.value as Repeat })}>
-              {(Object.keys(repeatLabels) as Repeat[]).map((repeat) => (
-                <option key={repeat} value={repeat}>
-                  {repeatLabels[repeat]}
-                </option>
-              ))}
-            </select>
+            <Picker
+              label="Repeat"
+              options={(Object.keys(repeatLabels) as Repeat[]).map((repeat) => ({ id: repeat, name: repeatLabels[repeat] }))}
+              value={when.repeat}
+              onChange={(repeat) => set({ repeat: repeat as Repeat })}
+            />
           </label>
           {when.repeat === "once" && (
             <label>
