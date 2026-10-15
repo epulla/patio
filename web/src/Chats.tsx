@@ -711,7 +711,13 @@ export function Conversation({
   const [streaming, setStreaming] = useState("");
   const [thinking, setThinking] = useState("");
   const [running, setRunning] = useState(false);
-  const [text, setText] = useState("");
+  const draftKey = `chat-draft:${id}`;
+  const [text, setText] = useState(() => localStorage.getItem(draftKey) ?? "");
+  function changeText(value: string) {
+    setText(value);
+    if (value) localStorage.setItem(draftKey, value);
+    else localStorage.removeItem(draftKey);
+  }
   const [contextOff, setContextOff] = useState<string>();
   const contextOn = !!context && contextOff !== context.line;
   const [title, setTitle] = useState("");
@@ -893,7 +899,7 @@ export function Conversation({
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
       if (prefix) sentContext.set(id, context!.line);
-      setText("");
+      changeText("");
       setPending([]);
       setDetail((current) =>
         current && !current.messages.some((m) => m.id === message.id)
@@ -1212,7 +1218,7 @@ export function Conversation({
           placeholder={connector ? "Message… (Enter to send, Shift+Enter for a new line)" : "This chat's connector was removed"}
           disabled={!connector || otherWindow}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => changeText(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onDragOver={onDragOver}
