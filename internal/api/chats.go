@@ -878,17 +878,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) {
-	s.attachmentsMu.Lock()
-	defer s.attachmentsMu.Unlock()
-	id := idParam(r, "id")
-	res, err := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
-	if err == nil {
-		var n int64
-		n, err = res.RowsAffected()
-		if err == nil && n == 0 {
-			err = sql.ErrNoRows
-		}
-	}
+	err := s.removeChat(idParam(r, "id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		errw(w, 404, "chat not found")
 		return
@@ -897,20 +887,31 @@ func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
+	noContent(w)
+}
+
+func (s *Server) removeChat(id string) error {
+	s.attachmentsMu.Lock()
+	defer s.attachmentsMu.Unlock()
+	res, err := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
 	if err := s.chats.CloseChat(id); err != nil {
-		errw(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	delete(s.attachments, id)
 	// A chat may have left its scratch folder for a user folder, so always clean it up.
 	dir := filepath.Join(s.dbDir, "chats", id)
 	if insideConnectorDir(filepath.Join(s.dbDir, "chats"), dir) {
-		if err := os.RemoveAll(dir); err != nil {
-			errw(w, 500, err.Error())
-			return
-		}
+		return os.RemoveAll(dir)
 	}
-	noContent(w)
+	return nil
 }
 
 func (s *Server) answerChatApproval(w http.ResponseWriter, r *http.Request) {
