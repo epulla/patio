@@ -64,10 +64,11 @@ export function useModels(connectorID: string | null | undefined) {
     let active = true;
     setState({ id: connectorID, models: fallbackModels, loading: true });
     api
-      .get<{ models: ModelOption[] }>(`/api/connectors/${connectorID}/models`)
+      .get<{ models: ModelOption[]; note?: string }>(`/api/connectors/${connectorID}/models`)
       .then((result) => {
         const models = result.models.length ? result.models : fallbackModels;
-        modelCache.set(connectorID, models);
+        // A note means the connector failed and only "Default" came back; retry next time.
+        if (!result.note) modelCache.set(connectorID, models);
         if (active) setState({ id: connectorID, models, loading: false });
       })
       .catch(() => active && setState({ id: connectorID, models: fallbackModels, loading: false }));
