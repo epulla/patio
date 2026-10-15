@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import BoardList from "./BoardList";
 import BoardView, { NewTicketPage } from "./BoardView";
 import TicketDetail from "./TicketDetail";
@@ -75,6 +75,70 @@ export default function App() {
     if (focus && !button.matches(":focus-visible")) return;
     const rect = button.getBoundingClientRect();
     setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 8, focus });
+  }
+
+  const nav = useRef<HTMLElement>(null);
+  const boardDrag = useRef<{ id: string; before: Board[]; dropped?: boolean }>(undefined);
+  const [draggingBoard, setDraggingBoard] = useState<string>();
+  const flip = useRef<Map<string, number>>(undefined);
+
+  // FLIP: slide each board from its old row to its new one after a reorder.
+  useLayoutEffect(() => {
+    const before = flip.current;
+    flip.current = undefined;
+    if (!before || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    nav.current?.querySelectorAll<HTMLElement>("[data-board]").forEach((item) => {
+      const old = before.get(item.dataset.board!);
+      const top = item.getBoundingClientRect().top;
+      if (old === undefined || old === top) return;
+      item.animate([{ transform: `translateY(${old - top}px)` }, { transform: "none" }], {
+        duration: 200,
+        easing: "ease-out",
+      });
+    });
+  }, [boards]);
+
+  function reorderBoards(next: Board[]) {
+    flip.current = new Map(
+      [...(nav.current?.querySelectorAll<HTMLElement>("[data-board]") ?? [])].map((item) => [
+        item.dataset.board!,
+        item.getBoundingClientRect().top,
+      ]),
+    );
+    setBoards(next);
+  }
+
+  function boardDragProps(board: Board): ComponentProps<"button"> & Record<`data-${string}`, string | undefined> {
+    return {
+      draggable: true,
+      "data-board": board.id,
+      "data-dragging": draggingBoard === board.id ? "" : undefined,
+      onDragStart: (event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("board", board.id);
+        boardDrag.current = { id: board.id, before: boards };
+        setDraggingBoard(board.id);
+        setTip(undefined);
+      },
+      onDragOver: (event) => {
+        const drag = boardDrag.current;
+        // Skip rows still sliding, or the moved row can bounce back under the cursor.
+        if (!drag || drag.id === board.id || event.currentTarget.getAnimations().length) return;
+        const next = boards.filter((item) => item.id !== drag.id);
+        next.splice(boards.findIndex((item) => item.id === board.id), 0, boards.find((item) => item.id === drag.id)!);
+        reorderBoards(next);
+      },
+      onDragEnd: () => {
+        const drag = boardDrag.current;
+        boardDrag.current = undefined;
+        setDraggingBoard(undefined);
+        if (!drag) return;
+        if (!drag.dropped) return reorderBoards(drag.before);
+        const ids = boards.map((item) => item.id);
+        if (ids.join() === drag.before.map((item) => item.id).join()) return;
+        api.put("/api/board-order", { board_ids: ids }).catch(() => reorderBoards(drag.before));
+      },
+    };
   }
 
   const pinCount = useRef(pins.ids.length);
@@ -238,8 +302,15 @@ export default function App() {
   const states = pins.ids.map((id) => pinned.status[id]);
   const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
 
-  const navItem = (to: string, label: string, mark: ReactNode, active: boolean) => (
+  const navItem = (
+    to: string,
+    label: string,
+    mark: ReactNode,
+    active: boolean,
+    props?: ComponentProps<"button"> & Record<`data-${string}`, string | undefined>,
+  ) => (
     <button
+      {...props}
       key={to}
       className="nav-item"
       aria-label={label}
@@ -271,7 +342,16 @@ export default function App() {
             }}
           />
         </div>
-        <nav onScroll={() => setTip(undefined)}>
+        <nav
+          ref={nav}
+          onScroll={() => setTip(undefined)}
+          onDragOver={(event) => boardDrag.current && event.preventDefault()}
+          onDrop={(event) => {
+            if (!boardDrag.current) return;
+            event.preventDefault();
+            boardDrag.current.dropped = true;
+          }}
+        >
           {navItem("/", "Boards", <Icon name="boards" />, path === "/")}
           {navItem("/tickets", "Tickets", <Icon name="ticket" />, isTickets)}
           {navItem("/calendar", "Calendar", <Icon name="calendar" />, isCalendar)}
@@ -295,6 +375,7 @@ export default function App() {
               board.name,
               board.short_name.slice(0, 2),
               (boardMatch ?? newTicketMatch)?.[1] === board.id,
+              boardDragProps(board),
             ),
           )}
         </nav>
