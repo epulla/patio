@@ -10,6 +10,7 @@ const provider = (id: string) => (id.includes("/") ? id.slice(0, id.indexOf("/")
 const shortLabel = (m: ModelOption) => (m.label === m.id && provider(m.id) ? m.id.slice(provider(m.id).length + 1) : m.label);
 
 const pinsKey = "model-pins";
+const pinShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌥P" : "Alt+P";
 
 function loadPins(kind: string): string[] {
   try {
@@ -61,17 +62,20 @@ export default function ModelPicker({
   const current = all.find((m) => m.id === value);
   const q = query.trim().toLowerCase();
   const visible = all.filter((m) => !q || [m.id, m.label, m.description ?? ""].some((text) => text.toLowerCase().includes(q)));
-  const pinned = pins.flatMap((pin) => visible.filter((m) => m.id === pin));
   const providers = [...new Set(visible.map((m) => provider(m.id)))].map((name) => ({
     name,
     models: visible.filter((m) => provider(m.id) === name),
   }));
-  // The unnamed group (e.g. "Default") has no header, so it stays above "Pinned".
-  const groups = [
-    ...providers.filter((group) => !group.name),
-    ...(pinned.length ? [{ name: "Pinned", models: pinned }] : []),
-    ...providers.filter((group) => group.name),
-  ];
+  const layout = (pinIDs: string[]) => {
+    const pinned = pinIDs.flatMap((pin) => visible.filter((m) => m.id === pin));
+    // The unnamed group (e.g. "Default") has no header, so it stays above "Pinned".
+    return [
+      ...providers.filter((group) => !group.name),
+      ...(pinned.length ? [{ name: "Pinned", models: pinned }] : []),
+      ...providers.filter((group) => group.name),
+    ];
+  };
+  const groups = layout(pins);
   const ordered = groups.flatMap((group) => group.models);
   const starts = groups.map((_, i) => groups.slice(0, i).reduce((n, group) => n + group.models.length, 0));
   const optionID = (index: number) => `${id}-option-${index}`;
@@ -130,9 +134,17 @@ export default function ModelPicker({
     const next = pins.includes(model.id) ? pins.filter((id) => id !== model.id) : [...pins, model.id];
     savePins(pinKind, next);
     setPins(next);
+    // Keep the same model highlighted; rows move when "Pinned" changes size.
+    setActive(layout(next).flatMap((group) => group.models).lastIndexOf(model));
   }
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
+    // code, not key: Option+P types "π" on macOS.
+    if (event.altKey && !event.metaKey && !event.ctrlKey && event.code === "KeyP") {
+      event.preventDefault();
+      if (ordered[active]?.id) togglePin(ordered[active]);
+      return;
+    }
     if (event.key === "Escape") {
       event.stopPropagation();
       return close();
@@ -223,6 +235,8 @@ export default function ModelPicker({
                             className="model-pin"
                             aria-label={`${isPinned ? "Unpin" : "Pin"} ${model.label}`}
                             aria-pressed={isPinned}
+                            aria-keyshortcuts="Alt+P"
+                            data-tip={`${isPinned ? "Unpin" : "Pin"} (${pinShortcut})`}
                             onClick={(event) => {
                               event.stopPropagation();
                               togglePin(model);

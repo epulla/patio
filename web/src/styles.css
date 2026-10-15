@@ -2945,6 +2945,12 @@ main.chat-window {
 .model-pin:hover {
   background: var(--base-300);
 }
+.model-pin[data-tip]::after {
+  top: 50%;
+  left: auto;
+  right: calc(100% + 6px);
+  transform: translateY(-50%);
+}
 .model-description {
   font-size: 12px;
 }
