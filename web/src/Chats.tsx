@@ -46,6 +46,7 @@ type ChatDetail = {
   messages: ChatMessage[];
   pending_approvals: ChatApproval[];
   auto_approvals?: ChatApproval[];
+  version: string;
 };
 type ChatEvent =
   | { type: "delta"; text: string }
@@ -731,10 +732,16 @@ export function Conversation({
   const filePicker = useRef<HTMLInputElement>(null);
   const { models, loading: modelsLoading } = useModels(detail?.chat.connector_id);
 
+  // Every db-changed reloads; the server answers "unchanged" when this chat's version still matches.
+  const loaded = useRef<{ id: string; version: string }>(undefined);
   const load = () =>
     api
-      .get<ChatDetail>(`/api/chats/${id}`)
+      .get<ChatDetail | { unchanged: true }>(
+        `/api/chats/${id}${loaded.current?.id === id ? `?version=${encodeURIComponent(loaded.current.version)}` : ""}`,
+      )
       .then((value) => {
+        if ("unchanged" in value) return;
+        loaded.current = { id, version: value.version };
         setDetail(value);
         setTitle(value.chat.title);
         setRunning(value.chat.running);
