@@ -34,7 +34,7 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 - Every status change writes one `ticket_history` row ("Status changed from X to Y") and one `ticket_status_transition` row. Ticket creation writes a transition with `from_status_id` NULL. Same-column reorder writes neither.
 - Multi-row writes run in one transaction. Never ignore DB or JSON errors.
 - Lists with timestamps sort by timestamp, then `rowid` (insertion order), not random ids.
-- `-show-hidden` only affects the UI (comments, assignee). The API always serves them.
+- `-show-hidden` only affects the UI (assignee). The API always serves it.
 - JSON backup format `patio-board` version 1 must stay backward compatible. Import validates all references and remaps every id.
 - Sanitize every rendered HTML description with DOMPurify. CSV/xlsx cells starting with `= + - @` get a leading `'`.
 

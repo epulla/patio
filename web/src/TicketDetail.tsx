@@ -56,18 +56,17 @@ export default function TicketDetail({
         status: current.status_id,
         assignee: current.assignee_id || "",
       }));
-      const [boardData, ticketHistory, ticketTransitions] = await Promise.all([
+      const [boardData, ticketHistory, ticketTransitions, ticketComments] = await Promise.all([
         api.get<BoardData>(`/api/boards/${current.board_id}/data`),
         api.get<History[]>(`/api/tickets/${current.id}/history`),
         api.get<Transition[]>(`/api/tickets/${current.id}/transitions`),
+        api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
       ]);
       setBoard(boardData);
       setHistory(ticketHistory);
       setTransitions(ticketTransitions);
+      setComments(ticketComments);
       if (config.show_hidden) {
-        setComments(
-          await api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
-        );
         setUsers(await api.get<User[]>("/api/users"));
       }
     } catch (reason) {
@@ -98,9 +97,8 @@ export default function TicketDetail({
         <ErrorText error={error} />
       </div>
     );
-  const activeTab = !config.show_hidden && tab === "comments" ? "history" : tab;
   const tabs = [
-    ...(config.show_hidden ? ([["comments", "Comments"]] as const) : []),
+    ["comments", "Comments"],
     ["history", "History"],
     ["transitions", "Transitions"],
   ] as const;
@@ -226,7 +224,7 @@ export default function TicketDetail({
               key={key}
               role="tab"
               id={`tab-${key}`}
-              aria-selected={activeTab === key}
+              aria-selected={tab === key}
               aria-controls="ticket-tabpanel"
               onClick={() => setTab(key)}
             >
@@ -238,12 +236,12 @@ export default function TicketDetail({
           className="tabpanel"
           role="tabpanel"
           id="ticket-tabpanel"
-          aria-labelledby={`tab-${activeTab}`}
+          aria-labelledby={`tab-${tab}`}
         >
-          {activeTab === "comments" && (
+          {tab === "comments" && (
             <Comments ticketId={ticket.id} comments={comments} onReload={load} />
           )}
-          {activeTab === "history" &&
+          {tab === "history" &&
             history.map((item) => (
               <div className="timeline" key={item.id}>
                 <strong>
@@ -253,7 +251,7 @@ export default function TicketDetail({
                 <p>{item.content}</p>
               </div>
             ))}
-          {activeTab === "transitions" &&
+          {tab === "transitions" &&
             transitions.map((item) => (
               <div className="transition" key={item.id}>
                 <strong>

@@ -14,7 +14,7 @@ Port of the prod-tickets schema, plus a `ticket_status_transition` table that re
 - Print: clean printable page with history and transitions.
 - Ticket search: list tickets across all boards, newest first; filter by title or code, board, and created/updated dates; sort with the Most recent / Alphabetical menu or by clicking a column header.
 - Calendar: calendar items, tickets with due dates, and scheduled AI task runs (past and upcoming).
-- Hidden: comments and assignee work in the API; the UI shows them only with `-show-hidden`.
+- Hidden: assignee works in the API; the UI shows it only with `-show-hidden`.
 
 ## AI
 
@@ -40,7 +40,7 @@ macOS release is unsigned. On first launch, right-click app and choose **Open**,
 xattr -dr com.apple.quarantine /Applications/patio.app
 ```
 
-Optional flags: `-d path/to/file.db` selects database file; `-show-hidden` shows comments and assignee.
+Optional flags: `-d path/to/file.db` selects database file; `-show-hidden` shows assignee.
 
 ## Data
 

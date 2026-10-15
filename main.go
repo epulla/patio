@@ -39,7 +39,7 @@ func main() {
 		return
 	}
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
-	showHidden := flag.Bool("show-hidden", false, "show comments and assignee in the UI")
+	showHidden := flag.Bool("show-hidden", false, "show assignee in the UI")
 	chatWindow := flag.String("chat", "", "open a chat in its own window")
 	openPath := flag.String("open", "", "navigate main window to an app path")
 	flag.Parse()
