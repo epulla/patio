@@ -985,6 +985,28 @@ a:has(> .svg-icon) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.date-input {
+  position: relative;
+  display: block;
+}
+.date-input input {
+  width: 100%;
+}
+.date-input[data-empty] input:not(:focus)::-webkit-datetime-edit {
+  opacity: 0;
+}
+.date-empty {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-weight: 400;
+  pointer-events: none;
+}
+.date-input input:focus + .date-empty {
+  display: none;
+}
 .due-badge {
   align-self: flex-start;
   padding: 1px 8px;

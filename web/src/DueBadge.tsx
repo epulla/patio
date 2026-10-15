@@ -15,6 +15,20 @@ export function dueInfo(date: string, today = new Date()): { tier: DueTier; labe
   return { tier: days <= 3 ? "near" : "far", label: `${days}d left`, tip: `Due ${when} · ${plural(days)} left` };
 }
 
+// An empty native date input shows a faded placeholder date, which reads like a real value.
+export function DueDateInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <span className="date-input" data-empty={value ? undefined : ""}>
+      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+      {!value && (
+        <span className="date-empty" aria-hidden="true">
+          No due date
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function DueBadge({ date }: { date: string }) {
   const { tier, label, tip } = dueInfo(date);
   return (

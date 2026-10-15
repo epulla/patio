@@ -6,7 +6,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
-import DueBadge from "./DueBadge";
+import DueBadge, { DueDateInput } from "./DueBadge";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
 import {
@@ -917,11 +917,7 @@ function TicketForm({
         </div>
         <label>
           Due date
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
-          />
+          <DueDateInput value={dueDate} onChange={setDueDate} />
         </label>
       </div>
       <button className="primary">

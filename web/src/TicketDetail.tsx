@@ -10,7 +10,7 @@ import {
   type User,
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
-import DueBadge from "./DueBadge";
+import DueBadge, { DueDateInput } from "./DueBadge";
 import { Icon } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
@@ -183,12 +183,11 @@ export default function TicketDetail({
               </div>
               <label>
                 Due date
-                <input
-                  type="date"
+                <DueDateInput
                   value={form.dueDate}
-                  onChange={(event) => {
-                    setForm({ ...form, dueDate: event.target.value });
-                    save({ due_date: event.target.value || null });
+                  onChange={(dueDate) => {
+                    setForm({ ...form, dueDate });
+                    save({ due_date: dueDate || null });
                   }}
                 />
                 {form.dueDate &&
