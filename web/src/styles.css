@@ -1883,12 +1883,37 @@ main:has(> .chats) {
   overflow: auto;
 }
 .grid-pane {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-box);
+  background: var(--base-100);
+  transition: opacity 0.15s;
+}
+.grid-pane[data-dragging] {
+  opacity: 0.45;
+}
+.grid-pane[data-drop-target]::after {
+  content: "Swap";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: var(--primary-text);
+  font-weight: 600;
+  pointer-events: none;
+}
+.pane-grip:active {
+  cursor: grabbing;
 }
 .grid-pane > section {
   flex: 1;

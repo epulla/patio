@@ -3,6 +3,7 @@ import {
   memo,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -201,7 +202,30 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     setPins(pinLayout([...pins.ids, chatID]));
   }
 
+  const grid = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ from: number; over?: number }>();
+  const flip = useRef<Map<string, DOMRect>>(undefined);
+
+  // FLIP: remember pane positions before a swap, then slide each pane from there to its new cell.
+  useLayoutEffect(() => {
+    const before = flip.current;
+    flip.current = undefined;
+    if (!before || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    grid.current?.querySelectorAll<HTMLElement>("[data-pane]").forEach((pane) => {
+      const old = before.get(pane.dataset.pane!);
+      const now = pane.getBoundingClientRect();
+      if (!old || (old.left === now.left && old.top === now.top)) return;
+      pane.animate([{ transform: `translate(${old.left - now.left}px, ${old.top - now.top}px)` }, { transform: "none" }], {
+        duration: 200,
+        easing: "ease-out",
+      });
+    });
+  }, [pins.ids]);
+
   function swap(from: number, to: number) {
+    flip.current = new Map(
+      [...(grid.current?.querySelectorAll<HTMLElement>("[data-pane]") ?? [])].map((pane) => [pane.dataset.pane!, pane.getBoundingClientRect()]),
+    );
     const ids = [...pins.ids];
     [ids[from], ids[to]] = [ids[to], ids[from]];
     setPins({ ...pins, ids });
@@ -386,23 +410,40 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
       </aside>
       )}
       {showGrid ? (
-        <div className="chat-grid" style={{ gridTemplateColumns: tracks(pins.cols), gridTemplateRows: tracks(pins.rows) }}>
+        <div
+          ref={grid}
+          className="chat-grid"
+          style={{ gridTemplateColumns: tracks(pins.cols), gridTemplateRows: tracks(pins.rows) }}
+          onDragOver={(event) => {
+            if (drag && !(event.target as Element).closest(".grid-pane")) setDrag({ from: drag.from });
+          }}
+          onDragLeave={(event) => {
+            const to = event.relatedTarget as Node | null;
+            if (drag && to && !event.currentTarget.contains(to)) setDrag({ from: drag.from });
+          }}
+        >
           {pins.ids.map((chatID, index) => (
             <div
               key={chatID}
               className="grid-pane"
+              data-pane={chatID}
+              data-dragging={drag?.from === index || undefined}
+              data-drop-target={(drag && drag.from !== index && drag.over === index) || undefined}
               style={{
                 gridColumn: (index % pins.cols.length) * 2 + 1,
                 gridRow: Math.floor(index / pins.cols.length) * 2 + 1,
               }}
               onDragOver={(event) => {
-                if (event.dataTransfer.types.includes(paneType)) event.preventDefault();
+                if (!event.dataTransfer.types.includes(paneType)) return;
+                event.preventDefault();
+                if (drag && drag.over !== index) setDrag({ from: drag.from, over: index });
               }}
               onDrop={(event) => {
                 const from = event.dataTransfer.getData(paneType);
                 if (!from) return;
                 event.preventDefault();
-                swap(Number(from), index);
+                setDrag(undefined);
+                if (Number(from) !== index) swap(Number(from), index);
               }}
             >
               <Conversation
@@ -423,7 +464,15 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                       onDragStart={(event) => {
                         event.dataTransfer.setData(paneType, String(index));
                         event.dataTransfer.effectAllowed = "move";
+                        const head = event.currentTarget.closest(".conversation-head");
+                        if (head) {
+                          const rect = head.getBoundingClientRect();
+                          event.dataTransfer.setDragImage(head, event.clientX - rect.left, event.clientY - rect.top);
+                        }
+                        // Defer so the drag preview is captured before the pane dims.
+                        setTimeout(() => setDrag({ from: index }));
                       }}
+                      onDragEnd={() => setDrag(undefined)}
                     >
                       <Icon name="grip" />
                     </span>
