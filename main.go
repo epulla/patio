@@ -89,7 +89,7 @@ func main() {
 		WindowID:    windowID,
 		StartWindow: func(args []string) error { return startWindow(exe, args) },
 		FocusWindow: func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
-		Notify:      func(title, message string) error { return beeep.Notify(title, message, "") },
+		Notify:      func(title, message, _ string) error { return beeep.Notify(title, message, "") },
 		Emit: func(event string, data any) {
 			wruntime.EventsEmit(appCtx, event, data)
 		},

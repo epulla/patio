@@ -26,7 +26,7 @@ func (s *Server) Notify(kind, title, body, link string, native bool) error {
 		return err
 	}
 	if native && s.notify != nil {
-		return s.notify(title, body)
+		return s.notify(title, body, link)
 	}
 	return nil
 }
@@ -166,8 +166,8 @@ func (s *Server) deleteNotification(w http.ResponseWriter, r *http.Request) {
 
 // The UI asks for this when a notification arrives while the window is unfocused; only it knows focus.
 func (s *Server) nativeNotification(w http.ResponseWriter, r *http.Request) {
-	var title, body string
-	if err := s.db.QueryRow(`SELECT title,body FROM notification WHERE id=?`, idParam(r, "id")).Scan(&title, &body); err == sql.ErrNoRows {
+	var title, body, link string
+	if err := s.db.QueryRow(`SELECT title,body,link FROM notification WHERE id=?`, idParam(r, "id")).Scan(&title, &body, &link); err == sql.ErrNoRows {
 		errw(w, http.StatusNotFound, "notification not found")
 		return
 	} else if err != nil {
@@ -175,7 +175,7 @@ func (s *Server) nativeNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.notify != nil {
-		if err := s.notify(title, body); err != nil {
+		if err := s.notify(title, body, link); err != nil {
 			errw(w, http.StatusInternalServerError, err.Error())
 			return
 		}

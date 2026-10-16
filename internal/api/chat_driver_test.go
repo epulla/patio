@@ -238,7 +238,7 @@ func TestRequestApproval(t *testing.T) {
 				if name == "chat:"+chatID {
 					events <- event
 				}
-			}, Notify: func(string, string) error { nativeCalls++; return nil }})
+			}, Notify: func(string, string, string) error { nativeCalls++; return nil }})
 			server.chats.approvalPollInterval = time.Millisecond
 			server.chats.approvalTimeout = 30 * time.Millisecond
 			ctx, cancel := context.WithCancel(context.Background())

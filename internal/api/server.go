@@ -25,7 +25,7 @@ type Server struct {
 	chats           *chatManager
 	revealFile      func(string) error
 	openOAuthURL    func(string) error
-	notify          func(string, string) error
+	notify          func(string, string, string) error
 	oauthMu         sync.Mutex
 	oauthLogins     map[string]bool
 	handler         http.Handler
@@ -43,7 +43,7 @@ type Server struct {
 type Options struct {
 	DBPath string
 	Emit   func(string, any)
-	Notify func(string, string) error
+	Notify func(title, body, link string) error
 
 	processFactory  chatProcessFactory
 	commandBuilder  chatCommandBuilder
