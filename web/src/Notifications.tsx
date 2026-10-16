@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Menu from "./Menu";
 import Markdown from "./Markdown";
 import { Icon, IconButton, type IconName } from "./icons";
@@ -155,11 +156,14 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
           </>
         )}
       </Menu>
-      <div className="notif-toasts" role="status">
-        {toasts.map((item) => (
-          <Toast key={item.id} item={item} onOpen={() => open(item)} onClose={() => dismiss(item.id)} />
-        ))}
-      </div>
+      {createPortal(
+        <div className="notif-toasts" role="status">
+          {toasts.map((item) => (
+            <Toast key={item.id} item={item} onOpen={() => open(item)} onClose={() => dismiss(item.id)} />
+          ))}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

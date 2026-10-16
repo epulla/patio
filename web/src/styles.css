@@ -118,6 +118,8 @@
   --radius-field: 0.5rem;
   --border: color-mix(in oklch, var(--content) 14%, transparent);
   --muted: color-mix(in oklch, var(--content) 72%, transparent);
+  /* The sidebar overrides --content; popovers inside it use this page value instead. */
+  --page-content: var(--content);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-family: var(--font);
@@ -3670,6 +3672,29 @@ main.chat-window {
   width: 16px;
   height: 16px;
 }
+/* The sticky sidebar is its own stacking context, so it must sit above <main> while the popover is open. */
+.sidebar:has(.notifications .menu-list) {
+  z-index: 25;
+}
+.notifications .menu-list {
+  --content: var(--page-content);
+  --border: color-mix(in oklch, var(--content) 14%, transparent);
+  --muted: color-mix(in oklch, var(--content) 72%, transparent);
+  color: var(--content);
+}
+.notifications .menu-list .ghost:hover {
+  background: var(--base-200);
+}
+/* Beat the generic .menu-list button sizing. */
+.notifications .menu-list .notif-row {
+  height: auto;
+  padding: 10px 14px;
+  gap: 10px;
+}
+.notifications .notif-head .icon {
+  height: 40px;
+  padding: 0;
+}
 .notifications .menu-list {
   top: auto;
   bottom: calc(100% + 6px);
@@ -3770,7 +3795,7 @@ button.notif-row:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: 400;
 }
 [data-unread] .notif-title {
   font-weight: 600;
@@ -3864,7 +3889,6 @@ button.notif-row:focus-visible,
   background: transparent;
   color: inherit;
   font: inherit;
-  font-weight: 500;
   text-align: left;
 }
 .notif-page-list button.notif-title:hover {
