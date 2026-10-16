@@ -1,5 +1,5 @@
 import { confirmDialog } from "./confirm";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import AIBadge from "./AIBadge";
 import {
   api,
@@ -326,6 +326,11 @@ function CalendarForm({
   const [draft, setDraft] = useState(() => initialDraft(item, date));
   const [error, setError] = useState<unknown>();
   const [saving, setSaving] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal();
+  }, []);
 
   function toggleAllDay(allDay: boolean) {
     setDraft((current) => ({
@@ -384,99 +389,101 @@ function CalendarForm({
   }
 
   return (
-    <section className="panel calendar-form-panel">
-      <div className="page-heading">
-        <h2>{item ? "Edit calendar item" : "New calendar item"}</h2>
-        <IconButton className="ghost" icon="x" label="Close" onClick={onCancel} />
-      </div>
-      <form className="calendar-form" onSubmit={submit}>
-        <label>
-          Kind
-          <Picker
-            label="Kind"
-            options={[
-              { id: "event", name: "Event" },
-              { id: "reminder", name: "Reminder" },
-            ]}
-            value={draft.kind}
-            onChange={(kind) => setDraft({ ...draft, kind: kind as Draft["kind"] })}
-          />
-        </label>
-        <label>
-          Title
-          <input
-            required
-            value={draft.title}
-            onChange={(event) =>
-              setDraft({ ...draft, title: event.target.value })
-            }
-          />
-        </label>
-        <label className="calendar-description">
-          Description
-          <textarea
-            value={draft.description}
-            onChange={(event) =>
-              setDraft({ ...draft, description: event.target.value })
-            }
-          />
-        </label>
-        <label className="calendar-check">
-          <input
-            type="checkbox"
-            checked={draft.all_day}
-            onChange={(event) => toggleAllDay(event.target.checked)}
-          />
-          All day
-        </label>
-        <label>
-          Start
-          <input
-            required
-            type={draft.all_day ? "date" : "datetime-local"}
-            value={draft.starts_at}
-            onChange={(event) =>
-              setDraft({ ...draft, starts_at: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          End (optional)
-          <input
-            type={draft.all_day ? "date" : "datetime-local"}
-            value={draft.ends_at}
-            onChange={(event) =>
-              setDraft({ ...draft, ends_at: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Board (optional)
-          <Picker
-            label="Board"
-            empty="No board"
-            options={boards}
-            value={draft.board_id}
-            onChange={(board_id) => setDraft({ ...draft, board_id })}
-          />
-        </label>
-        <div className="calendar-form-actions">
-          <button className="primary" disabled={saving}>
-            <Icon name="check" /> Save
-          </button>
-          {item && (
-            <button
-              type="button"
-              className="danger"
-              disabled={saving}
-              onClick={remove}
-            >
-              <Icon name="trash" /> Delete
-            </button>
-          )}
+    <dialog ref={dialog} className="create-dialog" aria-labelledby="calendar-form-title" onClose={onCancel}>
+      <section className="panel create-modal calendar-form-panel">
+        <div className="page-heading">
+          <h2 id="calendar-form-title">{item ? "Edit calendar item" : "New calendar item"}</h2>
+          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
         </div>
-      </form>
-      <ErrorText error={error} />
-    </section>
+        <form className="calendar-form" onSubmit={submit}>
+          <label>
+            Kind
+            <Picker
+              label="Kind"
+              options={[
+                { id: "event", name: "Event" },
+                { id: "reminder", name: "Reminder" },
+              ]}
+              value={draft.kind}
+              onChange={(kind) => setDraft({ ...draft, kind: kind as Draft["kind"] })}
+            />
+          </label>
+          <label>
+            Title
+            <input
+              required
+              value={draft.title}
+              onChange={(event) =>
+                setDraft({ ...draft, title: event.target.value })
+              }
+            />
+          </label>
+          <label className="calendar-description">
+            Description
+            <textarea
+              value={draft.description}
+              onChange={(event) =>
+                setDraft({ ...draft, description: event.target.value })
+              }
+            />
+          </label>
+          <label className="calendar-check">
+            <input
+              type="checkbox"
+              checked={draft.all_day}
+              onChange={(event) => toggleAllDay(event.target.checked)}
+            />
+            All day
+          </label>
+          <label>
+            Start
+            <input
+              required
+              type={draft.all_day ? "date" : "datetime-local"}
+              value={draft.starts_at}
+              onChange={(event) =>
+                setDraft({ ...draft, starts_at: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            End (optional)
+            <input
+              type={draft.all_day ? "date" : "datetime-local"}
+              value={draft.ends_at}
+              onChange={(event) =>
+                setDraft({ ...draft, ends_at: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Board (optional)
+            <Picker
+              label="Board"
+              empty="No board"
+              options={boards}
+              value={draft.board_id}
+              onChange={(board_id) => setDraft({ ...draft, board_id })}
+            />
+          </label>
+          <div className="calendar-form-actions">
+            <button className="primary" disabled={saving}>
+              <Icon name="check" /> Save
+            </button>
+            {item && (
+              <button
+                type="button"
+                className="danger"
+                disabled={saving}
+                onClick={remove}
+              >
+                <Icon name="trash" /> Delete
+              </button>
+            )}
+          </div>
+        </form>
+        <ErrorText error={error} />
+      </section>
+    </dialog>
   );
 }
