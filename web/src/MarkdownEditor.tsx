@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { IconButton } from "./icons";
 import Markdown from "./Markdown";
+import { caretPosition, findTrigger, suggest, type Suggestion, type Trigger } from "./mentions";
 
 const linePrefix = /^(#{1,3} |[-*] |\d+\. )/;
 
@@ -17,6 +18,32 @@ export default function MarkdownEditor({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState(false);
+  const [mention, setMention] = useState<{ trigger: Trigger; items: Suggestion[]; active: number; top: number; left: number } | null>(null);
+  const request = useRef(0);
+
+  async function updateMention(text: string, caret: number) {
+    const id = ++request.current;
+    const trigger = findTrigger(text, caret);
+    if (!trigger || !ref.current) return setMention(null);
+    const items = await suggest(trigger).catch(() => []);
+    if (id !== request.current || !ref.current) return;
+    if (!items.length) return setMention(null);
+    setMention({ trigger, items, active: 0, ...caretPosition(ref.current, trigger.start) });
+  }
+
+  function closeMention() {
+    request.current++;
+    setMention(null);
+  }
+
+  function pick(item: Suggestion) {
+    const el = ref.current;
+    if (!el || !mention) return;
+    const text = item.insert + " ";
+    const end = el.selectionStart;
+    closeMention();
+    edit(mention.trigger.start, end, text, mention.trigger.start + text.length, mention.trigger.start + text.length);
+  }
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -56,6 +83,18 @@ export default function MarkdownEditor({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mention) {
+      const { items, active } = mention;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setMention({ ...mention, active: (active + step + items.length) % items.length });
+      } else if (event.key === "Enter" || event.key === "Tab") pick(items[active]);
+      else if (event.key === "Escape") closeMention();
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!(event.metaKey || event.ctrlKey)) return;
     const key = event.key.toLowerCase();
     if (key === "b") wrap("**", "**", "bold");
@@ -122,10 +161,36 @@ export default function MarkdownEditor({
           ref={ref}
           aria-label={label}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            void updateMention(event.target.value, event.target.selectionStart);
+          }}
           onKeyDown={onKeyDown}
+          onSelect={(event) => void updateMention(event.currentTarget.value, event.currentTarget.selectionStart)}
+          onBlur={closeMention}
           placeholder="Markdown supported"
+          aria-autocomplete="list"
+          aria-expanded={!!mention}
         />
+      )}
+      {mention && !preview && (
+        <ul className="md-mentions" role="listbox" aria-label="Suggestions" style={{ top: mention.top, left: mention.left }}>
+          {mention.items.map((item, index) => (
+            <li
+              key={item.key}
+              role="option"
+              aria-selected={index === mention.active}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pick(item);
+              }}
+              onMouseEnter={() => setMention({ ...mention, active: index })}
+            >
+              <span>{item.label}</span>
+              {item.detail && <small>{item.detail}</small>}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

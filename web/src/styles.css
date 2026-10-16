@@ -605,6 +605,7 @@ a:has(> .svg-icon) {
 
 /* Markdown editor */
 .md-editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -685,6 +686,40 @@ a:has(> .svg-icon) {
   max-height: 400px;
   resize: vertical;
   font-family: inherit;
+}
+.md-mentions {
+  position: absolute;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 360px;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--base-100);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+  font-size: 13px;
+}
+.md-mentions li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.md-mentions li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md-mentions li[aria-selected="true"] {
+  background: var(--base-300);
+}
+.md-mentions small {
+  margin-left: auto;
+  color: var(--muted);
 }
 
 /* Boards */
