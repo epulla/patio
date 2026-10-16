@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,7 +34,8 @@ func TestFinishedChatStoresNotification(t *testing.T) {
 	if err := database.QueryRow(`SELECT kind,title,body,link FROM notification`).Scan(&kind, &title, &body, &link); err != nil {
 		t.Fatal(err)
 	}
-	if kind != "chat" || title == "" || body != "["+title+"](/ai/chats/"+id+")" || link != "/ai/chats/"+id {
+	chatTitle, ok := strings.CutPrefix(title, "Reply finished: ")
+	if kind != "chat" || !ok || chatTitle == "" || body != "["+chatTitle+"](/ai/chats/"+id+")" || link != "/ai/chats/"+id {
 		t.Fatalf("notification=%q %q %q %q", kind, title, body, link)
 	}
 	if err := server.Close(); err != nil {
