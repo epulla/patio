@@ -931,7 +931,7 @@ export function Conversation({
           : current,
       );
       if (detail.chat.title === "New chat" && detail.messages.length === 0) {
-        const label = value || pending.map((a) => a.name).join(", ");
+        const label = (value || pending.map((a) => a.name).join(", ")).replace(/\s+/g, " ");
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label);
       }
     } catch (reason) {
