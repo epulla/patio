@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -81,6 +82,36 @@ func TestDBPath(t *testing.T) {
 			}
 			if got != test.want {
 				t.Errorf("dbPath() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestNotifierFallsBackToBeeep(t *testing.T) {
+	tests := []struct {
+		name     string
+		ready    bool
+		sendErr  error
+		wantSent string
+		wantBeep bool
+	}{
+		{name: "ready", ready: true, wantSent: "/calendar"},
+		{name: "not ready", wantBeep: true},
+		{name: "send fails", ready: true, sendErr: errors.New("denied"), wantSent: "/calendar", wantBeep: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sent, beeped := "", false
+			n := &notifier{
+				send:     func(_, _, link string) error { sent = link; return test.sendErr },
+				fallback: func(string, string) error { beeped = true; return nil },
+			}
+			n.ready.Store(test.ready)
+			if err := n.Notify("Event", "soon", "/calendar"); err != nil {
+				t.Fatal(err)
+			}
+			if sent != test.wantSent || beeped != test.wantBeep {
+				t.Fatalf("sent=%q beeped=%v, want %q %v", sent, beeped, test.wantSent, test.wantBeep)
 			}
 		})
 	}

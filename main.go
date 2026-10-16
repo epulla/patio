@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gen2brain/beeep"
@@ -76,6 +77,14 @@ func main() {
 	mime.AddExtensionType(".js", "text/javascript")
 
 	var appCtx context.Context
+	notes := &notifier{
+		send: func(title, body, link string) error {
+			return wruntime.SendNotification(appCtx, wruntime.NotificationOptions{
+				ID: fmt.Sprint(time.Now().UnixNano()), Title: title, Body: body, Data: map[string]any{"link": link},
+			})
+		},
+		fallback: func(title, body string) error { return beeep.Notify(title, body, "") },
+	}
 	mux := http.NewServeMux()
 	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
 		DBPath:     path,
@@ -89,7 +98,7 @@ func main() {
 		WindowID:    windowID,
 		StartWindow: func(args []string) error { return startWindow(exe, args) },
 		FocusWindow: func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
-		Notify:      func(title, message, _ string) error { return beeep.Notify(title, message, "") },
+		Notify:      notes.Notify,
 		Emit: func(event string, data any) {
 			wruntime.EventsEmit(appCtx, event, data)
 		},
@@ -145,6 +154,22 @@ func main() {
 		Height: 800,
 		OnStartup: func(ctx context.Context) {
 			appCtx = ctx
+			go func() {
+				if err := wruntime.InitializeNotifications(ctx); err != nil {
+					log.Printf("native notifications unavailable, using beeep: %v", err)
+					return
+				}
+				if !wruntime.IsNotificationAvailable(ctx) {
+					log.Printf("native notifications unavailable, using beeep")
+					return
+				}
+				ok, err := wruntime.RequestNotificationAuthorization(ctx)
+				if !ok || err != nil {
+					log.Printf("native notifications not authorized, using beeep: %v", err)
+					return
+				}
+				notes.ready.Store(true)
+			}()
 			if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
 				log.Printf("register app window: %v", err)
 			}
@@ -256,7 +281,8 @@ func main() {
 			}
 			wruntime.WindowSetPosition(ctx, x, y)
 		},
-		OnShutdown: func(context.Context) {
+		OnShutdown: func(ctx context.Context) {
+			wruntime.CleanupNotifications(ctx)
 			close(windowStop)
 			if err := apiServer.UnregisterWindow(); err != nil {
 				log.Printf("unregister app window: %v", err)
@@ -300,6 +326,24 @@ func startWindow(exe string, args []string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// notifier sends through Wails once authorized and falls back to beeep otherwise.
+type notifier struct {
+	ready    atomic.Bool
+	send     func(title, body, link string) error
+	fallback func(title, body string) error
+}
+
+func (n *notifier) Notify(title, body, link string) error {
+	if n.ready.Load() {
+		err := n.send(title, body, link)
+		if err == nil {
+			return nil
+		}
+		log.Printf("native notification failed, using beeep: %v", err)
+	}
+	return n.fallback(title, body)
 }
 
 func runMCP(args []string) {
