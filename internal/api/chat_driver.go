@@ -592,7 +592,7 @@ func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName stri
 		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, chatID).Scan(&title); err != nil {
 			return false, err
 		}
-		link, kind, noticeTitle := "/ai/chats/"+chatID, "chat", "Approval needed: "+title
+		link, kind, noticeTitle := "/ai/chats/"+chatID, "approval", "Approval needed: "+title
 		if taskTitle != "" {
 			link, kind, noticeTitle = "/ai/scheduled/"+taskID, "scheduled", "Scheduled task needs approval: "+taskTitle
 		}
