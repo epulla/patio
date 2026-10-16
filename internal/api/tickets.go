@@ -537,8 +537,14 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 		noContent(w)
 	}
 }
+
+// Matches a ticket by UUID, code, or old code, like getTicket; MCP tools pass codes.
+const ticketKey = `(SELECT id FROM ticket WHERE id=? OR code=? OR id IN (SELECT ticket_id FROM old_ticket_code WHERE old_ticket_code=?))`
+
+func ticketKeyArgs(key string) []any { return []any{key, key, key} }
+
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT h.id,h.content,h.created_at,h.user_id,u.name,u.is_ai FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id=? ORDER BY h.created_at,h.rowid`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT h.id,h.content,h.created_at,h.user_id,u.name,u.is_ai FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id=`+ticketKey+` ORDER BY h.created_at,h.rowid`, ticketKeyArgs(idParam(r, "id"))...)
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -601,7 +607,7 @@ func (s *Server) transitions(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, a)
 }
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.Query(`SELECT c.id,c.content,c.created_at,c.updated_at,c.user_id,u.name,u.is_ai FROM ticket_comment c JOIN "user" u ON u.id=c.user_id WHERE c.ticket_id=? ORDER BY c.created_at,c.rowid`, idParam(r, "id"))
+	rows, e := s.db.Query(`SELECT c.id,c.content,c.created_at,c.updated_at,c.user_id,u.name,u.is_ai FROM ticket_comment c JOIN "user" u ON u.id=c.user_id WHERE c.ticket_id=`+ticketKey+` ORDER BY c.created_at,c.rowid`, ticketKeyArgs(idParam(r, "id"))...)
 	if e != nil {
 		errw(w, 500, e.Error())
 		return

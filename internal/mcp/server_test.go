@@ -217,6 +217,14 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if comment := callTool(t, session, "add_comment", map[string]any{"ticket_id": ticket.ID, "content": "Looks good"}); comment.IsError {
 		t.Fatalf("add comment: %#v", comment)
 	}
+	for _, key := range []string{ticket.ID, "AI-1"} {
+		var comments, history []map[string]any
+		decodeText(t, callTool(t, session, "list_comments", map[string]any{"id": key}), &comments)
+		decodeText(t, callTool(t, session, "get_ticket_history", map[string]any{"id": key}), &history)
+		if len(comments) != 1 || len(history) == 0 {
+			t.Fatalf("by %q: comments=%d history=%d", key, len(comments), len(history))
+		}
+	}
 	var commentTitle, commentBody string
 	if err := database.QueryRow(`SELECT title,body FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&commentTitle, &commentBody); err != nil {
 		t.Fatal(err)
