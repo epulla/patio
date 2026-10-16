@@ -561,9 +561,12 @@ func TestMCPSkillTools(t *testing.T) {
 	if skill.Body != "Updated steps" || skill.Description != "Repeat this task" {
 		t.Fatalf("updated skill = %#v", skill)
 	}
-	var skillChange string
-	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&skillChange); err != nil || skillChange != "Martin updated skill repeatable" {
-		t.Fatalf("skill change notification = %q, %v", skillChange, err)
+	var skillChange, skillLink, skillID string
+	if err := database.QueryRow(`SELECT id FROM skill WHERE name='repeatable'`).Scan(&skillID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT title,link FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&skillChange, &skillLink); err != nil || skillChange != "Martin updated skill repeatable" || skillLink != "/ai/skills/"+skillID {
+		t.Fatalf("skill change notification = %q %q, %v", skillChange, skillLink, err)
 	}
 	deleted := callTool(t, session, "delete_skill", map[string]any{"name": "repeatable"})
 	if deleted.IsError || deleted.Content[0].(*sdk.TextContent).Text != "deleted" {

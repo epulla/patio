@@ -922,6 +922,9 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		if resource == "scheduled-tasks" && id != "" {
 			target = "/ai/scheduled/" + id
 		}
+		if resource == "skills" && id != "" && r.method != http.MethodDelete {
+			target = "/ai/skills/" + id
+		}
 		if (resource == "statuses" || resource == "ticket-types") && len(parts) > 3 && parts[2] == "boards" {
 			target = "/boards/" + parts[3]
 		}
