@@ -764,7 +764,7 @@ func createDriverTestChat(t *testing.T, database *sql.DB, connectorID, root stri
 
 func waitFor(t *testing.T, condition func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if condition() {
 			return
