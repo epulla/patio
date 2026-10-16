@@ -22,8 +22,8 @@ func TestNotificationAPIAndRetention(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	called := 0
-	s := New(database, "local", false, "dev", t.TempDir(), Options{Notify: func(string, string) error { called++; return nil }})
+	called, nativeTitle := 0, ""
+	s := New(database, "local", false, "dev", t.TempDir(), Options{Notify: func(title, _ string) error { called++; nativeTitle = title; return nil }})
 	if err := s.Notify("chat", "Chat", "finished", "/ai/chats/chat", false); err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +32,17 @@ func TestNotificationAPIAndRetention(t *testing.T) {
 	}
 	if called != 1 {
 		t.Fatalf("native notifications=%d, want 1", called)
+	}
+	var chatID string
+	if err := database.QueryRow(`SELECT id FROM notification WHERE kind='chat'`).Scan(&chatID); err != nil {
+		t.Fatal(err)
+	}
+	native := httptest.NewRecorder()
+	s.ServeHTTP(native, httptest.NewRequest(http.MethodPost, "/api/notifications/"+chatID+"/native", nil))
+	missing := httptest.NewRecorder()
+	s.ServeHTTP(missing, httptest.NewRequest(http.MethodPost, "/api/notifications/missing/native", nil))
+	if native.Code != http.StatusNoContent || called != 2 || nativeTitle != "Chat" || missing.Code != http.StatusNotFound {
+		t.Fatalf("native status=%d missing=%d calls=%d title=%q", native.Code, missing.Code, called, nativeTitle)
 	}
 	if _, err := database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, "old", "chat", "", "", "", time.Now().UTC().Add(-8*24*time.Hour).Format("2006-01-02T15:04:05.000Z")); err != nil {
 		t.Fatal(err)

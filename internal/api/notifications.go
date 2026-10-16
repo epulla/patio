@@ -164,6 +164,25 @@ func (s *Server) deleteNotification(w http.ResponseWriter, r *http.Request) {
 	noContent(w)
 }
 
+// The UI asks for this when a notification arrives while the window is unfocused; only it knows focus.
+func (s *Server) nativeNotification(w http.ResponseWriter, r *http.Request) {
+	var title, body string
+	if err := s.db.QueryRow(`SELECT title,body FROM notification WHERE id=?`, idParam(r, "id")).Scan(&title, &body); err == sql.ErrNoRows {
+		errw(w, http.StatusNotFound, "notification not found")
+		return
+	} else if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if s.notify != nil {
+		if err := s.notify(title, body); err != nil {
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	noContent(w)
+}
+
 func (s *Server) PurgeNotifications() error {
 	return txrun(s.db, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM notification WHERE created_at < ?`, time.Now().UTC().Add(-7*24*time.Hour).Format("2006-01-02T15:04:05.000Z")); err != nil {

@@ -72,6 +72,11 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
         // A reply in a chat the user is looking at needs no notification at all.
         const drop = first || !document.hasFocus() ? [] : fresh.filter((item) => item.kind === "chat" && onScreen(item.link));
         drop.forEach((item) => api.delete(`/api/notifications/${item.id}`).catch(() => undefined));
+        // The server alerts natively for approvals, schedules and reminders; chat replies only when Patio is in the background.
+        if (!first && !document.hasFocus())
+          fresh
+            .filter((item) => item.kind === "chat")
+            .forEach((item) => api.post(`/api/notifications/${item.id}/native`, {}).catch(() => undefined));
         setList(value.notifications.filter((item) => !drop.includes(item)));
         setUnread(value.unread - drop.length);
         if (!first && document.hasFocus())
