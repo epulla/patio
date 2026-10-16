@@ -14,7 +14,7 @@ import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
-import Notifications from "./Notifications";
+import Notifications, { NotificationsPage } from "./Notifications";
 import { api, type Board, type Config } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
@@ -298,6 +298,7 @@ export default function App() {
     page = <ScheduledTasks id={scheduledMatch[1] && decodeURIComponent(scheduledMatch[1])} refresh={refresh} />;
   if (aiPages[path]) page = <ComingSoon title={aiPages[path]} />;
   if (path === "/settings") page = <Settings />;
+  if (path === "/notifications") page = <NotificationsPage refresh={refresh} />;
 
   const showDock = pins.ids.length > 0 && !chatMatch;
   const onScreen = (link: string) => {

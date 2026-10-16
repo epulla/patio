@@ -3675,7 +3675,9 @@ main.chat-window {
   bottom: calc(100% + 6px);
   left: 0;
   right: auto;
-  width: 340px;
+  width: 360px;
+  padding: 0;
+  overflow: hidden;
 }
 .notifications .menu > .notif-toggle {
   position: relative;
@@ -3686,8 +3688,8 @@ main.chat-window {
 }
 .notif-count {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 2px;
+  right: 2px;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -3702,54 +3704,97 @@ main.chat-window {
 .notif-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 4px 8px 10px;
+  gap: 2px;
+  padding: 4px 4px 4px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notif-head strong {
+  flex: 1;
+  font-size: 14px;
 }
 .notif-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 50vh;
+  max-height: min(60vh, 520px);
   overflow-y: auto;
 }
 .notif-empty {
-  margin: 4px 10px 8px;
+  margin: 0;
+  padding: 20px 14px;
+  text-align: center;
 }
-.notif-item {
+.notif-row {
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  height: auto;
+  padding: 10px 14px;
   border: 0;
-  border-radius: var(--radius-field);
+  border-radius: 0;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font: 400 13px var(--font);
   text-align: left;
+  white-space: normal;
 }
-.notif-item:hover,
-.notif-item:focus-visible {
-  background: var(--base-200);
+.notif-list .notif-row + .notif-row,
+.notif-page-list .notif-row + .notif-row {
+  border-top: 1px solid var(--border);
 }
-.notif-item[data-unread] .notif-title {
+button.notif-row:hover,
+button.notif-row:focus-visible,
+.notif-page-list .notif-row:hover {
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+}
+.notifications button.notif-row:focus-visible {
+  outline: none;
+}
+.notif-icon {
+  display: flex;
+  padding-top: 1px;
+  color: var(--muted);
+}
+.notif-icon .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+.notif-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.notif-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+[data-unread] .notif-title {
   font-weight: 600;
 }
-.notif-item[data-unread] .notif-title::after {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 6px;
+.notif-body {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.notif-time {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.notif-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
   border-radius: 50%;
   background: var(--primary);
-  vertical-align: middle;
-}
-.notif-body {
-  opacity: 0.75;
-  overflow-wrap: anywhere;
 }
 .notif-toasts {
   position: fixed;
@@ -3759,21 +3804,23 @@ main.chat-window {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 320px;
+  width: 360px;
   pointer-events: none;
 }
 .notif-toast {
   display: flex;
-  align-items: flex-start;
-  padding: 4px;
+  align-items: center;
+  padding-right: 4px;
   background: var(--base-100);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+  overflow: hidden;
   pointer-events: auto;
 }
-.notif-toast .notif-item {
+.notif-toast .notif-row {
   flex: 1;
+  min-width: 0;
 }
 @media (prefers-reduced-motion: no-preference) {
   .notif-toast {
@@ -3785,4 +3832,56 @@ main.chat-window {
     opacity: 0;
     transform: translateY(8px);
   }
+}
+.notif-page {
+  max-width: 820px;
+}
+.notif-groups {
+  gap: 20px;
+}
+.notif-day {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.notif-page-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.notif-page-list .notif-row {
+  padding: 14px 18px;
+  font-size: 14px;
+}
+.notif-page-list button.notif-title {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+}
+.notif-page-list button.notif-title:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+.notif-page-list .notif-row[data-unread] button.notif-title {
+  font-weight: 600;
+}
+.notif-page-list .notif-body {
+  white-space: normal;
+  font-size: 13px;
+}
+.notif-page-empty {
+  margin: 0;
+  text-align: center;
+}
+.notif-more {
+  align-self: center;
 }
