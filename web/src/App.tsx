@@ -8,7 +8,7 @@ import Connectors from "./Connectors";
 import Chats from "./Chats";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
-import { getPins, rememberPinnedChat, usePins } from "./pins";
+import { getPins, lastPinnedChat, rememberPinnedChat, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
@@ -321,8 +321,8 @@ export default function App() {
     if (link === path) return true;
     const id = link.match(/^\/ai\/chats\/([^/]+)$/)?.[1];
     if (!id || !pins.ids.includes(id)) return false;
-    // Pinned chats are on screen in the Chats grid (shown for a pinned or no chat) or in the open dock.
-    return chatMatch ? !chatMatch[1] || pins.ids.includes(chatMatch[1]) : dockOpen;
+    // Pinned chats are all on screen in the Chats grid (shown for a pinned or no chat); the dock shows only its active one.
+    return chatMatch ? !chatMatch[1] || pins.ids.includes(chatMatch[1]) : dockOpen && lastPinnedChat() === id;
   };
   const states = pins.ids.map((id) => pinned.status[id]);
   const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
