@@ -676,14 +676,6 @@ export type PageContext = { icon: IconName; label: string; line: string };
 
 export const startContextKey = (chatID: string) => `chat-context:${chatID}`;
 
-function readStartContext(key: string): PageContext | undefined {
-  try {
-    return JSON.parse(localStorage.getItem(key) ?? "null") ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 // Last page context sent per chat, so the same page isn't repeated on every message.
 const sentContext = new Map<string, string>();
 
@@ -732,7 +724,13 @@ export function Conversation({
   }
   // Context a chat was started with (e.g. from a ticket) wins over the page until the first send.
   const startKey = startContextKey(id);
-  const [startContext, setStartContext] = useState(() => readStartContext(startKey));
+  const [startContext, setStartContext] = useState<PageContext | undefined>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(startKey) ?? "null") ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
   const context = startContext ?? pageContext;
   const [contextOff, setContextOff] = useState<string>();
   const contextOn = !!context && contextOff !== context.line;

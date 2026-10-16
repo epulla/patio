@@ -12,7 +12,7 @@ import {
   type User,
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
-import { addChatLink, markdownLink } from "./chatLink";
+import { linkText } from "./ChatDock";
 import { createChatWithDefaults, NewChatDialog, startContextKey, type PageContext } from "./Chats";
 import DueBadge, { DueDateInput } from "./DueBadge";
 import { Icon } from "./icons";
@@ -121,7 +121,7 @@ export default function TicketDetail({
       const context: PageContext = {
         icon: "ticket",
         label: ticket.code,
-        line: `Working on ticket ${markdownLink(chatTitle(ticket), `/tickets/${ticket.id}`)}`,
+        line: `Working on ticket [${linkText(chatTitle(ticket))}](/tickets/${ticket.id})`,
       };
       localStorage.setItem(startContextKey(chat.id), JSON.stringify(context));
       const current = await api.get<Ticket>(`/api/tickets/${ticket.id}`);
@@ -374,3 +374,19 @@ function Comments({
 }
 
 const chatTitle = (ticket: Ticket) => `${ticket.code}: ${ticket.title}`;
+
+// Adds a chat link to the description's first links line (`**Repo:** … · **Chat:** …`), as the ticket-chat-link skill does.
+function addChatLink(description: string, title: string, chatID: string) {
+  const href = `/ai/chats/${chatID}`;
+  if (description.includes(`(${href})`)) return description;
+  const link = `[${linkText(title)}](${href})`;
+  const newline = description.indexOf("\n");
+  const first = newline < 0 ? description : description.slice(0, newline);
+  const rest = newline < 0 ? "" : description.slice(newline);
+  if (!/^\*\*[^*\n]+:\*\*/.test(first)) return `**Chat:** ${link}${description ? `\n\n${description}` : ""}`;
+  const parts = first.split(" · ");
+  const chat = parts.findIndex((part) => part.startsWith("**Chat:**"));
+  if (chat >= 0) parts[chat] += `, ${link}`;
+  else parts.splice(1, 0, `**Chat:** ${link}`);
+  return parts.join(" · ") + rest;
+}

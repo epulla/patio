@@ -10,7 +10,7 @@ export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" 
 const minWidth = 320;
 const maxWidth = 720;
 const defaultWidth = 400;
-const linkText = (text: string) => text.replace(/[[\]\\]/g, "\\$&");
+export const linkText = (text: string) => text.replace(/[[\]\\]/g, "\\$&");
 const clampWidth = (width: number) => Math.min(maxWidth, Math.max(minWidth, Math.round(width)));
 
 export function usePinnedChats(ids: string[], refresh: number) {
