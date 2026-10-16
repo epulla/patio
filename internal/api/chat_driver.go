@@ -504,7 +504,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
 			return err
 		}
-		if err := m.notify("chat", "Reply finished: "+title, "["+title+"](/ai/chats/"+id+")", "/ai/chats/"+id, false); err != nil {
+		if err := m.notify("chat", "Reply finished: "+title, chatMarkdownLink(title, id), "/ai/chats/"+id, false); err != nil {
 			log.Printf("notify finished chat %s: %v", id, err)
 		}
 	} else if turnErr != nil && m.notify != nil {
@@ -512,11 +512,17 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
 			return err
 		}
-		if err := m.notify("chat", "Chat failed: "+title, "["+title+"](/ai/chats/"+id+")", "/ai/chats/"+id, false); err != nil {
+		if err := m.notify("chat", "Chat failed: "+title, chatMarkdownLink(title, id), "/ai/chats/"+id, false); err != nil {
 			log.Printf("notify failed chat %s: %v", id, err)
 		}
 	}
 	return nil
+}
+
+// Chat titles come from the first message, so they can hold newlines and brackets that break the link.
+func chatMarkdownLink(title, id string) string {
+	label := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`, "\r\n", " ", "\n", " ").Replace(title)
+	return "[" + label + "](/ai/chats/" + id + ")"
 }
 
 func (m *chatManager) saveSession(id, sessionID string) error {
