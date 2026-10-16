@@ -15,6 +15,6 @@ Add a **New chat** button to the ticket view that creates and opens a fresh chat
 ## Tasks
 
 - [x] 1. Shared chat creation: export `NewChatDialog`, `createChat` (with optional `title`) and a `newChatWithDefaults` helper from `Chats.tsx`; Chats page keeps working. *Check:* `pnpm build`; Chats `+` still creates a chat.
-- [ ] 2. Description link helper `addChatLink(description, title, chatID)` in a small module, applying Decision 3. *Check:* `pnpm build` + the cases (no links line, links line without Chat, with Chat, already linked) verified with a quick `node` script run against the built function.
+- [x] 2. Description link helper `addChatLink(description, title, chatID)` in a small module, applying Decision 3. *Check:* `pnpm build` + the cases (no links line, links line without Chat, with Chat, already linked) verified with a quick `node` script run against the built function.
 - [ ] 3. Button in `TicketDetail.tsx`: create (direct or via dialog), save draft, update the ticket description, navigate to `/ai/chats/<id>`; in-flight guard; errors via `ErrorText`. *Check:* `pnpm build`.
 - [ ] 4. `wails build`; user checks: one click opens a chat titled `<CODE>: <title>` with the draft unsent, the ticket shows the new Chat link next to existing ones, double click makes one chat, Cancel in the dialog stays on the ticket. Delete this plan file.
