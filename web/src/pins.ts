@@ -62,6 +62,10 @@ function subscribe(listener: () => void) {
 
 export const getPins = () => current;
 
+// Last focused pinned chat, so the side panel reopens on it instead of the first pin.
+export const lastPinnedChat = () => localStorage.getItem("chat-dock-active") ?? undefined;
+export const rememberPinnedChat = (id: string) => localStorage.setItem("chat-dock-active", id);
+
 export function usePins() {
   return useSyncExternalStore(subscribe, () => current);
 }

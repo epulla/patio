@@ -8,7 +8,7 @@ import Connectors from "./Connectors";
 import Chats from "./Chats";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
-import { getPins, usePins } from "./pins";
+import { getPins, rememberPinnedChat, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
@@ -246,6 +246,12 @@ export default function App() {
     const timer = setInterval(run, 24 * 60 * 60 * 1000);
     return () => clearInterval(timer);
   }, [config]);
+
+  // The side panel is hidden on chat routes; remember the pinned chat viewed there for when it comes back.
+  useEffect(() => {
+    const id = path.match(/^\/ai\/chats\/([^/]+)$/)?.[1];
+    if (id && pins.ids.includes(id)) rememberPinnedChat(id);
+  }, [path, pins.ids]);
 
   if (!config) return null;
   if (config.chat_window)

@@ -33,7 +33,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { isUnpinKey, maxPins, pinLayout, pinNumber, pinShortcut, setPins, unpin, unpinAriaShortcut, unpinShortcut, usePins } from "./pins";
+import { isUnpinKey, maxPins, rememberPinnedChat, pinLayout, pinNumber, pinShortcut, setPins, unpin, unpinAriaShortcut, unpinShortcut, usePins } from "./pins";
 import Picker from "./Picker";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 
@@ -471,6 +471,9 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
               key={chatID}
               className="grid-pane"
               data-pane={chatID}
+              // WebKit doesn't focus links on click, so pointerdown covers clicking a link in the pane.
+              onFocus={() => rememberPinnedChat(chatID)}
+              onPointerDown={() => rememberPinnedChat(chatID)}
               data-dragging={drag?.from === index || undefined}
               data-drop-target={(drag && drag.from !== index && drag.over === index) || undefined}
               style={{

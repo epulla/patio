@@ -4,7 +4,7 @@ import { navigate } from "./App";
 import { Conversation, type PageContext } from "./Chats";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
-import { isUnpinKey, pinAriaShortcut, pinNumber, pinShortcut, unpin, unpinAriaShortcut, unpinShortcut } from "./pins";
+import { isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, unpin, unpinAriaShortcut, unpinShortcut } from "./pins";
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
 const minWidth = 320;
@@ -53,12 +53,13 @@ export default function ChatDock({
   onSeen: (id: string) => void;
   onClose: () => void;
 }) {
-  const [active, setActive] = useState(ids[0]);
+  const [active, setActive] = useState(() => lastPinnedChat() ?? ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
   const [focusRequest, setFocusRequest] = useState<string>();
   const [loaded, setLoaded] = useState<{ key: string; context: PageContext }>();
   const current = ids.includes(active) ? active : ids[0];
+  useEffect(() => rememberPinnedChat(current), [current]);
   const pageKey = page && `${page.kind}:${page.id}`;
   const context = loaded && loaded.key === pageKey ? loaded.context : undefined;
 
