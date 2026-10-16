@@ -1,4 +1,4 @@
-import { api, type User } from "./api";
+import { api, type SearchTicket, type User } from "./api";
 
 export type Trigger = { char: "@" | "#"; start: number; query: string };
 export type Suggestion = { key: string; label: string; detail?: string; insert: string };
@@ -26,7 +26,15 @@ export async function suggest({ char, query }: Trigger): Promise<Suggestion[]> {
       .filter((user) => user.name.toLowerCase().startsWith(q))
       .map((user) => ({ key: user.id, label: user.name, detail: user.is_ai ? "AI" : undefined, insert: `@${user.name}` }));
   }
-  return [];
+  // Debounce: callers drop results that arrive after a newer request.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const tickets = await api.get<SearchTicket[]>(`/api/tickets/search?q=${encodeURIComponent(query)}&sort=updated`);
+  return tickets.slice(0, 8).map((ticket) => ({
+    key: ticket.id,
+    label: `${ticket.code} · ${ticket.title}`,
+    detail: ticket.status_name,
+    insert: `[${`${ticket.code}: ${ticket.title}`.replace(/[[\]\\]/g, "\\$&")}](/tickets/${ticket.id})`,
+  }));
 }
 
 const mirrored = [
