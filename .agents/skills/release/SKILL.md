@@ -41,8 +41,11 @@ Use this workflow for local builds and tagged GitHub releases. Never skip requir
 1. Read last tag with `git describe --tags --abbrev=0`. If none exists, propose
    `v0.1.0` and review commits with `git log --oneline HEAD`.
 2. Otherwise inspect commits with `git log --oneline <last>..HEAD`.
-3. Propose next SemVer from those commits: `!` or `BREAKING CHANGE` means major;
-   any `feat` means minor; otherwise patch. Present proposed tag and rationale.
+3. Propose next SemVer from those commits:
+   - Before 1.0.0: `!` or `BREAKING CHANGE` means minor; anything else (feat, fix, ui…) means patch.
+   - From 1.0.0: `!` or `BREAKING CHANGE` means major; any `feat` means minor; otherwise patch.
+   Moving to 1.0.0 is a user decision, never proposed from commits.
+   Present proposed tag and rationale.
 4. Wait for user to confirm or override version before continuing.
 
 ### Verify and gate tag
