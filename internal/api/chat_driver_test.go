@@ -274,7 +274,7 @@ func TestRequestApproval(t *testing.T) {
 				time.Sleep(time.Millisecond)
 			}
 			var notificationCount int
-			if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='approval' AND link=?`, "/ai/chats/"+chatID).Scan(&notificationCount); err != nil {
+			if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='approval' AND body='' AND link=?`, "/ai/chats/"+chatID).Scan(&notificationCount); err != nil {
 				t.Fatal(err)
 			}
 			if notificationCount != 1 || nativeCalls != 1 {

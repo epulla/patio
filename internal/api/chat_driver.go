@@ -596,11 +596,7 @@ func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName stri
 		if taskTitle != "" {
 			link, kind, noticeTitle = "/ai/scheduled/"+taskID, "scheduled", "Scheduled task needs approval: "+taskTitle
 		}
-		body := ""
-		if taskTitle == "" {
-			body = "[" + title + "](/ai/chats/" + chatID + ")"
-		}
-		if err := m.notify(kind, noticeTitle, body, link, true); err != nil {
+		if err := m.notify(kind, noticeTitle, "", link, true); err != nil {
 			log.Printf("notify chat approval %s: %v", chatID, err)
 		}
 	}
