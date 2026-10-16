@@ -226,6 +226,15 @@ export default function App() {
     };
   }, []);
 
+  // A press on the <dialog> itself, not its panel, is on the backdrop. Pointerdown so drags out of the panel don't close it.
+  useEffect(() => {
+    const closeOnBackdrop = (event: PointerEvent) => {
+      if (event.target instanceof HTMLDialogElement && event.target.open) event.target.close();
+    };
+    addEventListener("pointerdown", closeOnBackdrop);
+    return () => removeEventListener("pointerdown", closeOnBackdrop);
+  }, []);
+
   useEffect(() => {
     api
       .get<Config>("/api/config")

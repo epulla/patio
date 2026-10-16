@@ -816,6 +816,7 @@ function NewTicket({
       aria-modal="true"
       aria-labelledby="new-ticket-title"
       onKeyDown={(event) => event.key === "Escape" && onDone()}
+      onPointerDown={(event) => event.target === event.currentTarget && onDone()}
     >
       <TicketForm data={data} statusId={statusId} onCreated={onDone} onClose={onDone} onError={onError} />
     </div>
