@@ -671,6 +671,16 @@ function Splitter({
 
 export type PageContext = { icon: IconName; label: string; line: string };
 
+export const startContextKey = (chatID: string) => `chat-context:${chatID}`;
+
+function readStartContext(key: string): PageContext | undefined {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Last page context sent per chat, so the same page isn't repeated on every message.
 const sentContext = new Map<string, string>();
 
@@ -680,7 +690,7 @@ export function Conversation({
   windowed,
   compact,
   otherWindow,
-  context,
+  context: pageContext,
   connectors,
   pinned,
   focused,
@@ -717,6 +727,10 @@ export function Conversation({
     if (value) localStorage.setItem(draftKey, value);
     else localStorage.removeItem(draftKey);
   }
+  // Context a chat was started with (e.g. from a ticket) wins over the page until the first send.
+  const startKey = startContextKey(id);
+  const [startContext, setStartContext] = useState(() => readStartContext(startKey));
+  const context = startContext ?? pageContext;
   const [contextOff, setContextOff] = useState<string>();
   const contextOn = !!context && contextOff !== context.line;
   const [title, setTitle] = useState("");
@@ -904,6 +918,10 @@ export function Conversation({
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
       if (prefix) sentContext.set(id, context!.line);
+      if (startContext) {
+        localStorage.removeItem(startKey);
+        setStartContext(undefined);
+      }
       changeText("");
       setPending([]);
       setDetail((current) =>
@@ -1316,7 +1334,7 @@ export function Conversation({
                 className="context-chip tip-up"
                 aria-pressed={contextOn}
                 aria-label={`Share ${context.label} with the agent`}
-                data-tip={contextOn ? "Sharing this page with the agent. Click to stop" : "Click to share this page with the agent"}
+                data-tip={contextOn ? `Sharing ${context.label} with the agent. Click to stop` : `Click to share ${context.label} with the agent`}
                 onClick={() => setContextOff(contextOn ? context.line : undefined)}
               >
                 <Icon name={context.icon} />

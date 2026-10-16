@@ -13,7 +13,7 @@ import {
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
 import { addChatLink, markdownLink } from "./chatLink";
-import { createChatWithDefaults, NewChatDialog } from "./Chats";
+import { createChatWithDefaults, NewChatDialog, startContextKey, type PageContext } from "./Chats";
 import DueBadge, { DueDateInput } from "./DueBadge";
 import { Icon } from "./icons";
 import Markdown from "./Markdown";
@@ -117,7 +117,12 @@ export default function TicketDetail({
   async function openTicketChat(chat: Chat) {
     try {
       if (!ticket) return;
-      localStorage.setItem(`chat-draft:${chat.id}`, `${markdownLink(chatTitle(ticket), `/tickets/${ticket.id}`)}\n\n`);
+      const context: PageContext = {
+        icon: "ticket",
+        label: ticket.code,
+        line: `Working on ticket ${markdownLink(chatTitle(ticket), `/tickets/${ticket.id}`)}`,
+      };
+      localStorage.setItem(startContextKey(chat.id), JSON.stringify(context));
       const current = await api.get<Ticket>(`/api/tickets/${ticket.id}`);
       const description = addChatLink(current.description, chat.title, chat.id);
       if (description !== current.description) await api.put(`/api/tickets/${ticket.id}`, { description });
