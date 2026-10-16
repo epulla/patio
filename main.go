@@ -154,6 +154,13 @@ func main() {
 		Height: 800,
 		OnStartup: func(ctx context.Context) {
 			appCtx = ctx
+			showPath := func(path string) {
+				wruntime.WindowUnminimise(ctx)
+				wruntime.WindowShow(ctx)
+				if path != "" {
+					wruntime.EventsEmit(ctx, "navigate", path)
+				}
+			}
 			go func() {
 				if err := wruntime.InitializeNotifications(ctx); err != nil {
 					log.Printf("native notifications unavailable, using beeep: %v", err)
@@ -163,6 +170,14 @@ func main() {
 					log.Printf("native notifications unavailable, using beeep")
 					return
 				}
+				wruntime.OnNotificationResponse(ctx, func(result wruntime.NotificationResult) {
+					if result.Error != nil {
+						log.Printf("native notification response: %v", result.Error)
+						return
+					}
+					link, _ := result.Response.UserInfo["link"].(string)
+					showPath(link)
+				})
 				ok, err := wruntime.RequestNotificationAuthorization(ctx)
 				if !ok || err != nil {
 					log.Printf("native notifications not authorized, using beeep: %v", err)
@@ -173,13 +188,7 @@ func main() {
 			if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
 				log.Printf("register app window: %v", err)
 			}
-			apiServer.RunWindowHeartbeat(windowStop, func(path string) {
-				wruntime.WindowUnminimise(ctx)
-				wruntime.WindowShow(ctx)
-				if path != "" {
-					wruntime.EventsEmit(ctx, "navigate", path)
-				}
-			})
+			apiServer.RunWindowHeartbeat(windowStop, showPath)
 			backgroundCtx, cancel := context.WithCancel(ctx)
 			stopBackground = cancel
 			background.Add(1)
