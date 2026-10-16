@@ -156,6 +156,14 @@ func (s *Server) readAllNotifications(w http.ResponseWriter, r *http.Request) {
 	noContent(w)
 }
 
+func (s *Server) deleteNotification(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.db.Exec(`DELETE FROM notification WHERE id=?`, idParam(r, "id")); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	noContent(w)
+}
+
 func (s *Server) PurgeNotifications() error {
 	return txrun(s.db, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM notification WHERE created_at < ?`, time.Now().UTC().Add(-7*24*time.Hour).Format("2006-01-02T15:04:05.000Z")); err != nil {

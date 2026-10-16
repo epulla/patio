@@ -97,6 +97,14 @@ func TestNotificationAPIAndRetention(t *testing.T) {
 	if count != 0 {
 		t.Fatalf("unread after read-all=%d", count)
 	}
+	deleted := httptest.NewRecorder()
+	s.ServeHTTP(deleted, httptest.NewRequest(http.MethodDelete, "/api/notifications/"+id, nil))
+	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE id=?`, id).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Code != http.StatusNoContent || count != 0 {
+		t.Fatalf("delete status=%d remaining=%d", deleted.Code, count)
+	}
 }
 
 func TestNotificationPagingAndUnreadFilter(t *testing.T) {

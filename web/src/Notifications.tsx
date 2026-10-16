@@ -64,13 +64,16 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
     api
       .get<Page>("/api/notifications?limit=12")
       .then((value) => {
-        setList(value.notifications);
-        setUnread(value.unread);
         // Only notifications that arrive after the first load pop up as toasts.
         const first = !seen.current;
         const known = (seen.current ??= new Set());
         const fresh = value.notifications.filter((item) => !item.read_at && !known.has(item.id));
         fresh.forEach((item) => known.add(item.id));
+        // A reply in a chat the user is looking at needs no notification at all.
+        const drop = first || !document.hasFocus() ? [] : fresh.filter((item) => item.kind === "chat" && onScreen(item.link));
+        drop.forEach((item) => api.delete(`/api/notifications/${item.id}`).catch(() => undefined));
+        setList(value.notifications.filter((item) => !drop.includes(item)));
+        setUnread(value.unread - drop.length);
         if (!first && document.hasFocus())
           setToasts((current) => [...current, ...fresh.filter((item) => !onScreen(item.link))]);
       })
