@@ -931,6 +931,12 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		if resource == "calendar-items" {
 			target = "/calendar"
 		}
+		if resource == "connectors" {
+			target = "/ai/connectors"
+		}
+		if resource == "mcp-servers" {
+			target = "/ai/mcp"
+		}
 		return "Martin " + verb + " " + name, "", target, true
 	default:
 		return "", "", "", false

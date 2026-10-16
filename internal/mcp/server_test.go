@@ -332,6 +332,10 @@ func TestMCPServerToolsHideSecrets(t *testing.T) {
 		Enabled bool `json:"enabled"`
 	}
 	decodeText(t, updated, &updateResult)
+	var mcpLink string
+	if err := database.QueryRow(`SELECT link FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&mcpLink); err != nil || mcpLink != "/ai/mcp" {
+		t.Fatalf("MCP server change link = %q, %v", mcpLink, err)
+	}
 	listed := callTool(t, session, "list_mcp_servers", map[string]any{})
 	var list []struct {
 		ID             string   `json:"id"`
@@ -384,6 +388,10 @@ func TestMCPConnectorTools(t *testing.T) {
 	}
 	decodeText(t, created, &connector)
 	callTool(t, session, "update_connector", map[string]any{"id": connector.ID, "name": "Updated"})
+	var connectorLink string
+	if err := database.QueryRow(`SELECT link FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&connectorLink); err != nil || connectorLink != "/ai/connectors" {
+		t.Fatalf("connector change link = %q, %v", connectorLink, err)
+	}
 	listed := callTool(t, session, "list_connectors", map[string]any{})
 	if listed.IsError {
 		t.Fatalf("list connectors: %#v", listed)
