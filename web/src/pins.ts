@@ -60,6 +60,8 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+export const getPins = () => current;
+
 export function usePins() {
   return useSyncExternalStore(subscribe, () => current);
 }

@@ -8,7 +8,7 @@ import Connectors from "./Connectors";
 import Chats from "./Chats";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
-import { usePins } from "./pins";
+import { getPins, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
@@ -179,7 +179,8 @@ export default function App() {
   useEffect(() => {
     const onChatLink = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
-      if (!pins.ids.includes(id) || config?.chat_window || location.pathname.startsWith("/ai/chats"))
+      // Read the store, not render state: a chat pinned just before this event isn't rendered yet.
+      if (!getPins().ids.includes(id) || config?.chat_window || location.pathname.startsWith("/ai/chats"))
         return navigate(`/ai/chats/${id}`);
       toggleDock(true);
       setDockFocus({ id });

@@ -19,6 +19,7 @@ import { Icon } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
+import { getPins, maxPins, pinLayout, setPins } from "./pins";
 
 export default function TicketDetail({
   id,
@@ -126,7 +127,12 @@ export default function TicketDetail({
       const current = await api.get<Ticket>(`/api/tickets/${ticket.id}`);
       const description = addChatLink(current.description, chat.title, chat.id);
       if (description !== current.description) await api.put(`/api/tickets/${ticket.id}`, { description });
-      navigate(`/ai/chats/${chat.id}`);
+      // Open it pinned in the side panel; with every pin slot taken, open the chat view instead.
+      const pinned = getPins().ids;
+      if (pinned.length >= maxPins) return navigate(`/ai/chats/${chat.id}`);
+      setPins(pinLayout([...pinned, chat.id]));
+      dispatchEvent(new CustomEvent("open-chat-link", { detail: chat.id }));
+      await load();
     } catch (reason) {
       setError(reason);
     } finally {
