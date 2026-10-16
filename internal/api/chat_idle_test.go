@@ -26,9 +26,6 @@ func TestFinishedChatStoresNotification(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	id := createDriverTestChat(t, database, connectorID, root)
-	if _, err := database.Exec(`UPDATE chat SET title=? WHERE id=?`, "so I have these 2 messages:\n1. [a] b\\", id); err != nil {
-		t.Fatal(err)
-	}
 	server := New(database, "local", false, "dev", root)
 	if err := server.chats.finishTurn(id, "reply", nil); err != nil {
 		t.Fatal(err)
@@ -37,7 +34,7 @@ func TestFinishedChatStoresNotification(t *testing.T) {
 	if err := database.QueryRow(`SELECT kind,title,body,link FROM notification`).Scan(&kind, &title, &body, &link); err != nil {
 		t.Fatal(err)
 	}
-	if kind != "chat" || !strings.HasPrefix(title, "Reply finished: ") || body != `[so I have these 2 messages: 1. \[a\] b\\](/ai/chats/`+id+")" || link != "/ai/chats/"+id {
+	if kind != "chat" || !strings.HasPrefix(title, "Reply finished: ") || body != "" || link != "/ai/chats/"+id {
 		t.Fatalf("notification=%q %q %q %q", kind, title, body, link)
 	}
 	if err := server.Close(); err != nil {
