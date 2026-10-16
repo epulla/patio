@@ -967,12 +967,31 @@ func mcpTicket(h http.Handler, id string, fallback map[string]any) map[string]st
 		}
 	}
 	if item["code"] == "" {
-		item["code"] = id
+		item["code"] = ticketCodeOrGeneric(id)
 	}
 	if item["id"] == "" {
 		item["id"] = id
 	}
 	return item
+}
+
+func ticketCodeOrGeneric(value string) string {
+	dash := strings.LastIndexByte(value, '-')
+	if dash < 1 || dash > 10 || dash == len(value)-1 {
+		return "a ticket"
+	}
+	prefix := strings.ToUpper(value[:dash])
+	for _, r := range prefix {
+		if !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+			return "a ticket"
+		}
+	}
+	for _, r := range value[dash+1:] {
+		if r < '0' || r > '9' {
+			return "a ticket"
+		}
+	}
+	return prefix + value[dash:]
 }
 
 func ticketMarkdown(code, title, id string) string {

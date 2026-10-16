@@ -211,6 +211,9 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if title, body, link, ok := mcpChange(http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/AI-10", nil}, []byte(`{"id":"AI-10","code":"AI-10","title":"Example"}`), nil); !ok || title != "Martin deleted AI-10" || body != "[AI-10: Example](/tickets/AI-10)" || link != "/tickets/AI-10" {
 		t.Fatalf("delete notification = %q %q %q %v", title, body, link, ok)
 	}
+	if title, _, _, ok := mcpChange(http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/8ac86c6e-cc4b-4a29-8ea1-132731001122", nil}, nil, nil); !ok || title != "Martin deleted a ticket" {
+		t.Fatalf("UUID delete title = %q, want generic ticket title", title)
+	}
 	if comment := callTool(t, session, "add_comment", map[string]any{"ticket_id": ticket.ID, "content": "Looks good"}); comment.IsError {
 		t.Fatalf("add comment: %#v", comment)
 	}
