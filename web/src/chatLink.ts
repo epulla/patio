@@ -3,7 +3,7 @@
 export function addChatLink(description: string, title: string, chatID: string) {
   const href = `/ai/chats/${chatID}`;
   if (description.includes(`(${href})`)) return description;
-  const link = `[${title.replace(/[[\]\\]/g, "\\$&")}](${href})`;
+  const link = markdownLink(title, href);
   const newline = description.indexOf("\n");
   const first = newline < 0 ? description : description.slice(0, newline);
   const rest = newline < 0 ? "" : description.slice(newline);
@@ -14,3 +14,5 @@ export function addChatLink(description: string, title: string, chatID: string) 
   else parts.splice(1, 0, `**Chat:** ${link}`);
   return parts.join(" · ") + rest;
 }
+
+export const markdownLink = (text: string, href: string) => `[${text.replace(/[[\]\\]/g, "\\$&")}](${href})`;

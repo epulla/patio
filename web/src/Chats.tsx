@@ -1746,12 +1746,17 @@ export function NewChatDialog({
       .catch(setError);
   }, []);
 
+  const [starting, setStarting] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (starting) return;
+    setStarting(true);
     try {
       onCreated(await createChat({ connector_id: connectorID, model, folder: folder || null, title }));
     } catch (reason) {
       setError(reason);
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -1803,7 +1808,7 @@ export function NewChatDialog({
             <button type="button" onClick={() => dialog.current?.close()}>
               Cancel
             </button>
-            <button className="primary" disabled={!connectorID}>
+            <button className="primary" disabled={!connectorID || starting}>
               Start chat
             </button>
           </div>

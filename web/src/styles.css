@@ -1284,6 +1284,18 @@ label.days-field {
   gap: 14px;
   font-size: 13px;
 }
+.ticket-links button {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-text);
+  font: inherit;
+}
+.ticket-links button:hover {
+  background: none;
+  text-decoration: underline;
+}
 .ticket-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);

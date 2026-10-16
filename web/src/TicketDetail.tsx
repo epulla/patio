@@ -3,13 +3,17 @@ import AIBadge from "./AIBadge";
 import {
   api,
   type BoardData,
+  type Chat,
   type Comment,
+  type Connector,
   type History,
   type Ticket,
   type Transition,
   type User,
 } from "./api";
 import { type Config, ErrorText, formatDate, navigate } from "./App";
+import { addChatLink, markdownLink } from "./chatLink";
+import { createChatWithDefaults, NewChatDialog } from "./Chats";
 import DueBadge, { DueDateInput } from "./DueBadge";
 import { Icon } from "./icons";
 import Markdown from "./Markdown";
@@ -43,6 +47,8 @@ export default function TicketDetail({
   const [tab, setTab] = useState<"comments" | "history" | "transitions">(
     "comments",
   );
+  const [chatConnectors, setChatConnectors] = useState<Connector[]>();
+  const startingChat = useRef(false);
   const previous = useRef({ id, showHidden: config.show_hidden, refresh });
   async function load(preserveForm = false) {
     try {
@@ -91,6 +97,37 @@ export default function TicketDetail({
       setError(reason);
     }
   }
+  // One connector: create right away; several: let the user pick in the New chat dialog.
+  async function newChat() {
+    if (!ticket || startingChat.current) return;
+    startingChat.current = true;
+    try {
+      const connectors = await api.get<Connector[]>("/api/connectors");
+      if (connectors.length === 1) {
+        await openTicketChat(await createChatWithDefaults(connectors[0], chatTitle(ticket)));
+      } else {
+        setChatConnectors(connectors);
+        startingChat.current = false;
+      }
+    } catch (reason) {
+      setError(reason);
+      startingChat.current = false;
+    }
+  }
+  async function openTicketChat(chat: Chat) {
+    try {
+      if (!ticket) return;
+      localStorage.setItem(`chat-draft:${chat.id}`, `${markdownLink(chatTitle(ticket), `/tickets/${ticket.id}`)}\n\n`);
+      const current = await api.get<Ticket>(`/api/tickets/${ticket.id}`);
+      const description = addChatLink(current.description, chat.title, chat.id);
+      if (description !== current.description) await api.put(`/api/tickets/${ticket.id}`, { description });
+      navigate(`/ai/chats/${chat.id}`);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      startingChat.current = false;
+    }
+  }
   if (!ticket)
     return (
       <div className="loading">
@@ -131,6 +168,9 @@ export default function TicketDetail({
             <a href={`/api/tickets/${ticket.id}/export?format=md`} download="">
               <Icon name="download" /> Export Markdown
             </a>
+            <button type="button" onClick={newChat}>
+              <Icon name="chat" /> New chat
+            </button>
           </div>
         </div>
         <div className="ticket-layout">
@@ -269,6 +309,18 @@ export default function TicketDetail({
             ))}
         </div>
       </section>
+      {chatConnectors && (
+        <NewChatDialog
+          connectors={chatConnectors}
+          title={chatTitle(ticket)}
+          onClose={() => setChatConnectors(undefined)}
+          onCreated={(chat) => {
+            setChatConnectors(undefined);
+            startingChat.current = true;
+            openTicketChat(chat);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -309,3 +361,5 @@ function Comments({
     </section>
   );
 }
+
+const chatTitle = (ticket: Ticket) => `${ticket.code}: ${ticket.title}`;
