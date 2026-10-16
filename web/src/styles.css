@@ -1957,6 +1957,8 @@ main:has(> .chats) {
 }
 .chat-grid {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
   overflow: auto;
 }
@@ -2012,6 +2014,15 @@ main:has(> .chats) {
 .grid-pane > section {
   flex: 1;
   min-width: 0;
+}
+.grid-pane .composer-actions,
+.grid-pane .composer-send,
+.grid-pane .composer-model {
+  flex-wrap: wrap;
+}
+.grid-pane .composer-send {
+  margin-left: auto;
+  justify-content: flex-end;
 }
 .grid-pane .conversation-title input {
   font-size: 16px;

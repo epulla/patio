@@ -224,6 +224,8 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   }
 
   const grid = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(0);
+  const [responsiveSizes, setResponsiveSizes] = useState<{ key: string; cols: number[]; rows: number[] }>();
   const [drag, setDrag] = useState<{ from: number; over?: number }>();
   const flip = useRef<Map<string, DOMRect>>(undefined);
 
@@ -253,6 +255,24 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   }
 
   const showGrid = !windowed && pins.ids.length > 0 && (!id || pins.ids.includes(id));
+  useLayoutEffect(() => {
+    const element = grid.current;
+    if (!showGrid || !element) return;
+    setGridWidth(element.clientWidth);
+    const observer = new ResizeObserver(() => setGridWidth(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [showGrid]);
+
+  const columnCount = Math.max(1, Math.min(pins.cols.length, Math.floor((gridWidth + 6) / 566)));
+  const rowCount = Math.ceil(pins.ids.length / columnCount);
+  const desktopLayout = columnCount === pins.cols.length;
+  const layoutKey = `${pins.ids.length}:${columnCount}`;
+  const temporarySizes = responsiveSizes?.key === layoutKey ? responsiveSizes : undefined;
+  const columns = desktopLayout ? pins.cols : temporarySizes?.cols ?? Array(columnCount).fill(1 / columnCount);
+  const rows = desktopLayout ? pins.rows : temporarySizes?.rows ?? Array(rowCount).fill(1 / rowCount);
+  const columnTotal = columns.reduce((sum, size) => sum + size, 0);
+  const fullRows = Math.floor(pins.ids.length / columnCount);
   const status = useChatStatus(chats.map((chat) => chat.id));
   const visible = (showGrid ? pins.ids : id ? [id] : []).join();
   useEffect(() => visible.split(",").forEach(markSeen), [visible, status]);
@@ -288,7 +308,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [windowed, loaded, connectors]);
-  const tracks = (sizes: number[]) => sizes.map((size) => `minmax(240px, ${size}fr)`).join(" 6px ");
+  const tracks = (sizes: number[]) => sizes.map((size) => `minmax(360px, ${size}fr)`).join(" 6px ");
 
   return (
     <div className={windowed ? "chats windowed" : "chats"}>
@@ -457,7 +477,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
         <div
           ref={grid}
           className="chat-grid"
-          style={{ gridTemplateColumns: tracks(pins.cols), gridTemplateRows: tracks(pins.rows) }}
+          style={{ gridTemplateRows: tracks(rows) }}
           onDragOver={(event) => {
             if (drag && !(event.target as Element).closest(".grid-pane")) setDrag({ from: drag.from });
           }}
@@ -466,7 +486,13 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             if (drag && to && !event.currentTarget.contains(to)) setDrag({ from: drag.from });
           }}
         >
-          {pins.ids.map((chatID, index) => (
+          {pins.ids.map((chatID, index) => {
+            const row = Math.floor(index / columnCount);
+            const column = index % columnCount;
+            const count = Math.min(columnCount, pins.ids.length - row * columnCount);
+            const share = count === columnCount ? columns[column] / columnTotal : 1 / count;
+            const offset = count === columnCount ? columns.slice(0, column).reduce((sum, size) => sum + size, 0) / columnTotal : column / count;
+            return (
             <div
               key={chatID}
               className="grid-pane"
@@ -477,8 +503,10 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
               data-dragging={drag?.from === index || undefined}
               data-drop-target={(drag && drag.from !== index && drag.over === index) || undefined}
               style={{
-                gridColumn: (index % pins.cols.length) * 2 + 1,
-                gridRow: Math.floor(index / pins.cols.length) * 2 + 1,
+                gridColumn: 1,
+                gridRow: row * 2 + 1,
+                width: `calc((100% - ${(count - 1) * 6}px) * ${share})`,
+                marginLeft: `calc((100% - ${(count - 1) * 6}px) * ${offset} + ${column * 6}px)`,
               }}
               onDragOver={(event) => {
                 if (!event.dataTransfer.types.includes(paneType)) return;
@@ -553,28 +581,38 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                 }
               />
             </div>
-          ))}
-          {pins.cols.slice(1).map((_, index) => (
+            );
+          })}
+          {columns.slice(1).map((_, index) => (
             <Splitter
               key={`col-${index}`}
               vertical
               label="Resize columns"
-              sizes={pins.cols}
+              sizes={columns}
               index={index}
               min={240}
-              style={{ gridColumn: index * 2 + 2, gridRow: "1 / -1" }}
-              onChange={(cols) => setPins((current) => ({ ...current, cols }))}
+              style={{
+                gridColumn: 1,
+                gridRow: `1 / ${fullRows * 2}`,
+                width: 6,
+                marginLeft: `calc((100% - ${(columnCount - 1) * 6}px) * ${columns.slice(0, index + 1).reduce((sum, size) => sum + size, 0) / columnTotal} + ${index * 6}px)`,
+              }}
+              onChange={(cols) => desktopLayout
+                ? setPins((current) => ({ ...current, cols }))
+                : setResponsiveSizes({ key: layoutKey, cols, rows })}
             />
           ))}
-          {pins.rows.slice(1).map((_, index) => (
+          {rows.slice(1).map((_, index) => (
             <Splitter
               key={`row-${index}`}
               label="Resize rows"
-              sizes={pins.rows}
+              sizes={rows}
               index={index}
-              min={240}
+              min={360}
               style={{ gridRow: index * 2 + 2, gridColumn: "1 / -1" }}
-              onChange={(rows) => setPins((current) => ({ ...current, rows }))}
+              onChange={(rows) => desktopLayout
+                ? setPins((current) => ({ ...current, rows }))
+                : setResponsiveSizes({ key: layoutKey, cols: columns, rows })}
             />
           ))}
         </div>
