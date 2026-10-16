@@ -62,7 +62,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
 
   useEffect(() => {
     api
-      .get<Page>("/api/notifications?limit=10")
+      .get<Page>("/api/notifications?limit=12")
       .then((value) => {
         setList(value.notifications);
         setUnread(value.unread);
@@ -126,14 +126,11 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
           <>
             <div className="notif-head">
               <strong>Notifications</strong>
-              {unread > 0 && <IconButton type="button" className="ghost" icon="check" label="Mark all read" onClick={readAll} />}
-              <IconButton
-                type="button"
-                className="ghost"
-                icon="list"
-                label="See all notifications"
-                onClick={() => (close(false), navigate("/notifications"))}
-              />
+              {unread > 0 && (
+                <button type="button" className="notif-text-button" onClick={readAll}>
+                  Mark all read
+                </button>
+              )}
             </div>
             {list.length === 0 ? (
               <p className="muted notif-empty">You're all caught up.</p>
@@ -144,15 +141,33 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
                     key={item.id}
                     type="button"
                     role="menuitem"
-                    className="notif-row"
+                    className="notif-line"
                     data-unread={item.read_at ? undefined : ""}
                     onClick={() => (close(false), open(item))}
                   >
-                    <RowBody item={item} body={item.body && <span className="notif-body">{plain(item.body)}</span>} />
+                    <span className="notif-dot" aria-hidden="true" />
+                    <span className="notif-icon" aria-hidden="true">
+                      <Icon name={kindIcons[item.kind] ?? "dot"} />
+                    </span>
+                    <span className="notif-line-text">
+                      {!item.read_at && <span className="sr-only">Unread: </span>}
+                      {item.title}
+                    </span>
+                    <time className="notif-time" dateTime={item.created_at}>
+                      {shortAgo(item.created_at)}
+                    </time>
                   </button>
                 ))}
               </div>
             )}
+            <button
+              type="button"
+              role="menuitem"
+              className="notif-footer"
+              onClick={() => (close(false), navigate("/notifications"))}
+            >
+              See all notifications
+            </button>
           </>
         )}
       </Menu>
@@ -166,6 +181,14 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
       )}
     </div>
   );
+}
+
+function shortAgo(value: string) {
+  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  return `${Math.floor(minutes / 1440)}d`;
 }
 
 function plain(markdown: string) {

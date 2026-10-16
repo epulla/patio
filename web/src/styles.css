@@ -3682,18 +3682,70 @@ main.chat-window {
   --muted: color-mix(in oklch, var(--content) 72%, transparent);
   color: var(--content);
 }
-.notifications .menu-list .ghost:hover {
+/* Compact one-line rows; selectors beat the generic .menu-list button sizing. */
+.notifications .menu-list .notif-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 34px;
+  padding: 0 12px 0 10px;
+  border-radius: 0;
+  color: var(--muted);
+  font-weight: 400;
+}
+.notifications .menu-list .notif-line[data-unread] {
+  color: var(--content);
+  font-weight: 500;
+}
+.notifications .menu-list .notif-line:hover,
+.notifications .menu-list .notif-line:focus-visible {
   background: var(--base-200);
+  outline: none;
 }
-/* Beat the generic .menu-list button sizing. */
-.notifications .menu-list .notif-row {
-  height: auto;
-  padding: 10px 14px;
-  gap: 10px;
+.notif-line .notif-dot {
+  margin: 0;
+  width: 6px;
+  height: 6px;
 }
-.notifications .notif-head .icon {
-  height: 40px;
+.notif-line:not([data-unread]) .notif-dot {
+  visibility: hidden;
+}
+.notif-line-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.notif-line .notif-icon {
   padding: 0;
+}
+.notif-line .notif-time {
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.notifications .menu-list .notif-text-button {
+  height: 28px;
+  padding: 0 8px;
+  color: var(--primary-text);
+  font-weight: 500;
+}
+.notifications .menu-list .notif-footer {
+  justify-content: center;
+  width: 100%;
+  height: 38px;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--primary-text);
+  font-weight: 500;
+}
+.notifications .menu-list .notif-footer:hover,
+.notifications .menu-list .notif-footer:focus-visible {
+  background: var(--base-200);
+  outline: none;
 }
 .notifications .menu-list {
   top: auto;
@@ -3730,7 +3782,8 @@ main.chat-window {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px 4px 4px 14px;
+  min-height: 44px;
+  padding: 4px 8px 4px 14px;
   border-bottom: 1px solid var(--border);
 }
 .notif-head strong {
@@ -3740,7 +3793,8 @@ main.chat-window {
 .notif-list {
   display: flex;
   flex-direction: column;
-  max-height: min(60vh, 520px);
+  max-height: min(60vh, 420px);
+  padding: 4px 0;
   overflow-y: auto;
 }
 .notif-empty {
@@ -3763,7 +3817,6 @@ main.chat-window {
   text-align: left;
   white-space: normal;
 }
-.notif-list .notif-row + .notif-row,
 .notif-page-list .notif-row + .notif-row {
   border-top: 1px solid var(--border);
 }
@@ -3771,9 +3824,6 @@ button.notif-row:hover,
 button.notif-row:focus-visible,
 .notif-page-list .notif-row:hover {
   background: color-mix(in oklch, var(--primary) 8%, transparent);
-}
-.notifications button.notif-row:focus-visible {
-  outline: none;
 }
 .notif-icon {
   display: flex;
