@@ -151,9 +151,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     if (startingChat.current) return;
     startingChat.current = true;
     try {
-      const defaults = await api.get<ChatDefaults>("/api/settings/defaults");
-      const id = connectors[0].id;
-      const chat = await createChat({ connector_id: id, model: connectorModel(connectors, id), folder: defaults.folder || null });
+      const chat = await createChatWithDefaults(connectors[0]);
       navigate(`/ai/chats/${chat.id}`);
     } catch (reason) {
       setError(reason);
@@ -1705,14 +1703,22 @@ function FolderDialog({
 const connectorModel = (connectors: Connector[], id: string) =>
   connectors.find((c) => c.id === id && c.kind === "local")?.model ?? "";
 
-const createChat = (body: { connector_id: string; model: string; folder: string | null }) => api.post<Chat>("/api/chats", body);
+const createChat = (body: { connector_id: string; model: string; folder: string | null; title?: string }) =>
+  api.post<Chat>("/api/chats", body);
 
-function NewChatDialog({
+export async function createChatWithDefaults(connector: Connector, title?: string) {
+  const defaults = await api.get<ChatDefaults>("/api/settings/defaults");
+  return createChat({ connector_id: connector.id, model: connectorModel([connector], connector.id), folder: defaults.folder || null, title });
+}
+
+export function NewChatDialog({
   connectors,
+  title,
   onClose,
   onCreated,
 }: {
   connectors: Connector[];
+  title?: string;
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
@@ -1743,7 +1749,7 @@ function NewChatDialog({
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
-      onCreated(await createChat({ connector_id: connectorID, model, folder: folder || null }));
+      onCreated(await createChat({ connector_id: connectorID, model, folder: folder || null, title }));
     } catch (reason) {
       setError(reason);
     }
