@@ -3727,12 +3727,6 @@ main.chat-window {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.notifications .menu-list .notif-text-button {
-  height: 28px;
-  padding: 0 8px;
-  color: var(--primary-text);
-  font-weight: 500;
-}
 .notifications .menu-list .notif-footer {
   justify-content: center;
   width: 100%;

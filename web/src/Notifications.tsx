@@ -106,6 +106,9 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
     setToasts((current) => current.filter((x) => x.id !== id));
   }
 
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const fresh = useMarkSeen(list, popoverOpen, unread > 0, readAll);
+
   return (
     <div className="notifications">
       <Menu
@@ -124,13 +127,9 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
       >
         {(close) => (
           <>
+            <Opened onChange={setPopoverOpen} />
             <div className="notif-head">
               <strong>Notifications</strong>
-              {unread > 0 && (
-                <button type="button" className="notif-text-button" onClick={readAll}>
-                  Mark all read
-                </button>
-              )}
             </div>
             {list.length === 0 ? (
               <p className="muted notif-empty">You're all caught up.</p>
@@ -142,7 +141,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
                     type="button"
                     role="menuitem"
                     className="notif-line"
-                    data-unread={item.read_at ? undefined : ""}
+                    data-unread={fresh.has(item.id) ? "" : undefined}
                     onClick={() => (close(false), open(item))}
                   >
                     <span className="notif-dot" aria-hidden="true" />
@@ -150,7 +149,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
                       <Icon name={kindIcons[item.kind] ?? "dot"} />
                     </span>
                     <span className="notif-line-text">
-                      {!item.read_at && <span className="sr-only">Unread: </span>}
+                      {fresh.has(item.id) && <span className="sr-only">New: </span>}
                       {item.title}
                     </span>
                     <time className="notif-time" dateTime={item.created_at}>
@@ -181,6 +180,27 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
       )}
     </div>
   );
+}
+
+// Marks everything read while the list is on screen, but remembers what was unread so it stays highlighted until then.
+function useMarkSeen(items: Notification[] | undefined, active: boolean, pending: boolean, markAll: () => void) {
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!active) return setFresh((current) => (current.size ? new Set() : current));
+    const unseen = (items ?? []).filter((item) => !item.read_at).map((item) => item.id);
+    if (!unseen.length && !pending) return;
+    setFresh((current) => new Set([...current, ...unseen]));
+    markAll();
+  }, [active, items, pending]);
+  return fresh;
+}
+
+function Opened({ onChange }: { onChange: (open: boolean) => void }) {
+  useEffect(() => {
+    onChange(true);
+    return () => onChange(false);
+  }, []);
+  return null;
 }
 
 function shortAgo(value: string) {
@@ -219,28 +239,24 @@ function dayLabel(value: string) {
 }
 
 export function NotificationsPage({ refresh }: { refresh: number }) {
-  const [filter, setFilter] = useState<"all" | "unread">("all");
   const [items, setItems] = useState<Notification[]>();
   const [cursor, setCursor] = useState<string | null>(null);
-  const [unread, setUnread] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<unknown>();
-  const current = useRef(filter);
-  const loaded = useRef<string>(undefined);
-  const query = (after?: string | null) =>
-    `/api/notifications?limit=50${filter === "unread" ? "&unread=1" : ""}${after ? `&cursor=${encodeURIComponent(after)}` : ""}`;
+  const first = useRef(true);
+  const fresh = useMarkSeen(items, true, false, () => {
+    setItems((list) => list?.map(markRead));
+    api.post("/api/notifications/read-all", {}).catch(setError);
+  });
 
-  // A filter switch replaces the list; a refresh only merges in the newest page so loaded pages stay.
+  // The first load sets the cursor; later refreshes only merge in the newest page so loaded pages stay.
   useEffect(() => {
-    current.current = filter;
     api
-      .get<Page>(query())
+      .get<Page>("/api/notifications?limit=50")
       .then((page) => {
-        if (current.current !== filter) return;
-        setUnread(page.unread);
         setError(undefined);
-        if (loaded.current !== filter) {
-          loaded.current = filter;
+        if (first.current) {
+          first.current = false;
           setItems(page.notifications);
           setCursor(page.next_cursor);
           return;
@@ -249,14 +265,13 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
         setItems((list) => [...page.notifications, ...(list ?? []).filter((item) => !ids.has(item.id))]);
       })
       .catch(setError);
-  }, [refresh, filter]);
+  }, [refresh]);
 
   function loadMore() {
     setLoadingMore(true);
     api
-      .get<Page>(query(cursor))
+      .get<Page>(`/api/notifications?limit=50&cursor=${encodeURIComponent(cursor ?? "")}`)
       .then((page) => {
-        if (current.current !== filter) return;
         setItems((list) => {
           const ids = new Set((list ?? []).map((item) => item.id));
           return [...(list ?? []), ...page.notifications.filter((item) => !ids.has(item.id))];
@@ -265,19 +280,6 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
       })
       .catch(setError)
       .finally(() => setLoadingMore(false));
-  }
-
-  function read(item: Notification) {
-    if (item.read_at) return;
-    setItems((list) => list?.map((x) => (x.id === item.id ? markRead(x) : x)));
-    setUnread((count) => Math.max(0, count - 1));
-    api.post(`/api/notifications/${item.id}/read`, {}).catch(setError);
-  }
-
-  function readAll() {
-    setItems((list) => list?.map(markRead));
-    setUnread(0);
-    api.post("/api/notifications/read-all", {}).catch(setError);
   }
 
   const groups: [string, Notification[]][] = [];
@@ -294,62 +296,30 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
           <p className="eyebrow">Inbox</p>
           <h1>Notifications</h1>
         </div>
-        <div className="actions">
-          <button type="button" onClick={readAll} disabled={!unread}>
-            <Icon name="check" /> Mark all read
-          </button>
-        </div>
       </div>
-      <p className="muted">Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days.</p>
+      <p className="muted">
+        Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days. Opening this page or
+        the bell marks them read.
+      </p>
       <ErrorText error={error} />
-      <div className="tabs" role="tablist" aria-label="Filter notifications">
-        {(
-          [
-            ["all", "All"],
-            ["unread", unread ? `Unread (${unread})` : "Unread"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={filter === key}
-            aria-controls="notif-panel"
-            onClick={() => {
-              if (filter === key) return;
-              loaded.current = undefined;
-              setItems(undefined);
-              setCursor(null);
-              setFilter(key);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div id="notif-panel" role="tabpanel" className="stack notif-groups">
-        {items?.length === 0 && (
-          <p className="panel muted notif-page-empty">
-            {filter === "unread" ? "You're all caught up." : "No notifications in the last 7 days."}
-          </p>
-        )}
+      <div className="stack notif-groups">
+        {items?.length === 0 && <p className="panel muted notif-page-empty">No notifications in the last 7 days.</p>}
         {groups.map(([label, list]) => (
           <section key={label} aria-label={label}>
             <h2 className="notif-day">{label}</h2>
             <ul className="panel notif-page-list">
               {list.map((item) => (
-                <li
-                  key={item.id}
-                  className="notif-row"
-                  data-unread={item.read_at ? undefined : ""}
-                  onClickCapture={() => read(item)}
-                >
+                <li key={item.id} className="notif-row" data-unread={fresh.has(item.id) ? "" : undefined}>
                   <RowBody
-                    item={item}
+                    item={{ ...item, read_at: fresh.has(item.id) ? null : item.read_at }}
                     onOpen={() => navigate(item.link)}
-                    body={item.body && <div className="notif-body">
-                      <Markdown text={item.body} />
-                    </div>}
+                    body={
+                      item.body && (
+                        <div className="notif-body">
+                          <Markdown text={item.body} />
+                        </div>
+                      )
+                    }
                   />
                 </li>
               ))}
