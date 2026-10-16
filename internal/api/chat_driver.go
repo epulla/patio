@@ -504,11 +504,15 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
 			return err
 		}
-		if err := m.notify("chat", title, "Reply finished", "/ai/chats/"+id, false); err != nil {
+		if err := m.notify("chat", title, "["+title+"](/ai/chats/"+id+")", "/ai/chats/"+id, false); err != nil {
 			log.Printf("notify finished chat %s: %v", id, err)
 		}
 	} else if turnErr != nil && m.notify != nil {
-		if err := m.notify("chat", "Chat failed", turnErr.Error(), "/ai/chats/"+id, false); err != nil {
+		var title string
+		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
+			return err
+		}
+		if err := m.notify("chat", "Chat failed", "["+title+"](/ai/chats/"+id+")", "/ai/chats/"+id, false); err != nil {
 			log.Printf("notify failed chat %s: %v", id, err)
 		}
 	}
@@ -592,7 +596,11 @@ func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName stri
 		if taskTitle != "" {
 			link, kind, noticeTitle = "/ai/scheduled/"+taskID, "scheduled", "Scheduled task needs approval: "+taskTitle
 		}
-		if err := m.notify(kind, noticeTitle, "", link, true); err != nil {
+		body := ""
+		if taskTitle == "" {
+			body = "[" + title + "](/ai/chats/" + chatID + ")"
+		}
+		if err := m.notify(kind, noticeTitle, body, link, true); err != nil {
 			log.Printf("notify chat approval %s: %v", chatID, err)
 		}
 	}

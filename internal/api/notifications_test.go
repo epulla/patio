@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -60,7 +61,7 @@ func TestNotificationAPIAndRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := httptest.NewRecorder()
-	s.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/api/notifications", nil))
+	s.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/api/notifications?limit=100", nil))
 	var response struct {
 		Notifications []notification `json:"notifications"`
 		Unread        int            `json:"unread"`
@@ -95,5 +96,73 @@ func TestNotificationAPIAndRetention(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("unread after read-all=%d", count)
+	}
+}
+
+func TestNotificationPagingAndUnreadFilter(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "paging.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	s := New(database, "local", false, "dev", t.TempDir())
+	for i := 1; i <= 5; i++ {
+		stamp := time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC).Format("2006-01-02T15:04:05.000Z")
+		if _, err := database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, fmt.Sprint(i), "chat", fmt.Sprint(i), "", "", stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page := func(url string) struct {
+		Notifications []notification `json:"notifications"`
+		Unread        int            `json:"unread"`
+		NextCursor    *string        `json:"next_cursor"`
+	} {
+		t.Helper()
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s status=%d body=%s", url, w.Code, w.Body.String())
+		}
+		var result struct {
+			Notifications []notification `json:"notifications"`
+			Unread        int            `json:"unread"`
+			NextCursor    *string        `json:"next_cursor"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first := page("/api/notifications?limit=2")
+	if len(first.Notifications) != 2 || first.NextCursor == nil || first.Notifications[0].ID != "5" || first.Notifications[1].ID != "4" {
+		t.Fatalf("first page = %#v", first)
+	}
+	if _, err := database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES('new','chat','new','','',?)`, "2026-01-01T01:00:00.000Z"); err != nil {
+		t.Fatal(err)
+	}
+	second := page("/api/notifications?limit=2&cursor=" + *first.NextCursor)
+	if len(second.Notifications) != 2 || second.Notifications[0].ID != "3" || second.Notifications[1].ID != "2" {
+		t.Fatalf("second page = %#v", second)
+	}
+	if _, err := database.Exec(`UPDATE notification SET read_at=? WHERE id='2'`, now()); err != nil {
+		t.Fatal(err)
+	}
+	unread := page("/api/notifications?limit=10&unread=1")
+	if unread.Unread != 5 {
+		t.Fatalf("total unread=%d, want 5", unread.Unread)
+	}
+	for _, item := range unread.Notifications {
+		if item.ID == "2" {
+			t.Fatal("read notification included in unread page")
+		}
+	}
+	invalid := httptest.NewRecorder()
+	s.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/api/notifications?cursor=invalid", nil))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid cursor status=%d, want 400", invalid.Code)
 	}
 }

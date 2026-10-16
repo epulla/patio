@@ -208,8 +208,18 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if changeTitle != "Martin moved AI-1 to Done" || changeLink != "/tickets/"+ticket.ID {
 		t.Fatalf("move notification=%q %q", changeTitle, changeLink)
 	}
-	if title, link, ok := mcpChange(request{http.MethodDelete, "/api/tickets/AI-10", nil}, nil); !ok || title != "Martin deleted AI-10" || link != "/tickets/AI-10" {
-		t.Fatalf("delete notification = %q %q %v", title, link, ok)
+	if title, body, link, ok := mcpChange(http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/AI-10", nil}, []byte(`{"id":"AI-10","code":"AI-10","title":"Example"}`), nil); !ok || title != "Martin deleted AI-10" || body != "[AI-10: Example](/tickets/AI-10)" || link != "/tickets/AI-10" {
+		t.Fatalf("delete notification = %q %q %q %v", title, body, link, ok)
+	}
+	if comment := callTool(t, session, "add_comment", map[string]any{"ticket_id": ticket.ID, "content": "Looks good"}); comment.IsError {
+		t.Fatalf("add comment: %#v", comment)
+	}
+	var commentTitle, commentBody string
+	if err := database.QueryRow(`SELECT title,body FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&commentTitle, &commentBody); err != nil {
+		t.Fatal(err)
+	}
+	if commentTitle != "Martin commented on AI-1" || commentBody != "[AI-1: MCP ticket](/tickets/"+ticket.ID+")" {
+		t.Fatalf("comment notification = %q %q", commentTitle, commentBody)
 	}
 	var changesBefore int
 	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='change'`).Scan(&changesBefore); err != nil {
@@ -547,6 +557,10 @@ func TestMCPSkillTools(t *testing.T) {
 	decodeText(t, updated, &skill)
 	if skill.Body != "Updated steps" || skill.Description != "Repeat this task" {
 		t.Fatalf("updated skill = %#v", skill)
+	}
+	var skillChange string
+	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&skillChange); err != nil || skillChange != "Martin updated skill repeatable" {
+		t.Fatalf("skill change notification = %q, %v", skillChange, err)
 	}
 	deleted := callTool(t, session, "delete_skill", map[string]any{"name": "repeatable"})
 	if deleted.IsError || deleted.Content[0].(*sdk.TextContent).Text != "deleted" {

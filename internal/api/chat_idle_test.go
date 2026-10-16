@@ -33,7 +33,7 @@ func TestFinishedChatStoresNotification(t *testing.T) {
 	if err := database.QueryRow(`SELECT kind,title,body,link FROM notification`).Scan(&kind, &title, &body, &link); err != nil {
 		t.Fatal(err)
 	}
-	if kind != "chat" || title == "" || body != "Reply finished" || link != "/ai/chats/"+id {
+	if kind != "chat" || title == "" || body != "["+title+"](/ai/chats/"+id+")" || link != "/ai/chats/"+id {
 		t.Fatalf("notification=%q %q %q %q", kind, title, body, link)
 	}
 	if err := server.Close(); err != nil {

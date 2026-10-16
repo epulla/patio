@@ -734,6 +734,16 @@ func do(h http.Handler, r request) (*sdk.CallToolResult, error) {
 }
 
 func doJSON(h http.Handler, r request) ([]byte, error) {
+	var prior []byte
+	if r.method == http.MethodDelete {
+		if snapshot := mcpSnapshotPath(r.path); snapshot != "" {
+			var err error
+			prior, err = doJSON(h, request{http.MethodGet, snapshot, nil})
+			if err != nil {
+				log.Printf("read MCP target before delete %s: %v", r.path, err)
+			}
+		}
+	}
 	var body io.Reader
 	if r.body != nil {
 		data, err := json.Marshal(r.body)
@@ -756,8 +766,8 @@ func doJSON(h http.Handler, r request) ([]byte, error) {
 		if notifier, ok := h.(interface {
 			Notify(string, string, string, string, bool) error
 		}); ok {
-			if title, link, write := mcpChange(r, data); write {
-				if err := notifier.Notify("change", title, "", link, false); err != nil {
+			if title, body, link, write := mcpChange(h, r, prior, data); write {
+				if err := notifier.Notify("change", title, body, link, false); err != nil {
 					log.Printf("store MCP change notification: %v", err)
 				}
 			}
@@ -766,7 +776,21 @@ func doJSON(h http.Handler, r request) ([]byte, error) {
 	return data, nil
 }
 
-func mcpChange(r request, response []byte) (string, string, bool) {
+func mcpSnapshotPath(path string) string {
+	parts := strings.Split(strings.SplitN(path, "?", 2)[0], "/")
+	for i, part := range parts {
+		if i+2 >= len(parts) || part != "api" {
+			continue
+		}
+		switch parts[i+1] {
+		case "tickets", "boards", "skills", "scheduled-tasks":
+			return "/api/" + parts[i+1] + "/" + url.PathEscape(parts[i+2])
+		}
+	}
+	return ""
+}
+
+func mcpChange(h http.Handler, r request, prior, response []byte) (string, string, string, bool) {
 	parts := strings.Split(strings.SplitN(r.path, "?", 2)[0], "/")
 	resource := ""
 	for i := 1; i < len(parts); i++ {
@@ -778,7 +802,17 @@ func mcpChange(r request, response []byte) (string, string, bool) {
 		}
 	}
 	if resource == "" {
-		return "", "", false
+		return "", "", "", false
+	}
+	if resource == "boards" && len(parts) > 4 {
+		switch parts[4] {
+		case "statuses":
+			resource = "statuses"
+		case "ticket-types":
+			resource = "ticket-types"
+		case "status-order":
+			resource = "board-order"
+		}
 	}
 	verb := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodDelete: "deleted"}[r.method]
 	target := ""
@@ -786,22 +820,29 @@ func mcpChange(r request, response []byte) (string, string, bool) {
 	if json.Unmarshal(response, &result) != nil {
 		result = nil
 	}
+	var old map[string]any
+	if json.Unmarshal(prior, &old) != nil {
+		old = nil
+	}
 	title := ""
 	if strings.Contains(r.path, "/comments") {
 		for i, part := range parts {
 			if part == "tickets" && i+1 < len(parts) {
-				return "Martin commented on " + parts[i+1], "/tickets/" + parts[i+1], true
+				id := parts[i+1]
+				item := mcpTicket(h, id, nil)
+				code, ticketTitle := item["code"], item["title"]
+				id = item["id"]
+				return "Martin commented on " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 			}
 		}
 	}
 	if strings.Contains(r.path, "/tickets") && resource == "boards" && r.method == http.MethodPost && result != nil {
-		id, _ := result["id"].(string)
-		code, _ := result["code"].(string)
+		id, code, ticketTitle := mcpValue(result, "id"), mcpValue(result, "code"), mcpValue(result, "title")
 		if id != "" {
 			if code == "" {
-				code = id
+				code = mcpTicket(h, id, result)["code"]
 			}
-			return "Martin created " + code, "/tickets/" + id, true
+			return "Martin created " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 		}
 	}
 	switch resource {
@@ -814,16 +855,12 @@ func mcpChange(r request, response []byte) (string, string, bool) {
 			}
 		}
 		if id == "" && result != nil {
-			id, _ = result["id"].(string)
+			id = mcpValue(result, "id")
 		}
-		code := id
-		if result != nil {
-			if v, ok := result["code"].(string); ok && v != "" {
-				code = v
-			}
-		}
-		if code != "" {
-			target = code
+		item := mcpTicket(h, id, firstMap(result, old))
+		code, ticketTitle := item["code"], item["title"]
+		if item["id"] != "" {
+			id = item["id"]
 		}
 		if strings.Contains(r.path, "/move") {
 			title = "Martin moved " + code
@@ -842,36 +879,128 @@ func mcpChange(r request, response []byte) (string, string, bool) {
 			title = "Martin updated " + code
 		}
 		if id != "" {
-			return title, "/tickets/" + id, true
+			return title, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 		}
-	case "comments":
-		id := ""
-		for i, p := range parts {
-			if p == "tickets" && i+1 < len(parts) {
-				id = parts[i+1]
-			}
-		}
-		return "Martin commented on " + id, "/tickets/" + id, true
 	case "boards", "statuses", "ticket-types", "skills", "scheduled-tasks", "connectors", "mcp-servers", "calendar-items", "board-order":
-		if resource == "boards" && len(parts) > 3 && parts[3] != "" && r.method == http.MethodPut {
-			return "Martin updated board " + parts[3], "/boards/" + parts[3], true
+		entity := firstMap(result, old)
+		id := mcpPathID(parts, resource)
+		if id == "" {
+			id = mcpValue(entity, "id")
 		}
-		if result != nil {
-			if id, ok := result["id"].(string); ok {
+		if resource == "boards" && id != "" {
+			if name := mcpValue(entity, "name"); name != "" {
 				target = "/boards/" + id
-				if resource == "scheduled-tasks" {
-					target = "/ai/scheduled/" + id
-				}
-				if resource == "calendar-items" {
-					target = "/calendar"
-				}
+				return "Martin " + verb + " board " + name, "[" + markdownLabel(name) + "](" + target + ")", target, true
 			}
 		}
-		return "Martin " + verb + " " + strings.ReplaceAll(strings.TrimSuffix(resource, "s"), "-", " "), target, true
+		if resource == "skills" && id != "" && mcpValue(entity, "name") == "" {
+			if loaded, err := doJSON(h, request{http.MethodGet, "/api/skills/" + url.PathEscape(id), nil}); err == nil {
+				_ = json.Unmarshal(loaded, &entity)
+			}
+		}
+		name := mcpEntityName(resource, entity)
+		if name == "" {
+			name = strings.ReplaceAll(strings.TrimSuffix(resource, "s"), "-", " ")
+		} else {
+			switch resource {
+			case "skills":
+				name = "skill " + name
+			case "scheduled-tasks":
+				name = "scheduled task " + name
+			case "connectors":
+				name = "connector " + name
+			case "mcp-servers":
+				name = "MCP server " + name
+			case "ticket-types":
+				name = "ticket type " + name
+			case "statuses":
+				name = "column " + name
+			case "calendar-items":
+				name = "calendar item " + name
+			}
+		}
+		if resource == "scheduled-tasks" && id != "" {
+			target = "/ai/scheduled/" + id
+		}
+		if (resource == "statuses" || resource == "ticket-types") && len(parts) > 3 && parts[2] == "boards" {
+			target = "/boards/" + parts[3]
+		}
+		if resource == "calendar-items" {
+			target = "/calendar"
+		}
+		return "Martin " + verb + " " + name, "", target, true
 	default:
-		return "", "", false
+		return "", "", "", false
 	}
-	return "Martin " + verb + " " + resource, "", true
+	return "Martin " + verb + " " + resource, "", "", true
+}
+
+func mcpPathID(parts []string, resource string) string {
+	for i, part := range parts {
+		if part == resource && i+1 < len(parts) && parts[i+1] != "" {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func firstMap(maps ...map[string]any) map[string]any {
+	for _, m := range maps {
+		if m != nil {
+			return m
+		}
+	}
+	return map[string]any{}
+}
+
+func mcpTicket(h http.Handler, id string, fallback map[string]any) map[string]string {
+	item := map[string]string{}
+	if fallback != nil {
+		item["code"], item["title"], item["id"] = mcpValue(fallback, "code"), mcpValue(fallback, "title"), mcpValue(fallback, "id")
+	}
+	if item["code"] == "" || item["title"] == "" {
+		if data, err := doJSON(h, request{http.MethodGet, "/api/tickets/" + url.PathEscape(id), nil}); err == nil {
+			var got map[string]any
+			if json.Unmarshal(data, &got) == nil {
+				item["code"], item["title"], item["id"] = mcpValue(got, "code"), mcpValue(got, "title"), mcpValue(got, "id")
+			}
+		}
+	}
+	if item["code"] == "" {
+		item["code"] = id
+	}
+	if item["id"] == "" {
+		item["id"] = id
+	}
+	return item
+}
+
+func ticketMarkdown(code, title, id string) string {
+	return "[" + markdownLabel(code+": "+title) + "](/tickets/" + id + ")"
+}
+
+func markdownLabel(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `]`, `\]`).Replace(value)
+}
+
+func mcpEntityName(resource string, entity map[string]any) string {
+	for _, key := range []string{"name", "title", "code"} {
+		if value := mcpValue(entity, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func mcpValue(entity map[string]any, key string) string {
+	for name, raw := range entity {
+		if strings.EqualFold(name, key) {
+			if value, ok := raw.(string); ok {
+				return value
+			}
+		}
+	}
+	return ""
 }
 
 func apiError(data []byte, code int) error {

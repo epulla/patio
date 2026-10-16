@@ -2,7 +2,11 @@ package api
 
 import (
 	"database/sql"
+	"encoding/base64"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,17 +32,61 @@ func (s *Server) Notify(kind, title, body, link string, native bool) error {
 }
 
 func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id,kind,title,body,link,created_at,read_at FROM notification ORDER BY created_at DESC,rowid DESC LIMIT 100`)
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			errw(w, http.StatusBadRequest, "limit must be between 1 and 200")
+			return
+		}
+		limit = parsed
+	}
+	query := `SELECT rowid,id,kind,title,body,link,created_at,read_at FROM notification`
+	conditions := []string{}
+	args := []any{}
+	if r.URL.Query().Get("unread") == "1" {
+		conditions = append(conditions, `read_at IS NULL`)
+	}
+	var cursorAt string
+	var cursorRowID int64
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(raw)
+		if err != nil {
+			errw(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		stamp, row, ok := strings.Cut(string(decoded), "|")
+		cursorRowID, err = strconv.ParseInt(row, 10, 64)
+		if !ok || err != nil || cursorRowID < 1 {
+			errw(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		if _, err := time.Parse("2006-01-02T15:04:05.000Z", stamp); err != nil {
+			errw(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		cursorAt = stamp
+		conditions = append(conditions, `(created_at < ? OR (created_at = ? AND rowid < ?))`)
+		args = append(args, cursorAt, cursorAt, cursorRowID)
+	}
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	query += ` ORDER BY created_at DESC,rowid DESC LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer rows.Close()
 	items := []notification{}
+	rowIDs := []int64{}
 	for rows.Next() {
 		var n notification
 		var readAt sql.NullString
-		if err := rows.Scan(&n.ID, &n.Kind, &n.Title, &n.Body, &n.Link, &n.CreatedAt, &readAt); err != nil {
+		var rowID int64
+		if err := rows.Scan(&rowID, &n.ID, &n.Kind, &n.Title, &n.Body, &n.Link, &n.CreatedAt, &readAt); err != nil {
 			errw(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -46,17 +94,33 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 			n.ReadAt = &readAt.String
 		}
 		items = append(items, n)
+		rowIDs = append(rowIDs, rowID)
 	}
 	if err := rows.Err(); err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if err := rows.Close(); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	more := len(items) > limit
+	if more {
+		items = items[:limit]
+		rowIDs = rowIDs[:limit]
 	}
 	var unread int
 	if err := s.db.QueryRow(`SELECT count(*) FROM notification WHERE read_at IS NULL`).Scan(&unread); err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, map[string]any{"notifications": items, "unread": unread})
+	var nextCursor *string
+	if more {
+		last := items[len(items)-1]
+		encoded := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%s|%d", last.CreatedAt, rowIDs[len(rowIDs)-1])))
+		nextCursor = &encoded
+	}
+	write(w, http.StatusOK, map[string]any{"notifications": items, "unread": unread, "next_cursor": nextCursor})
 }
 
 func (s *Server) readNotification(w http.ResponseWriter, r *http.Request) {
