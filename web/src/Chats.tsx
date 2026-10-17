@@ -35,6 +35,7 @@ import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
 import { isUnpinKey, maxPins, rememberPinnedChat, pinLayout, pinNumber, pinShortcut, setPins, unpin, unpinAriaShortcut, unpinShortcut, usePins } from "./pins";
 import Picker from "./Picker";
+import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -760,6 +761,7 @@ export function Conversation({
     if (value) localStorage.setItem(draftKey, value);
     else localStorage.removeItem(draftKey);
   }
+  const mentions = useMentions(input, changeText, "above");
   // Context a chat was started with (e.g. from a ticket) wins over the page until the first send.
   const startKey = startContextKey(id);
   const [startContext, setStartContext] = useState<PageContext | undefined>(() => {
@@ -979,6 +981,7 @@ export function Conversation({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentions.onKeyDown(event)) return;
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void send();
@@ -1277,15 +1280,25 @@ export function Conversation({
           ref={input}
           id={`${uid}-input`}
           rows={compact ? 2 : 3}
-          placeholder={connector ? "Message… (Enter to send, Shift+Enter for a new line)" : "This chat's connector was removed"}
+          placeholder={
+            connector ? "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)" : "This chat's connector was removed"
+          }
           disabled={!connector || otherWindow}
           value={text}
-          onChange={(event) => changeText(event.target.value)}
+          onChange={(event) => {
+            changeText(event.target.value);
+            void mentions.update();
+          }}
+          onSelect={() => void mentions.update()}
+          onBlur={mentions.close}
+          aria-autocomplete="list"
+          aria-expanded={mentions.open}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onDragOver={onDragOver}
           onDrop={onDrop}
         />
+        {mentions.popup}
         <div className="composer-actions">
           <div className="composer-tools">
             <IconButton
