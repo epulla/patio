@@ -1,11 +1,11 @@
 import { useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { api, type SearchTicket, type User } from "./api";
 
-export type Trigger = { char: "@" | "#"; start: number; query: string };
-export type Suggestion = { key: string; label: string; detail?: string; insert: string };
+type Trigger = { char: "@" | "#"; start: number; query: string };
+type Suggestion = { key: string; label: string; detail?: string; insert: string };
 
 // A trigger only counts at the start of the text or after whitespace, so emails and `## Heading` don't open it.
-export function findTrigger(value: string, caret: number): Trigger | null {
+function findTrigger(value: string, caret: number): Trigger | null {
   const match = /(?:^|\s)([@#])([^\s@#]*)$/.exec(value.slice(0, caret));
   if (!match) return null;
   return { char: match[1] as Trigger["char"], start: caret - match[2].length - 1, query: match[2] };
@@ -13,7 +13,7 @@ export function findTrigger(value: string, caret: number): Trigger | null {
 
 let users: Promise<User[]> | null = null;
 
-export async function suggest({ char, query }: Trigger): Promise<Suggestion[]> {
+async function suggest({ char, query }: Trigger): Promise<Suggestion[]> {
   const q = query.toLowerCase();
   if (char === "@") {
     users ??= api.get<User[]>("/api/users").catch((error) => {

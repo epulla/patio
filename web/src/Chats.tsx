@@ -1285,10 +1285,7 @@ export function Conversation({
           }
           disabled={!connector || otherWindow}
           value={text}
-          onChange={(event) => {
-            changeText(event.target.value);
-            void mentions.update();
-          }}
+          onChange={(event) => changeText(event.target.value)}
           onSelect={() => void mentions.update()}
           onBlur={mentions.close}
           aria-autocomplete="list"

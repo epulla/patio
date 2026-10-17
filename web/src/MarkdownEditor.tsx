@@ -64,7 +64,6 @@ export default function MarkdownEditor({
     const { selectionStart: start, selectionEnd: end } = el;
     const text = (start > 0 && !/\s/.test(value[start - 1]) ? " " : "") + char;
     edit(start, end, text, start + text.length, start + text.length);
-    requestAnimationFrame(() => void mentions.update());
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -138,10 +137,7 @@ export default function MarkdownEditor({
           ref={ref}
           aria-label={label}
           value={value}
-          onChange={(event) => {
-            onChange(event.target.value);
-            void mentions.update();
-          }}
+          onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
           onSelect={() => void mentions.update()}
           onBlur={mentions.close}
