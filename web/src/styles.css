@@ -1758,7 +1758,7 @@ label.days-field {
   display: grid;
   grid-template-columns: clamp(180px, 22%, 220px) minmax(0, 1fr);
   gap: 12px;
-  height: calc(100vh - 16px);
+  height: calc(100vh - 24px);
   min-height: 420px;
 }
 /* Fixed width with .chat-rail stretched: shrink-wrapped, the rail's scrollbar clips the 32px initials. */
@@ -1778,9 +1778,16 @@ label.days-field {
 .chat-list.collapsed .error {
   width: 160px;
 }
+/* Top padding and the collapsed list's spacing match .sidebar so their buttons line up. */
 main:has(> .chats) {
   max-width: none;
-  padding: 8px;
+  padding: 16px 8px 8px;
+}
+.chat-list.collapsed {
+  gap: 2px;
+}
+.chat-list.collapsed .chat-list-head {
+  margin-bottom: 14px;
 }
 .chat-list {
   display: flex;
@@ -1829,6 +1836,14 @@ main:has(> .chats) {
   min-height: 0;
   overflow: hidden auto;
   padding-block: 2px;
+  scrollbar-gutter: stable both-edges;
+}
+.chat-rail::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-rail::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--content) 25%, transparent);
 }
 .chat-initial {
   position: relative;
