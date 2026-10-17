@@ -27,23 +27,28 @@ func (s *Server) connectorStatus(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusOK, connectorstatus.Status{Kind: "local"})
 		return
 	}
+	status, err := s.connectorCheck(r.Context(), c)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, status)
+}
+
+func (s *Server) connectorCheck(ctx context.Context, c connector) (connectorstatus.Status, error) {
 	secret := ""
 	if c.Kind == "copilot" {
+		var err error
 		secret, err = keyring.Get(connectorService, connectorSecret(c.ID))
-		if errors.Is(err, keyring.ErrNotFound) {
-			err = nil
-		}
-		if err != nil {
-			errw(w, http.StatusInternalServerError, err.Error())
-			return
+		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return connectorstatus.Status{}, err
 		}
 	}
 	configDir := ""
 	if c.ConfigDir != nil {
 		configDir = *c.ConfigDir
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	status := connectorstatus.Check(ctx, connectorstatus.Options{Kind: c.Kind, ConfigDir: configDir, Secret: secret, Version: s.version})
-	write(w, http.StatusOK, status)
+	return connectorstatus.Check(ctx, connectorstatus.Options{Kind: c.Kind, ConfigDir: configDir, Secret: secret, Version: s.version}), nil
 }

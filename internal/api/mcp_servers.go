@@ -713,8 +713,6 @@ type mcpServerCheck struct {
 }
 
 func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
-	started := time.Now()
-	check := mcpServerCheck{Tools: []mcpServerTool{}}
 	server, err := s.loadMCPServer(idParam(r, "id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		errw(w, http.StatusNotFound, "MCP server not found")
@@ -724,21 +722,32 @@ func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	spec, err := s.mcpServerCheckSpec(r.Context(), server)
+	check, err := s.mcpCheck(r.Context(), server)
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	write(w, http.StatusOK, check)
+}
+
+// mcpCheck connects to the server and lists its tools. A failed connection is reported in
+// check.Error; err is only for Patio-side failures such as reading secrets.
+func (s *Server) mcpCheck(ctx context.Context, server mcpServer) (check mcpServerCheck, err error) {
+	started := time.Now()
+	check = mcpServerCheck{Tools: []mcpServerTool{}}
+	spec, err := s.mcpServerCheckSpec(ctx, server)
+	if err != nil {
+		return check, err
+	}
+	defer func() { check.LatencyMS = time.Since(started).Milliseconds() }()
 	if spec.Auth == "oauth" && spec.OAuthHeader == nil {
 		check.Error = "Sign in first"
-		check.LatencyMS = time.Since(started).Milliseconds()
-		write(w, http.StatusOK, check)
-		return
+		return check, nil
 	}
 	if spec.Kind == "stdio" {
 		spec.stderr = &mcpStderr{}
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), s.mcpCheckTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.mcpCheckTimeout)
 	defer cancel()
 	session, cleanup, err := s.mcpConnect(ctx, spec)
 	if cleanup != nil {
@@ -746,9 +755,7 @@ func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		check.Error = withMCPStderr(err, spec.stderr).Error()
-		check.LatencyMS = time.Since(started).Milliseconds()
-		write(w, http.StatusOK, check)
-		return
+		return check, nil
 	}
 	tools, err := listMCPTools(ctx, session)
 	if err != nil {
@@ -757,8 +764,7 @@ func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
 		check.OK = true
 		check.Tools = tools
 	}
-	check.LatencyMS = time.Since(started).Milliseconds()
-	write(w, http.StatusOK, check)
+	return check, nil
 }
 
 func (s *Server) mcpServerCheckSpec(ctx context.Context, server mcpServer) (mcpServerSpec, error) {
