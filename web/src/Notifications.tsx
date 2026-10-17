@@ -18,7 +18,7 @@ type Notification = {
 };
 type Page = { notifications: Notification[]; unread: number; next_cursor: string | null };
 
-const kindIcons: Record<string, IconName> = { chat: "chat", approval: "hand", scheduled: "clock", calendar: "calendar", change: "sparkles" };
+const kindIcons: Record<string, IconName> = { chat: "chat", approval: "hand", scheduled: "clock", calendar: "calendar", change: "sparkles", health: "plug" };
 
 function markRead(item: Notification) {
   return { ...item, read_at: item.read_at ?? new Date().toISOString() };

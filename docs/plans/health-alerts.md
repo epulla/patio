@@ -14,5 +14,5 @@
 
 ## Tasks
 - [x] 1. Extract the check bodies of `checkMCPServer` (`mcp_servers.go:715`) and `connectorStatus` (`connector_status.go:14`) into functions the handlers and the monitor share; handlers unchanged in behavior. *Check:* `go test ./internal/api -count=1`.
-- [ ] 2. `StartHealthMonitor(ctx, every)` in `internal/api/health_monitor.go`: per-target state (healthy, consecutive failures, notified), silent baseline, notify on 2nd consecutive failure, reset on recovery. *Check:* Go test with the existing HTTP fake MCP server: up → down, down → 1 notification; more failed ticks → still 1; first tick down → 0.
+- [x] 2. `StartHealthMonitor(ctx, every)` in `internal/api/health_monitor.go`: per-target state (healthy, consecutive failures, notified), silent baseline, notify on 2nd consecutive failure, reset on recovery. *Check:* Go test with the existing HTTP fake MCP server: up → down, down → 1 notification; more failed ticks → still 1; first tick down → 0.
 - [ ] 3. Start it from `main.go` next to `StartScheduledRunner` (5 min); delete this plan. *Check:* `go test ./... -count=1`; manual: disable network for an HTTP MCP server or break a stdio command → one notification within ~10 min.
