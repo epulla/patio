@@ -1757,8 +1757,8 @@ label.days-field {
 .chats {
   display: grid;
   grid-template-columns: clamp(180px, 22%, 220px) minmax(0, 1fr);
-  gap: 24px;
-  height: calc(100vh - 40px);
+  gap: 12px;
+  height: calc(100vh - 16px);
   min-height: 420px;
 }
 .chats:has(> .chat-list.collapsed) {
@@ -1778,7 +1778,8 @@ label.days-field {
   width: 160px;
 }
 main:has(> .chats) {
-  padding-block: 16px 24px;
+  max-width: none;
+  padding: 8px;
 }
 .chat-list {
   display: flex;
@@ -2000,7 +2001,8 @@ main:has(> .chats) {
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  /* Columns are percentages; sub-pixel rounding must not add a horizontal scrollbar. */
+  overflow: hidden auto;
 }
 .grid-pane {
   position: relative;
@@ -2797,7 +2799,8 @@ main.chat-window {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 4px 2px;
+  /* Keep the conversation a readable ~860px column in wide panes. */
+  padding: 4px max(2px, (100% - 860px) / 2);
 }
 .message {
   max-width: min(760px, 100%);
