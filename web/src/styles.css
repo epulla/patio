@@ -1761,7 +1761,7 @@ label.days-field {
   height: calc(100vh - 16px);
   min-height: 420px;
 }
-/* Fixed width: an auto track ignores the rail's scrollbar and clips the 32px initials. */
+/* Fixed width with .chat-rail stretched: shrink-wrapped, the rail's scrollbar clips the 32px initials. */
 .chats:has(> .chat-list.collapsed) {
   grid-template-columns: 56px minmax(0, 1fr);
 }
@@ -1824,9 +1824,10 @@ main:has(> .chats) {
   display: flex;
   flex-direction: column;
   align-items: center;
+  align-self: stretch;
   gap: 4px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden auto;
   padding-block: 2px;
 }
 .chat-initial {
