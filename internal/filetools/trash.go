@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"patio/internal/proc"
 )
 
 // TrashCommand builds the OS-specific argv used to move a path to Trash.
@@ -35,5 +37,7 @@ var trashRunner = func(ctx context.Context, path string) error {
 	if _, err := exec.LookPath(name); err != nil {
 		return fmt.Errorf("%s is unavailable", name)
 	}
-	return exec.CommandContext(ctx, name, args...).Run()
+	cmd := exec.CommandContext(ctx, name, args...)
+	proc.HideConsole(cmd)
+	return cmd.Run()
 }

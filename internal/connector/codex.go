@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+
+	"patio/internal/proc"
 )
 
 type Notification struct {
@@ -295,6 +297,7 @@ func StartCodexInDir(ctx context.Context, path string, env []string, isolated bo
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = cwd
 	cmd.Env = env
+	proc.HideConsole(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	connectorcli "patio/internal/connector"
+	"patio/internal/proc"
 )
 
 const opencodeSSELimit = 4 << 20
@@ -260,6 +261,7 @@ func startOpenCodeProcess(path string, args, env []string) (opencodeProcess, err
 	cmd := exec.Command(path, args...)
 	cmd.Env = env
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+	proc.HideConsole(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

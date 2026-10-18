@@ -19,6 +19,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zalando/go-keyring"
+	"patio/internal/proc"
 )
 
 type mcpServer struct {
@@ -813,6 +814,7 @@ func connectMCP(ctx context.Context, spec mcpServerSpec) (*mcp.ClientSession, fu
 			spec.stderr = &mcpStderr{}
 		}
 		cmd.Stderr = spec.stderr
+		proc.HideConsole(cmd)
 		transport = &mcp.CommandTransport{Command: cmd, TerminateDuration: 250 * time.Millisecond}
 	case "http":
 		headers := make(http.Header)

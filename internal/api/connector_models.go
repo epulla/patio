@@ -13,6 +13,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 	connectorcli "patio/internal/connector"
+	"patio/internal/proc"
 )
 
 type selectableModel struct {
@@ -98,6 +99,7 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		} else {
 			cmd := exec.CommandContext(ctx, path, args...)
 			cmd.Env = env
+			proc.HideConsole(cmd)
 			output, runErr = cmd.CombinedOutput()
 		}
 		if runErr != nil {

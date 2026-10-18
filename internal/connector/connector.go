@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"patio/internal/proc"
 )
 
 type Install struct {
@@ -86,6 +88,7 @@ func OpencodeCommandCombinedOutput(ctx context.Context, path string, args []stri
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = env
 	configureCommandCancel(cmd)
+	proc.HideConsole(cmd)
 	return cmd.CombinedOutput()
 }
 
@@ -336,6 +339,7 @@ func commandOutput(ctx context.Context, path string, args []string, env []string
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = env
 	configureCommandCancel(cmd)
+	proc.HideConsole(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return string(out), err

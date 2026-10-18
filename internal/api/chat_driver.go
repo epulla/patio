@@ -17,6 +17,7 @@ import (
 	"time"
 
 	connectorcli "patio/internal/connector"
+	"patio/internal/proc"
 )
 
 const chatApprovalTimeout = 10 * time.Minute
@@ -897,6 +898,7 @@ type osChatProcess struct {
 func startOSChatProcess(path string, args, env []string, cwd string) (chatProcess, error) {
 	cmd := exec.Command(path, args...)
 	cmd.Env, cmd.Dir = env, cwd
+	proc.HideConsole(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

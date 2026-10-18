@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"patio/internal/proc"
 )
 
 const maxSearchHits = 200
@@ -63,6 +65,7 @@ func searchWithRG(ctx context.Context, rg, root, query, glob string) ([]string, 
 	}
 	args = append(args, "--", query, root)
 	cmd := exec.CommandContext(ctx, rg, args...)
+	proc.HideConsole(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
