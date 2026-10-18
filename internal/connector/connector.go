@@ -108,6 +108,7 @@ func cliName(kind string) string {
 }
 
 func Env(kind, configDir, secret string) []string {
+	proc.RefreshPath()
 	env := os.Environ()
 	var extra []string
 	if configDir != "" {
@@ -156,6 +157,7 @@ func find(kind string) (string, error) {
 		return "", errors.New("unknown CLI")
 	}
 	if runtime.GOOS == "windows" {
+		proc.RefreshPath()
 		if path, err := exec.LookPath(cli); err == nil {
 			if found, err := absoluteFile(path); err == nil {
 				return found, nil

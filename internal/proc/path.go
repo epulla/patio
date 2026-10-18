@@ -65,12 +65,17 @@ func parseShellPath(out string) (string, bool) {
 
 // MergePath joins PATH lists, keeping the first occurrence of each entry.
 func MergePath(lists ...string) string {
+	return mergePath(os.PathListSeparator, runtime.GOOS == "windows", lists...)
+}
+
+func mergePath(sep rune, windows bool, lists ...string) string {
 	seen := map[string]bool{}
 	var out []string
 	for _, list := range lists {
-		for _, dir := range filepath.SplitList(list) {
+		for _, dir := range strings.Split(list, string(sep)) {
+			dir = strings.TrimSpace(dir)
 			key := dir
-			if runtime.GOOS == "windows" {
+			if windows {
 				key = strings.ToLower(strings.TrimRight(dir, `\`))
 			}
 			if dir == "" || seen[key] {
@@ -80,5 +85,38 @@ func MergePath(lists ...string) string {
 			out = append(out, dir)
 		}
 	}
-	return strings.Join(out, string(os.PathListSeparator))
+	return strings.Join(out, string(sep))
+}
+
+// expandPercent expands Windows-style %VAR% references; unknown ones stay as is.
+func expandPercent(s string, getenv func(string) string) string {
+	var b strings.Builder
+	for {
+		start := strings.IndexByte(s, '%')
+		if start < 0 {
+			break
+		}
+		end := strings.IndexByte(s[start+1:], '%')
+		if end < 0 {
+			break
+		}
+		end += start + 1
+		name := s[start+1 : end]
+		if value := getenv(name); name != "" && value != "" {
+			b.WriteString(s[:start])
+			b.WriteString(value)
+			s = s[end+1:]
+			continue
+		}
+		b.WriteString(s[:end])
+		s = s[end:]
+	}
+	b.WriteString(s)
+	return b.String()
+}
+
+// registryPath builds PATH the way a new Windows session would (machine, then
+// user), keeping entries only present in the current PATH at the end.
+func registryPath(machine, user, current string, getenv func(string) string) string {
+	return mergePath(';', true, expandPercent(machine, getenv), expandPercent(user, getenv), current)
 }

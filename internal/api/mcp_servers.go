@@ -186,6 +186,7 @@ func validMCPCommand(command string) bool {
 	if command == "" {
 		return false
 	}
+	proc.RefreshPath()
 	if filepath.IsAbs(command) {
 		_, err := exec.LookPath(command)
 		return err == nil
@@ -808,6 +809,7 @@ func connectMCP(ctx context.Context, spec mcpServerSpec) (*mcp.ClientSession, fu
 	var httpClient *http.Client
 	switch spec.Kind {
 	case "stdio":
+		proc.RefreshPath()
 		cmd = exec.Command(spec.Command, spec.Args...)
 		cmd.Env = append(os.Environ(), mcpEnvironment(spec.Env)...)
 		if spec.stderr == nil {

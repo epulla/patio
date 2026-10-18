@@ -34,6 +34,35 @@ func TestMergePath(t *testing.T) {
 	}
 }
 
+func TestRegistryPath(t *testing.T) {
+	env := map[string]string{"SystemRoot": `C:\Windows`, "USERPROFILE": `C:\Users\dome`}
+	getenv := func(name string) string { return env[name] }
+	machine := `%SystemRoot%\system32;%SystemRoot%;C:\Program Files\nodejs\`
+	user := `%USERPROFILE%\.local\bin;%MISSING%\bin;;`
+	current := `C:\WINDOWS\System32;C:\Patio\only-here`
+	want := `C:\Windows\system32;C:\Windows;C:\Program Files\nodejs\;C:\Users\dome\.local\bin;%MISSING%\bin;C:\Patio\only-here`
+	if got := registryPath(machine, user, current, getenv); got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
+func TestExpandPercent(t *testing.T) {
+	getenv := func(name string) string { return map[string]string{"A": "x"}[name] }
+	cases := map[string]string{
+		"%A%\\bin": "x\\bin",
+		"100%":     "100%",
+		"%%A%":     "%x",
+		"%B%;%A%":  "%B%;x",
+		"no vars":  "no vars",
+		"%A%%A%":   "xx",
+	}
+	for in, want := range cases {
+		if got := expandPercent(in, getenv); got != want {
+			t.Errorf("expandPercent(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestLoginShell(t *testing.T) {
 	if got := loginShell("darwin", "/opt/homebrew/bin/fish"); got != "/opt/homebrew/bin/fish" {
 		t.Fatalf("explicit shell: %q", got)
