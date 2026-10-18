@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"path"
 	"runtime"
 	"strings"
 	"time"
@@ -40,7 +40,7 @@ func LoadLoginShellPath() {
 }
 
 func loginShell(goos, shell string) string {
-	if filepath.IsAbs(shell) {
+	if path.IsAbs(shell) {
 		return shell
 	}
 	if goos == "darwin" {
