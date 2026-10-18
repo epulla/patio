@@ -261,6 +261,7 @@ function ConnectorCard({
           >
             Install guide
           </a>
+          {status.installed === false && <p className="muted">Just installed it? Restart Patio.</p>}
         </div>
       )}
 
