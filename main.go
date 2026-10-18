@@ -28,6 +28,7 @@ import (
 	"patio/internal/api"
 	"patio/internal/db"
 	mcpserver "patio/internal/mcp"
+	"patio/internal/proc"
 	"patio/internal/reminder"
 	"patio/web"
 )
@@ -39,6 +40,7 @@ func main() {
 		runMCP(os.Args[2:])
 		return
 	}
+	proc.LoadLoginShellPath()
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
 	showHidden := flag.Bool("show-hidden", false, "show assignee in the UI")
 	chatWindow := flag.String("chat", "", "open a chat in its own window")
