@@ -165,24 +165,6 @@ func find(kind string) (string, error) {
 		}
 		return findInDirs(cli+".exe", filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "OpenAI", "Codex", "bin"), filepath.Join(os.Getenv("USERPROFILE"), ".local", "bin"))
 	}
-	if shell := os.Getenv("SHELL"); shell != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		out, err := exec.CommandContext(ctx, shell, "-ilc", "command -v "+cli).Output()
-		cancel()
-		if err == nil {
-			lines := strings.Split(strings.TrimRight(string(out), "\r\n"), "\n")
-			for i := len(lines) - 1; i >= 0; i-- {
-				if path := strings.TrimSpace(lines[i]); path != "" {
-					if filepath.IsAbs(path) {
-						if found, err := absoluteFile(path); err == nil {
-							return found, nil
-						}
-					}
-					break
-				}
-			}
-		}
-	}
 	home, _ := os.UserHomeDir()
 	dirs := []string{}
 	switch cli {
