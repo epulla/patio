@@ -1736,60 +1736,93 @@ function QuestionCard({
       }),
     );
   }
+  const [step, setStep] = useState(0);
+  const answered = (index: number) => Boolean(answers[index]?.selected.length || answers[index]?.other?.trim());
   if (!questions.length)
     return (
       <ToolLine body={() => prettyJSON(message.content)}>
         <Icon name="plug" /> <code>ask_user</code> <MessageTime iso={message.created_at} />
       </ToolLine>
     );
+  if (closed)
+    return (
+      <p className="question-done muted">
+        <Icon name="check" /> Answered {questions.length === 1 ? "1 question" : `${questions.length} questions`}:{" "}
+        {questions.map((q) => q.header).join(", ")}
+      </p>
+    );
+  const q = questions[step];
+  const last = step === questions.length - 1;
   return (
     <form
       className="panel approval question-card"
       aria-label="Questions from the assistant"
       onSubmit={(event) => {
         event.preventDefault();
-        if (ready && !closed && !disabled)
+        if (!last) return answered(step) && setStep(step + 1);
+        if (ready && !disabled)
           onAnswer(answers.map((a) => ({ header: a.header, selected: a.selected, ...(a.other?.trim() ? { other: a.other.trim() } : {}) })));
       }}
     >
-      {questions.map((q, index) => (
-        <fieldset key={index} disabled={closed || disabled}>
-          <legend>
-            <span className="question-header">{q.header}</span> <strong>{q.question}</strong>
-          </legend>
-          {q.options.map((option) => (
-            <label key={option.label} className="question-option">
-              <input
-                type={q.multiple ? "checkbox" : "radio"}
-                name={`${name}-${index}`}
-                checked={answers[index].selected.includes(option.label)}
-                onChange={() => pick(index, option.label, q.multiple)}
-              />
-              <span>
-                {option.label}
-                {option.description && <span className="muted"> · {option.description}</span>}
-              </span>
-            </label>
+      {questions.length > 1 && (
+        <div className="question-steps" role="tablist" aria-label="Questions">
+          {questions.map((item, index) => (
+            <button
+              key={index}
+              type="button"
+              role="tab"
+              aria-selected={index === step}
+              className={index === step ? "active" : undefined}
+              onClick={() => setStep(index)}
+            >
+              {answered(index) && <Icon name="check" />} {item.header}
+            </button>
           ))}
-          <input
-            aria-label={`Other answer for ${q.header}`}
-            placeholder="Other…"
-            value={answers[index].other}
-            onChange={(event) =>
-              setAnswers((current) => current.map((a, i) => (i === index ? { ...a, other: event.target.value } : a)))
-            }
-          />
-        </fieldset>
-      ))}
-      {closed ? (
-        <p className="muted">Answered</p>
-      ) : (
-        <div className="connector-buttons">
-          <button className="primary" type="submit" disabled={!ready || disabled}>
-            Send answers
-          </button>
+          <span className="muted">
+            {step + 1} of {questions.length}
+          </span>
         </div>
       )}
+      <fieldset key={step} disabled={disabled}>
+        <legend>{q.question}</legend>
+        {q.multiple && <span className="muted question-hint">Pick any that apply.</span>}
+        {q.options.map((option) => {
+          const checked = answers[step].selected.includes(option.label);
+          return (
+            <label key={option.label} className={`question-option${checked ? " selected" : ""}`}>
+              <input
+                type={q.multiple ? "checkbox" : "radio"}
+                name={`${name}-${step}`}
+                checked={checked}
+                onChange={() => pick(step, option.label, q.multiple)}
+              />
+              <span>
+                <span className="question-label">{option.label}</span>
+                {option.description && <span className="question-description">{option.description}</span>}
+              </span>
+            </label>
+          );
+        })}
+        <input
+          className="question-other"
+          aria-label={`Other answer for ${q.header}`}
+          placeholder="Other answer (optional)"
+          value={answers[step].other}
+          onChange={(event) =>
+            setAnswers((current) => current.map((a, i) => (i === step ? { ...a, other: event.target.value } : a)))
+          }
+        />
+      </fieldset>
+      <div className="connector-buttons">
+        {step > 0 && (
+          <button type="button" onClick={() => setStep(step - 1)}>
+            Back
+          </button>
+        )}
+        <button className="primary" type="submit" disabled={last ? !ready || disabled : !answered(step)}>
+          {last ? "Send answers" : "Next"}
+        </button>
+      </div>
     </form>
   );
 }

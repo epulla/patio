@@ -3143,29 +3143,103 @@ main.chat-window {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.question-card {
+  gap: 12px;
+}
+.question-steps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.question-steps button {
+  height: 28px;
+  padding: 0 10px;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.question-steps button.active {
+  border-color: var(--primary);
+  color: inherit;
+}
+.question-steps .muted {
+  margin-left: auto;
+  font-size: 12px;
+}
 .question-card fieldset {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 .question-card legend {
   padding: 0;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  font-weight: 600;
 }
-.question-header {
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
+.question-hint {
+  margin-top: -4px;
   font-size: 12px;
 }
 .question-option {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  cursor: pointer;
+}
+.question-option:hover {
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+}
+.question-option.selected {
+  border-color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+}
+.question-option:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.question-option input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.question-option > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.question-label {
+  font-size: 14px;
+}
+.question-description {
+  color: var(--muted);
+  font-size: 12px;
+}
+.question-other {
+  height: 36px;
+  font-size: 13px;
+}
+.question-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
 }
 .composer {
   position: relative;
