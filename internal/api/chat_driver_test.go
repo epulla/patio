@@ -161,6 +161,24 @@ func TestEmitToolCallStoresPatioQuestionAndPreservesOtherToolLine(t *testing.T) 
 	}
 }
 
+func TestEmitToolCallRejectsScheduledChat(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	taskID := uid()
+	if _, err := database.Exec(`INSERT INTO scheduled_task(id,title,prompt,created_at,updated_at,run_at) VALUES(?, 'Task','Prompt',?,?,?)`, taskID, now(), now(), now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE chat SET scheduled_task_id=? WHERE id=?`, taskID, chatID); err != nil {
+		t.Fatal(err)
+	}
+	manager := newChatManager(database, Options{})
+	err := manager.emitToolCall(chatID, "patio.ask_user", `{"questions":[]}`)
+	if err == nil || !strings.Contains(err.Error(), "decide yourself and continue") {
+		t.Fatalf("scheduled ask_user error = %v", err)
+	}
+}
+
 // Send holds rt.mu while a driver starts a turn; a driver goroutine emitting deltas must not wait on it.
 func TestStreamEmitsDoNotWaitOnRuntimeLock(t *testing.T) {
 	database, _, root := chatAPI(t)
