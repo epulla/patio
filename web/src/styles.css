@@ -3097,6 +3097,30 @@ main.chat-window {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.question-card fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.question-card legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.question-header {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.question-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
 .composer {
   position: relative;
   display: flex;

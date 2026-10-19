@@ -1,6 +1,7 @@
 import { confirmDialog } from "./confirm";
 import {
   memo,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -22,9 +23,11 @@ import {
   type AllowedFolder,
   type Chat,
   type ChatApproval,
+  type ChatAnswer,
   type ChatAttachment,
   type ChatDefaults,
   type ChatMessage,
+  type ChatQuestion,
   type Connector,
 } from "./api";
 import { ErrorText, navigate } from "./App";
@@ -53,7 +56,7 @@ type ChatDetail = {
 type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "thinking_delta"; text: string }
-  | { type: "tool" | "thinking"; message: ChatMessage }
+  | { type: "tool" | "thinking" | "question"; message: ChatMessage }
   | { type: "done"; message?: ChatMessage }
   | { type: "error"; message: string }
   | { type: "approval" };
@@ -839,7 +842,7 @@ export function Conversation({
       if (event.type === "delta") setStreaming((current) => current + event.text);
       if (event.type === "thinking_delta") setThinking((current) => current + event.text);
       if (event.type === "thinking") setThinking("");
-      if (event.type === "tool" || event.type === "thinking" || event.type === "done") {
+      if (event.type === "tool" || event.type === "thinking" || event.type === "question" || event.type === "done") {
         if (event.type === "done") {
           setStreaming("");
           setThinking("");
@@ -984,11 +987,7 @@ export function Conversation({
       }
       changeText("");
       setPending([]);
-      setDetail((current) =>
-        current && !current.messages.some((m) => m.id === message.id)
-          ? { ...current, messages: [...current.messages, message] }
-          : current,
-      );
+      addSent(message);
       if (detail.chat.title === "New chat" && detail.messages.length === 0) {
         const label = (value || pending.map((a) => a.name).join(", ")).replace(/\s+/g, " ");
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label);
@@ -1073,6 +1072,36 @@ export function Conversation({
     }
   }
 
+  // A sent message also closes open question cards, matching the backend.
+  function addSent(message: ChatMessage) {
+    setDetail(
+      (current) =>
+        current && {
+          ...current,
+          messages: [
+            ...current.messages.map((m) => (m.role === "question" ? { ...m, answered: true } : m)),
+            ...(current.messages.some((m) => m.id === message.id) ? [] : [message]),
+          ],
+        },
+    );
+  }
+
+  const answerQuestion = useCallback(
+    async (questionID: string, answers: ChatAnswer[]) => {
+      setError(undefined);
+      setRunning(true);
+      atBottom.current = true;
+      try {
+        addSent(await api.post<ChatMessage>(`/api/chats/${id}/questions/${questionID}/answer`, { answers }));
+      } catch (reason) {
+        setRunning(false);
+        setError(reason);
+        void load();
+      }
+    },
+    [id],
+  );
+
   async function answer(approval: ChatApproval, allow: boolean) {
     try {
       await api.post(`/api/chats/${id}/approvals/${approval.id}`, { allow });
@@ -1113,7 +1142,7 @@ export function Conversation({
           and images with the paperclip, drag and drop, or paste.
         </p>
       )}
-      <Timeline chatId={id} detail={detail} onError={setError} />
+      <Timeline chatId={id} detail={detail} running={running} onError={setError} onAnswer={answerQuestion} />
       {thinking && detail.chat.show_thinking && <ThinkingBlock text={thinking} live />}
       {streaming && (
         <div className="message assistant">
@@ -1531,11 +1560,15 @@ function timeline(detail: ChatDetail): (ChatMessage | ChatApproval)[] {
 const Timeline = memo(function Timeline({
   chatId,
   detail,
+  running,
   onError,
+  onAnswer,
 }: {
   chatId: string;
   detail: ChatDetail;
+  running: boolean;
   onError: (reason: unknown) => void;
+  onAnswer: (questionID: string, answers: ChatAnswer[]) => void;
 }) {
   async function reveal(path: string) {
     try {
@@ -1565,6 +1598,13 @@ const Timeline = memo(function Timeline({
         <ToolLine key={message.id} body={() => prettyJSON(message.content)}>
           <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
         </ToolLine>
+      ) : message.role === "question" ? (
+        <QuestionCard
+          key={message.id}
+          message={message}
+          disabled={running}
+          onAnswer={(answers) => onAnswer(message.id, answers)}
+        />
       ) : message.role === "thinking" ? (
         detail.chat.show_thinking && <ThinkingBlock key={message.id} text={message.content} />
       ) : (
@@ -1669,6 +1709,98 @@ function ApprovalCard({ approval, onAnswer }: { approval: ChatApproval; onAnswer
       </div>
     </section>
   );
+}
+
+function QuestionCard({
+  message,
+  disabled,
+  onAnswer,
+}: {
+  message: ChatMessage;
+  disabled: boolean;
+  onAnswer: (answers: ChatAnswer[]) => void;
+}) {
+  const questions = parseQuestions(message.content);
+  const [answers, setAnswers] = useState<ChatAnswer[]>(() =>
+    questions.map((q) => ({ header: q.header, selected: [], other: "" })),
+  );
+  const name = useId();
+  const closed = message.answered;
+  const ready = answers.every((a) => a.selected.length || a.other?.trim());
+  function pick(index: number, label: string, multiple?: boolean) {
+    setAnswers((current) =>
+      current.map((a, i) => {
+        if (i !== index) return a;
+        if (!multiple) return { ...a, selected: [label] };
+        return { ...a, selected: a.selected.includes(label) ? a.selected.filter((l) => l !== label) : [...a.selected, label] };
+      }),
+    );
+  }
+  if (!questions.length)
+    return (
+      <ToolLine body={() => prettyJSON(message.content)}>
+        <Icon name="plug" /> <code>ask_user</code> <MessageTime iso={message.created_at} />
+      </ToolLine>
+    );
+  return (
+    <form
+      className="panel approval question-card"
+      aria-label="Questions from the assistant"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready && !closed && !disabled)
+          onAnswer(answers.map((a) => ({ header: a.header, selected: a.selected, ...(a.other?.trim() ? { other: a.other.trim() } : {}) })));
+      }}
+    >
+      {questions.map((q, index) => (
+        <fieldset key={index} disabled={closed}>
+          <legend>
+            <span className="question-header">{q.header}</span> <strong>{q.question}</strong>
+          </legend>
+          {q.options.map((option) => (
+            <label key={option.label} className="question-option">
+              <input
+                type={q.multiple ? "checkbox" : "radio"}
+                name={`${name}-${index}`}
+                checked={answers[index].selected.includes(option.label)}
+                onChange={() => pick(index, option.label, q.multiple)}
+              />
+              <span>
+                {option.label}
+                {option.description && <span className="muted"> · {option.description}</span>}
+              </span>
+            </label>
+          ))}
+          <input
+            aria-label={`Other answer for ${q.header}`}
+            placeholder="Other…"
+            value={answers[index].other}
+            onChange={(event) =>
+              setAnswers((current) => current.map((a, i) => (i === index ? { ...a, other: event.target.value } : a)))
+            }
+          />
+        </fieldset>
+      ))}
+      {closed ? (
+        <p className="muted">Answered</p>
+      ) : (
+        <div className="connector-buttons">
+          <button className="primary" type="submit" disabled={!ready || disabled}>
+            Send answers
+          </button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function parseQuestions(content: string): ChatQuestion[] {
+  try {
+    const questions = (JSON.parse(content) as { questions?: ChatQuestion[] }).questions;
+    return Array.isArray(questions) ? questions : [];
+  } catch {
+    return [];
+  }
 }
 
 type BrowsedFolder = { name: string; path: string };

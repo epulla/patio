@@ -234,11 +234,19 @@ export type ChatAttachment = { name: string; kind: "text" | "image"; mime: strin
 export type ChatMessage = {
   id: string;
   chat_id: string;
-  role: "user" | "assistant" | "tool" | "error" | "thinking";
+  role: "user" | "assistant" | "tool" | "error" | "thinking" | "question";
   content: string;
   created_at: string;
   attachments: ChatAttachment[];
+  answered: boolean;
 };
+export type ChatQuestion = {
+  header: string;
+  question: string;
+  options: { label: string; description?: string }[];
+  multiple?: boolean;
+};
+export type ChatAnswer = { header: string; selected: string[]; other?: string };
 export type ChatApproval = {
   id: string;
   chat_id: string;
