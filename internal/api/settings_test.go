@@ -39,7 +39,7 @@ func TestSettingsDefaultsRoundTripAndValidation(t *testing.T) {
 			t.Fatalf("invalid defaults status = %d for %#v", code, invalid)
 		}
 	}
-	want := settingsDefaults{ConnectorID: &connectorID, Folder: &allowed, AutoAllow: false, Thinking: true}
+	want := settingsDefaults{Language: "system", ConnectorID: &connectorID, Folder: &allowed, AutoAllow: false, Thinking: true}
 	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", want, &defaults); code != http.StatusOK || !reflect.DeepEqual(defaults, want) {
 		t.Fatalf("save defaults = %d, %#v, want %#v", code, defaults, want)
 	}
@@ -60,7 +60,7 @@ func TestSettingsDefaultsDeletedReferencesFallBack(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/folders", map[string]string{"path": allowed}, &folder); code != http.StatusCreated {
 		t.Fatalf("add allowed folder = %d", code)
 	}
-	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", settingsDefaults{ConnectorID: &connectorID, Folder: &allowed, AutoAllow: true, Thinking: true}, nil); code != http.StatusOK {
+	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", settingsDefaults{Language: "system", ConnectorID: &connectorID, Folder: &allowed, AutoAllow: true, Thinking: true}, nil); code != http.StatusOK {
 		t.Fatalf("save defaults = %d", code)
 	}
 	if _, err := database.Exec(`DELETE FROM connector WHERE id=?`, connectorID); err != nil {
@@ -97,8 +97,8 @@ func TestSettingsDefaultsNormalizeFolderAliases(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodGet, "/api/settings/folders", nil, &folders); code != http.StatusOK || len(folders) != 1 || folders[0].Path != canonical {
 		t.Fatalf("allowed folders = %d, %#v", code, folders)
 	}
-	want := settingsDefaults{ConnectorID: &connectorID, Folder: &canonical, AutoAllow: true, Thinking: true}
-	input := settingsDefaults{ConnectorID: &connectorID, Folder: &alias, AutoAllow: true, Thinking: true}
+	want := settingsDefaults{Language: "system", ConnectorID: &connectorID, Folder: &canonical, AutoAllow: true, Thinking: true}
+	input := settingsDefaults{Language: "system", ConnectorID: &connectorID, Folder: &alias, AutoAllow: true, Thinking: true}
 	var got settingsDefaults
 	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", input, &got); code != http.StatusOK || !reflect.DeepEqual(got, want) {
 		t.Fatalf("save aliased defaults = %d, %#v; want %#v", code, got, want)
@@ -127,7 +127,7 @@ func TestCreateChatUsesDefaultsAndExplicitValuesWin(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/folders", map[string]string{"path": allowed}, nil); code != http.StatusCreated {
 		t.Fatalf("add allowed folder = %d", code)
 	}
-	want := settingsDefaults{ConnectorID: &first, Folder: &allowed, AutoAllow: false, Thinking: true, MartinPersona: true}
+	want := settingsDefaults{Language: "system", Model: "default-model", ConnectorID: &first, Folder: &allowed, AutoAllow: false, Thinking: true, MartinPersona: true}
 	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", want, nil); code != http.StatusOK {
 		t.Fatalf("save defaults = %d", code)
 	}
@@ -135,7 +135,7 @@ func TestCreateChatUsesDefaultsAndExplicitValuesWin(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{}, &created); code != http.StatusCreated {
 		t.Fatalf("create defaults chat = %d, %#v", code, created)
 	}
-	if created.ConnectorID == nil || *created.ConnectorID != first || created.Folder == nil || *created.Folder != allowed || created.AutoAllow || !created.Thinking {
+	if created.ConnectorID == nil || *created.ConnectorID != first || created.Model != "default-model" || created.Folder == nil || *created.Folder != allowed || created.AutoAllow || !created.Thinking {
 		t.Fatalf("created chat didn't use defaults: %#v", created)
 	}
 	var explicit chat
@@ -150,6 +150,43 @@ func TestCreateChatUsesDefaultsAndExplicitValuesWin(t *testing.T) {
 	var fallback chat
 	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"auto_allow": true}, &fallback); code != http.StatusCreated || fallback.ConnectorID == nil || *fallback.ConnectorID != first {
 		t.Fatalf("unset connector fallback = %d, %#v", code, fallback)
+	}
+	var other chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": second}, &other); code != http.StatusCreated || other.Model != "" {
+		t.Fatalf("other connector inherited default model = %d, %#v", code, other)
+	}
+	var chosen chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"model": "explicit-model"}, &chosen); code != http.StatusCreated || chosen.Model != "explicit-model" {
+		t.Fatalf("explicit model did not win = %d, %#v", code, chosen)
+	}
+}
+
+func TestSettingsDefaultsClearModelWhenConnectorChanges(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	first := createTestConnector(t, database)
+	second := uid()
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'local','Local',?)`, second, now()); err != nil {
+		t.Fatal(err)
+	}
+	put := func(body map[string]any) settingsDefaults {
+		t.Helper()
+		var got settingsDefaults
+		if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", body, &got); code != http.StatusOK {
+			t.Fatalf("put defaults = %d", code)
+		}
+		return got
+	}
+	got := put(map[string]any{"connector_id": first, "model": "m1"})
+	if got.Model != "m1" {
+		t.Fatalf("model round trip = %q", got.Model)
+	}
+	got = put(map[string]any{"connector_id": second})
+	if got.Model != "" {
+		t.Fatalf("model after connector change = %q", got.Model)
+	}
+	got = put(map[string]any{"model": "m2"})
+	if got.Model != "m2" {
+		t.Fatalf("partial model update = %q", got.Model)
 	}
 }
 
