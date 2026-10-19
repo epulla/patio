@@ -14,7 +14,7 @@ const (
 	chatLinkRules  = "In patio, reply in Markdown. Link tickets as [CODE: Title](/tickets/<ticket id>), boards as [Board name](/boards/<board id>), and chats as [Chat title](/ai/chats/<chat id>), using returned IDs only; never invent IDs."
 	martinPersona  = "You are Martin, playful, joyful AI companion for everyday/weekly tasks. Be supportive, concise, joke sometimes, recommend."
 	ticketComments = "When working on a ticket in this chat, record progress, findings, decisions, and manual-check results as ticket comments with add_comment instead of growing the description. Keep comments terse, precise, and to the point."
-	askUserPrompt  = "To ask the user multiple-choice questions, use the Patio ask_user tool with this chat's ID as chat_id, then end your turn."
+	askUserPrompt  = "To ask the user multiple-choice questions, use the Patio ask_user tool with this chat's ID as chat_id; set multiple true when more than one option can apply, then end your turn."
 )
 
 func ChatSystemPrompt(enabled bool, chatID string, skills []Skill) string {
