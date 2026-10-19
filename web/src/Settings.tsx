@@ -15,8 +15,180 @@ import { palettes, setThemePrefs, useThemePrefs, type Mode, type SidebarStyle } 
 import Picker from "./Picker";
 import ModelPicker from "./ModelPicker";
 import { useModels } from "./Chats";
+import { locale, setLanguage, useLanguage, useText, type Language } from "./i18n";
+
+const text = {
+  en: {
+    allowedFolders: "Allowed folders",
+    allowedFoldersHelp: "Chats can work inside these folders. A chat without a folder gets an empty folder of its own.",
+    remove: (path: string) => `Remove ${path}`,
+    noFolders: "No folders yet.",
+    folderPath: "Folder path",
+    addFolder: "Add folder",
+    general: "General",
+    version: "Version",
+    database: "Database",
+    showIn: (manager: string) => `Show in ${manager}`,
+    fileManager: "file manager",
+    copied: "Copied",
+    copyPath: "Copy path",
+    dataFolder: "Data folder",
+    about: "about ",
+    open: "Open",
+    contents: "Contents",
+    counts: {
+      boards: "boards",
+      tickets: "tickets",
+      chats: "chats",
+      connectors: "connectors",
+      mcp_servers: "MCP servers",
+      skills: "skills",
+    },
+    schema: "Schema",
+    schemaVersion: (version: number) => `Version ${version}`,
+    hiddenFields: "Hidden fields",
+    shown: "Shown (-show-hidden)",
+    hidden: "Hidden",
+    secrets: "Secrets",
+    secretsIn: (store: string) => `Stored in ${store}, not in the database or backups.`,
+    source: "Source",
+    dedication: "Dedication",
+    dedicationText: "For Dolores, Domenica, Gary and José Martín.",
+    loading: "Loading…",
+    appearance: "Appearance",
+    language: "Language",
+    system: "System",
+    mode: "Mode",
+    light: "Light",
+    dark: "Dark",
+    sidebarStyle: "Sidebar style",
+    flat: "Flat",
+    gradient: "Gradient",
+    palette: "Palette",
+    defaults: "Defaults",
+    defaultsHelp: "New chats start with these. Each chat can change them afterwards.",
+    connector: "Connector",
+    firstConnector: "First connector",
+    model: "Model",
+    loadingModels: "Loading models",
+    folder: "Folder",
+    scratchFolder: "Scratch folder (no files shared)",
+    autoAllow: "Auto-allow file changes and commands",
+    thinking: "Thinking",
+    showThinking: "Show thinking",
+    martinPersona: "Martin persona (playful tone in all chats)",
+    chatCleanup: "Chat cleanup",
+    chatCleanupHelp:
+      "Deletes chats whose last message is older than the set number of days, at startup and once a day. Pinned and running chats are kept. Ticket links to deleted chats stop working.",
+    deleteOldChats: "Delete old chats automatically",
+    deleteOlderThan: "Delete chats older than",
+    days: "days",
+    deleteWarning: "⚠️ This permanently deletes chats. Pin any chat you want to keep.",
+    settings: "Settings",
+    healthy: "Healthy",
+    unhealthy: "Unhealthy",
+    checking: "Checking…",
+    backendDown: "Could not reach the app backend.",
+    mcpOk: (ms: number, tools: number) => `MCP server responded in ${ms} ms with ${tools} tools. Everything is fine.`,
+    mcpStatus: "MCP status",
+    mcpHelp: "AI clients launch this app as an MCP server over stdio. It shares this app's database and acts as Martin.",
+    lastChecked: (when: string) => `Last checked ${when} · rechecks every 30 s`,
+    never: "never",
+    checkAgain: "Check again",
+    connectClient: "Connect an AI client",
+    connectHelp: "Add this to your client's MCP config (Claude Desktop, Cursor, Claude Code…).",
+    copy: "Copy",
+    tools: "Tools",
+  },
+  es: {
+    allowedFolders: "Carpetas permitidas",
+    allowedFoldersHelp:
+      "Los chats pueden trabajar dentro de estas carpetas. Un chat sin carpeta recibe una carpeta vacía propia.",
+    remove: (path: string) => `Quitar ${path}`,
+    noFolders: "Aún no hay carpetas.",
+    folderPath: "Ruta de la carpeta",
+    addFolder: "Agregar carpeta",
+    general: "General",
+    version: "Versión",
+    database: "Base de datos",
+    showIn: (manager: string) => `Mostrar en ${manager}`,
+    fileManager: "el explorador de archivos",
+    copied: "Copiado",
+    copyPath: "Copiar ruta",
+    dataFolder: "Carpeta de datos",
+    about: "aprox. ",
+    open: "Abrir",
+    contents: "Contenido",
+    counts: {
+      boards: "tableros",
+      tickets: "tickets",
+      chats: "chats",
+      connectors: "conectores",
+      mcp_servers: "servidores MCP",
+      skills: "skills",
+    },
+    schema: "Esquema",
+    schemaVersion: (version: number) => `Versión ${version}`,
+    hiddenFields: "Campos ocultos",
+    shown: "Visibles (-show-hidden)",
+    hidden: "Ocultos",
+    secrets: "Secretos",
+    secretsIn: (store: string) => `Guardados en ${store}, no en la base de datos ni en los respaldos.`,
+    source: "Código fuente",
+    dedication: "Dedicatoria",
+    dedicationText: "Para Dolores, Domenica, Gary y José Martín.",
+    loading: "Cargando…",
+    appearance: "Apariencia",
+    language: "Idioma",
+    system: "Sistema",
+    mode: "Modo",
+    light: "Claro",
+    dark: "Oscuro",
+    sidebarStyle: "Estilo de la barra lateral",
+    flat: "Plano",
+    gradient: "Degradado",
+    palette: "Paleta",
+    defaults: "Valores predeterminados",
+    defaultsHelp: "Los chats nuevos empiezan con estos valores. Cada chat puede cambiarlos después.",
+    connector: "Conector",
+    firstConnector: "Primer conector",
+    model: "Modelo",
+    loadingModels: "Cargando modelos",
+    folder: "Carpeta",
+    scratchFolder: "Carpeta temporal (sin archivos compartidos)",
+    autoAllow: "Permitir cambios de archivos y comandos automáticamente",
+    thinking: "Razonamiento",
+    showThinking: "Mostrar razonamiento",
+    martinPersona: "Personalidad de Martin (tono divertido en todos los chats)",
+    chatCleanup: "Limpieza de chats",
+    chatCleanupHelp:
+      "Elimina los chats cuyo último mensaje es más antiguo que la cantidad de días indicada, al iniciar y una vez al día. Los chats fijados y en ejecución se conservan. Los enlaces de tickets a chats eliminados dejan de funcionar.",
+    deleteOldChats: "Eliminar chats antiguos automáticamente",
+    deleteOlderThan: "Eliminar chats con más de",
+    days: "días",
+    deleteWarning: "⚠️ Esto elimina chats de forma permanente. Fija los chats que quieras conservar.",
+    settings: "Ajustes",
+    healthy: "Funcionando",
+    unhealthy: "Con problemas",
+    checking: "Comprobando…",
+    backendDown: "No se pudo conectar con el backend de la app.",
+    mcpOk: (ms: number, tools: number) =>
+      `El servidor MCP respondió en ${ms} ms con ${tools} herramientas. Todo está bien.`,
+    mcpStatus: "Estado de MCP",
+    mcpHelp:
+      "Los clientes de IA ejecutan esta app como servidor MCP por stdio. Comparte la base de datos de esta app y actúa como Martin.",
+    lastChecked: (when: string) => `Última comprobación: ${when} · se revisa cada 30 s`,
+    never: "nunca",
+    checkAgain: "Comprobar de nuevo",
+    connectClient: "Conecta un cliente de IA",
+    connectHelp: "Agrega esto a la configuración MCP de tu cliente (Claude Desktop, Cursor, Claude Code…).",
+    copy: "Copiar",
+    tools: "Herramientas",
+  },
+};
 
 function AllowedFolders({ onChange }: { onChange: () => void }) {
+  const t = useText(text);
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [path, setPath] = useState("");
   const [error, setError] = useState<unknown>();
@@ -57,10 +229,8 @@ function AllowedFolders({ onChange }: { onChange: () => void }) {
 
   return (
     <section className="stack">
-      <h2>Allowed folders</h2>
-      <p className="muted">
-        Chats can work inside these folders. A chat without a folder gets an empty folder of its own.
-      </p>
+      <h2>{t.allowedFolders}</h2>
+      <p className="muted">{t.allowedFoldersHelp}</p>
       <section className="panel stack folder-panel">
         {folders.length > 0 ? (
           <ul className="folder-list">
@@ -70,18 +240,18 @@ function AllowedFolders({ onChange }: { onChange: () => void }) {
                 <IconButton
                   className="danger-text"
                   icon="trash"
-                  label={`Remove ${folder.path}`}
+                  label={t.remove(folder.path)}
                   onClick={() => remove(folder)}
                 />
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No folders yet.</p>
+          <p className="muted">{t.noFolders}</p>
         )}
         <form className="inline-form" onSubmit={add}>
           <label className="grow">
-            Folder path
+            {t.folderPath}
             <input
               required
               placeholder="/Users/you/projects/app"
@@ -90,7 +260,7 @@ function AllowedFolders({ onChange }: { onChange: () => void }) {
             />
           </label>
           <button>
-            <Icon name="plus" /> Add folder
+            <Icon name="plus" /> {t.addFolder}
           </button>
         </form>
         <ErrorText error={error} />
@@ -113,6 +283,7 @@ export function formatBytes(bytes: number) {
 }
 
 function General() {
+  const t = useText(text);
   const [about, setAbout] = useState<SettingsAbout>();
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -147,72 +318,65 @@ function General() {
     window.runtime.BrowserOpenURL(about.repo_url);
   }
 
-  const manager = fileManager[about?.os ?? ""] ?? "file manager";
+  const manager = fileManager[about?.os ?? ""] ?? t.fileManager;
   const counts = about
-    ? [
-        ["boards", about.counts.boards],
-        ["tickets", about.counts.tickets],
-        ["chats", about.counts.chats],
-        ["connectors", about.counts.connectors],
-        ["MCP servers", about.counts.mcp_servers],
-        ["skills", about.counts.skills],
-      ]
+    ? (Object.keys(t.counts) as (keyof typeof t.counts)[]).map((key) => [t.counts[key], about.counts[key]])
     : [];
 
   return (
     <section className="stack">
-      <h2>General</h2>
+      <h2>{t.general}</h2>
       <section className="panel">
         {about ? (
           <dl className="about-list">
-            <dt>Version</dt>
+            <dt>{t.version}</dt>
             <dd>
               <code>{about.version}</code> · {about.os}/{about.arch}
             </dd>
-            <dt>Database</dt>
+            <dt>{t.database}</dt>
             <dd>
               <code className="about-path">{about.db_path}</code>
               <span className="about-actions">
                 <button type="button" onClick={() => reveal("database")}>
-                  Show in {manager}
+                  {t.showIn(manager)}
                 </button>
                 <button type="button" onClick={copyPath}>
-                  {copied ? "Copied" : "Copy path"}
+                  {copied ? t.copied : t.copyPath}
                 </button>
               </span>
             </dd>
-            <dt>Data folder</dt>
+            <dt>{t.dataFolder}</dt>
             <dd>
               <code className="about-path">{about.data_dir}</code>
               <span className="muted">
-                {about.approximate ? "about " : ""}
+                {about.approximate ? t.about : ""}
                 {formatBytes(about.data_dir_bytes)}
               </span>
               <span className="about-actions">
                 <button type="button" onClick={() => reveal("data_dir")}>
-                  Open
+                  {t.open}
                 </button>
               </span>
             </dd>
-            <dt>Contents</dt>
+            <dt>{t.contents}</dt>
             <dd>{counts.map(([label, count]) => `${count} ${label}`).join(" · ")}</dd>
-            <dt>Schema</dt>
-            <dd>Version {about.schema_version}</dd>
-            <dt>Hidden fields</dt>
-            <dd>{about.show_hidden ? "Shown (-show-hidden)" : "Hidden"}</dd>
-            <dt>Secrets</dt>
-            <dd>Stored in {about.secrets_store}, not in the database or backups.</dd>
-            <dt>Source</dt>
+            <dt>{t.schema}</dt>
+            <dd>{t.schemaVersion(about.schema_version)}</dd>
+            <dt>{t.hiddenFields}</dt>
+            <dd>{about.show_hidden ? t.shown : t.hidden}</dd>
+            <dt>{t.secrets}</dt>
+            <dd>{t.secretsIn(about.secrets_store)}</dd>
+            <dt>{t.source}</dt>
             <dd>
               <a href={about.repo_url} target="_blank" rel="noreferrer" onClick={openRepo}>
                 {about.repo_url.replace(/^https:\/\//, "")}
               </a>
             </dd>
-            <dt>Dedication</dt>
-            <dd>For Dolores, Domenica, Gary and José Martín.</dd>
+            <dt>{t.dedication}</dt>
+            <dd>{t.dedicationText}</dd>
           </dl>
         ) : (
-          !error && <p className="muted" role="status">Loading…</p>
+          !error && <p className="muted" role="status">{t.loading}</p>
         )}
         <ErrorText error={error} />
       </section>
@@ -221,32 +385,59 @@ function General() {
 }
 
 function Appearance() {
+  const t = useText(text);
   const prefs = useThemePrefs();
+  const language = useLanguage();
+  const [error, setError] = useState<unknown>();
+
+  async function saveLanguage(next: Language) {
+    try {
+      const saved = await api.put<ChatDefaults>("/api/settings/defaults", { language: next });
+      setLanguage(saved.language);
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
   return (
     <section className="stack">
-      <h2>Appearance</h2>
+      <h2>{t.appearance}</h2>
       <section className="panel stack">
         <div className="defaults-fields">
           <label>
-            Mode
+            {t.language}
             <Picker
-              label="Mode"
+              label={t.language}
               options={[
-                { id: "system", name: "System" },
-                { id: "light", name: "Light" },
-                { id: "dark", name: "Dark" },
+                { id: "system", name: t.system },
+                { id: "en", name: "English" },
+                { id: "es", name: "Español" },
+              ]}
+              value={language}
+              onChange={(next) => saveLanguage(next as Language)}
+            />
+          </label>
+          <label>
+            {t.mode}
+            <Picker
+              label={t.mode}
+              options={[
+                { id: "system", name: t.system },
+                { id: "light", name: t.light },
+                { id: "dark", name: t.dark },
               ]}
               value={prefs.mode}
               onChange={(mode) => setThemePrefs({ mode: mode as Mode })}
             />
           </label>
           <label>
-            Sidebar style
+            {t.sidebarStyle}
             <Picker
-              label="Sidebar style"
+              label={t.sidebarStyle}
               options={[
-                { id: "flat", name: "Flat" },
-                { id: "gradient", name: "Gradient" },
+                { id: "flat", name: t.flat },
+                { id: "gradient", name: t.gradient },
               ]}
               value={prefs.style}
               onChange={(style) => setThemePrefs({ style: style as SidebarStyle })}
@@ -254,7 +445,7 @@ function Appearance() {
           </label>
         </div>
         <fieldset className="palette-picker">
-          <legend>Palette</legend>
+          <legend>{t.palette}</legend>
           {palettes.map((palette) => (
             <label key={palette.id} className="palette-option" data-palette={palette.id}>
               <input
@@ -269,12 +460,14 @@ function Appearance() {
             </label>
           ))}
         </fieldset>
+        <ErrorText error={error} />
       </section>
     </section>
   );
 }
 
 function Defaults({ foldersVersion }: { foldersVersion: number }) {
+  const t = useText(text);
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
@@ -307,17 +500,17 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
 
   return (
     <section className="stack">
-      <h2>Defaults</h2>
-      <p className="muted">New chats start with these. Each chat can change them afterwards.</p>
+      <h2>{t.defaults}</h2>
+      <p className="muted">{t.defaultsHelp}</p>
       <section className="panel stack defaults-panel">
         {defaults ? (
           <>
             <div className="defaults-fields">
               <label>
-                Connector
+                {t.connector}
                 <Picker
-                  label="Connector"
-                  empty="First connector"
+                  label={t.connector}
+                  empty={t.firstConnector}
                   options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
                   value={defaults.connector_id ?? ""}
                   onChange={(id) => save({ connector_id: id || null, model: "" })}
@@ -326,7 +519,7 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
               {defaults.connector_id && (
                 <div className="field">
                   <span className="label-row">
-                    Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
+                    {t.model} {modelsLoading && <span className="spinner" role="status" aria-label={t.loadingModels} />}
                   </span>
                   <ModelPicker
                     models={models}
@@ -338,10 +531,10 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
                 </div>
               )}
               <label>
-                Folder
+                {t.folder}
                 <Picker
-                  label="Folder"
-                  empty="Scratch folder (no files shared)"
+                  label={t.folder}
+                  empty={t.scratchFolder}
                   options={folders.map((f) => ({ id: f.path, name: f.path }))}
                   value={defaults.folder ?? ""}
                   onChange={(folder) => save({ folder: folder || null })}
@@ -350,28 +543,28 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
             </div>
             <Switch
               className="warning"
-              label="Auto-allow file changes and commands"
+              label={t.autoAllow}
               checked={defaults.auto_allow}
               onChange={(auto_allow) => save({ auto_allow })}
             />
             <Switch
-              label="Thinking"
+              label={t.thinking}
               checked={defaults.thinking}
               onChange={(thinking) => save({ thinking })}
             />
             <Switch
-              label="Show thinking"
+              label={t.showThinking}
               checked={defaults.show_thinking}
               onChange={(show_thinking) => save({ show_thinking })}
             />
             <Switch
-              label="Martin persona (playful tone in all chats)"
+              label={t.martinPersona}
               checked={defaults.martin_persona}
               onChange={(martin_persona) => save({ martin_persona })}
             />
           </>
         ) : (
-          !error && <p className="muted" role="status">Loading…</p>
+          !error && <p className="muted" role="status">{t.loading}</p>
         )}
         <ErrorText error={error} />
       </section>
@@ -382,6 +575,7 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
 type ChatCleanupSettings = { enabled: boolean; days: number };
 
 function ChatCleanup() {
+  const t = useText(text);
   const [settings, setSettings] = useState<ChatCleanupSettings>();
   const [days, setDays] = useState("");
   const [error, setError] = useState<unknown>();
@@ -417,17 +611,14 @@ function ChatCleanup() {
 
   return (
     <section className="stack">
-      <h2>Chat cleanup</h2>
-      <p className="muted">
-        Deletes chats whose last message is older than the set number of days, at startup and once a day. Pinned and
-        running chats are kept. Ticket links to deleted chats stop working.
-      </p>
+      <h2>{t.chatCleanup}</h2>
+      <p className="muted">{t.chatCleanupHelp}</p>
       <section className="panel stack defaults-panel">
         {settings ? (
           <>
             <Switch
               className="warning"
-              label="Delete old chats automatically"
+              label={t.deleteOldChats}
               checked={settings.enabled}
               onChange={(enabled) => save({ enabled })}
             />
@@ -437,23 +628,23 @@ function ChatCleanup() {
                 min={1}
                 max={3650}
                 step={1}
-                aria-label="Delete chats older than"
+                aria-label={t.deleteOlderThan}
                 value={days}
                 disabled={!settings.enabled}
                 onChange={(event) => setDays(event.target.value)}
                 onBlur={saveDays}
                 onKeyDown={(event) => event.key === "Enter" && saveDays()}
               />
-              <span>days</span>
+              <span>{t.days}</span>
             </label>
             {settings.enabled && (
               <p className="callout warning" role="note">
-                ⚠️ This permanently deletes chats. Pin any chat you want to keep.
+                {t.deleteWarning}
               </p>
             )}
           </>
         ) : (
-          !error && <p className="muted" role="status">Loading…</p>
+          !error && <p className="muted" role="status">{t.loading}</p>
         )}
         <ErrorText error={error} />
       </section>
@@ -462,6 +653,7 @@ function ChatCleanup() {
 }
 
 export default function Settings() {
+  const t = useText(text);
   const [foldersVersion, setFoldersVersion] = useState(0);
   const [status, setStatus] = useState<McpStatus>();
   const [error, setError] = useState<unknown>();
@@ -499,7 +691,7 @@ export default function Settings() {
         null,
         2,
       )
-    : "Loading…";
+    : t.loading;
 
   async function copyConfig() {
     try {
@@ -513,18 +705,14 @@ export default function Settings() {
   }
 
   const state = error || status?.ok === false ? "down" : status ? "up" : "pending";
-  const label = { up: "Healthy", down: "Unhealthy", pending: "Checking…" }[state];
-  const detail = error
-    ? "Could not reach the app backend."
-    : status?.ok
-      ? `MCP server responded in ${status.latency_ms} ms with ${status.tools.length} tools. Everything is fine.`
-      : status?.error;
+  const label = { up: t.healthy, down: t.unhealthy, pending: t.checking }[state];
+  const detail = error ? t.backendDown : status?.ok ? t.mcpOk(status.latency_ms, status.tools.length) : status?.error;
 
   return (
     <div className="stack mcp-page">
       <div className="page-heading">
         <div>
-          <h1>Settings</h1>
+          <h1>{t.settings}</h1>
         </div>
       </div>
 
@@ -538,19 +726,17 @@ export default function Settings() {
       <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
 
       <section className="stack">
-        <h2>MCP status</h2>
-        <p className="muted">
-          AI clients launch this app as an MCP server over stdio. It shares this app's database and acts as Martin.
-        </p>
+        <h2>{t.mcpStatus}</h2>
+        <p className="muted">{t.mcpHelp}</p>
         <section className={`panel mcp-status ${state}`}>
           <span className="status-dot" aria-hidden="true" />
           <div className="mcp-status-text" role="status" aria-live="polite">
             <strong>{label}</strong>
             {detail && <span className="muted">{detail}</span>}
-            <small>Last checked {checked ? checked.toLocaleTimeString() : "never"} · rechecks every 30 s</small>
+            <small>{t.lastChecked(checked ? checked.toLocaleTimeString(locale()) : t.never)}</small>
           </div>
           <button type="button" onClick={() => setRefresh((value) => value + 1)}>
-            Check again
+            {t.checkAgain}
           </button>
         </section>
         <ErrorText error={error} />
@@ -558,11 +744,11 @@ export default function Settings() {
         <section className="panel">
           <div className="mcp-section-head">
             <div>
-              <h3>Connect an AI client</h3>
-              <p className="muted">Add this to your client's MCP config (Claude Desktop, Cursor, Claude Code…).</p>
+              <h3>{t.connectClient}</h3>
+              <p className="muted">{t.connectHelp}</p>
             </div>
             <button type="button" onClick={copyConfig} disabled={!status}>
-              {copied ? "Copied" : "Copy"}
+              {copied ? t.copied : t.copy}
             </button>
           </div>
           <pre className="mcp-config">
@@ -574,7 +760,7 @@ export default function Settings() {
         {status?.ok && (
           <section className="panel">
             <h3>
-              Tools <small>{status.tools.length}</small>
+              {t.tools} <small>{status.tools.length}</small>
             </h3>
             <dl className="mcp-tools">
               {status.tools.map((tool) => (

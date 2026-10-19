@@ -292,7 +292,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    let message = lang() === "es" ? `Solicitud fallida (${response.status})` : `Request failed (${response.status})`;
     try {
       message = (await response.json()).error || message;
     } catch {}
@@ -319,7 +319,8 @@ function base64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
-    reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
+    reader.onerror = () => reject(reader.error ?? new Error(lang() === "es" ? `No se pudo leer ${file.name}` : `Could not read ${file.name}`));
     reader.readAsDataURL(file);
   });
 }
+import { lang } from "./i18n";
