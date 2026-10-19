@@ -2852,6 +2852,32 @@ main.chat-window {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.message-meta .icon {
+  width: 24px;
+  height: 24px;
+  color: var(--muted);
+}
+.message-meta .icon:hover,
+.message-meta .icon[aria-pressed="true"] {
+  color: inherit;
+}
+.message-meta .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.message-meta [data-tip]::after {
+  left: 0;
+  transform: none;
+}
+.message-row.user .message-meta [data-tip]::after {
+  left: auto;
+  right: 0;
+}
 .message.assistant {
   align-self: flex-start;
 }
@@ -2901,6 +2927,47 @@ main.chat-window {
   padding: 0;
   background: none;
 }
+.markdown .code-block {
+  position: relative;
+  margin: 0 0 10px;
+}
+.markdown .code-block pre {
+  margin: 0;
+}
+.code-copy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 28px;
+  height: 28px;
+  background: var(--base-200);
+  color: var(--muted);
+  opacity: 0;
+}
+.code-block:hover .code-copy,
+.code-copy:focus-visible,
+.code-copy.copied {
+  opacity: 1;
+}
+.code-copy:hover {
+  color: inherit;
+}
+.code-copy .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.code-copy .svg-icon:last-child,
+.code-copy.copied .svg-icon:first-child {
+  display: none;
+}
+.code-copy.copied .svg-icon:last-child {
+  display: block;
+}
+.code-copy[data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
 .markdown blockquote {
   padding: 0 12px;
   border: 1px solid var(--border);
@@ -2916,6 +2983,8 @@ main.chat-window {
 .markdown td {
   padding: 4px 10px;
   border: 1px solid var(--border);
+  /* `.message` uses `anywhere`, which lets columns shrink to one letter wide. */
+  overflow-wrap: break-word;
 }
 .message.error {
   align-self: flex-start;

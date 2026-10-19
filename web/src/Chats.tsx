@@ -14,7 +14,7 @@ import {
   type ReactNode,
   type UIEvent,
 } from "react";
-import Markdown from "./Markdown";
+import Markdown, { copyMarkdown } from "./Markdown";
 import Menu from "./Menu";
 import ModelPicker, { type ModelOption } from "./ModelPicker";
 import {
@@ -37,6 +37,7 @@ import { isUnpinKey, maxPins, rememberPinnedChat, pinLayout, pinNumber, pinShort
 import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
+import { canSpeak, SpeakButton } from "./speech";
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 const newChatShortcut = mac ? "⌘N" : "Ctrl+N";
@@ -100,6 +101,24 @@ function MessageTime({ iso }: { iso: string }) {
     <time className="message-time" dateTime={iso} title={date.toLocaleString()}>
       {date.toLocaleString(undefined, options)}
     </time>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <IconButton
+      type="button"
+      className="ghost"
+      icon={copied ? "check" : "copy"}
+      label={copied ? "Copied" : "Copy"}
+      onClick={() => copyMarkdown(text).then(() => setCopied(true), () => undefined)}
+    />
   );
 }
 
@@ -1533,6 +1552,7 @@ const Timeline = memo(function Timeline({
       onError(reason);
     }
   }
+  const lastReply = [...detail.messages].reverse().find((message) => message.role === "assistant" && message.content)?.id;
   return (
     <>
     {timeline(detail).map((message) =>
@@ -1581,7 +1601,17 @@ const Timeline = memo(function Timeline({
               ))}
             </ul>
           )}
-          <MessageTime iso={message.created_at} />
+          {(message.role === "assistant" || message.role === "user") && message.content ? (
+            <div className="message-meta">
+              <CopyButton text={message.content} />
+              {message.role === "assistant" && canSpeak && (
+                <SpeakButton text={message.content} shortcut={message.id === lastReply} />
+              )}
+              <MessageTime iso={message.created_at} />
+            </div>
+          ) : (
+            <MessageTime iso={message.created_at} />
+          )}
         </div>
       ),
     )}

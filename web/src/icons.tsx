@@ -141,6 +141,20 @@ const paths = {
     "M10.268 21a2 2 0 0 0 3.464 0",
     "M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
   ],
+  copy: [
+    "M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z",
+    "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
+  ],
+  volume: [
+    "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
+    "M16 9a5 5 0 0 1 0 6",
+    "M19.364 18.364a9 9 0 0 0 0-12.728",
+  ],
+  volumeX: [
+    "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
+    "m22 9-6 6",
+    "m16 9 6 6",
+  ],
   listOrdered: ["M10 12h11", "M10 18h11", "M10 6h11", "M4 10h2", "M4 6h1v4", "M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"],
 };
 
@@ -163,6 +177,12 @@ export function Icon({ name }: { name: IconName }) {
       ))}
     </svg>
   );
+}
+
+// For HTML strings that React doesn't render (e.g. Markdown output).
+export function iconSvg(name: IconName) {
+  const d = paths[name].map((path) => `<path d="${path}"/>`).join("");
+  return `<svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 }
 
 export function IconButton({
