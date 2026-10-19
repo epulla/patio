@@ -309,7 +309,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory, one-line description, body with why and how to apply) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
+	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory; the description states the fact itself in under 20 words, since chats see only that line; the body says why and how to apply it) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
 	if !inApp {
 		persona, err := api.MartinPersonaEnabled(database)
 		if err != nil {
