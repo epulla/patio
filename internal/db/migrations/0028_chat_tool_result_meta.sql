@@ -1,0 +1,2 @@
+ALTER TABLE chat_message ADD COLUMN tool_result_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chat_message ADD COLUMN tool_error INTEGER NOT NULL DEFAULT 0;

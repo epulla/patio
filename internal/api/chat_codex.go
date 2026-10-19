@@ -340,7 +340,8 @@ func (d *codexRuntime) handleNotification(notification connectorcli.Notification
 			if err := json.Unmarshal(params["item"], &data); err != nil {
 				return err
 			}
-			if err := d.manager.emitTool(d.chatID, codexItemSummary(item.Type, data)); err != nil {
+			output, failed := codexItemResult(data)
+			if err := d.manager.emitToolResult(d.chatID, codexItemSummary(item.Type, data), output, failed); err != nil {
 				return err
 			}
 		}
@@ -522,6 +523,31 @@ func codexItemSummary(itemType string, data map[string]json.RawMessage) string {
 		}
 	}
 	return shortText(strings.TrimSpace(itemType+" "+strings.Join(details, " ")), toolInputLimit)
+}
+
+// codexItemResult returns a completed item's output and whether it failed.
+func codexItemResult(data map[string]json.RawMessage) (string, bool) {
+	var status, output string
+	_ = json.Unmarshal(data["status"], &status)
+	failed := status == "failed" || status == "declined"
+	_ = json.Unmarshal(data["aggregatedOutput"], &output)
+	var exitCode *int
+	if json.Unmarshal(data["exitCode"], &exitCode) == nil && exitCode != nil && *exitCode != 0 {
+		failed = true
+	}
+	var result struct {
+		Content json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(data["result"], &result) == nil && len(result.Content) > 0 {
+		output = toolResultText(result.Content)
+	}
+	var itemErr struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(data["error"], &itemErr) == nil && itemErr.Message != "" {
+		output, failed = itemErr.Message, true
+	}
+	return output, failed
 }
 
 func codexError(value any, fallback string) error {

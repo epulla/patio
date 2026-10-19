@@ -57,6 +57,7 @@ type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "thinking_delta"; text: string }
   | { type: "tool" | "thinking" | "question"; message: ChatMessage }
+  | { type: "tool_result"; message_id: string; tool_result_size: number; tool_error: boolean }
   | { type: "done"; message?: ChatMessage }
   | { type: "error"; message: string }
   | { type: "approval" };
@@ -842,6 +843,17 @@ export function Conversation({
       if (event.type === "delta") setStreaming((current) => current + event.text);
       if (event.type === "thinking_delta") setThinking((current) => current + event.text);
       if (event.type === "thinking") setThinking("");
+      if (event.type === "tool_result")
+        setDetail((current) =>
+          current && {
+            ...current,
+            messages: current.messages.map((m) =>
+              m.id === event.message_id
+                ? { ...m, tool_result_size: event.tool_result_size, tool_error: event.tool_error }
+                : m,
+            ),
+          },
+        );
       if (event.type === "tool" || event.type === "thinking" || event.type === "question" || event.type === "done") {
         if (event.type === "done") {
           setStreaming("");
@@ -1595,8 +1607,20 @@ const Timeline = memo(function Timeline({
           <MessageTime iso={message.created_at} />
         </ToolLine>
       ) : message.role === "tool" ? (
-        <ToolLine key={message.id} body={() => prettyJSON(message.content)}>
-          <Icon name="plug" /> <code>{message.content}</code> <MessageTime iso={message.created_at} />
+        <ToolLine
+          key={message.id}
+          body={() => prettyJSON(message.content)}
+          resultURL={
+            message.tool_result_size || message.tool_error
+              ? `/api/chats/${message.chat_id}/messages/${message.id}/tool-result`
+              : undefined
+          }
+        >
+          <Icon name="plug" /> <code>{message.content}</code>{" "}
+          {(!!message.tool_result_size || message.tool_error) && (
+            <ToolResultBadge size={message.tool_result_size ?? 0} failed={!!message.tool_error} />
+          )}
+          <MessageTime iso={message.created_at} />
         </ToolLine>
       ) : message.role === "question" ? (
         <QuestionCard
@@ -1660,13 +1684,34 @@ const Timeline = memo(function Timeline({
 });
 
 // Formats the full input only when expanded; tool inputs can be 20k chars and chats have hundreds.
-function ToolLine({ body, children }: { body: () => string; children: ReactNode }) {
+function ToolLine({ body, resultURL, children }: { body: () => string; resultURL?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<string>();
+  useEffect(() => {
+    if (!open || !resultURL || result !== undefined) return;
+    api
+      .get<{ tool_result: string }>(resultURL)
+      .then((data) => setResult(data.tool_result))
+      .catch((reason) => setResult(`Could not load the result: ${reason}`));
+  }, [open, resultURL, result]);
   return (
     <details className="tool-line" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>{children}</summary>
       {open && <pre>{body()}</pre>}
+      {open && resultURL && <pre aria-label="Tool result">{result === undefined ? "Loading result…" : prettyJSON(result)}</pre>}
     </details>
+  );
+}
+
+// Results above this size are likely to crowd the model's context.
+const largeToolResult = 25_000;
+
+function ToolResultBadge({ size, failed }: { size: number; failed: boolean }) {
+  const label = size < 1000 ? `${size} chars` : `${(size / 1000).toFixed(1)}k chars`;
+  return (
+    <span className={`tool-result-size${failed ? " failed" : size > largeToolResult ? " large" : ""}`}>
+      {failed ? `failed · ${label}` : label}
+    </span>
   );
 }
 

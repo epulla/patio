@@ -3138,6 +3138,22 @@ main.chat-window {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.tool-result-size {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--base-200);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tool-result-size.large {
+  background: var(--warning);
+  color: var(--warning-content);
+}
+.tool-result-size.failed {
+  background: var(--error);
+  color: var(--error-content);
+}
 .chat-hint,
 .typing {
   margin: 0;

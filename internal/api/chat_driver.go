@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	connectorcli "patio/internal/connector"
 	"patio/internal/proc"
@@ -420,11 +421,30 @@ func (m *chatManager) flushThinking(id string) error {
 }
 
 func (m *chatManager) emitTool(id, summary string) error {
+	_, err := m.emitToolCall(id, summary)
+	return err
+}
+
+// emitToolCall stores a tool row and returns its message ID so attachToolResult can add the result later.
+func (m *chatManager) emitToolCall(id, summary string) (string, error) {
+	m.markToolAfterText(id)
+	if err := m.flushThinking(id); err != nil {
+		return "", err
+	}
+	message, err := InsertChatMessage(m.db, id, "tool", summary)
+	if err != nil {
+		return "", err
+	}
+	m.emit(id, map[string]any{"type": "tool", "message": message})
+	return message.ID, nil
+}
+
+func (m *chatManager) emitToolResult(id, summary, result string, isError bool) error {
 	m.markToolAfterText(id)
 	if err := m.flushThinking(id); err != nil {
 		return err
 	}
-	message, err := InsertChatMessage(m.db, id, "tool", summary)
+	message, err := InsertChatToolMessage(m.db, id, summary, result, isError)
 	if err != nil {
 		return err
 	}
@@ -432,16 +452,12 @@ func (m *chatManager) emitTool(id, summary string) error {
 	return nil
 }
 
-func (m *chatManager) emitToolResult(id, summary, result string) error {
-	m.markToolAfterText(id)
-	if err := m.flushThinking(id); err != nil {
+func (m *chatManager) attachToolResult(id, messageID, result string, isError bool) error {
+	size := utf8.RuneCountInString(result)
+	if _, err := m.db.Exec(`UPDATE chat_message SET tool_result=?,tool_result_size=?,tool_error=? WHERE id=? AND chat_id=?`, capStoredToolResult(result), size, isError, messageID, id); err != nil {
 		return err
 	}
-	message, err := InsertChatToolMessage(m.db, id, summary, result)
-	if err != nil {
-		return err
-	}
-	m.emit(id, map[string]any{"type": "tool", "message": message})
+	m.emit(id, map[string]any{"type": "tool_result", "message_id": messageID, "tool_result_size": size, "tool_error": isError})
 	return nil
 }
 

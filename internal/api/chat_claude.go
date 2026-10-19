@@ -38,6 +38,7 @@ type claudeRuntime struct {
 	assistant      strings.Builder
 	thinkingDeltas bool
 	textDeltas     bool
+	toolMessages   map[string]string // tool_use ID -> tool chat message ID
 }
 
 func init() { runtimes["claude"] = startClaude }
@@ -111,7 +112,7 @@ func stringValue(value *string) string {
 }
 
 func buildClaudeArgsWithConfig(model, sessionID, configPath, prompt string) []string {
-	args := []string{"-p", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", prompt,"--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	args := []string{"-p", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", prompt, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
@@ -287,6 +288,23 @@ func (c *cappedLines) String() string {
 	return strings.TrimSpace(string(c.data))
 }
 
+// toolResultText flattens tool result content, which is a string or a list of MCP text blocks.
+func toolResultText(raw json.RawMessage) string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var blocks []struct{ Type, Text string }
+	_ = json.Unmarshal(raw, &blocks)
+	parts := []string{}
+	for _, block := range blocks {
+		if block.Type == "text" {
+			parts = append(parts, block.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 func (d *claudeRuntime) parseLine(raw []byte) error {
 	var event map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &event); err != nil {
@@ -340,6 +358,7 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			Message struct {
 				Content []struct {
 					Type     string          `json:"type"`
+					ID       string          `json:"id"`
 					Text     string          `json:"text"`
 					Thinking string          `json:"thinking"`
 					Name     string          `json:"name"`
@@ -369,9 +388,45 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 					return err
 				}
 				content := strings.TrimSpace(block.Name + " " + shortText(args, toolInputLimit))
-				if err := d.manager.emitTool(d.chatID, content); err != nil {
+				messageID, err := d.manager.emitToolCall(d.chatID, content)
+				if err != nil {
 					return err
 				}
+				if block.ID != "" {
+					if d.toolMessages == nil {
+						d.toolMessages = map[string]string{}
+					}
+					d.toolMessages[block.ID] = messageID
+				}
+			}
+		}
+	case "user":
+		var user struct {
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(raw, &user); err != nil {
+			return err
+		}
+		var blocks []struct {
+			Type      string          `json:"type"`
+			ToolUseID string          `json:"tool_use_id"`
+			Content   json.RawMessage `json:"content"`
+			IsError   bool            `json:"is_error"`
+		}
+		// Plain-text user content is not a tool result; skip it.
+		if json.Unmarshal(user.Message.Content, &blocks) != nil {
+			return nil
+		}
+		for _, block := range blocks {
+			messageID := d.toolMessages[block.ToolUseID]
+			if block.Type != "tool_result" || messageID == "" {
+				continue
+			}
+			delete(d.toolMessages, block.ToolUseID)
+			if err := d.manager.attachToolResult(d.chatID, messageID, toolResultText(block.Content), block.IsError); err != nil {
+				return err
 			}
 		}
 	case "result":

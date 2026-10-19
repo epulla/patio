@@ -27,7 +27,7 @@ import (
 const (
 	localMaxToolCalls   = 20
 	localMaxToolOutput  = 32 << 10
-	localStoredToolMax  = 2 << 10
+	storedToolResultMax = 4 << 10
 	localSSELineLimit   = 4 << 20
 	localHistoryBudget  = 1500 * 4
 	localHistoryLimit   = 40
@@ -406,7 +406,7 @@ func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest
 				result = "Error: " + strings.TrimPrefix(err.Error(), "Error: ")
 			}
 			result = capToolOutput(d.redact(result))
-			if err := d.manager.emitToolResult(d.chatID, summary, capStoredToolResult(result)); err != nil {
+			if err := d.manager.emitToolResult(d.chatID, summary, result, strings.HasPrefix(result, "Error: ")); err != nil {
 				return "", err
 			}
 			toolMessage := map[string]any{"role": "tool", "tool_call_id": call.ID, "content": result}
@@ -1296,10 +1296,10 @@ func capToolOutput(output string) string {
 
 func capStoredToolResult(output string) string {
 	const suffix = "\n[tool result truncated]"
-	if len(output) <= localStoredToolMax {
+	if len(output) <= storedToolResultMax {
 		return output
 	}
-	end := localStoredToolMax - len(suffix)
+	end := storedToolResultMax - len(suffix)
 	for end > 0 && !utf8.RuneStart(output[end]) {
 		end--
 	}

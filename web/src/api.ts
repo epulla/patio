@@ -239,6 +239,8 @@ export type ChatMessage = {
   created_at: string;
   attachments: ChatAttachment[];
   answered: boolean;
+  tool_result_size?: number;
+  tool_error?: boolean;
 };
 export type ChatQuestion = {
   header: string;

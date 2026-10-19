@@ -111,7 +111,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "user-text", "messageID": "user-1", "type": "text"}}})
 	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "user-1", "partID": "user-text", "field": "text", "delta": "echo must not appear"}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{
-		"sessionID": firstSession, "part": map[string]any{"id": "tool-1", "messageID": "assistant-1", "type": "tool", "tool": "write", "state": map[string]any{"status": "completed", "input": map[string]any{"path": strings.Repeat("x", 1000)}}},
+		"sessionID": firstSession, "part": map[string]any{"id": "tool-1", "messageID": "assistant-1", "type": "tool", "tool": "write", "state": map[string]any{"status": "completed", "output": "wrote file", "input": map[string]any{"path": strings.Repeat("x", 1000)}}},
 	}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-2", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Done.", "time": map[string]any{"start": 2}}, "delta": "Done."}})
 	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
@@ -122,6 +122,10 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"`+strings.Repeat("x", 1000)+`"}` {
 		t.Fatalf("tool summary = %q, %v", tool, err)
+	}
+	var toolSize int
+	if err := database.QueryRow(`SELECT tool_result_size FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&toolSize); err != nil || toolSize != len("wrote file") {
+		t.Fatalf("tool result size = %d, %v", toolSize, err)
 	}
 	var thinking string
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='thinking' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&thinking); err != nil || thinking != "hidden reasoning" {
@@ -585,6 +589,10 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&tool); err != nil || tool != `write {"path":"hello.txt"}` {
 		t.Fatalf("v2 tool summary = %q, %v", tool, err)
+	}
+	var v2Size int
+	if err := database.QueryRow(`SELECT tool_result_size FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&v2Size); err != nil || v2Size != len("wrote file") {
+		t.Fatalf("v2 tool result size = %d, %v", v2Size, err)
 	}
 	var thinking string
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='thinking' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&thinking); err != nil || thinking != "Reason briefly. " {

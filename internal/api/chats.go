@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/zalando/go-keyring"
 )
@@ -65,6 +66,9 @@ type ChatMessage struct {
 	CreatedAt   string           `json:"created_at"`
 	Attachments []ChatAttachment `json:"attachments"`
 	Answered    bool             `json:"answered"`
+	// The result preview itself loads on demand from the tool-result endpoint.
+	ToolResultSize int  `json:"tool_result_size,omitempty"`
+	ToolError      bool `json:"tool_error,omitempty"`
 }
 
 type chatApproval struct {
@@ -400,6 +404,20 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	write(w, 201, c)
 }
 
+func (s *Server) getChatToolResult(w http.ResponseWriter, r *http.Request) {
+	var result sql.NullString
+	err := s.db.QueryRow(`SELECT tool_result FROM chat_message WHERE id=? AND chat_id=? AND role='tool'`, idParam(r, "messageID"), idParam(r, "id")).Scan(&result)
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "tool message not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string]string{"tool_result": result.String})
+}
+
 func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, idParam(r, "id")))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -412,7 +430,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	}
 	c.Running = s.chats.Running(c.ID)
 	messages := []ChatMessage{}
-	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments,answered FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
+	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments,answered,tool_result_size,tool_error FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -420,7 +438,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var m ChatMessage
 		var rawAttachments string
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered); err == nil {
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError); err == nil {
 			if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
 				_ = rows.Close()
 				errw(w, 500, "invalid chat message attachments: "+err.Error())
@@ -1168,10 +1186,10 @@ func InsertChatMessageWithAttachments(database *sql.DB, chatID, role, content st
 	return m, err
 }
 
-func InsertChatToolMessage(database *sql.DB, chatID, summary, result string) (ChatMessage, error) {
-	m := ChatMessage{ID: uid(), ChatID: chatID, Role: "tool", Content: summary, CreatedAt: now(), Attachments: []ChatAttachment{}}
+func InsertChatToolMessage(database *sql.DB, chatID, summary, result string, isError bool) (ChatMessage, error) {
+	m := ChatMessage{ID: uid(), ChatID: chatID, Role: "tool", Content: summary, CreatedAt: now(), Attachments: []ChatAttachment{}, ToolResultSize: utf8.RuneCountInString(result), ToolError: isError}
 	err := txrun(database, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,tool_result,created_at) VALUES(?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, result, m.CreatedAt); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,tool_result,tool_result_size,tool_error,created_at) VALUES(?,?,?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, capStoredToolResult(result), m.ToolResultSize, m.ToolError, m.CreatedAt); err != nil {
 			return err
 		}
 		res, err := tx.Exec(`UPDATE chat SET updated_at=? WHERE id=?`, m.CreatedAt, chatID)

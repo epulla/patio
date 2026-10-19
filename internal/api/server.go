@@ -163,6 +163,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/{id}/window", s.openChatWindow)
 	m.HandleFunc("POST /api/windows/main", s.openMainWindow)
 	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
+	m.HandleFunc("GET /api/chats/{id}/messages/{messageID}/tool-result", s.getChatToolResult)
 	m.HandleFunc("POST /api/chats/{id}/stop", s.stopChat)
 	m.HandleFunc("GET /api/users", s.users)
 	m.HandleFunc("GET /api/boards", s.boards)

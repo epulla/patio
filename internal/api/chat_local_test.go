@@ -1190,7 +1190,7 @@ func TestLocalOllamaTextJSONToolCallStoresHiddenCappedResult(t *testing.T) {
 		case 2:
 			messages, _ := request["messages"].([]any)
 			last, _ := messages[len(messages)-1].(map[string]any)
-			if last["role"] != "tool" || last["content"] != strings.Repeat("x", 3000) {
+			if last["role"] != "tool" || last["content"] != strings.Repeat("x", 5000) {
 				t.Errorf("tool result sent to model = %#v", last)
 			}
 			writeNDJSON(w, `{"message":{"content":"Read it"},"done":true}`)
@@ -1199,7 +1199,7 @@ func TestLocalOllamaTextJSONToolCallStoresHiddenCappedResult(t *testing.T) {
 			writeNDJSON(w, `{"message":{"content":"unexpected"},"done":true}`)
 		}
 	})
-	if err := os.WriteFile(filepath.Join(root, "chats", chatID, "large.txt"), []byte(strings.Repeat("x", 3000)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "chats", chatID, "large.txt"), []byte(strings.Repeat("x", 5000)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if code := sendLocalMessage(t, server, chatID, "read large.txt"); code != http.StatusAccepted {
@@ -1213,7 +1213,7 @@ func TestLocalOllamaTextJSONToolCallStoresHiddenCappedResult(t *testing.T) {
 	if err := database.QueryRow(`SELECT tool_result FROM chat_message WHERE chat_id=? AND role='tool'`, chatID).Scan(&result); err != nil {
 		t.Fatal(err)
 	}
-	if len(result) > localStoredToolMax || !strings.HasSuffix(result, "[tool result truncated]") {
+	if len(result) > storedToolResultMax || !strings.HasSuffix(result, "[tool result truncated]") {
 		t.Fatalf("stored tool result length/suffix = %d/%q", len(result), result[len(result)-min(len(result), 40):])
 	}
 	var detail map[string]any
@@ -1224,8 +1224,18 @@ func TestLocalOllamaTextJSONToolCallStoresHiddenCappedResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), strings.Repeat("x", 100)) || strings.Contains(string(encoded), "tool_result") {
-		t.Fatalf("private tool result exposed by chat API: %s", encoded)
+	if strings.Contains(string(encoded), strings.Repeat("x", 100)) || strings.Contains(string(encoded), `"tool_result":`) || !strings.Contains(string(encoded), `"tool_result_size":5000`) {
+		t.Fatalf("chat payload should carry only the result size: %s", encoded)
+	}
+	var preview struct {
+		ToolResult string `json:"tool_result"`
+	}
+	var toolMessageID string
+	if err := database.QueryRow(`SELECT id FROM chat_message WHERE chat_id=? AND role='tool'`, chatID).Scan(&toolMessageID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodGet, "/api/chats/"+chatID+"/messages/"+toolMessageID+"/tool-result", nil, &preview); code != http.StatusOK || preview.ToolResult != result {
+		t.Fatalf("tool result endpoint = %d, %d chars", code, len(preview.ToolResult))
 	}
 }
 

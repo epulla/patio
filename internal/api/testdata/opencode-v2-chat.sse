@@ -16,4 +16,6 @@ data: {"type":"session.text.ended","data":{"sessionID":"<SESSION>","assistantMes
 
 data: {"type":"session.tool.called","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","id":"<CALL>","name":"write","input":{"path":"hello.txt"},"executed":true}}
 
+data: {"type":"session.tool.success","data":{"sessionID":"<SESSION>","assistantMessageID":"<MESSAGE>","id":"<CALL>","content":[{"type":"text","text":"wrote file"}],"executed":true}}
+
 data: {"type":"session.execution.succeeded","data":{"sessionID":"<SESSION>"}}

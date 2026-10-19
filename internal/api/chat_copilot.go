@@ -35,7 +35,7 @@ type copilotRuntime struct {
 	assistantMu sync.Mutex
 	assistant   strings.Builder
 	toolMu      sync.Mutex
-	toolLabels  map[string]string
+	toolRows    map[string]string // ACP toolCallId -> tool chat message ID
 	replaying   atomic.Bool
 	stopped     atomic.Bool
 	closing     atomic.Bool
@@ -276,16 +276,14 @@ func (d *copilotRuntime) handleMessage(message acpMessage) {
 func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 	var params struct {
 		Update struct {
-			Type          string `json:"type"`
-			SessionUpdate string `json:"sessionUpdate"`
-			Content       struct {
-				Text string `json:"text"`
-			} `json:"content"`
-			Title      string `json:"title"`
-			Kind       string `json:"kind"`
-			ToolCallID string `json:"toolCallId"`
-			Status     string `json:"status"`
-			ToolCall   struct {
+			Type          string          `json:"type"`
+			SessionUpdate string          `json:"sessionUpdate"`
+			Content       json.RawMessage `json:"content"`
+			Title         string          `json:"title"`
+			Kind          string          `json:"kind"`
+			ToolCallID    string          `json:"toolCallId"`
+			Status        string          `json:"status"`
+			ToolCall      struct {
 				ToolCallID string `json:"toolCallId"`
 				Title      string `json:"title"`
 				Kind       string `json:"kind"`
@@ -295,9 +293,14 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 	if json.Unmarshal(raw, &params) != nil {
 		return
 	}
+	// Message chunks carry one text block; tool call updates carry a list of content blocks.
+	var chunk struct {
+		Text string `json:"text"`
+	}
+	_ = json.Unmarshal(params.Update.Content, &chunk)
 	switch params.Update.SessionUpdate {
 	case "agent_message_chunk":
-		text := params.Update.Content.Text
+		text := chunk.Text
 		if text != "" {
 			d.assistantMu.Lock()
 			text = d.manager.emitDelta(d.chatID, text)
@@ -305,7 +308,7 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 			d.assistantMu.Unlock()
 		}
 	case "agent_thought_chunk":
-		d.manager.emitThinking(d.chatID, params.Update.Content.Text)
+		d.manager.emitThinking(d.chatID, chunk.Text)
 	case "tool_call":
 		label := params.Update.Title
 		if label == "" {
@@ -322,36 +325,49 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 			label = params.Update.ToolCall.Kind
 		}
 		if label != "" {
-			if toolCallID != "" {
+			messageID, err := d.manager.emitToolCall(d.chatID, label)
+			if err == nil && toolCallID != "" {
 				d.toolMu.Lock()
-				if d.toolLabels == nil {
-					d.toolLabels = make(map[string]string)
+				if d.toolRows == nil {
+					d.toolRows = make(map[string]string)
 				}
-				d.toolLabels[toolCallID] = label
+				d.toolRows[toolCallID] = messageID
 				d.toolMu.Unlock()
 			}
-			_ = d.manager.emitTool(d.chatID, label)
 		}
 	case "tool_call_update":
-		if params.Update.Status == "failed" {
-			label := params.Update.Title
-			if label == "" {
-				label = params.Update.Kind
-			}
-			toolCallID := params.Update.ToolCallID
-			if params.Update.ToolCall.ToolCallID != "" {
-				toolCallID = params.Update.ToolCall.ToolCallID
-			}
-			if label == "" && toolCallID != "" {
-				d.toolMu.Lock()
-				label = d.toolLabels[toolCallID]
-				d.toolMu.Unlock()
-			}
-			if label != "" {
-				_ = d.manager.emitTool(d.chatID, label+" failed")
-			}
+		if params.Update.Status != "completed" && params.Update.Status != "failed" {
+			return
+		}
+		toolCallID := params.Update.ToolCallID
+		if params.Update.ToolCall.ToolCallID != "" {
+			toolCallID = params.Update.ToolCall.ToolCallID
+		}
+		d.toolMu.Lock()
+		messageID := d.toolRows[toolCallID]
+		delete(d.toolRows, toolCallID)
+		d.toolMu.Unlock()
+		if messageID != "" {
+			_ = d.manager.attachToolResult(d.chatID, messageID, copilotToolText(params.Update.Content), params.Update.Status == "failed")
 		}
 	}
+}
+
+// copilotToolText joins the text of ACP tool call content blocks ({"type":"content","content":{"type":"text",...}}).
+func copilotToolText(raw json.RawMessage) string {
+	var blocks []struct {
+		Content struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	_ = json.Unmarshal(raw, &blocks)
+	parts := []string{}
+	for _, block := range blocks {
+		if block.Content.Text != "" {
+			parts = append(parts, block.Content.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (d *copilotRuntime) handlePermission(message acpMessage) {

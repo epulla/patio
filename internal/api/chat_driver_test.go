@@ -215,6 +215,76 @@ func TestDriverThinkingOnOff(t *testing.T) {
 	}
 }
 
+func TestDriverToolResults(t *testing.T) {
+	big := strings.Repeat("x", 5000)
+	for _, driverName := range []string{"claude", "codex", "copilot"} {
+		t.Run(driverName, func(t *testing.T) {
+			database, _, root := chatAPI(t)
+			connectorID := createTestConnector(t, database)
+			chatID := createDriverTestChat(t, database, connectorID, root)
+			manager := newChatManager(database, Options{})
+			rt := manager.runtime(chatID)
+			switch driverName {
+			case "claude":
+				d := &claudeRuntime{manager: manager, chatID: chatID, runtime: rt}
+				for _, line := range []string{
+					`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"get_board","input":{}}]}}`,
+					`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"` + big + `"}]}]}}`,
+					`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{}}]}}`,
+					`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"boom","is_error":true}]}}`,
+					`{"type":"user","message":{"content":"plain text is not a tool result"}}`,
+				} {
+					if err := d.parseLine([]byte(line)); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "codex":
+				d := &codexRuntime{manager: manager, chatID: chatID, runtime: rt, items: map[string]json.RawMessage{}}
+				for _, item := range []string{
+					`{"id":"i1","type":"mcpToolCall","server":"patio","toolName":"get_board","status":"completed","result":{"content":[{"type":"text","text":"` + big + `"}]}}`,
+					`{"id":"i2","type":"commandExecution","command":"false","status":"failed","aggregatedOutput":"boom","exitCode":1}`,
+				} {
+					if err := d.handleNotification(connectorcli.Notification{Method: "item/completed", Params: json.RawMessage(`{"item":` + item + `}`)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "copilot":
+				d := &copilotRuntime{manager: manager, chatID: chatID}
+				for _, update := range []string{
+					`{"sessionUpdate":"tool_call","toolCallId":"c1","title":"get_board"}`,
+					`{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"` + big + `"}}]}`,
+					`{"sessionUpdate":"tool_call","toolCallId":"c2","title":"run"}`,
+					`{"sessionUpdate":"tool_call_update","toolCallId":"c2","status":"failed","content":[{"type":"content","content":{"type":"text","text":"boom"}}]}`,
+				} {
+					d.handleUpdate(json.RawMessage(`{"update":` + update + `}`))
+				}
+			}
+			rows, err := database.Query(`SELECT tool_result,tool_result_size,tool_error FROM chat_message WHERE chat_id=? AND role='tool' ORDER BY rowid`, chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			type row struct {
+				preview string
+				size    int
+				failed  bool
+			}
+			var got []row
+			for rows.Next() {
+				var r row
+				if err := rows.Scan(&r.preview, &r.size, &r.failed); err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, r)
+			}
+			if len(got) != 2 || got[0].size != 5000 || got[0].failed || len(got[0].preview) > storedToolResultMax ||
+				got[1].size != 4 || !got[1].failed || got[1].preview != "boom" {
+				t.Fatalf("tool rows = %+v", got)
+			}
+		})
+	}
+}
+
 func TestRequestApproval(t *testing.T) {
 	for _, test := range []struct {
 		name      string

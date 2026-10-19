@@ -77,6 +77,7 @@ type opencodeRuntime struct {
 	text          strings.Builder
 	roles         map[string]string
 	parts         map[string]string
+	toolRows      map[string]string // v2 tool call ID -> tool chat message ID
 	active        bool
 	closed        bool
 	release       sync.Once
@@ -840,6 +841,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 				State     struct {
 					Status string          `json:"status"`
 					Error  string          `json:"error"`
+					Output string          `json:"output"`
 					Input  json.RawMessage `json:"input"`
 				} `json:"state"`
 			} `json:"part"`
@@ -874,7 +876,12 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			if err != nil {
 				return err
 			}
-			if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(part.Part.Tool+" "+shortText(input, toolInputLimit))); err != nil {
+			failed := part.Part.State.Status == "error"
+			output := part.Part.State.Output
+			if failed {
+				output = part.Part.State.Error
+			}
+			if err := driver.manager.emitToolResult(driver.chatID, strings.TrimSpace(part.Part.Tool+" "+shortText(input, toolInputLimit)), output, failed); err != nil {
 				return err
 			}
 		}
@@ -1128,6 +1135,7 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		driver.mu.Unlock()
 	case "session.tool.called":
 		var tool struct {
+			ID    string          `json:"id"`
 			Name  string          `json:"name"`
 			Input json.RawMessage `json:"input"`
 		}
@@ -1141,7 +1149,42 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		if !child {
 			driver.startAutonomousTurn()
 		}
-		if err := driver.manager.emitTool(driver.chatID, strings.TrimSpace(tool.Name+" "+shortText(input, toolInputLimit))); err != nil {
+		messageID, err := driver.manager.emitToolCall(driver.chatID, strings.TrimSpace(tool.Name+" "+shortText(input, toolInputLimit)))
+		if err != nil {
+			return err
+		}
+		if tool.ID != "" {
+			driver.mu.Lock()
+			if driver.toolRows == nil {
+				driver.toolRows = map[string]string{}
+			}
+			driver.toolRows[tool.ID] = messageID
+			driver.mu.Unlock()
+		}
+	case "session.tool.success", "session.tool.failed":
+		var tool struct {
+			ID      string          `json:"id"`
+			Content json.RawMessage `json:"content"`
+			Error   struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(event["data"], &tool); err != nil {
+			return err
+		}
+		driver.mu.Lock()
+		messageID := driver.toolRows[tool.ID]
+		delete(driver.toolRows, tool.ID)
+		driver.mu.Unlock()
+		if messageID == "" {
+			return nil
+		}
+		output := toolResultText(tool.Content)
+		failed := typ == "session.tool.failed"
+		if failed && tool.Error.Message != "" {
+			output = strings.TrimSpace(tool.Error.Message + "\n" + output)
+		}
+		if err := driver.manager.attachToolResult(driver.chatID, messageID, output, failed); err != nil {
 			return err
 		}
 	case "permission.asked":
