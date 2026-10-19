@@ -64,6 +64,7 @@ type ChatMessage struct {
 	Content     string           `json:"content"`
 	CreatedAt   string           `json:"created_at"`
 	Attachments []ChatAttachment `json:"attachments"`
+	Answered    bool             `json:"answered"`
 }
 
 type chatApproval struct {
@@ -411,7 +412,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	}
 	c.Running = s.chats.Running(c.ID)
 	messages := []ChatMessage{}
-	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
+	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments,answered FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -419,7 +420,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var m ChatMessage
 		var rawAttachments string
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments); err == nil {
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered); err == nil {
 			if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
 				_ = rows.Close()
 				errw(w, 500, "invalid chat message attachments: "+err.Error())
@@ -1004,7 +1005,7 @@ func InsertChatMessage(database *sql.DB, chatID, role, content string) (ChatMess
 }
 
 func InsertChatMessageWithAttachments(database *sql.DB, chatID, role, content string, attachments []ChatAttachment) (ChatMessage, error) {
-	if role != "user" && role != "assistant" && role != "tool" && role != "error" && role != "thinking" {
+	if role != "user" && role != "assistant" && role != "tool" && role != "error" && role != "thinking" && role != "question" {
 		return ChatMessage{}, errors.New("invalid chat message role")
 	}
 	if role != "user" && len(attachments) != 0 {

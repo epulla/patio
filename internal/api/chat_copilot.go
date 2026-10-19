@@ -286,9 +286,10 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 			ToolCallID string `json:"toolCallId"`
 			Status     string `json:"status"`
 			ToolCall   struct {
-				ToolCallID string `json:"toolCallId"`
-				Title      string `json:"title"`
-				Kind       string `json:"kind"`
+				ToolCallID string          `json:"toolCallId"`
+				Title      string          `json:"title"`
+				Kind       string          `json:"kind"`
+				RawInput   json.RawMessage `json:"rawInput"`
 			} `json:"toolCall"`
 		} `json:"update"`
 	}
@@ -330,7 +331,11 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 				d.toolLabels[toolCallID] = label
 				d.toolMu.Unlock()
 			}
-			_ = d.manager.emitTool(d.chatID, label)
+			input := string(params.Update.ToolCall.RawInput)
+			if input == "" {
+				input = "{}"
+			}
+			_ = d.manager.emitToolCall(d.chatID, label, input)
 		}
 	case "tool_call_update":
 		if params.Update.Status == "failed" {

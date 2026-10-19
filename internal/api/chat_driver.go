@@ -432,6 +432,37 @@ func (m *chatManager) emitTool(id, summary string) error {
 	return nil
 }
 
+func (m *chatManager) emitToolCall(id, name, input string) error {
+	if !isPatioAskUser(name) {
+		return m.emitTool(id, strings.TrimSpace(name+" "+shortText(input, toolInputLimit)))
+	}
+	var scheduled sql.NullString
+	if err := m.db.QueryRow(`SELECT scheduled_task_id FROM chat WHERE id=?`, id).Scan(&scheduled); err != nil {
+		return err
+	}
+	if scheduled.Valid {
+		return errors.New("ask_user is unavailable in scheduled runs; decide yourself and continue")
+	}
+	var questions any
+	if err := json.Unmarshal([]byte(input), &questions); err != nil {
+		return fmt.Errorf("invalid ask_user input: %w", err)
+	}
+	m.markToolAfterText(id)
+	if err := m.flushThinking(id); err != nil {
+		return err
+	}
+	message, err := InsertChatMessage(m.db, id, "question", input)
+	if err != nil {
+		return err
+	}
+	m.emit(id, map[string]any{"type": "question", "message": message})
+	return nil
+}
+
+func isPatioAskUser(name string) bool {
+	return name == "mcp__patio__ask_user" || name == "patio.ask_user" || name == "patio_ask_user" || name == "patio__ask_user" || name == "ask_user"
+}
+
 func (m *chatManager) emitToolResult(id, summary, result string) error {
 	m.markToolAfterText(id)
 	if err := m.flushThinking(id); err != nil {

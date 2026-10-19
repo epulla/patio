@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 24 {
-		t.Fatalf("migration count = %d, want 24", migrations)
+	if migrations != 25 {
+		t.Fatalf("migration count = %d, want 25", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -60,6 +60,13 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if thinking != 0 {
 		t.Fatalf("new chat thinking = %d, want 0", thinking)
+	}
+	if _, err := second.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES('migration-question','migration-test','question','{}','now')`); err != nil {
+		t.Fatalf("insert question message: %v", err)
+	}
+	var answered int
+	if err := second.QueryRow(`SELECT answered FROM chat_message WHERE id='migration-question'`).Scan(&answered); err != nil || answered != 0 {
+		t.Fatalf("question answered default = %d, %v", answered, err)
 	}
 	var toolsColumn int
 	if err := second.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('chat') WHERE name='tools'`).Scan(&toolsColumn); err != nil || toolsColumn != 0 {

@@ -115,7 +115,7 @@ func buildClaudeArgsWithConfig(model, sessionID, configPath, chatID string, pers
 	if len(persona) > 0 {
 		enabled = persona[0]
 	}
-	args := []string{"-p", "--append-system-prompt", ChatSystemPrompt(enabled, chatID), "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	args := []string{"-p", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", ChatSystemPrompt(enabled, chatID), "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
@@ -372,8 +372,7 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 				if err != nil {
 					return err
 				}
-				content := strings.TrimSpace(block.Name + " " + shortText(args, toolInputLimit))
-				if err := d.manager.emitTool(d.chatID, content); err != nil {
+				if err := d.manager.emitToolCall(d.chatID, block.Name, args); err != nil {
 					return err
 				}
 			}

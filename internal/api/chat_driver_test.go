@@ -136,6 +136,31 @@ func TestEmitThinkingPersistsBeforeToolOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestEmitToolCallStoresPatioQuestionAndPreservesOtherToolLine(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	var events []map[string]any
+	manager := newChatManager(database, Options{Emit: func(_ string, event any) { events = append(events, event.(map[string]any)) }})
+	input := `{"questions":[{"header":"Scope","question":"Which scope?","options":[{"label":"Small"},{"label":"Full"}]}]}`
+	if err := manager.emitToolCall(chatID, "mcp__patio__ask_user", input); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.emitToolCall(chatID, "other_tool", `{"x":1}`); err != nil {
+		t.Fatal(err)
+	}
+	var role, content string
+	if err := database.QueryRow(`SELECT role,content FROM chat_message WHERE chat_id=? ORDER BY rowid LIMIT 1`, chatID).Scan(&role, &content); err != nil {
+		t.Fatal(err)
+	}
+	if role != "question" || content != input {
+		t.Fatalf("message = %q %q", role, content)
+	}
+	if len(events) != 2 || events[0]["type"] != "question" || events[1]["type"] != "tool" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
 // Send holds rt.mu while a driver starts a turn; a driver goroutine emitting deltas must not wait on it.
 func TestStreamEmitsDoNotWaitOnRuntimeLock(t *testing.T) {
 	database, _, root := chatAPI(t)
@@ -422,7 +447,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 	}
 	args := buildClaudeArgsWithConfig("sonnet", "session-id", configPath, "chat-id")
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"-p", "--append-system-prompt", "/tickets/<ticket id>", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__patio__approve", "--resume session-id"} {
+	for _, want := range []string{"-p", "--disallowedTools AskUserQuestion", "--append-system-prompt", "/tickets/<ticket id>", "To ask the user multiple-choice questions", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__patio__approve", "--resume session-id"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("Claude args %q missing %q", joined, want)
 		}

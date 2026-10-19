@@ -398,6 +398,13 @@ func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest
 				break
 			}
 			toolCalls++
+			patioTool, isPatioTool := d.mcpTools[call.Name]
+			isAskUser := isPatioTool && patioTool == "ask_user"
+			if isAskUser {
+				if err := d.manager.emitToolCall(d.chatID, "patio.ask_user", call.Arguments); err != nil {
+					return "", err
+				}
+			}
 			result, summary, err := d.runTool(ctx, call)
 			if err != nil {
 				if ctx.Err() != nil {
@@ -406,8 +413,10 @@ func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest
 				result = "Error: " + strings.TrimPrefix(err.Error(), "Error: ")
 			}
 			result = capToolOutput(d.redact(result))
-			if err := d.manager.emitToolResult(d.chatID, summary, capStoredToolResult(result)); err != nil {
-				return "", err
+			if !isAskUser {
+				if err := d.manager.emitToolResult(d.chatID, summary, capStoredToolResult(result)); err != nil {
+					return "", err
+				}
 			}
 			toolMessage := map[string]any{"role": "tool", "tool_call_id": call.ID, "content": result}
 			if d.ollama {

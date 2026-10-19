@@ -20,7 +20,7 @@ erDiagram
   connector { TEXT id; TEXT kind; TEXT name; TEXT config_dir; TEXT base_url; TEXT model; TEXT quota_json; TEXT created_at }
   allowed_folder { TEXT id; TEXT path; TEXT created_at }
   chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id }
-  chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments }
+  chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments; INTEGER answered }
   chat_approval { TEXT id; TEXT chat_id; TEXT tool_name; TEXT input_json; TEXT status; TEXT created_at; TEXT answered_at; INTEGER auto }
   mcp_server { TEXT id; TEXT name; TEXT kind; TEXT command; TEXT args_json; TEXT env_keys_json; TEXT url; TEXT auth; INTEGER enabled; TEXT created_at }
   skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at }

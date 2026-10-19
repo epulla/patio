@@ -340,7 +340,18 @@ func (d *codexRuntime) handleNotification(notification connectorcli.Notification
 			if err := json.Unmarshal(params["item"], &data); err != nil {
 				return err
 			}
-			if err := d.manager.emitTool(d.chatID, codexItemSummary(item.Type, data)); err != nil {
+			if item.Type == "mcpToolCall" {
+				var name string
+				_ = json.Unmarshal(data["toolName"], &name)
+				var input any
+				_ = json.Unmarshal(data["arguments"], &input)
+				encoded, _ := json.Marshal(input)
+				var server string
+				_ = json.Unmarshal(data["server"], &server)
+				if err := d.manager.emitToolCall(d.chatID, server+"."+name, string(encoded)); err != nil {
+					return err
+				}
+			} else if err := d.manager.emitTool(d.chatID, codexItemSummary(item.Type, data)); err != nil {
 				return err
 			}
 		}
