@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"time"
 )
@@ -272,7 +273,25 @@ func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, e.Error())
 		return
 	}
-	write(w, 200, t)
+	var result map[string]any
+	data, e := json.Marshal(t)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	if e = json.Unmarshal(data, &result); e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	links := httptest.NewRecorder()
+	s.ticketLinks(links, r.Clone(r.Context()))
+	var linkItems []ticketLink
+	if links.Code != http.StatusOK || json.Unmarshal(links.Body.Bytes(), &linkItems) != nil {
+		errw(w, 500, "could not load ticket links")
+		return
+	}
+	result["links"] = linkItems
+	write(w, 200, result)
 }
 
 func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {

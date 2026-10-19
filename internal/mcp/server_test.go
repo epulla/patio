@@ -50,6 +50,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	expectedTools := map[string]bool{
 		"list_boards": true, "get_board": true, "create_board": true, "create_ticket": true,
 		"get_ticket": true, "update_ticket": true, "move_ticket": true, "search_tickets": true,
+		"link_tickets": true, "unlink_tickets": true,
 		"add_comment": true, "list_calendar": true, "create_calendar_item": true,
 		"update_calendar_item": true, "delete_calendar_item": true,
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
@@ -76,8 +77,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 45 {
-		t.Fatalf("tool count = %d, want 45", count)
+	if count != 47 {
+		t.Fatalf("tool count = %d, want 47", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -260,6 +261,26 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		ID string `json:"id"`
 	}
 	decodeText(t, callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "Second"}), &second)
+	linked := callTool(t, session, "link_tickets", map[string]any{"from": ticket.ID, "to": second.ID, "type": "blocks"})
+	if linked.IsError {
+		t.Fatalf("link tickets: %#v", linked)
+	}
+	var linkedTicket struct {
+		Links []struct {
+			Label string `json:"label"`
+		} `json:"links"`
+	}
+	decodeText(t, callTool(t, session, "get_ticket", map[string]any{"id": ticket.ID}), &linkedTicket)
+	if len(linkedTicket.Links) != 1 || linkedTicket.Links[0].Label != "blocks" {
+		t.Fatalf("get_ticket links=%+v", linkedTicket.Links)
+	}
+	var linkID string
+	if err := database.QueryRow("SELECT id FROM ticket_link WHERE from_ticket_id=? AND to_ticket_id=?", ticket.ID, second.ID).Scan(&linkID); err != nil {
+		t.Fatal(err)
+	}
+	if result := callTool(t, session, "unlink_tickets", map[string]any{"link_id": linkID}); result.IsError {
+		t.Fatalf("unlink tickets: %#v", result)
+	}
 	callTool(t, session, "move_ticket", map[string]any{"id": second.ID, "status": "Done"})
 	var order string
 	if err := database.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, doneID).Scan(&order); err != nil {

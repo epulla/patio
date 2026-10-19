@@ -83,6 +83,14 @@ type createTicketArgs struct {
 type ticketIDArgs struct {
 	ID string `json:"id" jsonschema:"Ticket UUID or code"`
 }
+type ticketLinkArgs struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Type string `json:"type"`
+}
+type unlinkTicketArgs struct {
+	LinkID string `json:"link_id"`
+}
 type skillArgs struct {
 	Name string `json:"name" jsonschema:"Skill name"`
 }
@@ -360,8 +368,14 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "create_ticket", "Create a ticket", h, func(a createTicketArgs) request {
 		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/tickets", a}
 	})
-	addGeneric(s, "get_ticket", "Get ticket by UUID or code", h, func(a ticketIDArgs) request {
+	addGeneric(s, "get_ticket", "Get ticket by UUID or code, including links", h, func(a ticketIDArgs) request {
 		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID), nil}
+	})
+	addGeneric(s, "link_tickets", "Link two tickets with blocks, relates, or duplicates", h, func(a ticketLinkArgs) request {
+		return request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.From) + "/links", map[string]string{"to_ticket_id": a.To, "type": a.Type}}
+	})
+	addGeneric(s, "unlink_tickets", "Remove a ticket link", h, func(a unlinkTicketArgs) request {
+		return request{http.MethodDelete, "/api/ticket-links/" + url.PathEscape(a.LinkID), nil}
 	})
 	addGeneric(s, "update_ticket", "Update provided ticket fields", h, func(a updateTicketArgs) request {
 		return request{http.MethodPut, "/api/tickets/" + url.PathEscape(a.ID), a}
