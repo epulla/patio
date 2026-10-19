@@ -16,6 +16,18 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+func TestValidateAskUser(t *testing.T) {
+	valid := askUserArgs{Questions: []askUserQuestion{{Header: "Scope", Question: "Choose scope", Options: []askUserOption{{Label: "Small"}, {Label: "Full"}}}}}
+	if err := validateAskUser(valid); err != nil {
+		t.Fatalf("valid questions rejected: %v", err)
+	}
+	for _, input := range []askUserArgs{{}, {Questions: []askUserQuestion{{Header: "Only", Question: "Pick", Options: []askUserOption{{Label: "One"}}}}}} {
+		if err := validateAskUser(input); err == nil {
+			t.Fatalf("invalid questions accepted: %+v", input)
+		}
+	}
+}
+
 func TestMCPToolsAndAudit(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	database, err := db.Open(dbPath)
@@ -60,6 +72,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
+		"ask_user": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -77,8 +90,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 47 {
-		t.Fatalf("tool count = %d, want 47", count)
+	if count != 48 {
+		t.Fatalf("tool count = %d, want 48", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)

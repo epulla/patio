@@ -246,6 +246,42 @@ type approveArgs struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 }
 
+type askUserOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+type askUserQuestion struct {
+	Header   string          `json:"header"`
+	Question string          `json:"question"`
+	Options  []askUserOption `json:"options"`
+	Multiple bool            `json:"multiple,omitempty"`
+}
+
+type askUserArgs struct {
+	Questions []askUserQuestion `json:"questions"`
+}
+
+func validateAskUser(in askUserArgs) error {
+	if len(in.Questions) < 1 || len(in.Questions) > 7 {
+		return fmt.Errorf("questions must contain 1 to 7 items")
+	}
+	for i, q := range in.Questions {
+		if strings.TrimSpace(q.Header) == "" || strings.TrimSpace(q.Question) == "" {
+			return fmt.Errorf("question %d requires header and question", i+1)
+		}
+		if len(q.Options) < 2 || len(q.Options) > 6 {
+			return fmt.Errorf("question %d must have 2 to 6 options", i+1)
+		}
+		for _, option := range q.Options {
+			if strings.TrimSpace(option.Label) == "" || len([]rune(option.Label)) > 40 {
+				return fmt.Errorf("question %d option labels must be 1 to 40 characters", i+1)
+			}
+		}
+	}
+	return nil
+}
+
 type ApprovalOptions struct {
 	DB           *sql.DB
 	ChatID       string
@@ -453,6 +489,12 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	addSkillTools(s, h, database, skills)
+	sdk.AddTool[askUserArgs, any](s, &sdk.Tool{Name: "ask_user", Description: "Ask the user multiple-choice questions in an interactive chat. Free-text answers are always allowed. Do not use in scheduled or unattended runs.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"questions": map[string]any{"type": "array", "minItems": 1, "maxItems": 7}}, "required": []string{"questions"}}}, func(_ context.Context, _ *sdk.CallToolRequest, in askUserArgs) (*sdk.CallToolResult, any, error) {
+		if err := validateAskUser(in); err != nil {
+			return nil, nil, err
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "Questions shown to the user. End your turn now and wait for their reply."}}}, nil, nil
+	})
 	addQueryTools(s, database)
 	if approval != nil {
 		if approval.Timeout == 0 {
