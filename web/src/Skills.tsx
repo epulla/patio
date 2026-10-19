@@ -33,9 +33,18 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
   const [sort, setSort] = useState<SkillSort>(() =>
     localStorage.getItem("skill-sort") === "name" ? "name" : "recent",
   );
+  const [kind, setKind] = useState<Skill["kind"]>(() =>
+    localStorage.getItem("skill-tab") === "memory" ? "memory" : "skill",
+  );
   const [error, setError] = useState<unknown>();
   const [reload, setReload] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const shown = skills?.filter((skill) => skill.kind === kind);
+
+  function chooseKind(value: Skill["kind"]) {
+    localStorage.setItem("skill-tab", value);
+    setKind(value);
+  }
 
   useEffect(() => {
     api
@@ -95,7 +104,9 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
       <SkillEditor
         key={id}
         skill={skill}
+        defaultKind={kind}
         onSaved={(saved) => {
+          chooseKind(saved.kind);
           changed();
           if (!skill) navigate("/ai/skills");
         }}
@@ -112,23 +123,40 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
           <h1>Skills</h1>
         </div>
         <div className="actions">
-          <button onClick={() => fileInput.current?.click()}>
-            <Icon name="upload" /> Import SKILL.md
-          </button>
+          {kind === "skill" && (
+            <button onClick={() => fileInput.current?.click()}>
+              <Icon name="upload" /> Import SKILL.md
+            </button>
+          )}
           <input ref={fileInput} type="file" accept=".md,text/markdown" hidden onChange={importFile} />
           <button className="primary" onClick={() => navigate("/ai/skills/new")}>
-            <Icon name="plus" /> New skill
+            <Icon name="plus" /> New {kind}
           </button>
         </div>
       </div>
+      <div className="tabs" role="tablist">
+        {(["skill", "memory"] as const).map((value) => (
+          <button key={value} role="tab" aria-selected={kind === value} onClick={() => chooseKind(value)}>
+            {value === "skill" ? "Skills" : "Memory"}
+          </button>
+        ))}
+      </div>
       <p className="muted">
-        Enabled skills are offered to every chat. The model reads each skill's description and loads the
-        instructions when a task matches. Memories are preferences and facts every chat follows; the model
-        saves them when you correct it. Changes apply to new chats.
+        {kind === "skill"
+          ? "Skills are how-to instructions for a kind of task. Every chat sees each enabled skill's name and description, and the model loads the full instructions only when a task matches."
+          : "Memories are your preferences and facts. Every chat sees each enabled memory and follows it. The model saves new ones when you correct it or ask it to remember something."}{" "}
+        Changes apply to new chats.
       </p>
       <ErrorText error={error} />
 
-      {skills?.length === 0 && (
+      {shown?.length === 0 && kind === "memory" && (
+        <section className="panel skill-empty">
+          <h2>No memories yet</h2>
+          <p className="muted">Tell the model "remember that…" in any chat, or add one here.</p>
+        </section>
+      )}
+
+      {shown?.length === 0 && kind === "skill" && (
         <section className="panel skill-empty">
           <span className="skill-empty-mark" aria-hidden="true">
             <Icon name="sparkles" />
@@ -152,10 +180,12 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
         </section>
       )}
 
-      {!!skills?.length && (
+      {!!shown?.length && (
         <div className="list-toolbar">
           <span className="muted">
-            {skills.length} skill{skills.length === 1 ? "" : "s"}
+            {kind === "skill"
+              ? `${shown.length} skill${shown.length === 1 ? "" : "s"}`
+              : `${shown.length} memor${shown.length === 1 ? "y" : "ies"}`}
           </span>
           <SortMenu
             value={sort}
@@ -167,16 +197,15 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
         </div>
       )}
 
-      {!!skills?.length && (
-        <ul className="panel skill-list" aria-label="Skills">
-          {[...skills]
+      {!!shown?.length && (
+        <ul className="panel skill-list" aria-label={kind === "skill" ? "Skills" : "Memories"}>
+          {shown
             .sort((a, b) =>
               sort === "name" ? a.name.localeCompare(b.name) : b.created_at.localeCompare(a.created_at),
             )
             .map((skill) => (
             <li key={skill.id} className={skill.enabled ? "" : "disabled"}>
               <button className="skill-item" onClick={() => navigate(`/ai/skills/${skill.id}`)}>
-                {skill.kind === "memory" && <span className="eyebrow">Memory</span>}
                 <span className="skill-name">{skill.name}</span>
                 <span className="skill-description">{skill.description}</span>
               </button>
@@ -276,10 +305,12 @@ function BackLink() {
 
 function SkillEditor({
   skill,
+  defaultKind,
   onSaved,
   onDeleted,
 }: {
   skill?: Skill;
+  defaultKind: Skill["kind"];
   onSaved: (skill: Skill) => void;
   onDeleted: () => void;
 }) {
@@ -287,7 +318,7 @@ function SkillEditor({
   const [description, setDescription] = useState(skill?.description ?? "");
   const [body, setBody] = useState(skill?.body ?? "");
   const [enabled, setEnabled] = useState(skill?.enabled ?? true);
-  const [kind, setKind] = useState<Skill["kind"]>(skill?.kind ?? "skill");
+  const [kind, setKind] = useState<Skill["kind"]>(skill?.kind ?? defaultKind);
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
   const dirty =
@@ -333,7 +364,7 @@ function SkillEditor({
     <div className="stack">
       <BackLink />
       <div className="page-heading">
-        <h1>{skill ? skill.name : "New skill"}</h1>
+        <h1>{skill ? skill.name : `New ${kind}`}</h1>
       </div>
     <form className="panel skill-editor" onSubmit={submit} aria-label={skill ? `Edit ${skill.name}` : "New skill"}>
       <div className="skill-fields">
