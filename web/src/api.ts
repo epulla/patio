@@ -68,6 +68,18 @@ export type Ticket = {
   assignee_id: string | null;
 };
 export type SearchTicket = Ticket & { board_name: string; status_name: string };
+export type LinkType = "blocks" | "relates" | "duplicates";
+export type TicketLink = {
+  id: string;
+  type: LinkType;
+  direction: "outgoing" | "incoming";
+  label: string;
+  other_ticket_id: string;
+  other_code: string;
+  other_title: string;
+  board_id: string;
+  status: string;
+};
 export type CalendarItem = {
   id: string;
   kind: "event" | "reminder";

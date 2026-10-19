@@ -7,7 +7,10 @@ import {
   type Comment,
   type Connector,
   type History,
+  type LinkType,
+  type SearchTicket,
   type Ticket,
+  type TicketLink,
   type Transition,
   type User,
 } from "./api";
@@ -15,7 +18,7 @@ import { type Config, ErrorText, formatDate, navigate } from "./App";
 import { linkText } from "./ChatDock";
 import { createChatWithDefaults, NewChatDialog, startContextKey, type PageContext } from "./Chats";
 import DueBadge, { DueDateInput } from "./DueBadge";
-import { Icon } from "./icons";
+import { Icon, IconButton } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
@@ -35,6 +38,7 @@ export default function TicketDetail({
   const [history, setHistory] = useState<History[]>([]);
   const [transitions, setTransitions] = useState<Transition[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [links, setLinks] = useState<TicketLink[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<unknown>();
   const [form, setForm] = useState({
@@ -64,16 +68,18 @@ export default function TicketDetail({
         status: current.status_id,
         assignee: current.assignee_id || "",
       }));
-      const [boardData, ticketHistory, ticketTransitions, ticketComments] = await Promise.all([
+      const [boardData, ticketHistory, ticketTransitions, ticketComments, ticketLinks] = await Promise.all([
         api.get<BoardData>(`/api/boards/${current.board_id}/data`),
         api.get<History[]>(`/api/tickets/${current.id}/history`),
         api.get<Transition[]>(`/api/tickets/${current.id}/transitions`),
         api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
+        api.get<TicketLink[]>(`/api/tickets/${current.id}/links`),
       ]);
       setBoard(boardData);
       setHistory(ticketHistory);
       setTransitions(ticketTransitions);
       setComments(ticketComments);
+      setLinks(ticketLinks);
       if (config.show_hidden) {
         setUsers(await api.get<User[]>("/api/users"));
       }
@@ -204,6 +210,7 @@ export default function TicketDetail({
                 onBlur={() => save({ description: form.description })}
               />
             </div>
+            <Links ticket={ticket} links={links} onReload={load} onError={setError} />
           </div>
           <aside className="ticket-side">
             <div className="field">
@@ -369,6 +376,129 @@ function Comments({
           <Markdown text={comment.content} />
         </div>
       ))}
+    </section>
+  );
+}
+
+// Inverse labels are stored as the other ticket's outgoing link.
+const linkChoices: { label: string; type: LinkType; inverse: boolean }[] = [
+  { label: "blocks", type: "blocks", inverse: false },
+  { label: "is blocked by", type: "blocks", inverse: true },
+  { label: "relates to", type: "relates", inverse: false },
+  { label: "duplicates", type: "duplicates", inverse: false },
+  { label: "is duplicated by", type: "duplicates", inverse: true },
+];
+
+function Links({
+  ticket,
+  links,
+  onReload,
+  onError,
+}: {
+  ticket: Ticket;
+  links: TicketLink[];
+  onReload: () => void;
+  onError: (reason: unknown) => void;
+}) {
+  const [choice, setChoice] = useState(0);
+  const [code, setCode] = useState("");
+  const [tickets, setTickets] = useState<SearchTicket[]>();
+  const listID = `ticket-link-options-${ticket.id}`;
+  async function loadTickets() {
+    if (tickets) return;
+    try {
+      setTickets(await api.get<SearchTicket[]>("/api/tickets/search?sort=updated"));
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+  async function add() {
+    const other = code.trim();
+    if (!other) return;
+    const { type, inverse } = linkChoices[choice];
+    try {
+      if (inverse) await api.post(`/api/tickets/${encodeURIComponent(other)}/links`, { to_ticket_id: ticket.id, type });
+      else await api.post(`/api/tickets/${ticket.id}/links`, { to_ticket_id: other, type });
+      setCode("");
+      onReload();
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+  async function remove(link: TicketLink) {
+    try {
+      await api.delete(`/api/ticket-links/${link.id}`);
+      onReload();
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+  const labels = [...new Set(links.map((link) => link.label))];
+  return (
+    <section className="field ticket-link-section">
+      Links
+      {labels.map((label) => (
+        <div key={label} className="ticket-link-group">
+          <span className="ticket-link-label">{label}</span>
+          {links
+            .filter((link) => link.label === label)
+            .map((link) => (
+              <div key={link.id} className="ticket-link-row">
+                <a
+                  href={`/tickets/${link.other_ticket_id}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate(`/tickets/${link.other_ticket_id}`);
+                  }}
+                >
+                  <span className="ticket-code">{link.other_code}</span> {link.other_title}
+                </a>
+                <span className="ticket-link-status">{link.status}</span>
+                <IconButton
+                  className="ghost"
+                  icon="trash"
+                  label={`Remove link to ${link.other_code}`}
+                  onClick={() => remove(link)}
+                />
+              </div>
+            ))}
+        </div>
+      ))}
+      <form
+        className="ticket-link-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          add();
+        }}
+      >
+        <select aria-label="Link type" value={choice} onChange={(event) => setChoice(Number(event.target.value))}>
+          {linkChoices.map((item, index) => (
+            <option key={item.label} value={index}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <input
+          aria-label="Ticket code"
+          placeholder="Ticket code, e.g. PROJ-5"
+          list={listID}
+          value={code}
+          onFocus={loadTickets}
+          onChange={(event) => setCode(event.target.value)}
+        />
+        <datalist id={listID}>
+          {tickets
+            ?.filter((item) => item.id !== ticket.id)
+            .map((item) => (
+              <option key={item.id} value={item.code}>
+                {item.title}
+              </option>
+            ))}
+        </datalist>
+        <button type="submit" disabled={!code.trim()}>
+          <Icon name="plus" /> Link
+        </button>
+      </form>
     </section>
   );
 }

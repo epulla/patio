@@ -1442,6 +1442,44 @@ label.days-field {
 .comment div {
   margin-top: 8px;
 }
+.ticket-main > .ticket-link-section {
+  flex: none;
+}
+.ticket-link-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ticket-link-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ticket-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+.ticket-link-row a {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticket-link-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ticket-link-form {
+  display: flex;
+  gap: 8px;
+  font-weight: 400;
+}
+.ticket-link-form input {
+  flex: 1;
+  min-width: 0;
+}
 
 /* Calendar */
 .calendar-page {
