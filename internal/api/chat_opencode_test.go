@@ -821,6 +821,9 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 	if port == "" || json.Unmarshal([]byte(configRaw), &config) != nil {
 		return nil, fmt.Errorf("invalid v2 config or missing port")
 	}
+	if len(config.Permissions) == 0 || config.Permissions[0].Action != "*" || config.Permissions[0].Resource != "*" || config.Permissions[0].Effect != "ask" {
+		return nil, fmt.Errorf("v2 permissions must start with a catch-all ask: %#v", config.Permissions)
+	}
 	wantPermissions := map[string]string{"edit": "ask", "shell": "ask", "webfetch": "ask", "question": "deny"}
 	for _, rule := range config.Permissions {
 		if rule.Resource == "*" {

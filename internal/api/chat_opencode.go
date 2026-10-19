@@ -201,7 +201,9 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	}
 	if major >= 2 {
 		configValue = map[string]any{
+			// opencode applies the last matching rule and allows unlisted actions, so the catch-all goes first.
 			"permissions": []map[string]string{
+				{"action": "*", "resource": "*", "effect": "ask"},
 				{"action": "edit", "resource": "*", "effect": "ask"},
 				{"action": "shell", "resource": "*", "effect": "ask"},
 				{"action": "webfetch", "resource": "*", "effect": "ask"},
