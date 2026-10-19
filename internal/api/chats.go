@@ -967,6 +967,130 @@ func (s *Server) answerChatApproval(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Answers []struct {
+			Header   string   `json:"header"`
+			Selected []string `json:"selected"`
+			Other    string   `json:"other,omitempty"`
+		} `json:"answers"`
+	}
+	if decode(r, &in) != nil || len(in.Answers) == 0 {
+		errw(w, 400, "answers required")
+		return
+	}
+	id, messageID := idParam(r, "id"), idParam(r, "messageID")
+	var answered bool
+	var content string
+	err := s.db.QueryRow(`SELECT answered,content FROM chat_message WHERE id=? AND chat_id=? AND role='question'`, messageID, id).Scan(&answered, &content)
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, 404, "question not found")
+		return
+	}
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	if answered {
+		errw(w, 409, "question already answered")
+		return
+	}
+	if s.chats.Running(id) {
+		errw(w, 409, errChatTurnRunning.Error())
+		return
+	}
+	var questions struct {
+		Questions []struct {
+			Header   string `json:"header"`
+			Multiple bool   `json:"multiple"`
+			Options  []struct {
+				Label string `json:"label"`
+			} `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(content), &questions); err != nil {
+		errw(w, 500, "invalid stored question")
+		return
+	}
+	var lines []string
+	for _, answer := range in.Answers {
+		var matched *struct {
+			Header   string `json:"header"`
+			Multiple bool   `json:"multiple"`
+			Options  []struct {
+				Label string `json:"label"`
+			} `json:"options"`
+		}
+		for i := range questions.Questions {
+			if questions.Questions[i].Header == answer.Header {
+				matched = &questions.Questions[i]
+				break
+			}
+		}
+		if matched == nil {
+			errw(w, 400, "unknown question header")
+			return
+		}
+		if !matched.Multiple && len(answer.Selected) > 1 {
+			errw(w, 400, "question allows one selection")
+			return
+		}
+		for _, selected := range answer.Selected {
+			valid := false
+			for _, option := range matched.Options {
+				if option.Label == selected {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errw(w, 400, "unknown selected option")
+				return
+			}
+		}
+		value := strings.Join(answer.Selected, ", ")
+		if answer.Other != "" {
+			if value != "" {
+				value += ", "
+			}
+			value += "Other — " + answer.Other
+		}
+		if value == "" {
+			errw(w, 400, "answer selection required")
+			return
+		}
+		lines = append(lines, answer.Header+": "+value)
+	}
+	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, 404, "chat not found")
+		return
+	}
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	if c.ConnectorID == nil {
+		errw(w, 400, errChatConnectorMissing.Error())
+		return
+	}
+	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
+	if err != nil {
+		errw(w, 400, err.Error())
+		return
+	}
+	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: strings.Join(lines, "\n")})
+	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
+		errw(w, 409, err.Error())
+		return
+	}
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	write(w, http.StatusAccepted, message)
+}
+
 func ChatExists(database *sql.DB, id string) (bool, error) {
 	var exists int
 	err := database.QueryRow(`SELECT 1 FROM chat WHERE id=?`, id).Scan(&exists)
@@ -1020,6 +1144,11 @@ func InsertChatMessageWithAttachments(database *sql.DB, chatID, role, content st
 	}
 	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now(), Attachments: attachments}
 	err = txrun(database, func(tx *sql.Tx) error {
+		if role == "user" {
+			if _, err := tx.Exec(`UPDATE chat_message SET answered=1 WHERE chat_id=? AND role='question' AND answered=0`, chatID); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments) VALUES(?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, m.CreatedAt, string(encoded)); err != nil {
 			return err
 		}
