@@ -190,6 +190,27 @@ func TestSettingsDefaultsClearModelWhenConnectorChanges(t *testing.T) {
 	}
 }
 
+func TestSpanishNotificationTitleAndLanguageValidation(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", map[string]string{"language": "es"}, nil); code != http.StatusOK {
+		t.Fatalf("set Spanish language = %d", code)
+	}
+	s := handler.(*Server)
+	if err := s.Notify("chat", "Reply finished: Test", "", "/ai/chats/test", false); err != nil {
+		t.Fatal(err)
+	}
+	var title string
+	if err := database.QueryRow(`SELECT title FROM notification ORDER BY rowid DESC LIMIT 1`).Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Respuesta finalizada: Test" {
+		t.Fatalf("Spanish title = %q", title)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/settings/defaults", map[string]string{"language": "fr"}, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid language status = %d", code)
+	}
+}
+
 func TestSettingsAboutAndReveal(t *testing.T) {
 	database, handler, root := chatAPI(t)
 	server := handler.(*Server)

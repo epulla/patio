@@ -22,6 +22,7 @@ type notification struct {
 }
 
 func (s *Server) Notify(kind, title, body, link string, native bool) error {
+	title, body = notificationText(s.db, title), notificationText(s.db, body)
 	_, err := s.db.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, uid(), kind, title, body, link, now())
 	if err != nil {
 		return err
@@ -41,7 +42,8 @@ func NotifyScheduledQuestion(database *sql.DB, chatID string) error {
 	if err != nil {
 		return err
 	}
-	_, err = database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,'chat',?,'',?,?)`, uid(), title+" has a question", "/ai/chats/"+chatID, now())
+	title = notificationText(database, title+" has a question")
+	_, err = database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,'chat',?,'',?,?)`, uid(), title, "/ai/chats/"+chatID, now())
 	return err
 }
 
