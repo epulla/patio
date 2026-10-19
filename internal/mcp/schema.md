@@ -23,7 +23,7 @@ erDiagram
   chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments; INTEGER answered }
   chat_approval { TEXT id; TEXT chat_id; TEXT tool_name; TEXT input_json; TEXT status; TEXT created_at; TEXT answered_at; INTEGER auto }
   mcp_server { TEXT id; TEXT name; TEXT kind; TEXT command; TEXT args_json; TEXT env_keys_json; TEXT url; TEXT auth; INTEGER enabled; TEXT created_at }
-  skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at }
+  skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at; TEXT kind }
   app_setting { TEXT key; TEXT value }
   scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT model; TEXT folder; INTEGER thinking; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
   scheduled_task_run { TEXT id; TEXT task_id; TEXT chat_id; TEXT scheduled_for; TEXT status; INTEGER late; TEXT error; TEXT created_at }

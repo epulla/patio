@@ -18,6 +18,7 @@ type Skill struct {
 	Description string `json:"description"`
 	Body        string `json:"body"`
 	Enabled     bool   `json:"enabled"`
+	Kind        string `json:"kind"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
@@ -27,6 +28,7 @@ type skillInput struct {
 	Description *string `json:"description"`
 	Body        *string `json:"body"`
 	Enabled     *bool   `json:"enabled"`
+	Kind        *string `json:"kind"`
 }
 
 type skillConfig struct {
@@ -34,6 +36,7 @@ type skillConfig struct {
 	Description string
 	Body        string
 	Enabled     bool
+	Kind        string
 }
 
 func validateSkill(config skillConfig) error {
@@ -61,15 +64,18 @@ func validateSkill(config skillConfig) error {
 	if len(config.Body) > maxSkillBody {
 		return errors.New("body must be at most 64 KB")
 	}
+	if config.Kind != "skill" && config.Kind != "memory" {
+		return errors.New("kind must be skill or memory")
+	}
 	return nil
 }
 
-const skillSelect = `SELECT id,name,description,body,enabled,created_at,updated_at FROM skill`
+const skillSelect = `SELECT id,name,description,body,enabled,kind,created_at,updated_at FROM skill`
 
 func scanSkill(row interface{ Scan(...any) error }) (Skill, error) {
 	var skill Skill
 	var enabled int
-	err := row.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.Body, &enabled, &skill.CreatedAt, &skill.UpdatedAt)
+	err := row.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.Body, &enabled, &skill.Kind, &skill.CreatedAt, &skill.UpdatedAt)
 	skill.Enabled = enabled != 0
 	return skill, err
 }
@@ -141,7 +147,7 @@ func (s *Server) createSkill(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, "invalid skill JSON")
 		return
 	}
-	config := skillConfig{Enabled: true}
+	config := skillConfig{Enabled: true, Kind: "skill"}
 	if in.Name != nil {
 		config.Name = *in.Name
 	}
@@ -153,6 +159,9 @@ func (s *Server) createSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Enabled != nil {
 		config.Enabled = *in.Enabled
+	}
+	if in.Kind != nil {
+		config.Kind = *in.Kind
 	}
 	if err := validateSkill(config); err != nil {
 		errw(w, http.StatusBadRequest, err.Error())
@@ -173,7 +182,7 @@ func (s *Server) createSkill(w http.ResponseWriter, r *http.Request) {
 func (s *Server) insertSkill(config skillConfig) (Skill, error) {
 	timestamp := now()
 	id := uid()
-	_, err := s.db.Exec(`INSERT INTO skill(id,name,description,body,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, id, config.Name, config.Description, config.Body, config.Enabled, timestamp, timestamp)
+	_, err := s.db.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, id, config.Name, config.Description, config.Body, config.Enabled, config.Kind, timestamp, timestamp)
 	if err != nil {
 		return Skill{}, err
 	}
@@ -200,7 +209,7 @@ func (s *Server) updateSkill(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	config := skillConfig{Name: old.Name, Description: old.Description, Body: old.Body, Enabled: old.Enabled}
+	config := skillConfig{Name: old.Name, Description: old.Description, Body: old.Body, Enabled: old.Enabled, Kind: old.Kind}
 	if in.Name != nil {
 		config.Name = *in.Name
 	}
@@ -213,11 +222,14 @@ func (s *Server) updateSkill(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		config.Enabled = *in.Enabled
 	}
+	if in.Kind != nil {
+		config.Kind = *in.Kind
+	}
 	if err := validateSkill(config); err != nil {
 		errw(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_, err = s.db.Exec(`UPDATE skill SET name=?,description=?,body=?,enabled=?,updated_at=? WHERE id=?`, config.Name, config.Description, config.Body, config.Enabled, now(), id)
+	_, err = s.db.Exec(`UPDATE skill SET name=?,description=?,body=?,enabled=?,kind=?,updated_at=? WHERE id=?`, config.Name, config.Description, config.Body, config.Enabled, config.Kind, now(), id)
 	if err != nil {
 		if isSkillDuplicate(err) {
 			errw(w, http.StatusConflict, "skill name already exists")
@@ -298,7 +310,7 @@ func parseSkill(text string) (skillConfig, error) {
 	if end < 0 {
 		return skillConfig{}, errors.New("SKILL.md front matter is missing closing ---")
 	}
-	config := skillConfig{Enabled: true}
+	config := skillConfig{Enabled: true, Kind: "skill"}
 	nameSeen, descriptionSeen := false, false
 	for i := 1; i < end; i++ {
 		line := lines[i]

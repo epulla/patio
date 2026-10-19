@@ -4,8 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 )
+
+const maxIndexedMemories = 30
 
 const (
 	chatLinkRules  = "In patio, reply in Markdown. Link tickets as [CODE: Title](/tickets/<ticket id>), boards as [Board name](/boards/<board id>), and chats as [Chat title](/ai/chats/<chat id>), using returned IDs only; never invent IDs."
@@ -42,15 +45,31 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 	return ChatSystemPrompt(enabled, chatID, skills), nil
 }
 
-// skillIndex lists each skill with a short trigger; full instructions stay behind load_skill.
+// skillIndex lists each skill and memory with a short trigger; full text stays behind load_skill.
 func skillIndex(skills []Skill) string {
-	if len(skills) == 0 {
-		return ""
-	}
-	var index strings.Builder
-	index.WriteString(" Patio skills (call load_skill with the name before a task one covers):")
+	var tasks, memories []Skill
 	for _, skill := range skills {
-		fmt.Fprintf(&index, "\n- %s: %s", skill.Name, skillTrigger(skill.Description))
+		if skill.Kind == "memory" {
+			memories = append(memories, skill)
+		} else {
+			tasks = append(tasks, skill)
+		}
+	}
+	// Cap memories to bound the prompt; the most recently updated ones win.
+	slices.SortFunc(memories, func(a, b Skill) int { return strings.Compare(b.UpdatedAt, a.UpdatedAt) })
+	memories = memories[:min(len(memories), maxIndexedMemories)]
+	var index strings.Builder
+	if len(tasks) > 0 {
+		index.WriteString(" Patio skills (call load_skill with the name before a task one covers):")
+		for _, skill := range tasks {
+			fmt.Fprintf(&index, "\n- %s: %s", skill.Name, skillTrigger(skill.Description))
+		}
+	}
+	if len(memories) > 0 {
+		index.WriteString("\n Patio memories (the user's saved preferences and facts; follow them, and call load_skill with the name for details):")
+		for _, memory := range memories {
+			fmt.Fprintf(&index, "\n- %s: %s", memory.Name, skillTrigger(memory.Description))
+		}
 	}
 	return index.String()
 }

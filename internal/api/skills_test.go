@@ -9,7 +9,7 @@ import (
 )
 
 func TestSkillValidation(t *testing.T) {
-	valid := skillConfig{Name: "valid-name-2", Description: "a description", Body: "body"}
+	valid := skillConfig{Name: "valid-name-2", Description: "a description", Body: "body", Kind: "skill"}
 	tests := []struct {
 		name   string
 		config skillConfig
@@ -30,6 +30,8 @@ func TestSkillValidation(t *testing.T) {
 		{"description whitespace counts toward limit", func() skillConfig { c := valid; c.Description = strings.Repeat("x", 1024) + " "; return c }(), false},
 		{"64 KB body", func() skillConfig { c := valid; c.Body = strings.Repeat("x", maxSkillBody); return c }(), true},
 		{"over 64 KB body", func() skillConfig { c := valid; c.Body = strings.Repeat("x", maxSkillBody+1); return c }(), false},
+		{"memory kind", func() skillConfig { c := valid; c.Kind = "memory"; return c }(), true},
+		{"unknown kind", func() skillConfig { c := valid; c.Kind = "note"; return c }(), false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -48,11 +50,11 @@ func TestParseSkill(t *testing.T) {
 		want    skillConfig
 		wantErr string
 	}{
-		{"quoted values", "---\nname: 'code-review'\ndescription: \"Review: carefully\"\n---\n\nBody\n", skillConfig{Name: "code-review", Description: "Review: carefully", Body: "Body\n", Enabled: true}, ""},
-		{"folded description", "---\nname: helper\ndescription: >\n  First line\n  second line\n---\n\nText", skillConfig{Name: "helper", Description: "First line second line", Body: "Text", Enabled: true}, ""},
-		{"literal description", "---\nname: helper\ndescription: |\n  First line\n  second line\n---\n\nText", skillConfig{Name: "helper", Description: "First line\nsecond line", Body: "Text", Enabled: true}, ""},
-		{"CRLF", "---\r\nname: crlf\r\ndescription: works\r\n---\r\n\r\nBody", skillConfig{Name: "crlf", Description: "works", Body: "Body", Enabled: true}, ""},
-		{"BOM", "\xef\xbb\xbf---\nname: bom\ndescription: works\n---\n\nBody", skillConfig{Name: "bom", Description: "works", Body: "Body", Enabled: true}, ""},
+		{"quoted values", "---\nname: 'code-review'\ndescription: \"Review: carefully\"\n---\n\nBody\n", skillConfig{Name: "code-review", Description: "Review: carefully", Body: "Body\n", Enabled: true, Kind: "skill"}, ""},
+		{"folded description", "---\nname: helper\ndescription: >\n  First line\n  second line\n---\n\nText", skillConfig{Name: "helper", Description: "First line second line", Body: "Text", Enabled: true, Kind: "skill"}, ""},
+		{"literal description", "---\nname: helper\ndescription: |\n  First line\n  second line\n---\n\nText", skillConfig{Name: "helper", Description: "First line\nsecond line", Body: "Text", Enabled: true, Kind: "skill"}, ""},
+		{"CRLF", "---\r\nname: crlf\r\ndescription: works\r\n---\r\n\r\nBody", skillConfig{Name: "crlf", Description: "works", Body: "Body", Enabled: true, Kind: "skill"}, ""},
+		{"BOM", "\xef\xbb\xbf---\nname: bom\ndescription: works\n---\n\nBody", skillConfig{Name: "bom", Description: "works", Body: "Body", Enabled: true, Kind: "skill"}, ""},
 		{"missing name", "---\ndescription: works\n---\nbody", skillConfig{}, "missing name"},
 		{"missing description", "---\nname: helper\n---\nbody", skillConfig{}, "missing description"},
 		{"no front matter", "name: helper\ndescription: works", skillConfig{}, "start with front matter"},

@@ -13,6 +13,7 @@ export type Skill = {
   description: string;
   body: string;
   enabled: boolean;
+  kind: "skill" | "memory";
   created_at: string;
   updated_at: string;
 };
@@ -122,7 +123,8 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
       </div>
       <p className="muted">
         Enabled skills are offered to every chat. The model reads each skill's description and loads the
-        instructions when a task matches. Changes apply to new chats.
+        instructions when a task matches. Memories are preferences and facts every chat follows; the model
+        saves them when you correct it. Changes apply to new chats.
       </p>
       <ErrorText error={error} />
 
@@ -174,6 +176,7 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
             .map((skill) => (
             <li key={skill.id} className={skill.enabled ? "" : "disabled"}>
               <button className="skill-item" onClick={() => navigate(`/ai/skills/${skill.id}`)}>
+                {skill.kind === "memory" && <span className="eyebrow">Memory</span>}
                 <span className="skill-name">{skill.name}</span>
                 <span className="skill-description">{skill.description}</span>
               </button>
@@ -284,6 +287,7 @@ function SkillEditor({
   const [description, setDescription] = useState(skill?.description ?? "");
   const [body, setBody] = useState(skill?.body ?? "");
   const [enabled, setEnabled] = useState(skill?.enabled ?? true);
+  const [kind, setKind] = useState<Skill["kind"]>(skill?.kind ?? "skill");
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
   const dirty =
@@ -291,12 +295,13 @@ function SkillEditor({
     name !== skill.name ||
     description !== skill.description ||
     body !== skill.body ||
-    enabled !== skill.enabled;
+    enabled !== skill.enabled ||
+    kind !== skill.kind;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
-      const fields = { name: name.trim(), description: description.trim(), body, enabled };
+      const fields = { name: name.trim(), description: description.trim(), body, enabled, kind };
       const result = skill
         ? await api.put<Skill>(`/api/skills/${skill.id}`, fields)
         : await api.post<Skill>("/api/skills", fields);
@@ -304,6 +309,7 @@ function SkillEditor({
       setDescription(result.description);
       setBody(result.body);
       setEnabled(result.enabled);
+      setKind(result.kind);
       setError(undefined);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1500);
@@ -343,6 +349,13 @@ function SkillEditor({
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
+        </label>
+        <label>
+          Type
+          <select value={kind} onChange={(event) => setKind(event.target.value as Skill["kind"])}>
+            <option value="skill">Skill</option>
+            <option value="memory">Memory</option>
+          </select>
         </label>
         <label className="grow">
           Description

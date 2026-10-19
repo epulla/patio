@@ -98,6 +98,7 @@ type createSkillArgs struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Body        string `json:"body"`
+	Kind        string `json:"kind,omitempty" jsonschema:"skill (default) for task instructions, or memory for a durable user preference, correction, or fact"`
 }
 type updateSkillArgs struct {
 	Name        string  `json:"name"`
@@ -308,7 +309,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply."
+	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory, one-line description, body with why and how to apply) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
 	if !inApp {
 		persona, err := api.MartinPersonaEnabled(database)
 		if err != nil {
@@ -549,7 +550,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api.Skill) {
 	description := "No skills are enabled."
 	if len(skills) > 0 {
-		description = "Load a skill's instructions by name before doing a task it covers. Enabled skills are listed in the chat instructions."
+		description = "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions."
 	}
 	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills; optionally include disabled skills"}, func(_ context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
@@ -604,7 +605,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
 	})
-	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill"}, func(_ context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"},func(_ context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
 		data, err := doJSON(h, request{http.MethodPost, "/api/skills", in})
 		if err != nil {
 			if strings.Contains(err.Error(), "skill name already exists") {
