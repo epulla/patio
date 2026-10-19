@@ -1753,7 +1753,7 @@ function QuestionCard({
       }}
     >
       {questions.map((q, index) => (
-        <fieldset key={index} disabled={closed}>
+        <fieldset key={index} disabled={closed || disabled}>
           <legend>
             <span className="question-header">{q.header}</span> <strong>{q.question}</strong>
           </legend>
