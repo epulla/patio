@@ -35,6 +35,7 @@ const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const skippedTitle = "The previous run was still working, so this one didn't start.";
 const statusLabels: Record<ScheduledTaskRun["status"], string> = {
   running: "Running",
+  waiting: "Waiting for your answer",
   done: "Finished",
   failed: "Failed",
   skipped: "Skipped",

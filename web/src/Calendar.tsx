@@ -284,7 +284,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
 
 function ScheduledChip({ run, count }: { run: CalendarScheduled; count: number }) {
   const time = new Date(run.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const status = run.status === "skipped" ? "Skipped" : run.late ? "Ran late" : run.status === "failed" ? "Failed" : "";
+  const status = run.status === "skipped" ? "Skipped" : run.late ? "Ran late" : run.status === "failed" ? "Failed" : run.status === "waiting" ? "Waiting" : "";
   return (
     <button
       className="calendar-chip scheduled"

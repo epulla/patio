@@ -225,7 +225,7 @@ export type ScheduledTaskRun = {
   task_id: string;
   chat_id: string | null;
   scheduled_for: string;
-  status: "running" | "done" | "failed" | "skipped";
+  status: "running" | "waiting" | "done" | "failed" | "skipped";
   late: boolean;
   error: string;
   created_at: string;
