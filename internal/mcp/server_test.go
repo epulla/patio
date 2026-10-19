@@ -28,6 +28,88 @@ func TestValidateAskUser(t *testing.T) {
 	}
 }
 
+func TestAskUserToolStoresQuestionAndNotifiesScheduledRun(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "ask-user.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	server, err := NewServer(api.New(database, "ai", true, "dev", t.TempDir()), "dev", database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	client := sdk.NewClient(&sdk.Implementation{Name: "ask-user-test", Version: "1"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	chatID, scheduledChatID := "interactive-chat", "scheduled-chat"
+	for _, id := range []string{chatID, scheduledChatID} {
+		if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, id, id, "now", "now"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.Exec(`INSERT INTO scheduled_task(id,title,prompt,schedule,created_at,updated_at) VALUES('task','Daily report','prompt','* * * * *','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE chat SET scheduled_task_id='task' WHERE id=?`, scheduledChatID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO scheduled_task_run(id,task_id,chat_id,scheduled_for,status,created_at) VALUES('run','task',?,'now','running','now')`, scheduledChatID); err != nil {
+		t.Fatal(err)
+	}
+	questions := []map[string]any{{"header": "Scope", "question": "Which scope?", "options": []map[string]any{{"label": "Small"}, {"label": "Full"}}}}
+	call := func(id string) *sdk.CallToolResult {
+		return callTool(t, session, "ask_user", map[string]any{"chat_id": id, "questions": questions})
+	}
+	if result := call(chatID); result.IsError {
+		t.Fatalf("valid chat ask_user failed: %#v", result.Content)
+	}
+	var count, answered int
+	var role, content string
+	if err := database.QueryRow(`SELECT role,content,answered FROM chat_message WHERE chat_id=?`, chatID).Scan(&role, &content, &answered); err != nil {
+		t.Fatal(err)
+	}
+	var stored struct {
+		Questions []askUserQuestion `json:"questions"`
+		ChatID    string            `json:"chat_id"`
+	}
+	if err := json.Unmarshal([]byte(content), &stored); err != nil || role != "question" || answered != 0 || stored.ChatID != "" || len(stored.Questions) != 1 {
+		t.Fatalf("stored question role=%q answered=%d body=%q err=%v", role, answered, content, err)
+	}
+	for _, args := range []map[string]any{{"questions": questions}, {"chat_id": "missing-chat", "questions": questions}} {
+		result := callTool(t, session, "ask_user", args)
+		if !result.IsError {
+			t.Fatalf("invalid chat_id accepted: %#v", result)
+		}
+		text, ok := result.Content[0].(*sdk.TextContent)
+		if !ok || !strings.Contains(text.Text, "ask in plain text") {
+			if ok {
+				t.Fatalf("chat_id error does not guide plain-text fallback: %q", text.Text)
+			}
+			t.Fatalf("chat_id error does not guide plain-text fallback: %#v", result.Content)
+		}
+	}
+	if result := call(scheduledChatID); result.IsError {
+		t.Fatalf("scheduled ask_user failed: %#v", result.Content)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='question'`, scheduledChatID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("scheduled questions = %d, %v", count, err)
+	}
+	var kind, title, link string
+	if err := database.QueryRow(`SELECT kind,title,link FROM notification`).Scan(&kind, &title, &link); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "chat" || title != "Daily report has a question" || link != "/ai/chats/"+scheduledChatID {
+		t.Fatalf("scheduled question notification = %q %q %q", kind, title, link)
+	}
+}
+
 func TestMCPToolsAndAudit(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	database, err := db.Open(dbPath)

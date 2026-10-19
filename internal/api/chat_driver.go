@@ -432,42 +432,6 @@ func (m *chatManager) emitTool(id, summary string) error {
 	return nil
 }
 
-func (m *chatManager) emitToolCall(id, name, input string) error {
-	if !isPatioAskUser(name) {
-		return m.emitTool(id, strings.TrimSpace(name+" "+shortText(input, toolInputLimit)))
-	}
-	var questions any
-	if err := json.Unmarshal([]byte(input), &questions); err != nil {
-		return fmt.Errorf("invalid ask_user input: %w", err)
-	}
-	m.markToolAfterText(id)
-	if err := m.flushThinking(id); err != nil {
-		return err
-	}
-	message, err := InsertChatMessage(m.db, id, "question", input)
-	if err != nil {
-		return err
-	}
-	m.emit(id, map[string]any{"type": "question", "message": message})
-	if m.notify != nil {
-		var taskTitle string
-		err := m.db.QueryRow(`SELECT t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status='running'`, id).Scan(&taskTitle)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if err == nil {
-			if err := m.notify("scheduled", taskTitle+" has a question", "", "/ai/chats/"+id, true); err != nil {
-				log.Printf("notify scheduled question for chat %s: %v", id, err)
-			}
-		}
-	}
-	return nil
-}
-
-func isPatioAskUser(name string) bool {
-	return name == "mcp__patio__ask_user" || name == "patio.ask_user" || name == "patio_ask_user"
-}
-
 func (m *chatManager) emitToolResult(id, summary, result string) error {
 	m.markToolAfterText(id)
 	if err := m.flushThinking(id); err != nil {

@@ -372,7 +372,8 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 				if err != nil {
 					return err
 				}
-				if err := d.manager.emitToolCall(d.chatID, block.Name, args); err != nil {
+				content := strings.TrimSpace(block.Name + " " + shortText(args, toolInputLimit))
+				if err := d.manager.emitTool(d.chatID, content); err != nil {
 					return err
 				}
 			}

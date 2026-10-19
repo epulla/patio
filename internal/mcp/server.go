@@ -259,6 +259,7 @@ type askUserQuestion struct {
 }
 
 type askUserArgs struct {
+	ChatID    string            `json:"chat_id"`
 	Questions []askUserQuestion `json:"questions"`
 }
 
@@ -489,11 +490,40 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	addSkillTools(s, h, database, skills)
-	sdk.AddTool[askUserArgs, any](s, &sdk.Tool{Name: "ask_user", Description: "Ask the user multiple-choice questions in an interactive chat only when you truly cannot decide yourself. Free-text answers are always allowed.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"questions": map[string]any{"type": "array", "minItems": 1, "maxItems": 7, "items": map[string]any{"type": "object", "properties": map[string]any{"header": map[string]any{"type": "string"}, "question": map[string]any{"type": "string"}, "multiple": map[string]any{"type": "boolean"}, "options": map[string]any{"type": "array", "minItems": 2, "maxItems": 6, "items": map[string]any{"type": "object", "properties": map[string]any{"label": map[string]any{"type": "string", "maxLength": 40}, "description": map[string]any{"type": "string"}}, "required": []string{"label"}}}}, "required": []string{"header", "question", "options"}}}}, "required": []string{"questions"}}}, func(_ context.Context, _ *sdk.CallToolRequest, in askUserArgs) (*sdk.CallToolResult, any, error) {
-		if err := validateAskUser(in); err != nil {
-			return nil, nil, err
+	s.AddTool(&sdk.Tool{Name: "ask_user", Description: "Ask the user multiple-choice questions in an interactive chat only when you truly cannot decide yourself. Pass required chat_id from this chat's instructions. Free-text answers are always allowed.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"chat_id": map[string]any{"type": "string"}, "questions": map[string]any{"type": "array", "minItems": 1, "maxItems": 7, "items": map[string]any{"type": "object", "properties": map[string]any{"header": map[string]any{"type": "string"}, "question": map[string]any{"type": "string"}, "multiple": map[string]any{"type": "boolean"}, "options": map[string]any{"type": "array", "minItems": 2, "maxItems": 6, "items": map[string]any{"type": "object", "properties": map[string]any{"label": map[string]any{"type": "string", "maxLength": 40}, "description": map[string]any{"type": "string"}}, "required": []string{"label"}}}}, "required": []string{"header", "question", "options"}}}}, "required": []string{"chat_id", "questions"}}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		var in askUserArgs
+		if req.Params.Arguments == nil {
+			return errorResult(errors.New("chat_id is missing or unknown; ask in plain text instead")), nil
 		}
-		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "Questions shown to the user. End your turn now and wait for their reply."}}}, nil, nil
+		if err := json.Unmarshal(req.Params.Arguments, &in); err != nil {
+			return errorResult(err), nil
+		}
+		if err := validateAskUser(in); err != nil {
+			return errorResult(err), nil
+		}
+		if database == nil || strings.TrimSpace(in.ChatID) == "" {
+			return errorResult(errors.New("chat_id is missing or unknown; ask in plain text instead")), nil
+		}
+		exists, err := api.ChatExists(database, in.ChatID)
+		if err != nil {
+			return errorResult(err), nil
+		}
+		if !exists {
+			return errorResult(errors.New("chat_id is missing or unknown; ask in plain text instead")), nil
+		}
+		content, err := json.Marshal(struct {
+			Questions []askUserQuestion `json:"questions"`
+		}{Questions: in.Questions})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		if _, err := api.InsertChatMessage(database, in.ChatID, "question", string(content)); err != nil {
+			return errorResult(err), nil
+		}
+		if err := api.NotifyScheduledQuestion(database, in.ChatID); err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "Questions shown to the user. End your turn now and wait for their reply."}}}, nil
 	})
 	addQueryTools(s, database)
 	if approval != nil {

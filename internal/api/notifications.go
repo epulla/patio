@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -29,6 +30,19 @@ func (s *Server) Notify(kind, title, body, link string, native bool) error {
 		return s.notify(title, body, link)
 	}
 	return nil
+}
+
+func NotifyScheduledQuestion(database *sql.DB, chatID string) error {
+	var title string
+	err := database.QueryRow(`SELECT t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status IN ('running','waiting') ORDER BY r.created_at DESC,r.rowid DESC LIMIT 1`, chatID).Scan(&title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,'chat',?,'',?,?)`, uid(), title+" has a question", "/ai/chats/"+chatID, now())
+	return err
 }
 
 func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {

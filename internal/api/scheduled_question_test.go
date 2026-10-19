@@ -21,8 +21,7 @@ func TestScheduledQuestionNotifiesWaitsAndAnswerCompletesRun(t *testing.T) {
 	})
 	root := t.TempDir()
 	connectorID := createTestConnector(t, database)
-	var nativeTitle, nativeLink string
-	server := New(database, "local", false, "test", root, Options{Notify: func(title, _, link string) error { nativeTitle, nativeLink = title, link; return nil }})
+	server := New(database, "local", false, "test", root)
 	defer server.Close()
 	chatID := createDriverTestChat(t, database, connectorID, root)
 	taskID, runID := uid(), uid()
@@ -36,7 +35,10 @@ func TestScheduledQuestionNotifiesWaitsAndAnswerCompletesRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := `{"questions":[{"header":"Scope","question":"Which scope?","options":[{"label":"Small"},{"label":"Full"}]}]}`
-	if err := server.chats.emitToolCall(chatID, "patio.ask_user", input); err != nil {
+	if _, err := InsertChatMessage(database, chatID, "question", input); err != nil {
+		t.Fatal(err)
+	}
+	if err := NotifyScheduledQuestion(database, chatID); err != nil {
 		t.Fatal(err)
 	}
 	if err := server.chats.finishTurn(chatID, "", nil); err != nil {
@@ -47,11 +49,11 @@ func TestScheduledQuestionNotifiesWaitsAndAnswerCompletesRun(t *testing.T) {
 		t.Fatalf("run status = %q, %v", status, err)
 	}
 	var title, link string
-	if err := database.QueryRow(`SELECT title,link FROM notification WHERE kind='scheduled'`).Scan(&title, &link); err != nil {
+	if err := database.QueryRow(`SELECT title,link FROM notification WHERE kind='chat'`).Scan(&title, &link); err != nil {
 		t.Fatal(err)
 	}
-	if title != "Daily report has a question" || link != "/ai/chats/"+chatID || nativeTitle != title || nativeLink != link {
-		t.Fatalf("notification = %q %q; native = %q %q", title, link, nativeTitle, nativeLink)
+	if title != "Daily report has a question" || link != "/ai/chats/"+chatID {
+		t.Fatalf("notification = %q %q", title, link)
 	}
 	var questionID string
 	if err := database.QueryRow(`SELECT id FROM chat_message WHERE chat_id=? AND role='question'`, chatID).Scan(&questionID); err != nil {
