@@ -3,12 +3,13 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { navigate } from "./App";
 import { iconSvg } from "./icons";
+import { useText } from "./i18n";
 
 const appRoute =
   /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
 
 // Added after sanitizing; clicks are handled in onClick below.
-const copyCodeButton = `<button type="button" class="icon ghost code-copy" aria-label="Copy code" data-tip="Copy code">${iconSvg("copy")}${iconSvg("check")}</button>`;
+const copyCodeButton = (copy: string) => `<button type="button" class="icon ghost code-copy" aria-label="${copy}" data-tip="${copy}">${iconSvg("copy")}${iconSvg("check")}</button>`;
 
 function markdownHtml(text: string) {
   return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), { FORBID_TAGS: ["img"] });
@@ -35,12 +36,13 @@ export async function copyMarkdown(text: string) {
 }
 
 export default function Markdown({ text, onFile }: { text: string; onFile?: (path: string) => void }) {
+  const t = useText({ en: { copy: "Copy code", copied: "Copied" }, es: { copy: "Copiar código", copied: "Copiado" } });
   const html = useMemo(
     () =>
       markdownHtml(text)
-        .replace(/<pre[\s>]/g, (open) => `<div class="code-block">${copyCodeButton}${open}`)
+        .replace(/<pre[\s>]/g, (open) => `<div class="code-block">${copyCodeButton(t.copy)}${open}`)
         .replaceAll("</pre>", "</pre></div>"),
-    [text],
+    [text, t.copy],
   );
   function onClick(event: MouseEvent<HTMLDivElement>) {
     const copy = (event.target as HTMLElement).closest<HTMLButtonElement>(".code-copy");
@@ -52,10 +54,10 @@ export default function Markdown({ text, onFile }: { text: string; onFile?: (pat
           copy.setAttribute("aria-label", text);
         };
         copy.classList.add("copied");
-        label("Copied");
+        label(t.copied);
         setTimeout(() => {
           copy.classList.remove("copied");
-          label("Copy code");
+          label(t.copy);
         }, 1500);
       }, () => undefined);
       return;

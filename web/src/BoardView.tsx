@@ -18,6 +18,44 @@ import {
 } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
+import { useText } from "./i18n";
+
+const text = {
+  en: {
+    loading: "Loading board...", boards: "Boards", search: "Search tickets", searchPlaceholder: "Search tickets...",
+    newTicket: "New ticket", closeSettings: "Close settings", boardSettings: "Board settings", excel: "Excel (.xlsx)",
+    spreadsheet: "Spreadsheet of tickets", csv: "CSV", plainTable: "Plain table", jsonBackup: "JSON backup",
+    importPatio: "Import into Patio on another computer", export: "Export", addColumn: "Add column", columnName: "Column name",
+    createColumn: "Create column", cancel: "Cancel", temporaryTip: (n: number, plural: string) => `Temporary column: tickets hide ${n} day${plural} after entering it. They are not deleted.`,
+    moveLeft: (name: string) => `Move ${name} left`, moveRight: (name: string) => `Move ${name} right`,
+    addTicketTo: (name: string) => `Add ticket to ${name}`, deleteBoard: "Delete this board?", boardDetails: "Board details",
+    name: "Name", shortName: "Short name", saveBoard: "Save board", deleteBoardLabel: "Delete board", columns: "Columns",
+    temporaryHelp: "Temporary: tickets auto-hide from the board N days after entering the column. They are not deleted.",
+    order: "Order", columnOrder: "Column order", classic: "Classic", temporary: "Temporary", hideAfterDays: "Hide tickets after N days",
+    days: "days", ticketTypes: "Ticket types", newType: "New type", color: "Color", addType: "Add type",
+    deleteColumn: (name: string) => `Delete column "${name}"?`, deleteTicketType: (name: string) => `Delete ticket type "${name}"?`,
+    columnType: (name: string) => `${name} type`, columnDays: (name: string) => `${name} hide after days`,
+    save: (name: string) => `Save ${name}`, delete: (name: string) => `Delete ${name}`,
+    close: "Close", title: "Title", description: "Description", type: "Type", noType: "No type", dueDate: "Due date", createTicket: "Create ticket",
+  },
+  es: {
+    loading: "Cargando tablero...", boards: "Tableros", search: "Buscar tickets", searchPlaceholder: "Buscar tickets...",
+    newTicket: "Nuevo ticket", closeSettings: "Cerrar configuración", boardSettings: "Configuración del tablero", excel: "Excel (.xlsx)",
+    spreadsheet: "Hoja de cálculo de tickets", csv: "CSV", plainTable: "Tabla simple", jsonBackup: "Respaldo JSON",
+    importPatio: "Importar a Patio en otro equipo", export: "Exportar", addColumn: "Agregar columna", columnName: "Nombre de columna",
+    createColumn: "Crear columna", cancel: "Cancelar", temporaryTip: (n: number, plural: string) => `Columna temporal: los tickets se ocultan ${n} día${plural} después de entrar. No se eliminan.`,
+    moveLeft: (name: string) => `Mover ${name} a la izquierda`, moveRight: (name: string) => `Mover ${name} a la derecha`,
+    addTicketTo: (name: string) => `Agregar ticket a ${name}`, deleteBoard: "¿Eliminar este tablero?", boardDetails: "Detalles del tablero",
+    name: "Nombre", shortName: "Nombre corto", saveBoard: "Guardar tablero", deleteBoardLabel: "Eliminar tablero", columns: "Columnas",
+    temporaryHelp: "Temporal: los tickets se ocultan automáticamente del tablero N días después de entrar en la columna. No se eliminan.",
+    order: "Orden", columnOrder: "Orden de columnas", classic: "Clásica", temporary: "Temporal", hideAfterDays: "Ocultar tickets después de N días",
+    days: "días", ticketTypes: "Tipos de ticket", newType: "Nuevo tipo", color: "Color", addType: "Agregar tipo",
+    deleteColumn: (name: string) => `¿Eliminar columna «${name}»?`, deleteTicketType: (name: string) => `¿Eliminar tipo de ticket «${name}»?`,
+    columnType: (name: string) => `Tipo de ${name}`, columnDays: (name: string) => `Ocultar ${name} después de (días)`,
+    save: (name: string) => `Guardar ${name}`, delete: (name: string) => `Eliminar ${name}`,
+    close: "Cerrar", title: "Título", description: "Descripción", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", createTicket: "Crear ticket",
+  },
+};
 
 export default function BoardView({
   id,
@@ -26,6 +64,7 @@ export default function BoardView({
   id: string;
   refresh: number;
 }) {
+  const t = useText(text);
   const [data, setData] = useState<BoardData>();
   const [error, setError] = useState<unknown>();
   const [query, setQuery] = useState(
@@ -55,7 +94,7 @@ export default function BoardView({
   if (!data)
     return (
       <div className="loading">
-        Loading board...
+        {t.loading}
         <ErrorText error={error} />
       </div>
     );
@@ -64,25 +103,25 @@ export default function BoardView({
       <div className="page-heading">
         <div>
           <button className="back" onClick={() => navigate("/")}>
-            <Icon name="arrowLeft" /> Boards
+            <Icon name="arrowLeft" /> {t.boards}
           </button>
           <h1>{data.board.name}</h1>
         </div>
         <div className="actions">
           <input
             className="search"
-            aria-label="Search tickets"
-            placeholder="Search tickets..."
+            aria-label={t.search}
+            placeholder={t.searchPlaceholder}
             value={query}
             onChange={(event) => search(event.target.value)}
           />
           <button className="primary" onClick={() => navigate(`/boards/${id}/new`)}>
-            <Icon name="plus" /> New ticket
+            <Icon name="plus" /> {t.newTicket}
           </button>
           <ExportMenu boardId={id} />
           <button onClick={() => setSettings(!settings)}>
             <Icon name={settings ? "x" : "settings"} />
-            {settings ? "Close settings" : "Board settings"}
+            {settings ? t.closeSettings : t.boardSettings}
           </button>
         </div>
       </div>
@@ -113,12 +152,13 @@ export default function BoardView({
 }
 
 const exportFormats = [
-  ["xlsx", "Excel (.xlsx)", "Spreadsheet of tickets"],
-  ["csv", "CSV", "Plain table"],
-  ["json", "JSON backup", "Import into Patio on another computer"],
+  ["xlsx", "excel", "spreadsheet"],
+  ["csv", "csv", "plainTable"],
+  ["json", "jsonBackup", "importPatio"],
 ];
 
 function ExportMenu({ boardId }: { boardId: string }) {
+  const t = useText(text);
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -163,10 +203,10 @@ function ExportMenu({ boardId }: { boardId: string }) {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <Icon name="download" /> Export <Icon name="chevronDown" />
+        <Icon name="download" /> {t.export} <Icon name="chevronDown" />
       </button>
       {open && (
-        <div className="menu-list" role="menu" aria-label="Export" onMouseDown={(event) => event.preventDefault()}>
+        <div className="menu-list" role="menu" aria-label={t.export} onMouseDown={(event) => event.preventDefault()}>
           {exportFormats.map(([format, label, hint]) => (
             <a
               key={format}
@@ -176,8 +216,8 @@ function ExportMenu({ boardId }: { boardId: string }) {
               // Defer so the browser starts the download before the item unmounts.
               onClick={() => setTimeout(close)}
             >
-              <strong>{label}</strong>
-              <small>{hint}</small>
+              <strong>{t[label as "excel" | "csv" | "jsonBackup"]}</strong>
+              <small>{t[hint as "spreadsheet" | "plainTable" | "importPatio"]}</small>
             </a>
           ))}
         </div>
@@ -197,6 +237,7 @@ function Kanban({
   onError: (error: unknown) => void;
   onAdd: (statusId: string) => void;
 }) {
+  const t = useText(text);
   const [newColumn, setNewColumn] = useState<string>();
   async function addColumn(event: React.FormEvent) {
     event.preventDefault();
@@ -230,7 +271,7 @@ function Kanban({
         <IconButton
           className="add-column"
           icon="plus"
-          label="Add column"
+          label={t.addColumn}
           onClick={() => setNewColumn("")}
         />
       ) : (
@@ -242,17 +283,17 @@ function Kanban({
           <input
             autoFocus
             required
-            aria-label="Column name"
-            placeholder="Column name"
+            aria-label={t.columnName}
+            placeholder={t.columnName}
             value={newColumn}
             onChange={(event) => setNewColumn(event.target.value)}
           />
-          <IconButton className="primary" icon="check" label="Create column" />
+          <IconButton className="primary" icon="check" label={t.createColumn} />
           <IconButton
             type="button"
             className="ghost"
             icon="x"
-            label="Cancel"
+            label={t.cancel}
             onClick={() => setNewColumn(undefined)}
           />
         </form>
@@ -278,6 +319,7 @@ function Column({
   onError: (error: unknown) => void;
   onAdd: (statusId: string) => void;
 }) {
+  const t = useText(text);
   const [over, setOver] = useState(false);
   const dragStart = (event: DragEvent, kind: string, id: string) =>
     event.dataTransfer.setData(kind, id);
@@ -334,7 +376,7 @@ function Column({
       onError(error);
     }
   }
-  const tempTip = `Temporary column: tickets hide ${status.hide_after_days} day${status.hide_after_days === 1 ? "" : "s"} after entering it. They are not deleted.`;
+  const tempTip = t.temporaryTip(status.hide_after_days, status.hide_after_days === 1 ? "" : "s");
   return (
     <section
       className={`column ${status.type === "temporary" ? "temporary" : ""} ${over ? "drop" : ""}`}
@@ -369,14 +411,14 @@ function Column({
           <IconButton
             className="ghost"
             icon="chevronLeft"
-            label={`Move ${status.name} left`}
+            label={t.moveLeft(status.name)}
             disabled={index === 0}
             onClick={() => moveColumn(index - 1)}
           />
           <IconButton
             className="ghost"
             icon="chevronRight"
-            label={`Move ${status.name} right`}
+            label={t.moveRight(status.name)}
             disabled={index === statuses.length - 1}
             onClick={() => moveColumn(index + 1)}
           />
@@ -396,7 +438,7 @@ function Column({
       <IconButton
         className="add-ticket tip-up"
         icon="plus"
-        label={`Add ticket to ${status.name}`}
+        label={t.addTicketTo(status.name)}
         onClick={() => onAdd(status.id)}
       />
     </section>
@@ -455,6 +497,7 @@ function Settings({
   onReload: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
   const [name, setName] = useState(data.board.name);
   const [shortName, setShortName] = useState(data.board.short_name);
   async function saveBoard() {
@@ -470,7 +513,7 @@ function Settings({
     }
   }
   async function deleteBoard() {
-    if (!(await confirmDialog("Delete this board?"))) return;
+    if (!(await confirmDialog(t.deleteBoard))) return;
     try {
       await api.delete(`/api/boards/${data.board.id}`);
       navigate("/");
@@ -481,27 +524,27 @@ function Settings({
   return (
     <section className="settings panel">
       <div className="settings-section">
-        <h2>Board details</h2>
+        <h2>{t.boardDetails}</h2>
         <div className="inline-form">
           <label>
-            Name
+            {t.name}
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
           </label>
           <label>
-            Short name
+            {t.shortName}
             <input
               value={shortName}
               onChange={(event) => setShortName(event.target.value)}
             />
           </label>
-          <IconButton icon="check" label="Save board" onClick={saveBoard} />
+          <IconButton icon="check" label={t.saveBoard} onClick={saveBoard} />
           <IconButton
             className="danger-text"
             icon="trash"
-            label="Delete board"
+            label={t.deleteBoardLabel}
             onClick={deleteBoard}
           />
         </div>
@@ -530,6 +573,7 @@ function StatusManager({
   onReload: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
   // Bumped after each move so rows remount and drop unsaved edits.
   const [moves, setMoves] = useState(0);
   async function move(index: number, to: number) {
@@ -547,9 +591,9 @@ function StatusManager({
   }
   return (
     <div className="settings-section">
-      <h2>Columns</h2>
+      <h2>{t.columns}</h2>
       <small>
-        Temporary: tickets auto-hide from the board N days after entering the column. They are not deleted.
+        {t.temporaryHelp}
       </small>
       {statuses.map((status) => (
         <StatusRow
@@ -559,8 +603,8 @@ function StatusManager({
           onError={onError}
         />
       ))}
-      <h3 className="preview-title">Order</h3>
-      <ol className="column-preview" aria-label="Column order">
+      <h3 className="preview-title">{t.order}</h3>
+      <ol className="column-preview" aria-label={t.columnOrder}>
         {statuses.map((status, index) => (
           <li
             key={status.id}
@@ -571,14 +615,14 @@ function StatusManager({
               <IconButton
                 className="ghost"
                 icon="chevronLeft"
-                label={`Move ${status.name} left`}
+                label={t.moveLeft(status.name)}
                 disabled={index === 0}
                 onClick={() => move(index, index - 1)}
               />
               <IconButton
                 className="ghost"
                 icon="chevronRight"
-                label={`Move ${status.name} right`}
+                label={t.moveRight(status.name)}
                 disabled={index === statuses.length - 1}
                 onClick={() => move(index, index + 1)}
               />
@@ -598,6 +642,7 @@ function StatusRow({
   onReload: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
   const [name, setName] = useState(status.name);
   const [type, setType] = useState(status.type);
   const [hideAfterDays, setHideAfterDays] = useState(
@@ -616,7 +661,7 @@ function StatusRow({
     }
   }
   async function remove() {
-    if (!(await confirmDialog(`Delete column "${status.name}"?`))) return;
+    if (!(await confirmDialog(t.deleteColumn(status.name)))) return;
     try {
       await api.delete(`/api/statuses/${status.id}`);
       onReload();
@@ -632,25 +677,25 @@ function StatusRow({
         onChange={(event) => setName(event.target.value)}
       />
       <Picker
-        label={`${status.name} type`}
+        label={t.columnType(status.name)}
         options={[
-          { id: "classic", name: "Classic" },
-          { id: "temporary", name: "Temporary" },
+          { id: "classic", name: t.classic },
+          { id: "temporary", name: t.temporary },
         ]}
         value={type}
         onChange={(value) => setType(value as Status["type"])}
       />
       <DaysField
-        label={`${status.name} hide after days`}
+        label={t.columnDays(status.name)}
         value={hideAfterDays}
         onChange={setHideAfterDays}
         hidden={type !== "temporary"}
       />
-      <IconButton icon="check" label={`Save ${status.name}`} onClick={save} />
+      <IconButton icon="check" label={t.save(status.name)} onClick={save} />
       <IconButton
         className="danger-text"
         icon="trash"
-        label={`Delete ${status.name}`}
+        label={t.delete(status.name)}
         onClick={remove}
       />
     </div>
@@ -669,10 +714,11 @@ export function DaysField({
   onChange: (value: string) => void;
   hidden: boolean;
 }) {
+  const t = useText(text);
   return (
     <label
       className={`days-field ${hidden ? "is-hidden" : ""}`}
-      data-tip="Hide tickets after N days"
+      data-tip={t.hideAfterDays}
     >
       <input
         type="number"
@@ -684,7 +730,7 @@ export function DaysField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      <span>days</span>
+      <span>{t.days}</span>
     </label>
   );
 }
@@ -700,6 +746,7 @@ function TypeManager({
   onReload: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
   const [name, setName] = useState("");
   const [color, setColor] = useState("#7c3aed");
   async function add() {
@@ -714,7 +761,7 @@ function TypeManager({
   }
   return (
     <div className="settings-section">
-      <h2>Ticket types</h2>
+      <h2>{t.ticketTypes}</h2>
       {types.map((ticketType) => (
         <TypeRow
           key={ticketType.id}
@@ -725,14 +772,14 @@ function TypeManager({
       ))}
       <div className="inline-form">
         <label>
-          New type
+          {t.newType}
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
         </label>
         <label>
-          Color
+          {t.color}
           <input
             type="color"
             value={color}
@@ -740,7 +787,7 @@ function TypeManager({
           />
         </label>
         <button onClick={add}>
-          <Icon name="plus" /> Add type
+          <Icon name="plus" /> {t.addType}
         </button>
       </div>
     </div>
@@ -755,6 +802,7 @@ function TypeRow({
   onReload: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
   const [name, setName] = useState(type.name);
   const [color, setColor] = useState(type.color);
   async function save() {
@@ -766,7 +814,7 @@ function TypeRow({
     }
   }
   async function remove() {
-    if (!(await confirmDialog(`Delete ticket type "${type.name}"?`))) return;
+    if (!(await confirmDialog(t.deleteTicketType(type.name)))) return;
     try {
       await api.delete(`/api/ticket-types/${type.id}`);
       onReload();
@@ -777,21 +825,21 @@ function TypeRow({
   return (
     <div className="type-row">
       <input
-        aria-label={`${type.name} name`}
+        aria-label={`${type.name} ${t.name.toLowerCase()}`}
         value={name}
         onChange={(event) => setName(event.target.value)}
       />
       <input
-        aria-label={`${type.name} color`}
+        aria-label={`${type.name} ${t.color.toLowerCase()}`}
         type="color"
         value={color}
         onChange={(event) => setColor(event.target.value)}
       />
-      <IconButton icon="check" label={`Save ${type.name}`} onClick={save} />
+      <IconButton icon="check" label={t.save(type.name)} onClick={save} />
       <IconButton
         className="danger-text"
         icon="trash"
-        label={`Delete ${type.name}`}
+        label={t.delete(type.name)}
         onClick={remove}
       />
     </div>
@@ -824,6 +872,7 @@ function NewTicket({
 }
 
 export function NewTicketPage({ boardId }: { boardId: string }) {
+  const t = useText(text);
   const [data, setData] = useState<BoardData>();
   const [error, setError] = useState<unknown>();
   useEffect(() => {
@@ -833,7 +882,7 @@ export function NewTicketPage({ boardId }: { boardId: string }) {
   if (!data)
     return (
       <div className="loading">
-        Loading board...
+        {t.loading}
         <ErrorText error={error} />
       </div>
     );
@@ -866,6 +915,7 @@ function TicketForm({
   onClose: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
@@ -889,17 +939,17 @@ function TicketForm({
   return (
     <form className="panel ticket-form" onSubmit={submit}>
       <div className="page-heading">
-        <h2 id="new-ticket-title">New ticket</h2>
+        <h2 id="new-ticket-title">{t.newTicket}</h2>
         <IconButton
           type="button"
           className="ghost"
           icon="x"
-          label="Close"
+          label={t.close}
           onClick={onClose}
         />
       </div>
       <label>
-        Title
+        {t.title}
         <input
           autoFocus
           required
@@ -908,21 +958,21 @@ function TicketForm({
         />
       </label>
       <div className="field">
-        Description
-        <MarkdownEditor label="Description" value={description} onChange={setDescription} />
+        {t.description}
+        <MarkdownEditor label={t.description} value={description} onChange={setDescription} />
       </div>
       <div className="two">
         <div className="field">
-          Type
-          <Picker label="Type" empty="No type" options={data.ticket_types} value={type} onChange={setType} />
+          {t.type}
+          <Picker label={t.type} empty={t.noType} options={data.ticket_types} value={type} onChange={setType} />
         </div>
         <label>
-          Due date
+          {t.dueDate}
           <DueDateInput value={dueDate} onChange={setDueDate} />
         </label>
       </div>
       <button className="primary">
-        <Icon name="plus" /> Create ticket
+        <Icon name="plus" /> {t.createTicket}
       </button>
     </form>
   );

@@ -1,5 +1,17 @@
 import { useSyncExternalStore } from "react";
 import { IconButton } from "./icons";
+import { useText } from "./i18n";
+
+const text = {
+  en: {
+    switchLight: "Switch to light theme",
+    switchDark: "Switch to dark theme",
+  },
+  es: {
+    switchLight: "Cambiar al tema claro",
+    switchDark: "Cambiar al tema oscuro",
+  },
+};
 
 export type Mode = "system" | "light" | "dark";
 export type SidebarStyle = "flat" | "gradient";
@@ -70,12 +82,13 @@ export function useThemePrefs() {
 
 export function ThemeToggle() {
   useThemePrefs();
+  const t = useText(text);
   const theme = resolved();
   return (
     <IconButton
       className="ghost"
       icon={theme === "dark" ? "sun" : "moon"}
-      label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+      label={theme === "dark" ? t.switchLight : t.switchDark}
       onClick={() => setThemePrefs({ mode: theme === "dark" ? "light" : "dark" })}
     />
   );

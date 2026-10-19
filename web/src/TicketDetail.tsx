@@ -14,7 +14,7 @@ import {
   type Transition,
   type User,
 } from "./api";
-import { type Config, ErrorText, formatDate, navigate } from "./App";
+import { type Config, ErrorText, navigate } from "./App";
 import { linkText } from "./ChatDock";
 import { createChatWithDefaults, NewChatDialog, startContextKey, type PageContext } from "./Chats";
 import DueBadge, { DueDateInput } from "./DueBadge";
@@ -23,6 +23,11 @@ import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
 import { getPins, maxPins, pinLayout, setPins } from "./pins";
+import { lang, locale, useText } from "./i18n";
+
+const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by" }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por" } };
+
+function date(value: string | null) { return value ? new Date(value).toLocaleString(locale()) : locale().startsWith("es") ? "Nunca" : "Never"; }
 
 export default function TicketDetail({
   id,
@@ -33,6 +38,7 @@ export default function TicketDetail({
   config: Config;
   refresh: number;
 }) {
+  const t = useText(text);
   const [ticket, setTicket] = useState<Ticket>();
   const [board, setBoard] = useState<BoardData>();
   const [history, setHistory] = useState<History[]>([]);
@@ -148,14 +154,14 @@ export default function TicketDetail({
   if (!ticket)
     return (
       <div className="loading">
-        Loading ticket...
+        {t.loading}
         <ErrorText error={error} />
       </div>
     );
   const tabs = [
-    ["comments", "Comments"],
-    ["history", "History"],
-    ["transitions", "Transitions"],
+    ["comments", t.comments],
+    ["history", t.history],
+    ["transitions", t.transitions],
   ] as const;
   return (
     <div className="ticket-page">
@@ -163,7 +169,7 @@ export default function TicketDetail({
         className="back"
         onClick={() => navigate(`/boards/${ticket.board_id}`)}
       >
-        <Icon name="arrowLeft" /> Back to board
+        <Icon name="arrowLeft" /> {t.back}
       </button>
       <ErrorText error={error} />
       <section className="panel ticket-shell">
@@ -177,16 +183,16 @@ export default function TicketDetail({
                 navigate(`/print/tickets/${ticket.id}`);
               }}
             >
-              <Icon name="printer" /> Print
+              <Icon name="printer" /> {t.print}
             </a>
             <a href={`/api/tickets/${ticket.id}/export?format=json`} download="">
-              <Icon name="download" /> Export JSON
+              <Icon name="download" /> {t.exportJson}
             </a>
             <a href={`/api/tickets/${ticket.id}/export?format=md`} download="">
-              <Icon name="download" /> Export Markdown
+              <Icon name="download" /> {t.exportMarkdown}
             </a>
             <button type="button" onClick={newChat}>
-              <Icon name="chat" /> New chat
+              <Icon name="chat" /> {t.newChat}
             </button>
           </div>
         </div>
@@ -194,7 +200,7 @@ export default function TicketDetail({
           <div className="ticket-main">
             <input
               className="title-input"
-              aria-label="Title"
+              aria-label={t.title}
               value={form.title}
               onChange={(event) =>
                 setForm({ ...form, title: event.target.value })
@@ -202,9 +208,9 @@ export default function TicketDetail({
               onBlur={() => save({ title: form.title })}
             />
             <div className="field">
-              Description
+              {t.description}
               <MarkdownEditor
-                label="Description"
+                label={t.description}
                 value={form.description}
                 onChange={(description) => setForm({ ...form, description })}
                 onBlur={() => save({ description: form.description })}
@@ -214,9 +220,9 @@ export default function TicketDetail({
           </div>
           <aside className="ticket-side">
             <div className="field">
-              Status
+              {t.status}
               <Picker
-                label="Status"
+                label={t.status}
                 options={board?.statuses ?? []}
                 value={form.status}
                 onChange={(status) => {
@@ -227,10 +233,10 @@ export default function TicketDetail({
             </div>
             <div className="ticket-details">
               <div className="field">
-                Type
+                {t.type}
                 <Picker
-                  label="Type"
-                  empty="No type"
+                  label={t.type}
+                  empty={t.noType}
                   options={board?.ticket_types ?? []}
                   value={form.type}
                   onChange={(type) => {
@@ -240,7 +246,7 @@ export default function TicketDetail({
                 />
               </div>
               <label>
-                Due date
+                {t.dueDate}
                 <DueDateInput
                   value={form.dueDate}
                   onChange={(dueDate) => {
@@ -255,10 +261,10 @@ export default function TicketDetail({
               </label>
               {config.show_hidden && (
                 <label>
-                  Assignee
+                  {t.assignee}
                   <Picker
-                    label="Assignee"
-                    empty="Unassigned"
+                    label={t.assignee}
+                    empty={t.unassigned}
                     options={users.map((user) => ({
                       id: user.id,
                       name: `${user.name} ${user.last_name}${user.is_ai ? " (AI)" : ""}`,
@@ -272,10 +278,10 @@ export default function TicketDetail({
                 </label>
               )}
               <dl>
-                <dt>Created</dt>
-                <dd>{formatDate(ticket.created_at)}</dd>
-                <dt>Updated</dt>
-                <dd>{formatDate(ticket.updated_at)}</dd>
+                <dt>{t.created}</dt>
+                <dd>{date(ticket.created_at)}</dd>
+                <dt>{t.updated}</dt>
+                <dd>{date(ticket.updated_at)}</dd>
               </dl>
             </div>
           </aside>
@@ -309,7 +315,7 @@ export default function TicketDetail({
                 <strong>
                   {item.user_name} <AIBadge isAI={item.user_is_ai} />
                 </strong>
-                <span>{formatDate(item.created_at)}</span>
+                <span>{date(item.created_at)}</span>
                 <p>{item.content}</p>
               </div>
             ))}
@@ -317,11 +323,11 @@ export default function TicketDetail({
             transitions.map((item) => (
               <div className="transition" key={item.id}>
                 <strong>
-                  {item.from_status_name || "New"} → {item.to_status_name}
+                  {item.from_status_name || t.new} → {item.to_status_name}
                 </strong>
                 <span>
                   {item.user_name} <AIBadge isAI={item.user_is_ai} /> ·{" "}
-                  {formatDate(item.moved_at)}
+                  {date(item.moved_at)}
                 </span>
               </div>
             ))}
@@ -352,6 +358,7 @@ function Comments({
   comments: Comment[];
   onReload: () => void;
 }) {
+  const t = useText(text);
   const [content, setContent] = useState("");
   async function add() {
     if (!content.trim()) return;
@@ -363,16 +370,16 @@ function Comments({
   }
   return (
     <section className="comments">
-      <MarkdownEditor label="Comment" value={content} onChange={setContent} />
+      <MarkdownEditor label={t.comment} value={content} onChange={setContent} />
       <button className="primary" onClick={add}>
-        <Icon name="send" /> Add comment
+        <Icon name="send" /> {t.addComment}
       </button>
       {[...comments].reverse().map((comment) => (
         <div className="comment" key={comment.id}>
           <strong>
             {comment.user_name} <AIBadge isAI={comment.user_is_ai} />
           </strong>
-          <span>{formatDate(comment.created_at)}</span>
+          <span>{date(comment.created_at)}</span>
           <Markdown text={comment.content} />
         </div>
       ))}
@@ -381,12 +388,12 @@ function Comments({
 }
 
 // Inverse labels are stored as the other ticket's outgoing link.
-const linkChoices: { label: string; type: LinkType; inverse: boolean }[] = [
-  { label: "blocks", type: "blocks", inverse: false },
-  { label: "is blocked by", type: "blocks", inverse: true },
-  { label: "relates to", type: "relates", inverse: false },
-  { label: "duplicates", type: "duplicates", inverse: false },
-  { label: "is duplicated by", type: "duplicates", inverse: true },
+const linkChoices: { key: "blocks" | "blockedBy" | "relates" | "duplicates" | "duplicatedBy"; type: LinkType; inverse: boolean }[] = [
+  { key: "blocks", type: "blocks", inverse: false },
+  { key: "blockedBy", type: "blocks", inverse: true },
+  { key: "relates", type: "relates", inverse: false },
+  { key: "duplicates", type: "duplicates", inverse: false },
+  { key: "duplicatedBy", type: "duplicates", inverse: true },
 ];
 
 function Links({
@@ -400,6 +407,7 @@ function Links({
   onReload: () => void;
   onError: (reason: unknown) => void;
 }) {
+  const t = useText(text);
   const [choice, setChoice] = useState(0);
   const [code, setCode] = useState("");
   const [adding, setAdding] = useState(false);
@@ -439,11 +447,11 @@ function Links({
     <section className="ticket-link-section" aria-labelledby={`${listID}-title`}>
       <div className="ticket-link-head">
         <h2 id={`${listID}-title`}>
-          Links {links.length > 0 && <span className="muted">{links.length}</span>}
+          {t.links} {links.length > 0 && <span className="muted">{links.length}</span>}
         </h2>
         {!adding && (
           <button type="button" className="ghost ticket-link-add" onClick={() => setAdding(true)}>
-            <Icon name="plus" /> Add link
+            <Icon name="plus" /> {t.addLink}
           </button>
         )}
       </div>
@@ -470,7 +478,7 @@ function Links({
                   <IconButton
                     className="ghost ticket-link-remove"
                     icon="trash"
-                    label={`Remove link to ${link.other_code}`}
+                     label={t.removeLink(link.other_code)}
                     onClick={() => remove(link)}
                   />
                 </li>
@@ -489,16 +497,16 @@ function Links({
             if (event.key === "Escape") setAdding(false);
           }}
         >
-          <select aria-label="Link type" value={choice} onChange={(event) => setChoice(Number(event.target.value))}>
+          <select aria-label={t.linkType} value={choice} onChange={(event) => setChoice(Number(event.target.value))}>
             {linkChoices.map((item, index) => (
-              <option key={item.label} value={index}>
-                {item.label}
+              <option key={item.key} value={index}>
+                {text[lang()][item.key]}
               </option>
             ))}
           </select>
           <input
-            aria-label="Ticket code"
-            placeholder="Ticket code, e.g. PROJ-5"
+            aria-label={t.ticketCode}
+            placeholder={t.ticketCodeExample}
             autoFocus
             list={listID}
             value={code}
@@ -515,10 +523,10 @@ function Links({
               ))}
           </datalist>
           <button type="submit" className="primary" disabled={!code.trim()}>
-            Link
+            {t.link}
           </button>
           <button type="button" onClick={() => setAdding(false)}>
-            Cancel
+            {t.cancel}
           </button>
         </form>
       )}

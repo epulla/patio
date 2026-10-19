@@ -8,8 +8,15 @@ import {
   type Ticket,
   type Transition,
 } from "./api";
-import { ErrorText, formatDate, navigate } from "./App";
+import { ErrorText, navigate } from "./App";
 import { Icon } from "./icons";
+import { lang, locale, useText } from "./i18n";
+
+const text = { en: { loading: "Loading ticket...", print: "Print", back: "Back to ticket", unknown: "Unknown", type: "Type", noType: "No type", created: "Created", updated: "Updated", statusUpdated: "Status updated", dueDate: "Due date", none: "None", description: "Description", history: "History", when: "When", who: "Who", what: "What", transitions: "Status transitions", fromTo: "From → to", never: "Never" }, es: { loading: "Cargando ticket...", print: "Imprimir", back: "Volver al ticket", unknown: "Desconocido", type: "Tipo", noType: "Sin tipo", created: "Creado", updated: "Actualizado", statusUpdated: "Estado actualizado", dueDate: "Fecha de vencimiento", none: "Ninguna", description: "Descripción", history: "Historial", when: "Cuándo", who: "Quién", what: "Qué", transitions: "Transiciones de estado", fromTo: "De → a", never: "Nunca" } };
+
+function date(value: string | null) {
+  return value ? new Date(value).toLocaleString(locale()) : text[lang()].never;
+}
 
 type PrintData = {
   ticket: Ticket;
@@ -25,6 +32,7 @@ export default function PrintTicket({
   id: string;
   refresh: number;
 }) {
+  const t = useText(text);
   const [data, setData] = useState<PrintData>();
   const [error, setError] = useState<unknown>();
 
@@ -48,7 +56,7 @@ export default function PrintTicket({
   if (!data) {
     return (
       <div className="loading print-loading">
-        Loading ticket...
+        {t.loading}
         <ErrorText error={error} />
       </div>
     );
@@ -71,7 +79,7 @@ export default function PrintTicket({
             )
           }
         >
-          <Icon name="printer" /> Print
+          <Icon name="printer" /> {t.print}
         </button>
         <a
           href={`/tickets/${ticket.id}`}
@@ -80,7 +88,7 @@ export default function PrintTicket({
             navigate(`/tickets/${ticket.id}`);
           }}
         >
-          <Icon name="arrowLeft" /> Back to ticket
+          <Icon name="arrowLeft" /> {t.back}
         </a>
       </div>
       <header className="print-heading">
@@ -89,50 +97,50 @@ export default function PrintTicket({
           <div className="ticket-code">{ticket.code}</div>
           <h1>{ticket.title}</h1>
         </div>
-        <strong className="print-status">{status?.name || "Unknown"}</strong>
+        <strong className="print-status">{status?.name || t.unknown}</strong>
       </header>
       <dl className="print-fields">
         <div>
-          <dt>Type</dt>
-          <dd>{type?.name || "No type"}</dd>
+          <dt>{t.type}</dt>
+          <dd>{type?.name || t.noType}</dd>
         </div>
         <div>
-          <dt>Created</dt>
-          <dd>{formatDate(ticket.created_at)}</dd>
+          <dt>{t.created}</dt>
+          <dd>{date(ticket.created_at)}</dd>
         </div>
         <div>
-          <dt>Updated</dt>
-          <dd>{formatDate(ticket.updated_at)}</dd>
+          <dt>{t.updated}</dt>
+          <dd>{date(ticket.updated_at)}</dd>
         </div>
         <div>
-          <dt>Status updated</dt>
-          <dd>{formatDate(ticket.status_updated_at)}</dd>
+          <dt>{t.statusUpdated}</dt>
+          <dd>{date(ticket.status_updated_at)}</dd>
         </div>
         <div>
-          <dt>Due date</dt>
-          <dd>{ticket.due_date ? formatDate(ticket.due_date) : "None"}</dd>
+          <dt>{t.dueDate}</dt>
+          <dd>{ticket.due_date ? date(ticket.due_date) : t.none}</dd>
         </div>
       </dl>
       <section className="print-section">
-        <h2>Description</h2>
+        <h2>{t.description}</h2>
         <div className="print-description">
           <Markdown text={ticket.description} />
         </div>
       </section>
       <section className="print-section">
-        <h2>History</h2>
+        <h2>{t.history}</h2>
         <table>
           <thead>
             <tr>
-              <th>When</th>
-              <th>Who</th>
-              <th>What</th>
+              <th>{t.when}</th>
+              <th>{t.who}</th>
+              <th>{t.what}</th>
             </tr>
           </thead>
           <tbody>
             {history.map((item) => (
               <tr key={item.id}>
-                <td>{formatDate(item.created_at)}</td>
+                <td>{date(item.created_at)}</td>
                 <td>
                   {item.user_name} <AIBadge isAI={item.user_is_ai} />
                 </td>
@@ -143,21 +151,21 @@ export default function PrintTicket({
         </table>
       </section>
       <section className="print-section">
-        <h2>Status transitions</h2>
+        <h2>{t.transitions}</h2>
         <table>
           <thead>
             <tr>
-              <th>When</th>
-              <th>From → to</th>
-              <th>Who</th>
+              <th>{t.when}</th>
+              <th>{t.fromTo}</th>
+              <th>{t.who}</th>
             </tr>
           </thead>
           <tbody>
             {transitions.map((item) => (
               <tr key={item.id}>
-                <td>{formatDate(item.moved_at)}</td>
+                <td>{date(item.moved_at)}</td>
                 <td>
-                  {item.from_status_name || "Created"} → {item.to_status_name}
+                  {item.from_status_name || t.created} → {item.to_status_name}
                 </td>
                 <td>
                   {item.user_name} <AIBadge isAI={item.user_is_ai} />

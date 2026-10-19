@@ -1,15 +1,18 @@
 import { useEffect, useId, useRef } from "react";
 import { createRoot } from "react-dom/client";
+import { lang, useText } from "./i18n";
+
+const text = { en: { cancel: "Cancel", delete: "Delete" }, es: { cancel: "Cancelar", delete: "Eliminar" } };
 
 // window.confirm is a silent no-op (returns false) in the macOS Wails build.
-export function confirmDialog(message: string, confirmLabel = "Delete", danger = true): Promise<boolean> {
+export function confirmDialog(message: string, confirmLabel?: string, danger = true): Promise<boolean> {
   const host = document.body.appendChild(document.createElement("div"));
   const root = createRoot(host);
   return new Promise((resolve) => {
     root.render(
       <ConfirmDialog
         message={message}
-        confirmLabel={confirmLabel}
+        confirmLabel={confirmLabel ?? text[lang()].delete}
         danger={danger}
         onDone={(confirmed) => {
           resolve(confirmed);
@@ -34,6 +37,7 @@ function ConfirmDialog({
   danger: boolean;
   onDone: (confirmed: boolean) => void;
 }) {
+  const t = useText(text);
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
 
@@ -52,7 +56,7 @@ function ConfirmDialog({
         <p id={id}>{message}</p>
         <div className="modal-actions">
           <button value="cancel" autoFocus>
-            Cancel
+            {t.cancel}
           </button>
           <button value="confirm" className={danger ? "danger" : "primary"}>
             {confirmLabel}

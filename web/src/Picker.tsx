@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { Icon } from "./icons";
+import { useText } from "./i18n";
 
 const popHeight = 280;
 
@@ -23,6 +24,7 @@ export default function Picker({
   disabled?: boolean;
   onChange: (id: string) => void;
 }) {
+  const t = useText({ en: { none: "none" }, es: { none: "ninguno" } });
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [place, setPlace] = useState<CSSProperties>({});
@@ -178,7 +180,7 @@ export default function Picker({
         id={triggerID}
         type="button"
         className="picker-trigger"
-        aria-label={`${label}: ${current?.name ?? "none"}`}
+        aria-label={`${label}: ${current?.name ?? t.none}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}

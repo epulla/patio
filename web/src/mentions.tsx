@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { api, type SearchTicket, type User } from "./api";
+import { useText } from "./i18n";
 
 type Trigger = { char: "@" | "#"; start: number; query: string };
 type Suggestion = { key: string; label: string; detail?: string; insert: string };
@@ -83,6 +84,7 @@ export function useMentions(
   onChange: (value: string) => void,
   placement: "caret" | "above" = "caret",
 ) {
+  const t = useText({ en: { suggestions: "Suggestions" }, es: { suggestions: "Sugerencias" } });
   const [state, setState] = useState<State | null>(null);
   const request = useRef(0);
 
@@ -136,7 +138,7 @@ export function useMentions(
       className="md-mentions"
       data-placement={placement}
       role="listbox"
-      aria-label="Suggestions"
+      aria-label={t.suggestions}
       style={placement === "caret" ? { top: state.top, left: state.left } : undefined}
     >
       {state.items.map((item, index) => (

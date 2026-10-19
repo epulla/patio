@@ -12,6 +12,9 @@ import {
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
+import { locale, useText } from "./i18n";
+
+const text = { en: { schedule: "Schedule", calendar: "Calendar", today: "Today", previous: "Previous period", next: "Next period", month: "Month", week: "Week", board: "Board", allBoards: "All boards", addOn: (date: string) => `Add item on ${date}`, reminder: "Reminder", event: "Event", skipped: "Skipped", ranLate: "Ran late", failed: "Failed", waiting: "Waiting", runsFirst: (count: number, time: string) => `${count} runs this day, first at ${time}`, aiTask: "AI task", due: "Due", edit: "Edit calendar item", new: "New calendar item", close: "Close", kind: "Kind", title: "Title", description: "Description", allDay: "All day", start: "Start", endOptional: "End (optional)", boardOptional: "Board (optional)", noBoard: "No board", save: "Save", delete: "Delete", confirmDelete: "Delete this calendar item?" }, es: { schedule: "Agenda", calendar: "Calendario", today: "Hoy", previous: "Periodo anterior", next: "Periodo siguiente", month: "Mes", week: "Semana", board: "Tablero", allBoards: "Todos los tableros", addOn: (date: string) => `Agregar elemento el ${date}`, reminder: "Recordatorio", event: "Evento", skipped: "Omitida", ranLate: "Se ejecutó tarde", failed: "Fallida", waiting: "En espera", runsFirst: (count: number, time: string) => `${count} ejecuciones hoy; primera a las ${time}`, aiTask: "Tarea de IA", due: "Vence", edit: "Editar elemento del calendario", new: "Nuevo elemento del calendario", close: "Cerrar", kind: "Tipo", title: "Título", description: "Descripción", allDay: "Todo el día", start: "Inicio", endOptional: "Fin (opcional)", boardOptional: "Tablero (opcional)", noBoard: "Sin tablero", save: "Guardar", delete: "Eliminar", confirmDelete: "¿Eliminar este elemento del calendario?" } };
 
 type Draft = {
   kind: "event" | "reminder";
@@ -71,6 +74,7 @@ function initialDraft(item: CalendarItem | null, date: string): Draft {
 }
 
 export default function Calendar({ refresh }: { refresh: number }) {
+  const t = useText(text);
   const [anchor, setAnchor] = useState(() => new Date());
   const [view, setView] = useState<"month" | "week">("month");
   const [boardID, setBoardID] = useState("");
@@ -165,20 +169,20 @@ export default function Calendar({ refresh }: { refresh: number }) {
     <div className="stack calendar-page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Schedule</p>
-          <h1>Calendar</h1>
+          <p className="eyebrow">{t.schedule}</p>
+          <h1>{t.calendar}</h1>
         </div>
         <div className="calendar-controls">
           <div className="join">
-            <button onClick={() => setAnchor(new Date())}>Today</button>
+            <button onClick={() => setAnchor(new Date())}>{t.today}</button>
             <IconButton
               icon="chevronLeft"
-              label="Previous period"
+              label={t.previous}
               onClick={() => move(-1)}
             />
             <IconButton
               icon="chevronRight"
-              label="Next period"
+              label={t.next}
               onClick={() => move(1)}
             />
           </div>
@@ -187,32 +191,32 @@ export default function Calendar({ refresh }: { refresh: number }) {
               aria-pressed={view === "month"}
               onClick={() => setView("month")}
             >
-              Month
+              {t.month}
             </button>
             <button
               aria-pressed={view === "week"}
               onClick={() => setView("week")}
             >
-              Week
+              {t.week}
             </button>
           </div>
           <label>
-            Board
-            <Picker label="Board" empty="All boards" options={boards} value={boardID} onChange={setBoardID} />
+            {t.board}
+            <Picker label={t.board} empty={t.allBoards} options={boards} value={boardID} onChange={setBoardID} />
           </label>
         </div>
       </div>
       <h2 className="calendar-period">
         {view === "week"
-          ? `${visibleStart.toLocaleDateString()} – ${visibleEnd.toLocaleDateString()}`
-          : anchor.toLocaleDateString(undefined, {
+          ? `${visibleStart.toLocaleDateString(locale())} – ${visibleEnd.toLocaleDateString(locale())}`
+          : anchor.toLocaleDateString(locale(), {
               month: "long",
               year: "numeric",
             })}
       </h2>
       <ErrorText error={error} />
       <div className={`calendar-grid ${view === "week" ? "week-view" : ""}`}>
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((name) => (
+        {(locale().startsWith("es") ? ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]).map((name) => (
           <div className="calendar-weekday" key={name}>
             {name}
           </div>
@@ -230,7 +234,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
                 <IconButton
                   className="ghost"
                   icon="plus"
-                  label={`Add item on ${key}`}
+                  label={t.addOn(key)}
                   onClick={() => createOn(key)}
                 />
               </div>
@@ -246,14 +250,14 @@ export default function Calendar({ refresh }: { refresh: number }) {
                   >
                     {!item.all_day && (
                       <time>
-                        {new Date(item.starts_at).toLocaleTimeString([], {
+                        {new Date(item.starts_at).toLocaleTimeString(locale(), {
                           hour: "numeric",
                           minute: "2-digit",
                         })}{" "}
                       </time>
                     )}
                     <span className="calendar-kind">
-                      {item.kind === "reminder" ? "Reminder" : "Event"}
+                      {item.kind === "reminder" ? t.reminder : t.event}
                     </span>{" "}
                     {item.title} <AIBadge isAI={item.created_by_is_ai} />
                   </button>
@@ -283,16 +287,17 @@ export default function Calendar({ refresh }: { refresh: number }) {
 }
 
 function ScheduledChip({ run, count }: { run: CalendarScheduled; count: number }) {
-  const time = new Date(run.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const status = run.status === "skipped" ? "Skipped" : run.late ? "Ran late" : run.status === "failed" ? "Failed" : run.status === "waiting" ? "Waiting" : "";
+  const t = useText(text);
+  const time = new Date(run.at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+  const status = run.status === "skipped" ? t.skipped : run.late ? t.ranLate : run.status === "failed" ? t.failed : run.status === "waiting" ? t.waiting : "";
   return (
     <button
       className="calendar-chip scheduled"
-      title={count > 1 ? `${count} runs this day, first at ${time}` : undefined}
+      title={count > 1 ? t.runsFirst(count, time) : undefined}
       onClick={() => navigate(run.chat_id && count === 1 ? `/ai/chats/${run.chat_id}` : `/ai/scheduled/${run.task_id}`)}
     >
       <time>{time} </time>
-      <span className="calendar-kind">AI task</span> {run.title}
+      <span className="calendar-kind">{t.aiTask}</span> {run.title}
       {count > 1 && ` ×${count}`}
       {status && ` · ${status}`}
     </button>
@@ -300,12 +305,13 @@ function ScheduledChip({ run, count }: { run: CalendarScheduled; count: number }
 }
 
 function TicketChip({ ticket }: { ticket: Ticket }) {
+  const t = useText(text);
   return (
     <button
       className="calendar-chip due"
       onClick={() => navigate(`/tickets/${ticket.id}`)}
     >
-      <span className="calendar-kind">Due</span> {ticket.code} {ticket.title}
+      <span className="calendar-kind">{t.due}</span> {ticket.code} {ticket.title}
     </button>
   );
 }
@@ -323,6 +329,7 @@ function CalendarForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const t = useText(text);
   const [draft, setDraft] = useState(() => initialDraft(item, date));
   const [error, setError] = useState<unknown>();
   const [saving, setSaving] = useState(false);
@@ -375,7 +382,7 @@ function CalendarForm({
   }
 
   async function remove() {
-    if (!item || !(await confirmDialog("Delete this calendar item?"))) return;
+    if (!item || !(await confirmDialog(t.confirmDelete))) return;
     setSaving(true);
     setError(undefined);
     try {
@@ -392,24 +399,24 @@ function CalendarForm({
     <dialog ref={dialog} className="create-dialog" aria-labelledby="calendar-form-title" onClose={onCancel}>
       <section className="panel create-modal calendar-form-panel">
         <div className="page-heading">
-          <h2 id="calendar-form-title">{item ? "Edit calendar item" : "New calendar item"}</h2>
-          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
+          <h2 id="calendar-form-title">{item ? t.edit : t.new}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
         </div>
         <form className="calendar-form" onSubmit={submit}>
           <label>
-            Kind
+            {t.kind}
             <Picker
-              label="Kind"
+              label={t.kind}
               options={[
-                { id: "event", name: "Event" },
-                { id: "reminder", name: "Reminder" },
+                { id: "event", name: t.event },
+                { id: "reminder", name: t.reminder },
               ]}
               value={draft.kind}
               onChange={(kind) => setDraft({ ...draft, kind: kind as Draft["kind"] })}
             />
           </label>
           <label>
-            Title
+            {t.title}
             <input
               required
               value={draft.title}
@@ -419,7 +426,7 @@ function CalendarForm({
             />
           </label>
           <label className="calendar-description">
-            Description
+            {t.description}
             <textarea
               value={draft.description}
               onChange={(event) =>
@@ -433,10 +440,10 @@ function CalendarForm({
               checked={draft.all_day}
               onChange={(event) => toggleAllDay(event.target.checked)}
             />
-            All day
+            {t.allDay}
           </label>
           <label>
-            Start
+            {t.start}
             <input
               required
               type={draft.all_day ? "date" : "datetime-local"}
@@ -447,7 +454,7 @@ function CalendarForm({
             />
           </label>
           <label>
-            End (optional)
+            {t.endOptional}
             <input
               type={draft.all_day ? "date" : "datetime-local"}
               value={draft.ends_at}
@@ -457,10 +464,10 @@ function CalendarForm({
             />
           </label>
           <label>
-            Board (optional)
+            {t.boardOptional}
             <Picker
-              label="Board"
-              empty="No board"
+              label={t.board}
+              empty={t.noBoard}
               options={boards}
               value={draft.board_id}
               onChange={(board_id) => setDraft({ ...draft, board_id })}
@@ -468,7 +475,7 @@ function CalendarForm({
           </label>
           <div className="calendar-form-actions">
             <button className="primary" disabled={saving}>
-              <Icon name="check" /> Save
+              <Icon name="check" /> {t.save}
             </button>
             {item && (
               <button
@@ -477,7 +484,7 @@ function CalendarForm({
                 disabled={saving}
                 onClick={remove}
               >
-                <Icon name="trash" /> Delete
+                <Icon name="trash" /> {t.delete}
               </button>
             )}
           </div>

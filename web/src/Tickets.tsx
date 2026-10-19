@@ -4,27 +4,46 @@ import { ErrorText, navigate } from "./App";
 import { Icon } from "./icons";
 import Menu from "./Menu";
 import Picker from "./Picker";
+import { locale, useText } from "./i18n";
+
+const text = {
+  en: {
+    code: "Code", title: "Title", board: "Board", status: "Status", created: "Created", updated: "Updated",
+    recent: "Most recent", alphabetical: "Alphabetical", workspace: "Workspace", tickets: "Tickets",
+    description: "Tickets from every board, newest first. Narrow them down by text, board, or date.",
+    filters: "Filters", search: "Search", titleOrCode: "Title or code", allBoards: "All boards",
+    createdFrom: "Created from", createdTo: "Created to", updatedFrom: "Updated from", updatedTo: "Updated to",
+    searching: "Searching…", ticket: (n: number) => `${n} ticket${n === 1 ? "" : "s"}`,
+    showingFirst: (n: number) => ` · showing first ${n}`, ascending: "ascending", descending: "descending",
+    noMatches: "No tickets match these filters.", boardLabel: "Board ", statusLabel: "Status ",
+    sortTickets: "Sort tickets", sort: "Sort:",
+  },
+  es: {
+    code: "Código", title: "Título", board: "Tablero", status: "Estado", created: "Creado", updated: "Actualizado",
+    recent: "Más recientes", alphabetical: "Alfabético", workspace: "Espacio de trabajo", tickets: "Tickets",
+    description: "Tickets de todos los tableros, primero los más recientes. Filtra por texto, tablero o fecha.",
+    filters: "Filtros", search: "Buscar", titleOrCode: "Título o código", allBoards: "Todos los tableros",
+    createdFrom: "Creado desde", createdTo: "Creado hasta", updatedFrom: "Actualizado desde", updatedTo: "Actualizado hasta",
+    searching: "Buscando…", ticket: (n: number) => `${n} ticket${n === 1 ? "" : "s"}`,
+    showingFirst: (n: number) => ` · mostrando los primeros ${n}`, ascending: "ascendente", descending: "descendente",
+    noMatches: "Ningún ticket coincide con estos filtros.", boardLabel: "Tablero ", statusLabel: "Estado ",
+    sortTickets: "Ordenar tickets", sort: "Orden:",
+  },
+};
 
 type Column = "code" | "title" | "board" | "status" | "created" | "updated";
 type Sort = { column: Column; dir: "asc" | "desc" };
 
-const columns: Record<Column, string> = {
-  code: "Code",
-  title: "Title",
-  board: "Board",
-  status: "Status",
-  created: "Created",
-  updated: "Updated",
-};
 const presets = [
-  { label: "Most recent", sort: { column: "created", dir: "desc" } },
-  { label: "Alphabetical", sort: { column: "title", dir: "asc" } },
+  { label: "recent", sort: { column: "created", dir: "desc" } },
+  { label: "alphabetical", sort: { column: "title", dir: "asc" } },
 ] satisfies { label: string; sort: Sort }[];
 const limit = 200;
+const columns: Column[] = ["code", "title", "board", "status", "created", "updated"];
 
 function savedSort(): Sort {
   const [column, dir] = (localStorage.getItem("ticket-sort") ?? "").split(":");
-  return column in columns && (dir === "asc" || dir === "desc") ? { column: column as Column, dir } : presets[0].sort;
+  return columns.includes(column as Column) && (dir === "asc" || dir === "desc") ? { column: column as Column, dir } : presets[0].sort;
 }
 
 function dayStart(day: string, offset = 0) {
@@ -34,6 +53,7 @@ function dayStart(day: string, offset = 0) {
 }
 
 export default function Tickets({ refresh }: { refresh: number }) {
+  const t = useText(text);
   const [query, setQuery] = useState("");
   const [boardID, setBoardID] = useState("");
   const [dates, setDates] = useState({ created_from: "", created_to: "", updated_from: "", updated_to: "" });
@@ -88,29 +108,29 @@ export default function Tickets({ refresh }: { refresh: number }) {
     <div className="stack">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Workspace</p>
-          <h1>Tickets</h1>
+      <p className="eyebrow">{t.workspace}</p>
+          <h1>{t.tickets}</h1>
         </div>
       </div>
-      <p className="muted">Tickets from every board, newest first. Narrow them down by text, board, or date.</p>
-      <section className="panel ticket-filters" aria-label="Filters">
+      <p className="muted">{t.description}</p>
+      <section className="panel ticket-filters" aria-label={t.filters}>
         <label className="ticket-filter-search">
-          Search
-          <input type="search" placeholder="Title or code" value={query} onChange={(event) => setQuery(event.target.value)} />
+          {t.search}
+          <input type="search" placeholder={t.titleOrCode} value={query} onChange={(event) => setQuery(event.target.value)} />
         </label>
         <label>
-          Board
-          <Picker label="Board" empty="All boards" options={boards} value={boardID} onChange={setBoardID} />
+          {t.board}
+          <Picker label={t.board} empty={t.allBoards} options={boards} value={boardID} onChange={setBoardID} />
         </label>
-        {dateField("created_from", "Created from")}
-        {dateField("created_to", "Created to")}
-        {dateField("updated_from", "Updated from")}
-        {dateField("updated_to", "Updated to")}
+        {dateField("created_from", t.createdFrom)}
+        {dateField("created_to", t.createdTo)}
+        {dateField("updated_from", t.updatedFrom)}
+        {dateField("updated_to", t.updatedTo)}
       </section>
       <ErrorText error={error} />
       <div className="list-toolbar">
         <span className="muted" aria-live="polite">
-          {loading && !results ? "Searching…" : `${count} ticket${count === 1 ? "" : "s"}${count === limit ? ` · showing first ${limit}` : ""}`}
+          {loading && !results ? t.searching : `${t.ticket(count)}${count === limit ? t.showingFirst(limit) : ""}`}
         </span>
         <SortMenu value={sort} onChange={changeSort} />
       </div>
@@ -118,35 +138,36 @@ export default function Tickets({ refresh }: { refresh: number }) {
         <div className="ticket-row ticket-list-head">
           {(Object.keys(columns) as Column[]).map((column) => {
             const active = column === sort.column;
+            const labels = t;
             return (
               <button
                 key={column}
                 type="button"
                 className={active ? `active ${sort.dir}` : undefined}
                 aria-pressed={active}
-                aria-label={`Sort by ${columns[column]}${active ? `, ${sort.dir === "asc" ? "ascending" : "descending"}` : ""}`}
+                aria-label={`${t.sortTickets}: ${labels[column]}${active ? `, ${sort.dir === "asc" ? t.ascending : t.descending}` : ""}`}
                 onClick={() => sortBy(column)}
               >
-                {columns[column]} {active && <Icon name="chevronDown" />}
+                {labels[column]} {active && <Icon name="chevronDown" />}
               </button>
             );
           })}
         </div>
-        {results?.length === 0 && <p className="muted ticket-list-empty">No tickets match these filters.</p>}
+        {results?.length === 0 && <p className="muted ticket-list-empty">{t.noMatches}</p>}
         {!!results?.length && (
-          <ul aria-label="Tickets">
+          <ul aria-label={t.tickets}>
             {results.map((ticket) => (
               <li key={ticket.id}>
                 <button className="ticket-row" onClick={() => navigate(`/tickets/${ticket.id}`)}>
                   <span className="ticket-row-code">{ticket.code}</span>
                   <span className="ticket-row-title">{ticket.title}</span>
-                  <span className="muted"><span className="sr-only">Board </span>{ticket.board_name}</span>
-                  <span className="muted"><span className="sr-only">Status </span>{ticket.status_name}</span>
+                  <span className="muted"><span className="sr-only">{t.boardLabel}</span>{ticket.board_name}</span>
+                  <span className="muted"><span className="sr-only">{t.statusLabel}</span>{ticket.status_name}</span>
                   <time className="muted" dateTime={ticket.created_at}>
-                    <span className="sr-only date-label">Created </span>{new Date(ticket.created_at).toLocaleDateString()}
+                    <span className="sr-only date-label">{t.created} </span>{new Date(ticket.created_at).toLocaleDateString(locale())}
                   </time>
                   <time className="muted" dateTime={ticket.updated_at}>
-                    <span className="sr-only date-label">Updated </span>{new Date(ticket.updated_at).toLocaleDateString()}
+                    <span className="sr-only date-label">{t.updated} </span>{new Date(ticket.updated_at).toLocaleDateString(locale())}
                   </time>
                 </button>
               </li>
@@ -159,13 +180,14 @@ export default function Tickets({ refresh }: { refresh: number }) {
 }
 
 function SortMenu({ value, onChange }: { value: Sort; onChange: (value: Sort) => void }) {
+  const t = useText(text);
   const current = presets.find((preset) => preset.sort.column === value.column && preset.sort.dir === value.dir);
   return (
     <Menu
-      label="Sort tickets"
+      label={t.sortTickets}
       button={
         <>
-          Sort: {current?.label ?? `${columns[value.column]} ${value.dir === "asc" ? "↑" : "↓"}`} <Icon name="chevronDown" />
+          {t.sort} {current ? (current.label === "recent" ? t.recent : t.alphabetical) : `${t[value.column]} ${value.dir === "asc" ? "↑" : "↓"}`} <Icon name="chevronDown" />
         </>
       }
     >
@@ -181,7 +203,7 @@ function SortMenu({ value, onChange }: { value: Sort; onChange: (value: Sort) =>
             }}
           >
             <span className="menu-check">{preset === current && <Icon name="check" />}</span>
-            {preset.label}
+            {preset.label === "recent" ? t.recent : t.alphabetical}
           </button>
         ))
       }

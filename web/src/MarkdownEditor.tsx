@@ -2,6 +2,12 @@ import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent,
 import { IconButton } from "./icons";
 import Markdown from "./Markdown";
 import { useMentions } from "./mentions";
+import { useText } from "./i18n";
+
+const text = {
+  en: { formatting: "formatting", style: "Text style", normal: "Normal", title: "Title", heading: "Heading", subheading: "Subheading", bold: "Bold", italic: "Italic", code: "Code", link: "Link", bullets: "Bulleted list", numbered: "Numbered list", mention: "Mention a bot (@)", ticket: "Link a ticket (#)", write: "Write", preview: "Preview", nothing: "Nothing to preview", placeholder: "Markdown supported · @ to mention a bot · # to link a ticket" },
+  es: { formatting: "formato", style: "Estilo de texto", normal: "Normal", title: "Título", heading: "Encabezado", subheading: "Subtítulo", bold: "Negrita", italic: "Cursiva", code: "Código", link: "Enlace", bullets: "Lista con viñetas", numbered: "Lista numerada", mention: "Mencionar un bot (@)", ticket: "Enlazar un ticket (#)", write: "Escribir", preview: "Vista previa", nothing: "Nada que previsualizar", placeholder: "Markdown disponible · @ para mencionar un bot · # para enlazar un ticket" },
+};
 
 const linePrefix = /^(#{1,3} |[-*] |\d+\. )/;
 
@@ -16,6 +22,7 @@ export default function MarkdownEditor({
   onBlur?: () => void;
   label: string;
 }) {
+  const t = useText(text);
   const ref = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState(false);
   const mentions = useMentions(ref, onChange);
@@ -86,12 +93,12 @@ export default function MarkdownEditor({
 
   return (
     <div className="md-editor" onBlur={blur}>
-      <div className="md-toolbar" role="toolbar" aria-label={`${label} formatting`}>
+      <div className="md-toolbar" role="toolbar" aria-label={`${label} ${t.formatting}`}>
         {!preview && (
           <>
             <select
               className="md-heading"
-              aria-label="Text style"
+              aria-label={t.style}
               value=""
               onChange={(event) => {
                 const level = Number(event.target.value);
@@ -99,38 +106,38 @@ export default function MarkdownEditor({
               }}
             >
               <option value="" disabled hidden>
-                Text style
+                {t.style}
               </option>
-              <option value="0">Normal</option>
-              <option value="1">Title</option>
-              <option value="2">Heading</option>
-              <option value="3">Subheading</option>
+              <option value="0">{t.normal}</option>
+              <option value="1">{t.title}</option>
+              <option value="2">{t.heading}</option>
+              <option value="3">{t.subheading}</option>
             </select>
             <span className="md-sep" aria-hidden="true" />
-            <IconButton type="button" className="ghost" icon="bold" label="Bold ⌘B" onMouseDown={keepFocus} onClick={() => wrap("**", "**", "bold")} />
-            <IconButton type="button" className="ghost" icon="italic" label="Italic ⌘I" onMouseDown={keepFocus} onClick={() => wrap("_", "_", "italic")} />
-            <IconButton type="button" className="ghost" icon="code" label="Code" onMouseDown={keepFocus} onClick={() => wrap("`", "`", "code")} />
-            <IconButton type="button" className="ghost" icon="link" label="Link ⌘K" onMouseDown={keepFocus} onClick={() => wrap("[", "](https://)", "link")} />
+            <IconButton type="button" className="ghost" icon="bold" label={`${t.bold} ⌘B`} onMouseDown={keepFocus} onClick={() => wrap("**", "**", "bold")} />
+            <IconButton type="button" className="ghost" icon="italic" label={`${t.italic} ⌘I`} onMouseDown={keepFocus} onClick={() => wrap("_", "_", "italic")} />
+            <IconButton type="button" className="ghost" icon="code" label={t.code} onMouseDown={keepFocus} onClick={() => wrap("`", "`", "code")} />
+            <IconButton type="button" className="ghost" icon="link" label={`${t.link} ⌘K`} onMouseDown={keepFocus} onClick={() => wrap("[", "](https://)", "link")} />
             <span className="md-sep" aria-hidden="true" />
-            <IconButton type="button" className="ghost" icon="list" label="Bulleted list" onMouseDown={keepFocus} onClick={() => prefixLines(() => "- ")} />
-            <IconButton type="button" className="ghost" icon="listOrdered" label="Numbered list" onMouseDown={keepFocus} onClick={() => prefixLines((index) => `${index + 1}. `)} />
+            <IconButton type="button" className="ghost" icon="list" label={t.bullets} onMouseDown={keepFocus} onClick={() => prefixLines(() => "- ")} />
+            <IconButton type="button" className="ghost" icon="listOrdered" label={t.numbered} onMouseDown={keepFocus} onClick={() => prefixLines((index) => `${index + 1}. `)} />
             <span className="md-sep" aria-hidden="true" />
-            <IconButton type="button" className="ghost" icon="sparkles" label="Mention a bot (@)" onMouseDown={keepFocus} onClick={() => insertTrigger("@")} />
-            <IconButton type="button" className="ghost" icon="ticket" label="Link a ticket (#)" onMouseDown={keepFocus} onClick={() => insertTrigger("#")} />
+            <IconButton type="button" className="ghost" icon="sparkles" label={t.mention} onMouseDown={keepFocus} onClick={() => insertTrigger("@")} />
+            <IconButton type="button" className="ghost" icon="ticket" label={t.ticket} onMouseDown={keepFocus} onClick={() => insertTrigger("#")} />
           </>
         )}
         <div className="md-tabs">
           <button type="button" aria-pressed={!preview} onMouseDown={keepFocus} onClick={() => setPreview(false)}>
-            Write
+            {t.write}
           </button>
           <button type="button" aria-pressed={preview} onMouseDown={keepFocus} onClick={() => setPreview(true)}>
-            Preview
+            {t.preview}
           </button>
         </div>
       </div>
       {preview ? (
         <div className="md-preview">
-          {value.trim() ? <Markdown text={value} /> : <p>Nothing to preview</p>}
+          {value.trim() ? <Markdown text={value} /> : <p>{t.nothing}</p>}
         </div>
       ) : (
         <textarea
@@ -141,7 +148,7 @@ export default function MarkdownEditor({
           onKeyDown={onKeyDown}
           onSelect={() => void mentions.update()}
           onBlur={mentions.close}
-          placeholder="Markdown supported · @ to mention a bot · # to link a ticket"
+          placeholder={t.placeholder}
           aria-autocomplete="list"
           aria-expanded={mentions.open}
         />

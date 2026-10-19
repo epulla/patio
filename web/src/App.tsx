@@ -19,6 +19,24 @@ import { api, type Board, type Config } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
 import { Icon, IconButton } from "./icons";
+import { lang, locale, useText } from "./i18n";
+
+const text = {
+  en: {
+    never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
+    boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
+    skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings",
+    pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
+    pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
+  },
+  es: {
+    never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
+    boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
+    skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Configuración",
+    pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
+    pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
+  },
+};
 
 export function navigate(path: string) {
   history.pushState({}, "", path);
@@ -35,7 +53,7 @@ export function ErrorText({ error }: { error: unknown }) {
 }
 
 export function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "Never";
+  return value ? new Date(value).toLocaleString(locale()) : text[lang()].never;
 }
 
 function currentPath() {
@@ -47,17 +65,19 @@ function currentPath() {
 }
 
 function ComingSoon({ title }: { title: string }) {
+  const t = useText(text);
   return (
     <div className="stack">
       <div className="page-heading">
         <div><h1>{title}</h1></div>
       </div>
-      <p>Coming soon.</p>
+      <p>{t.comingSoon}</p>
     </div>
   );
 }
 
 export default function App() {
+  const t = useText(text);
   const [path, setPath] = useState(currentPath);
   const [config, setConfig] = useState<Config>();
   const [refresh, setRefresh] = useState(0);
@@ -359,7 +379,7 @@ export default function App() {
           <IconButton
             className="ghost"
             icon={collapsed ? "chevronsRight" : "chevronsLeft"}
-            label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              label={collapsed ? t.expand : t.collapse}
             aria-expanded={!collapsed}
             onClick={() => {
               localStorage.setItem("sidebar", collapsed ? "open" : "closed");
@@ -377,23 +397,23 @@ export default function App() {
             boardDrag.current.dropped = true;
           }}
         >
-          {navItem("/", "Boards", <Icon name="boards" />, path === "/")}
-          {navItem("/tickets", "Tickets", <Icon name="ticket" />, isTickets)}
-          {navItem("/calendar", "Calendar", <Icon name="calendar" />, isCalendar)}
+          {navItem("/", t.boards, <Icon name="boards" />, path === "/")}
+          {navItem("/tickets", t.tickets, <Icon name="ticket" />, isTickets)}
+          {navItem("/calendar", t.calendar, <Icon name="calendar" />, isCalendar)}
           <div className="ai-nav-group">
             <p className="sidebar-label nav-label">AI</p>
             {navItem(
               "/ai/connectors",
-              "Connectors",
+              t.connectors,
               <Icon name="connector" />,
               path === "/ai/connectors",
             )}
-            {navItem("/ai/chats", "Chats", <Icon name="chat" />, !!chatMatch)}
-            {navItem("/ai/skills", "Skills", <Icon name="sparkles" />, !!skillMatch)}
+            {navItem("/ai/chats", t.chats, <Icon name="chat" />, !!chatMatch)}
+            {navItem("/ai/skills", t.skills, <Icon name="sparkles" />, !!skillMatch)}
             {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp")}
           </div>
-          {navItem("/ai/scheduled", "Scheduled tasks", <Icon name="clock" />, !!scheduledMatch)}
-          {boards.length > 0 && <p className="sidebar-label nav-label">Your boards</p>}
+          {navItem("/ai/scheduled", t.scheduled, <Icon name="clock" />, !!scheduledMatch)}
+          {boards.length > 0 && <p className="sidebar-label nav-label">{t.yourBoards}</p>}
           {boards.map((board) =>
             navItem(
               `/boards/${board.id}`,
@@ -405,14 +425,14 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-foot">
-          {navItem("/settings", "Settings", <Icon name="gear" />, path === "/settings")}
+          {navItem("/settings", t.settings, <Icon name="gear" />, path === "/settings")}
           <ThemeToggle />
           <Notifications refresh={refresh} onScreen={onScreen} />
           {showDock && (
             <button
               className="icon ghost dock-toggle"
-              aria-label={`Pinned chats (${pins.ids.length})${dockAlert === "approval" ? ", approval needed" : dockAlert === "reply" ? ", new reply" : ""}`}
-              data-tip={`Pinned chats (${pins.ids.length}) ${dockShortcut}`}
+              aria-label={`${t.pinned(pins.ids.length)}${dockAlert === "approval" ? t.approval : dockAlert === "reply" ? t.reply : ""}`}
+              data-tip={t.pinnedTip(pins.ids.length, dockShortcut)}
               aria-expanded={dockOpen}
               onClick={() => toggleDock(!dockOpen)}
             >

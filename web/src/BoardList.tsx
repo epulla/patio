@@ -10,6 +10,28 @@ import { ErrorText, navigate } from "./App";
 import { DaysField } from "./BoardView";
 import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
+import { useText } from "./i18n";
+
+const text = {
+  en: {
+    workspace: "Workspace", boards: "Boards", importBackup: "Import a JSON backup", importing: "Importing...",
+    import: "Import", createBoard: "Create board", empty: "No boards yet. Create one to get started.",
+    close: "Close", name: "Name", shortName: "Short name", columns: "Columns",
+    temporaryHelp: "Temporary columns hide their tickets from the board N days after they enter the column. Tickets are not deleted. Good for Done.",
+    columnName: (n: number) => `Column ${n} name`, columnType: (n: number) => `Column ${n} type`,
+    classic: "Classic", temporary: "Temporary", hideAfter: (n: number) => `Column ${n} hide after days`,
+    removeColumn: (n: number) => `Remove column ${n}`, addColumn: "Add column", template: "Template HTML", cancel: "Cancel",
+  },
+  es: {
+    workspace: "Espacio de trabajo", boards: "Tableros", importBackup: "Importar respaldo JSON", importing: "Importando...",
+    import: "Importar", createBoard: "Crear tablero", empty: "Aún no hay tableros. Crea uno para comenzar.",
+    close: "Cerrar", name: "Nombre", shortName: "Nombre corto", columns: "Columnas",
+    temporaryHelp: "Las columnas temporales ocultan sus tickets del tablero N días después de que entran. Los tickets no se eliminan. Útil para Completado.",
+    columnName: (n: number) => `Nombre de columna ${n}`, columnType: (n: number) => `Tipo de columna ${n}`,
+    classic: "Clásica", temporary: "Temporal", hideAfter: (n: number) => `Ocultar columna ${n} después de (días)`,
+    removeColumn: (n: number) => `Quitar columna ${n}`, addColumn: "Agregar columna", template: "HTML de plantilla", cancel: "Cancelar",
+  },
+};
 
 type NewColumn = {
   name: string;
@@ -18,6 +40,7 @@ type NewColumn = {
 };
 
 export default function BoardList({ refresh }: { refresh: number }) {
+  const t = useText(text);
   const [boards, setBoards] = useState<Board[]>([]);
   const [error, setError] = useState<unknown>();
   const [importing, setImporting] = useState(false);
@@ -47,8 +70,8 @@ export default function BoardList({ refresh }: { refresh: number }) {
     <div className="stack">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Workspace</p>
-          <h1>Boards</h1>
+          <p className="eyebrow">{t.workspace}</p>
+          <h1>{t.boards}</h1>
         </div>
         <div className="actions">
           <input
@@ -59,23 +82,23 @@ export default function BoardList({ refresh }: { refresh: number }) {
             onChange={importFile}
           />
           <button
-            data-tip="Import a JSON backup"
+            data-tip={t.importBackup}
             disabled={importing}
             onClick={() => fileInput.current?.click()}
           >
-            <Icon name="upload" /> {importing ? "Importing..." : "Import"}
+            <Icon name="upload" /> {importing ? t.importing : t.import}
           </button>
           <button
             ref={createButton}
             className="primary"
             onClick={() => setCreating(true)}
           >
-            <Icon name="plus" /> Create board
+            <Icon name="plus" /> {t.createBoard}
           </button>
         </div>
       </div>
       <ErrorText error={error} />
-      {boards.length === 0 && <small>No boards yet. Create one to get started.</small>}
+      {boards.length === 0 && <small>{t.empty}</small>}
       <div className="board-grid">
         {boards.map((board) => (
           <button
@@ -114,6 +137,7 @@ function CreateBoard({
   onCreated: (board: Board) => void;
   onClose: () => void;
 }) {
+  const t = useText(text);
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
   const [template, setTemplate] = useState("");
@@ -163,18 +187,18 @@ function CreateBoard({
     >
       <section className="panel create create-modal">
         <div className="page-heading">
-          <h2 id="create-board-title">Create board</h2>
+          <h2 id="create-board-title">{t.createBoard}</h2>
           <IconButton
             type="button"
             className="ghost"
             icon="x"
-            label="Close"
+            label={t.close}
             onClick={() => dialog.current?.close()}
           />
         </div>
         <form onSubmit={submit}>
           <label>
-            Name
+            {t.name}
             <input
               ref={nameInput}
               required
@@ -183,7 +207,7 @@ function CreateBoard({
             />
           </label>
           <label>
-            Short name
+            {t.shortName}
             <input
               required
               maxLength={10}
@@ -192,29 +216,28 @@ function CreateBoard({
             />
           </label>
           <fieldset className="create-columns">
-            <legend>Columns</legend>
+            <legend>{t.columns}</legend>
             <p className="callout">
-              Temporary columns hide their tickets from the board N days after
-              they enter the column. Tickets are not deleted. Good for Done.
+              {t.temporaryHelp}
             </p>
             {columns.map((column, index) => (
               <div className="type-row" key={index}>
                 <input
-                  aria-label={`Column ${index + 1} name`}
+                  aria-label={t.columnName(index + 1)}
                   value={column.name}
                   onChange={(event) => updateColumn(index, { name: event.target.value })}
                 />
                 <Picker
-                  label={`Column ${index + 1} type`}
+                  label={t.columnType(index + 1)}
                   options={[
-                    { id: "classic", name: "Classic" },
-                    { id: "temporary", name: "Temporary" },
+                    { id: "classic", name: t.classic },
+                    { id: "temporary", name: t.temporary },
                   ]}
                   value={column.type}
                   onChange={(type) => updateColumn(index, { type: type as NewColumn["type"] })}
                 />
                 <DaysField
-                  label={`Column ${index + 1} hide after days`}
+                  label={t.hideAfter(index + 1)}
                   value={column.hide_after_days}
                   onChange={(value) => updateColumn(index, { hide_after_days: value })}
                   hidden={column.type !== "temporary"}
@@ -223,7 +246,7 @@ function CreateBoard({
                   type="button"
                   className="danger-text"
                   icon="trash"
-                  label={`Remove column ${index + 1}`}
+                  label={t.removeColumn(index + 1)}
                   disabled={columns.length === 1}
                   onClick={() => setColumns((current) => current.filter((_, i) => i !== index))}
                 />
@@ -233,11 +256,11 @@ function CreateBoard({
               type="button"
               onClick={() => setColumns((current) => [...current, { name: "", type: "classic", hide_after_days: "1" }])}
             >
-              <Icon name="plus" /> Add column
+              <Icon name="plus" /> {t.addColumn}
             </button>
           </fieldset>
           <label>
-            Template HTML
+            {t.template}
             <input
               value={template}
               onChange={(event) => setTemplate(event.target.value)}
@@ -245,10 +268,10 @@ function CreateBoard({
           </label>
           <div className="modal-actions">
             <button type="button" onClick={() => dialog.current?.close()}>
-              Cancel
+              {t.cancel}
             </button>
             <button className="primary">
-              <Icon name="plus" /> Create board
+              <Icon name="plus" /> {t.createBoard}
             </button>
           </div>
         </form>
