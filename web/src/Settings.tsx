@@ -13,6 +13,8 @@ import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 import { palettes, setThemePrefs, useThemePrefs, type Mode, type SidebarStyle } from "./theme";
 import Picker from "./Picker";
+import ModelPicker from "./ModelPicker";
+import { useModels } from "./Chats";
 
 function AllowedFolders({ onChange }: { onChange: () => void }) {
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
@@ -292,11 +294,11 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
       .catch(setError);
   }, [foldersVersion]);
 
+  const { models, loading: modelsLoading } = useModels(defaults?.connector_id);
+
   async function save(change: Partial<ChatDefaults>) {
-    if (!defaults) return;
-    const next = { ...defaults, ...change };
     try {
-      setDefaults(await api.put<ChatDefaults>("/api/settings/defaults", next));
+      setDefaults(await api.put<ChatDefaults>("/api/settings/defaults", change));
       setError(undefined);
     } catch (reason) {
       setError(reason);
@@ -318,9 +320,23 @@ function Defaults({ foldersVersion }: { foldersVersion: number }) {
                   empty="First connector"
                   options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
                   value={defaults.connector_id ?? ""}
-                  onChange={(id) => save({ connector_id: id || null })}
+                  onChange={(id) => save({ connector_id: id || null, model: "" })}
                 />
               </label>
+              {defaults.connector_id && (
+                <div className="field">
+                  <span className="label-row">
+                    Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
+                  </span>
+                  <ModelPicker
+                    models={models}
+                    value={defaults.model}
+                    loading={modelsLoading}
+                    pinKind={connectors.find((c) => c.id === defaults.connector_id)?.kind}
+                    onChange={(model) => save({ model })}
+                  />
+                </div>
+              )}
               <label>
                 Folder
                 <Picker

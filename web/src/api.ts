@@ -9,11 +9,13 @@ export type Board = {
 export type Config = { show_hidden: boolean; version: string; chat_window: string; open_path: string };
 export type ChatDefaults = {
   connector_id: string | null;
+  model: string;
   folder: string | null;
   auto_allow: boolean;
   thinking: boolean;
   martin_persona: boolean;
   show_thinking: boolean;
+  language: "system" | "en" | "es";
 };
 export type SettingsAbout = {
   version: string;

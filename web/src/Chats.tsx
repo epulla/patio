@@ -2015,8 +2015,12 @@ const createChat = (body: { connector_id: string; model: string; folder: string 
 
 export async function createChatWithDefaults(connector: Connector, title?: string) {
   const defaults = await api.get<ChatDefaults>("/api/settings/defaults");
-  return createChat({ connector_id: connector.id, model: connectorModel([connector], connector.id), folder: defaults.folder || null, title });
+  return createChat({ connector_id: connector.id, model: startModel([connector], defaults, connector.id), folder: defaults.folder || null, title });
 }
+
+// The default model only applies to the default connector; other connectors start on their own model.
+export const startModel = (connectors: Connector[], defaults: ChatDefaults | undefined, id: string) =>
+  (id === defaults?.connector_id && defaults.model) || connectorModel(connectors, id);
 
 export function NewChatDialog({
   connectors,
@@ -2029,10 +2033,17 @@ export function NewChatDialog({
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
-  const defaultModel = (id: string) => connectorModel(connectors, id);
+  const [defaults, setDefaults] = useState<ChatDefaults>();
+  const defaultModel = (id: string) => startModel(connectors, defaults, id);
   const [connectorID, setConnectorID] = useState(connectors[0]?.id ?? "");
   const [model, setModel] = useState(() => defaultModel(connectors[0]?.id ?? ""));
   const { models, loading: modelsLoading } = useModels(connectorID);
+
+  useEffect(() => {
+    if (!modelsLoading && model && model === defaults?.model && !models.some((m) => m.id === model)) {
+      setModel(connectorModel(connectors, connectorID));
+    }
+  }, [models, modelsLoading]);
   const [folder, setFolder] = useState("");
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [error, setError] = useState<unknown>();
@@ -2044,9 +2055,10 @@ export function NewChatDialog({
     api
       .get<ChatDefaults>("/api/settings/defaults")
       .then((defaults) => {
+        setDefaults(defaults);
         if (defaults.connector_id && connectors.some((c) => c.id === defaults.connector_id)) {
           setConnectorID(defaults.connector_id);
-          setModel(defaultModel(defaults.connector_id));
+          setModel(startModel(connectors, defaults, defaults.connector_id));
         }
         if (defaults.folder) setFolder(defaults.folder);
       })

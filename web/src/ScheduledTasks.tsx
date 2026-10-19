@@ -9,7 +9,7 @@ import {
   type ScheduledTaskRun,
 } from "./api";
 import { ErrorText, navigate } from "./App";
-import { lateTitle, useModels } from "./Chats";
+import { lateTitle, startModel, useModels } from "./Chats";
 import ModelPicker from "./ModelPicker";
 import { ConnectorRequired } from "./Connectors";
 import { Icon, IconButton } from "./icons";
@@ -346,8 +346,15 @@ function TaskEditor({
   const [preview, setPreview] = useState<{ runs?: string[]; error?: unknown }>({});
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
+  const [defaults, setDefaults] = useState<ChatDefaults>();
   const { models, loading: modelsLoading } = useModels(connectorID || null);
-  const defaultModel = (list: Connector[], id: string) => list.find((c) => c.id === id && c.kind === "local")?.model ?? "";
+  const defaultModel = (list: Connector[], id: string) => startModel(list, defaults, id);
+
+  useEffect(() => {
+    if (!modelsLoading && model && model === defaults?.model && !models.some((m) => m.id === model)) {
+      setModel(startModel(connectors ?? [], undefined, connectorID));
+    }
+  }, [models, modelsLoading]);
 
   const fields: Fields = {
     title: title.trim(),
@@ -373,11 +380,12 @@ function TaskEditor({
         setConnectors(connectorList);
         setFolders(folderList);
         if (!defaults) return;
+        setDefaults(defaults);
         const id = defaults.connector_id && connectorList.some((c) => c.id === defaults.connector_id)
           ? defaults.connector_id
           : connectorList[0]?.id ?? "";
         setConnectorID(id);
-        setModel(defaultModel(connectorList, id));
+        setModel(startModel(connectorList, defaults, id));
         setFolder(defaults.folder ?? "");
         setThinking(defaults.thinking);
       })

@@ -3892,7 +3892,8 @@ main.chat-window {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
-.defaults-fields label {
+.defaults-fields label,
+.defaults-fields .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
