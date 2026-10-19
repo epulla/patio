@@ -92,6 +92,12 @@ type transferCalendarItem struct {
 	UpdatedAt   string  `json:"updated_at"`
 	NotifiedAt  *string `json:"notified_at"`
 }
+type transferLink struct {
+	ID           string `json:"id"`
+	FromTicketID string `json:"from_ticket_id"`
+	ToTicketID   string `json:"to_ticket_id"`
+	Type         string `json:"type"`
+}
 type boardBackup struct {
 	Format        string                 `json:"format"`
 	Version       int                    `json:"version"`
@@ -105,6 +111,7 @@ type boardBackup struct {
 	Comments      []transferComment      `json:"comments"`
 	CalendarItems []transferCalendarItem `json:"calendar_items,omitempty"`
 	Users         []transferUser         `json:"users"`
+	Links         []transferLink         `json:"links,omitempty"`
 }
 
 func plain(s string) string { return html.UnescapeString(htmlTag.ReplaceAllString(s, "")) }
@@ -177,6 +184,23 @@ func (s *Server) backup(id string) (boardBackup, error) {
 	if e = rows.Err(); e != nil {
 		return b, e
 	}
+	rows, e = s.db.Query(`SELECT id,from_ticket_id,to_ticket_id,type FROM ticket_link WHERE from_ticket_id IN (SELECT id FROM ticket WHERE board_id=?) AND to_ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY created_at,rowid`, id, id)
+	if e != nil {
+		return b, e
+	}
+	for rows.Next() {
+		var x transferLink
+		if e = rows.Scan(&x.ID, &x.FromTicketID, &x.ToTicketID, &x.Type); e != nil {
+			rows.Close()
+			return b, e
+		}
+		b.Links = append(b.Links, x)
+	}
+	if e = rows.Err(); e != nil {
+		rows.Close()
+		return b, e
+	}
+	rows.Close()
 	rows, e = s.db.Query(`SELECT h.id,h.content,h.created_at,h.ticket_id,h.user_id,u.name,u.is_ai FROM ticket_history h JOIN "user" u ON u.id=h.user_id WHERE h.ticket_id IN (SELECT id FROM ticket WHERE board_id=?) ORDER BY h.created_at,h.rowid`, id)
 	if e != nil {
 		return b, e
@@ -579,6 +603,12 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	for _, x := range b.Links {
+		if ticketMap[x.FromTicketID].ID == "" || ticketMap[x.ToTicketID].ID == "" || x.FromTicketID == x.ToTicketID || (x.Type != "blocks" && x.Type != "relates" && x.Type != "duplicates") {
+			errw(w, 400, "invalid ticket link reference")
+			return
+		}
+	}
 	short := shortName(b.Board.Short)
 	var out board
 	e := txrun(s.db, func(tx *sql.Tx) error {
@@ -706,6 +736,11 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, x := range b.Comments {
 			if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, uid(), x.Content, x.Created, x.Updated, ticketIDs[x.TicketID], users[x.UserID]); e != nil {
+				return e
+			}
+		}
+		for _, x := range b.Links {
+			if _, e := tx.Exec(`INSERT INTO ticket_link(id,from_ticket_id,to_ticket_id,type,created_at) VALUES(?,?,?,?,?)`, uid(), ticketIDs[x.FromTicketID], ticketIDs[x.ToTicketID], x.Type, now()); e != nil {
 				return e
 			}
 		}

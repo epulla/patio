@@ -95,6 +95,38 @@ func TestBoardJSONRoundTripAndCollision(t *testing.T) {
 	}
 }
 
+func TestBoardTransferIncludesOnlyInternalTicketLinks(t *testing.T) {
+	_, h := newAPI(t)
+	b := createBoard(t, h, "LNK", nil)
+	other := createBoard(t, h, "OUT", nil)
+	a := createTicket(t, h, b.ID, "")
+	z := createTicket(t, h, b.ID, "")
+	outside := createTicket(t, h, other.ID, "")
+	var link map[string]string
+	requestJSON(t, h, http.MethodPost, "/api/tickets/"+a.ID+"/links", map[string]string{"to_ticket_id": z.ID, "type": "blocks"}, &link)
+	requestJSON(t, h, http.MethodPost, "/api/tickets/"+a.ID+"/links", map[string]string{"to_ticket_id": outside.ID, "type": "relates"}, &link)
+	var backup boardBackup
+	if err := json.Unmarshal(exportJSON(t, h, b.ID), &backup); err != nil {
+		t.Fatal(err)
+	}
+	if len(backup.Links) != 1 {
+		t.Fatalf("exported links=%+v", backup.Links)
+	}
+	destDB, destination := newAPI(t)
+	w := transferRequest(t, destination, http.MethodPost, "/api/import", exportJSON(t, h, b.ID))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import %d: %s", w.Code, w.Body)
+	}
+	var imported board
+	if err := json.NewDecoder(w.Body).Decode(&imported); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := destDB.QueryRow("SELECT COUNT(*) FROM ticket_link").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("imported links=%d err=%v", count, err)
+	}
+}
+
 func TestBoardJSONImportDefaultsHideAfterDays(t *testing.T) {
 	_, sourceHandler := newAPI(t)
 	board := createBoard(t, sourceHandler, "DAYS", []string{"Temporary"})
