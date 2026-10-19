@@ -379,13 +379,13 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		model = map[string]string{"providerID": provider, "modelID": modelID}
 	}
 	endpoint := d.endpoint("/session/" + url.PathEscape(d.session) + "/prompt_async")
-	persona, err := MartinPersonaEnabled(d.manager.db)
+	prompt, err := ChatPrompt(d.manager.db, d.chatID)
 	if err != nil {
 		d.discardTurn()
 		return err
 	}
 	if d.personaPrompt {
-		request.Text = ChatSystemPrompt(persona, d.chatID) + "\n\n" + request.Text
+		request.Text = prompt + "\n\n" + request.Text
 		d.personaPrompt = false
 	}
 	parts := opencodePromptParts(request.Text, files)

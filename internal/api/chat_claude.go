@@ -63,7 +63,7 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		}
 	}
 	var args []string
-	persona, err := MartinPersonaEnabled(m.db)
+	prompt, err := ChatPrompt(m.db, c.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +74,13 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		if err != nil {
 			return nil, err
 		}
-		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath, c.ID, persona)
+		args = buildClaudeArgsWithConfig(c.Model, stringValue(c.SessionID), configPath, prompt)
 	} else {
 		args, err = m.options.commandBuilder(exe, m.dbPath, c.ID, c.Model, stringValue(c.SessionID))
 		if err != nil {
 			return nil, err
 		}
-		args = append(args, "--append-system-prompt", ChatSystemPrompt(persona, c.ID))
+		args = append(args, "--append-system-prompt", prompt)
 	}
 	factory := m.options.processFactory
 	if factory == nil {
@@ -110,12 +110,8 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func buildClaudeArgsWithConfig(model, sessionID, configPath, chatID string, persona ...bool) []string {
-	enabled := true
-	if len(persona) > 0 {
-		enabled = persona[0]
-	}
-	args := []string{"-p", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", ChatSystemPrompt(enabled, chatID), "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+func buildClaudeArgsWithConfig(model, sessionID, configPath, prompt string) []string {
+	args := []string{"-p", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", prompt,"--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}

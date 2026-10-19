@@ -179,11 +179,11 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 	d.assistant.Reset()
 	d.assistantMu.Unlock()
 	if d.firstPrompt {
-		persona, err := MartinPersonaEnabled(d.manager.db)
+		prompt, err := ChatPrompt(d.manager.db, d.chatID)
 		if err != nil {
 			return err
 		}
-		request.Text = ChatSystemPrompt(persona, d.chatID) + "\n\n" + request.Text
+		request.Text = prompt + "\n\n" + request.Text
 		d.firstPrompt = false
 	}
 	result, err := d.client.callAsync("session/prompt", map[string]any{

@@ -658,7 +658,7 @@ func TestMCPSkillTools(t *testing.T) {
 			loadDescription = tool.Description
 		}
 	}
-	wantDescription := "Load a skill's instructions before doing a task it covers. Available skills:\n- pirate-voice: Use when the user asks for a pirate greeting."
+	wantDescription := "Load a skill's instructions by name before doing a task it covers. Enabled skills are listed in the chat instructions."
 	if loadDescription != wantDescription {
 		t.Fatalf("load_skill description = %q, want %q", loadDescription, wantDescription)
 	}

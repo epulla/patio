@@ -420,7 +420,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := buildClaudeArgsWithConfig("sonnet", "session-id", configPath, "chat-id")
+	args := buildClaudeArgsWithConfig("sonnet", "session-id", configPath, ChatSystemPrompt(true, "chat-id", nil))
 	joined := strings.Join(args, " ")
 	for _, want := range []string{"-p", "--disallowedTools AskUserQuestion", "--append-system-prompt", "/tickets/<ticket id>", "To ask the user multiple-choice questions", "--input-format stream-json", "--output-format stream-json", "--verbose", "--include-partial-messages", "--model sonnet", "--strict-mcp-config", "--permission-prompt-tool mcp__patio__approve", "--resume session-id"} {
 		if !strings.Contains(joined, want) {

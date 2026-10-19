@@ -100,13 +100,13 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 			"cwd": c.Workdir, "approvalPolicy": "on-request", "sandbox": "read-only",
 			"config": codexConfig,
 		}
-		persona, promptErr := MartinPersonaEnabled(m.db)
+		prompt, promptErr := ChatPrompt(m.db, c.ID)
 		if promptErr != nil {
 			cancel()
 			_ = client.Close()
 			return nil, promptErr
 		}
-		params["developerInstructions"] = ChatSystemPrompt(persona, c.ID)
+		params["developerInstructions"] = prompt
 		if c.Model != "" {
 			params["model"] = c.Model
 		}

@@ -3,6 +3,8 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strings"
 )
 
 const (
@@ -12,15 +14,55 @@ const (
 	askUserPrompt  = "To ask the user multiple-choice questions, use the Patio ask_user tool with this chat's ID as chat_id, then end your turn."
 )
 
-func ChatSystemPrompt(enabled bool, chatID string) string {
-	id := ""
-	if chatID != "" {
-		id = " This chat's ID is " + chatID + "."
-	}
+func ChatSystemPrompt(enabled bool, chatID string, skills []Skill) string {
+	prompt := "You are a neutral assistant. " + chatLinkRules + " " + askUserPrompt
 	if enabled {
-		return martinPersona + " " + ticketComments + " " + chatLinkRules + " " + askUserPrompt + id
+		prompt = martinPersona + " " + ticketComments + " " + chatLinkRules + " " + askUserPrompt
 	}
-	return "You are a neutral assistant. " + chatLinkRules + " " + askUserPrompt + id
+	prompt += skillIndex(skills)
+	// The chat ID goes last so the text before it is the same for every chat and stays cacheable.
+	if chatID != "" {
+		prompt += " This chat's ID is " + chatID + "."
+	}
+	return prompt
+}
+
+// ChatPrompt builds ChatSystemPrompt from the stored persona setting and enabled skills.
+func ChatPrompt(db *sql.DB, chatID string) (string, error) {
+	enabled, err := MartinPersonaEnabled(db)
+	if err != nil {
+		return "", err
+	}
+	var skills []Skill
+	if db != nil {
+		if skills, err = EnabledSkills(db); err != nil {
+			return "", err
+		}
+	}
+	return ChatSystemPrompt(enabled, chatID, skills), nil
+}
+
+// skillIndex lists each skill with a short trigger; full instructions stay behind load_skill.
+func skillIndex(skills []Skill) string {
+	if len(skills) == 0 {
+		return ""
+	}
+	var index strings.Builder
+	index.WriteString(" Patio skills (call load_skill with the name before a task one covers):")
+	for _, skill := range skills {
+		fmt.Fprintf(&index, "\n- %s: %s", skill.Name, skillTrigger(skill.Description))
+	}
+	return index.String()
+}
+
+// skillTrigger keeps the description's first sentence, capped at 20 words.
+func skillTrigger(description string) string {
+	sentence, _, _ := strings.Cut(description, ". ")
+	words := strings.Fields(sentence)
+	if len(words) > 20 {
+		return strings.Join(words[:20], " ") + "…"
+	}
+	return strings.TrimSuffix(strings.Join(words, " "), ".")
 }
 
 func MartinPersonaEnabled(db *sql.DB) (bool, error) {

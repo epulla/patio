@@ -314,7 +314,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		if err != nil {
 			return nil, fmt.Errorf("load Martin persona setting: %w", err)
 		}
-		instructions = api.ChatSystemPrompt(persona, "") + " " + instructions
+		instructions = api.ChatSystemPrompt(persona, "", skills) + " " + instructions
 	}
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
@@ -549,12 +549,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api.Skill) {
 	description := "No skills are enabled."
 	if len(skills) > 0 {
-		var available strings.Builder
-		available.WriteString("Load a skill's instructions before doing a task it covers. Available skills:")
-		for _, skill := range skills {
-			fmt.Fprintf(&available, "\n- %s: %s", skill.Name, skill.Description)
-		}
-		description = available.String()
+		description = "Load a skill's instructions by name before doing a task it covers. Enabled skills are listed in the chat instructions."
 	}
 	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills; optionally include disabled skills"}, func(_ context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
