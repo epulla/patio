@@ -14,6 +14,8 @@ import (
 
 type settingsDefaults struct {
 	ConnectorID   *string `json:"connector_id"`
+	Model         string  `json:"model"`
+	Language      string  `json:"language"`
 	Folder        *string `json:"folder"`
 	AutoAllow     bool    `json:"auto_allow"`
 	Thinking      bool    `json:"thinking"`
@@ -22,7 +24,7 @@ type settingsDefaults struct {
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Thinking: true, MartinPersona: true}
+	defaults := settingsDefaults{AutoAllow: true, Thinking: true, MartinPersona: true, Language: "system"}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -59,6 +61,16 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 	}
 	if raw, ok := values["folder"]; ok {
 		if err := json.Unmarshal([]byte(raw), &defaults.Folder); err != nil {
+			return defaults, err
+		}
+	}
+	if raw, ok := values["model"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.Model); err != nil {
+			return defaults, err
+		}
+	}
+	if raw, ok := values["language"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.Language); err != nil {
 			return defaults, err
 		}
 	}
@@ -108,6 +120,8 @@ func (s *Server) getSettingsDefaults(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ConnectorID   json.RawMessage `json:"connector_id"`
+		Model         *string         `json:"model"`
+		Language      *string         `json:"language"`
 		Folder        json.RawMessage `json:"folder"`
 		AutoAllow     *bool           `json:"auto_allow"`
 		Thinking      *bool           `json:"thinking"`
@@ -124,6 +138,18 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	connectorID, folder := defaults.ConnectorID, defaults.Folder
+	model, language := defaults.Model, defaults.Language
+	oldConnectorID := connectorID
+	if in.Model != nil {
+		model = *in.Model
+	}
+	if in.Language != nil {
+		language = *in.Language
+	}
+	if in.Language != nil && language != "system" && language != "en" && language != "es" {
+		errw(w, http.StatusBadRequest, "language must be system, en, or es")
+		return
+	}
 	autoAllow, thinking, showThinking, martinPersona := defaults.AutoAllow, defaults.Thinking, defaults.ShowThinking, defaults.MartinPersona
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
@@ -155,6 +181,9 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	} else if string(in.ConnectorID) == "null" {
 		connectorID = nil
 	}
+	if in.Model == nil && !sameConnectorID(oldConnectorID, connectorID) {
+		model = ""
+	}
 	if len(in.Folder) > 0 && string(in.Folder) != "null" {
 		var value string
 		if err := json.Unmarshal(in.Folder, &value); err != nil || !required(value) {
@@ -176,6 +205,8 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	}
 	values := map[string]any{
 		"connector_id":   connectorID,
+		"model":          model,
+		"language":       language,
 		"folder":         folder,
 		"auto_allow":     autoAllow,
 		"thinking":       thinking,
@@ -202,7 +233,14 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, MartinPersona: martinPersona})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, MartinPersona: martinPersona})
+}
+
+func sameConnectorID(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func (s *Server) allowedFolderPath(path string) (string, bool, error) {

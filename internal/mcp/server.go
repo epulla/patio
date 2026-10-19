@@ -146,6 +146,8 @@ type commentArgs struct {
 }
 type settingsDefaultsArgs struct {
 	ConnectorID   json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
+	Model         *string         `json:"model,omitempty" jsonschema:"Optional default model"`
+	Language      *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
 	Folder        json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
 	Thinking      *bool           `json:"thinking,omitempty"`
 	ShowThinking  *bool           `json:"show_thinking,omitempty"`
@@ -498,6 +500,12 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "get_settings_defaults", "Get chat settings defaults", h, func(struct{}) request { return request{http.MethodGet, "/api/settings/defaults", nil} })
 	addGeneric(s, "update_settings_defaults", "Update settings defaults; auto_allow cannot be changed", h, func(a settingsDefaultsArgs) request {
 		body := map[string]any{}
+		if a.Model != nil {
+			body["model"] = *a.Model
+		}
+		if a.Language != nil {
+			body["language"] = *a.Language
+		}
 		for key, value := range map[string]json.RawMessage{"connector_id": a.ConnectorID, "folder": a.Folder} {
 			if len(value) > 0 {
 				body[key] = value

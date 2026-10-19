@@ -363,6 +363,9 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	if in.Title == "" {
 		in.Title = "New chat"
 	}
+	if in.Model == "" && defaults.ConnectorID != nil && connectorID == *defaults.ConnectorID {
+		in.Model = defaults.Model
+	}
 	if !required(in.Title) {
 		errw(w, 400, "title required")
 		return
