@@ -397,6 +397,27 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if len(sorted) != 2 || sorted[0].Title != "Second" || sorted[1].Title != "MCP ticket" {
 		t.Fatalf("sorted search = %#v", sorted)
 	}
+	var limited []map[string]any
+	decodeText(t, callTool(t, session, "search_tickets", map[string]any{"board_id": board.ID, "limit": 1}), &limited)
+	if len(limited) != 1 || limited[0]["code"] == nil || limited[0]["description"] != nil {
+		t.Fatalf("limited search = %#v, want 1 compact row", limited)
+	}
+	type compactBoard struct {
+		Statuses []struct {
+			Type          string           `json:"type"`
+			HiddenTickets int              `json:"hidden_tickets"`
+			Tickets       []map[string]any `json:"tickets"`
+		} `json:"statuses"`
+	}
+	var hidden, included compactBoard
+	decodeText(t, callTool(t, session, "get_board", map[string]any{"board_id": board.ID}), &hidden)
+	if done := hidden.Statuses[1]; done.Type != "temporary" || done.HiddenTickets != 2 || len(done.Tickets) != 0 {
+		t.Fatalf("default Done column = %#v, want 2 hidden tickets", done)
+	}
+	decodeText(t, callTool(t, session, "get_board", map[string]any{"board_id": board.ID, "include_done": true}), &included)
+	if done := included.Statuses[1]; len(done.Tickets) != 2 || done.Tickets[0]["code"] == nil || done.Tickets[0]["description"] != nil {
+		t.Fatalf("include_done Done column = %#v, want 2 compact rows", done)
+	}
 
 	var transitions, histories int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM ticket_status_transition WHERE ticket_id=? AND user_id='ai'`, ticket.ID).Scan(&transitions); err != nil {

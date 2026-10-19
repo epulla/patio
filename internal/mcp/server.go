@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,18 @@ import (
 )
 
 type boardArgs struct {
-	BoardID string `json:"board_id" jsonschema:"Board UUID"`
+	BoardID     string `json:"board_id" jsonschema:"Board UUID"`
+	IncludeDone bool   `json:"include_done,omitempty" jsonschema:"Also list tickets in temporary (Done-type) columns"`
+}
+
+// compactTicket is the row list tools return; get_ticket has the full ticket.
+type compactTicket struct {
+	ID         string  `json:"id"`
+	Code       string  `json:"code"`
+	Title      string  `json:"title"`
+	StatusName string  `json:"status_name,omitempty"`
+	DueDate    *string `json:"due_date,omitempty"`
+	UpdatedAt  string  `json:"updated_at"`
 }
 type createBoardArgs struct {
 	Name      string              `json:"name" jsonschema:"Board name"`
@@ -126,6 +138,7 @@ type searchArgs struct {
 	UpdatedTo   string `json:"updated_to,omitempty" jsonschema:"Optional RFC 3339 timestamp; updated before"`
 	Sort        string `json:"sort,omitempty" jsonschema:"Optional sort: created (default), updated, title, code, board, status"`
 	Dir         string `json:"dir,omitempty" jsonschema:"Optional asc or desc; default desc for created/updated, asc otherwise"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"Optional maximum rows, default 50, at most 200"`
 }
 type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
@@ -359,8 +372,40 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "list_connector_models", "List models available from a connector", h, func(a connectorIDArgs) request {
 		return request{http.MethodGet, "/api/connectors/" + url.PathEscape(a.ID) + "/models", nil}
 	})
-	addGeneric(s, "get_board", "Get board data including statuses, types, and tickets", h, func(a boardArgs) request {
-		return request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil}
+	addGenericHandler(s, "get_board", "Get board data including statuses, types, and compact ticket rows (use get_ticket for a description). Tickets in temporary (Done-type) columns are counted, not listed, unless include_done is true", func(a boardArgs) (*sdk.CallToolResult, error) {
+		data, err := doJSON(h, request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		var board map[string]json.RawMessage
+		var statuses []map[string]json.RawMessage
+		if err := json.Unmarshal(data, &board); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(board["statuses"], &statuses); err != nil {
+			return nil, err
+		}
+		for _, status := range statuses {
+			var tickets []compactTicket
+			var kind string
+			if err := json.Unmarshal(status["tickets"], &tickets); err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(status["type"], &kind); err != nil {
+				return nil, err
+			}
+			if kind == "temporary" && !a.IncludeDone {
+				status["hidden_tickets"] = json.RawMessage(strconv.Itoa(len(tickets)))
+				tickets = []compactTicket{}
+			}
+			if status["tickets"], err = json.Marshal(tickets); err != nil {
+				return nil, err
+			}
+		}
+		if board["statuses"], err = json.Marshal(statuses); err != nil {
+			return nil, err
+		}
+		return jsonResult(board)
 	})
 	addGeneric(s, "create_board", "Create a board with a name and a required short_name code like MP. Column type may be classic or temporary; without type, hide_after_days selects temporary, otherwise classic. Temporary columns default to 1 hide_after_days.", h, func(a createBoardArgs) request {
 		body := createBoardBody{Name: a.Name, ShortName: a.ShortName}
@@ -419,14 +464,26 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return request{http.MethodPut, "/api/tickets/" + url.PathEscape(a.ID), a}
 	})
 	addGenericHandler(s, "move_ticket", "Move ticket to status UUID or name", moveHandler(h))
-	addGeneric(s, "search_tickets", "Search tickets by title or code, filter by board and created/updated time, and sort; newest first, at most 200", h, func(a searchArgs) request {
+	addGenericHandler(s, "search_tickets", "Search tickets by title or code, filter by board and created/updated time, and sort; newest first. Returns compact rows (use get_ticket for a description), 50 by default", func(a searchArgs) (*sdk.CallToolResult, error) {
 		q := url.Values{}
 		for k, v := range map[string]string{"q": a.Query, "board_id": a.BoardID, "created_from": a.CreatedFrom, "created_to": a.CreatedTo, "updated_from": a.UpdatedFrom, "updated_to": a.UpdatedTo, "sort": a.Sort, "dir": a.Dir} {
 			if v != "" {
 				q.Set(k, v)
 			}
 		}
-		return request{http.MethodGet, "/api/tickets/search?" + q.Encode(), nil}
+		data, err := doJSON(h, request{http.MethodGet, "/api/tickets/search?" + q.Encode(), nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		var tickets []compactTicket
+		if err := json.Unmarshal(data, &tickets); err != nil {
+			return nil, err
+		}
+		limit := a.Limit
+		if limit <= 0 {
+			limit = 50
+		}
+		return jsonResult(tickets[:min(len(tickets), limit)])
 	})
 	addGeneric(s, "add_comment", "Add a ticket comment", h, func(a commentArgs) request {
 		return request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", map[string]string{"content": a.Content}}
@@ -805,6 +862,14 @@ func moveHandler(h http.Handler) func(moveTicketArgs) (*sdk.CallToolResult, erro
 			Index    int    `json:"index"`
 		}{status, math.MaxInt32}}) // API clamps to column length: append at end
 	}
+}
+
+func jsonResult(value any) (*sdk.CallToolResult, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil
 }
 
 func do(h http.Handler, r request) (*sdk.CallToolResult, error) {
