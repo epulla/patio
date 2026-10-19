@@ -460,7 +460,7 @@ func (m *chatManager) emitToolCall(id, name, input string) error {
 }
 
 func isPatioAskUser(name string) bool {
-	return name == "mcp__patio__ask_user" || name == "patio.ask_user" || name == "patio_ask_user" || name == "patio__ask_user" || name == "ask_user"
+	return name == "mcp__patio__ask_user" || name == "patio.ask_user" || name == "patio_ask_user"
 }
 
 func (m *chatManager) emitToolResult(id, summary, result string) error {

@@ -161,6 +161,27 @@ func TestEmitToolCallStoresPatioQuestionAndPreservesOtherToolLine(t *testing.T) 
 	}
 }
 
+func TestEmitToolCallBareAskUserIsNormalTool(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	var events []map[string]any
+	manager := newChatManager(database, Options{Emit: func(_ string, event any) { events = append(events, event.(map[string]any)) }})
+	if err := manager.emitToolCall(chatID, "ask_user", `{"questions":[]}`); err != nil {
+		t.Fatal(err)
+	}
+	var role, content string
+	if err := database.QueryRow(`SELECT role,content FROM chat_message WHERE chat_id=?`, chatID).Scan(&role, &content); err != nil {
+		t.Fatal(err)
+	}
+	if role != "tool" || content != `ask_user {"questions":[]}` {
+		t.Fatalf("tool message = %q %q", role, content)
+	}
+	if len(events) != 1 || events[0]["type"] != "tool" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
 func TestEmitToolCallRejectsScheduledChat(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
