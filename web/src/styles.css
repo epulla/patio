@@ -1461,6 +1461,21 @@ label.days-field {
   margin-left: 4px;
   font-weight: 400;
 }
+.ticket-link-add {
+  height: 28px;
+  padding: 0 8px;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ticket-link-add:hover {
+  color: inherit;
+}
+.ticket-link-add svg {
+  width: 14px;
+  height: 14px;
+}
 .ticket-link-group {
   display: flex;
   flex-direction: column;
@@ -1471,7 +1486,9 @@ label.days-field {
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
-  text-transform: capitalize;
+}
+.ticket-link-label::first-letter {
+  text-transform: uppercase;
 }
 .ticket-link-list li {
   gap: 8px;

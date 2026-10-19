@@ -442,7 +442,7 @@ function Links({
           Links {links.length > 0 && <span className="muted">{links.length}</span>}
         </h2>
         {!adding && (
-          <button type="button" className="ghost" onClick={() => setAdding(true)}>
+          <button type="button" className="ghost ticket-link-add" onClick={() => setAdding(true)}>
             <Icon name="plus" /> Add link
           </button>
         )}
