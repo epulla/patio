@@ -7,6 +7,7 @@ erDiagram
   status { TEXT id; TEXT name; TEXT type; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket_type { TEXT id; TEXT name; TEXT color; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket { TEXT id; TEXT title; TEXT description; INTEGER number; TEXT code; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT due_date; TEXT status_updated_at; TEXT status_id; TEXT board_id; TEXT ticket_type_id; TEXT reporter_id; TEXT assignee_id }
+  ticket_link { TEXT id; TEXT from_ticket_id; TEXT to_ticket_id; TEXT type; TEXT created_at }
   ticket_history { TEXT id; TEXT content; TEXT created_at; TEXT ticket_id; TEXT user_id }
   ticket_comment { TEXT id; TEXT content; TEXT created_at; TEXT updated_at; TEXT ticket_id; TEXT user_id }
   status_order { TEXT id; TEXT status_ids; TEXT updated_at; TEXT board_id }
@@ -32,3 +33,4 @@ erDiagram
 ```
 
 Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.
+Links use `blocks`, `relates`, or `duplicates`; each link has one direction and appears inversely from the other ticket. Links cascade-delete with either ticket.
