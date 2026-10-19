@@ -1442,39 +1442,85 @@ label.days-field {
 .comment div {
   margin-top: 8px;
 }
-.ticket-main > .ticket-link-section {
-  flex: none;
+.ticket-link-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ticket-link-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ticket-link-head h2 {
+  margin: 0;
+  font-size: 13px;
+}
+.ticket-link-head h2 .muted {
+  margin-left: 4px;
+  font-weight: 400;
 }
 .ticket-link-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .ticket-link-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+.ticket-link-list li {
+  gap: 8px;
+  padding-right: 4px;
+}
+.ticket-link-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.ticket-link-item .ticket-row-code {
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 12px;
 }
-.ticket-link-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 400;
-}
-.ticket-link-row a {
-  flex: 1;
-  min-width: 0;
+.ticket-link-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
 }
-.ticket-link-status {
-  color: var(--muted);
-  font-size: 12px;
+.ticket-link-item:hover .ticket-link-title,
+.ticket-link-item:focus-visible .ticket-link-title {
+  text-decoration: underline;
+}
+.ticket-link-list .run-label {
+  flex-shrink: 0;
+  margin: 0;
+}
+.ticket-link-remove {
+  opacity: 0;
+}
+.ticket-link-list li:hover .ticket-link-remove,
+.ticket-link-remove:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .ticket-link-remove {
+    opacity: 1;
+  }
 }
 .ticket-link-form {
   display: flex;
   gap: 8px;
-  font-weight: 400;
 }
 .ticket-link-form input {
   flex: 1;

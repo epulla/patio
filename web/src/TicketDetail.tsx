@@ -402,6 +402,7 @@ function Links({
 }) {
   const [choice, setChoice] = useState(0);
   const [code, setCode] = useState("");
+  const [adding, setAdding] = useState(false);
   const [tickets, setTickets] = useState<SearchTicket[]>();
   const listID = `ticket-link-options-${ticket.id}`;
   async function loadTickets() {
@@ -435,70 +436,92 @@ function Links({
   }
   const labels = [...new Set(links.map((link) => link.label))];
   return (
-    <section className="field ticket-link-section">
-      Links
+    <section className="ticket-link-section" aria-labelledby={`${listID}-title`}>
+      <div className="ticket-link-head">
+        <h2 id={`${listID}-title`}>
+          Links {links.length > 0 && <span className="muted">{links.length}</span>}
+        </h2>
+        {!adding && (
+          <button type="button" className="ghost" onClick={() => setAdding(true)}>
+            <Icon name="plus" /> Add link
+          </button>
+        )}
+      </div>
       {labels.map((label) => (
         <div key={label} className="ticket-link-group">
-          <span className="ticket-link-label">{label}</span>
-          {links
-            .filter((link) => link.label === label)
-            .map((link) => (
-              <div key={link.id} className="ticket-link-row">
-                <a
-                  href={`/tickets/${link.other_ticket_id}`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigate(`/tickets/${link.other_ticket_id}`);
-                  }}
-                >
-                  <span className="ticket-code">{link.other_code}</span> {link.other_title}
-                </a>
-                <span className="ticket-link-status">{link.status}</span>
-                <IconButton
-                  className="ghost"
-                  icon="trash"
-                  label={`Remove link to ${link.other_code}`}
-                  onClick={() => remove(link)}
-                />
-              </div>
-            ))}
+          <h3 className="ticket-link-label">{label}</h3>
+          <ul className="panel skill-list ticket-link-list">
+            {links
+              .filter((link) => link.label === label)
+              .map((link) => (
+                <li key={link.id}>
+                  <a
+                    className="ticket-link-item"
+                    href={`/tickets/${link.other_ticket_id}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigate(`/tickets/${link.other_ticket_id}`);
+                    }}
+                  >
+                    <span className="ticket-row-code">{link.other_code}</span>
+                    <span className="ticket-link-title">{link.other_title}</span>
+                  </a>
+                  <span className="run-label">{link.status}</span>
+                  <IconButton
+                    className="ghost ticket-link-remove"
+                    icon="trash"
+                    label={`Remove link to ${link.other_code}`}
+                    onClick={() => remove(link)}
+                  />
+                </li>
+              ))}
+          </ul>
         </div>
       ))}
-      <form
-        className="ticket-link-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          add();
-        }}
-      >
-        <select aria-label="Link type" value={choice} onChange={(event) => setChoice(Number(event.target.value))}>
-          {linkChoices.map((item, index) => (
-            <option key={item.label} value={index}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <input
-          aria-label="Ticket code"
-          placeholder="Ticket code, e.g. PROJ-5"
-          list={listID}
-          value={code}
-          onFocus={loadTickets}
-          onChange={(event) => setCode(event.target.value)}
-        />
-        <datalist id={listID}>
-          {tickets
-            ?.filter((item) => item.id !== ticket.id)
-            .map((item) => (
-              <option key={item.id} value={item.code}>
-                {item.title}
+      {adding && (
+        <form
+          className="ticket-link-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            add();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setAdding(false);
+          }}
+        >
+          <select aria-label="Link type" value={choice} onChange={(event) => setChoice(Number(event.target.value))}>
+            {linkChoices.map((item, index) => (
+              <option key={item.label} value={index}>
+                {item.label}
               </option>
             ))}
-        </datalist>
-        <button type="submit" disabled={!code.trim()}>
-          <Icon name="plus" /> Link
-        </button>
-      </form>
+          </select>
+          <input
+            aria-label="Ticket code"
+            placeholder="Ticket code, e.g. PROJ-5"
+            autoFocus
+            list={listID}
+            value={code}
+            onFocus={loadTickets}
+            onChange={(event) => setCode(event.target.value)}
+          />
+          <datalist id={listID}>
+            {tickets
+              ?.filter((item) => item.id !== ticket.id)
+              .map((item) => (
+                <option key={item.id} value={item.code}>
+                  {item.title}
+                </option>
+              ))}
+          </datalist>
+          <button type="submit" className="primary" disabled={!code.trim()}>
+            Link
+          </button>
+          <button type="button" onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+        </form>
+      )}
     </section>
   );
 }
