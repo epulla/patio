@@ -34,3 +34,4 @@ erDiagram
 
 Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.
 Links use `blocks`, `relates`, or `duplicates`; each link has one direction and appears inversely from the other ticket. Links cascade-delete with either ticket.
+Scheduled run statuses are `running`, `waiting`, `done`, `failed`, or `skipped`.

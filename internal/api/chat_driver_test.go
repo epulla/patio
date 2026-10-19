@@ -182,7 +182,7 @@ func TestEmitToolCallBareAskUserIsNormalTool(t *testing.T) {
 	}
 }
 
-func TestEmitToolCallRejectsScheduledChat(t *testing.T) {
+func TestEmitToolCallStoresScheduledQuestion(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
@@ -194,9 +194,12 @@ func TestEmitToolCallRejectsScheduledChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newChatManager(database, Options{})
-	err := manager.emitToolCall(chatID, "patio.ask_user", `{"questions":[]}`)
-	if err == nil || !strings.Contains(err.Error(), "decide yourself and continue") {
-		t.Fatalf("scheduled ask_user error = %v", err)
+	if err := manager.emitToolCall(chatID, "patio.ask_user", `{"questions":[]}`); err != nil {
+		t.Fatalf("scheduled ask_user: %v", err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='question'`, chatID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("scheduled question count = %d, %v", count, err)
 	}
 }
 

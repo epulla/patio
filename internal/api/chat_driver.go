@@ -436,13 +436,6 @@ func (m *chatManager) emitToolCall(id, name, input string) error {
 	if !isPatioAskUser(name) {
 		return m.emitTool(id, strings.TrimSpace(name+" "+shortText(input, toolInputLimit)))
 	}
-	var scheduled sql.NullString
-	if err := m.db.QueryRow(`SELECT scheduled_task_id FROM chat WHERE id=?`, id).Scan(&scheduled); err != nil {
-		return err
-	}
-	if scheduled.Valid {
-		return errors.New("ask_user is unavailable in scheduled runs; decide yourself and continue")
-	}
 	var questions any
 	if err := json.Unmarshal([]byte(input), &questions); err != nil {
 		return fmt.Errorf("invalid ask_user input: %w", err)
@@ -456,6 +449,18 @@ func (m *chatManager) emitToolCall(id, name, input string) error {
 		return err
 	}
 	m.emit(id, map[string]any{"type": "question", "message": message})
+	if m.notify != nil {
+		var taskTitle string
+		err := m.db.QueryRow(`SELECT t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status='running'`, id).Scan(&taskTitle)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			if err := m.notify("scheduled", taskTitle+" has a question", "", "/ai/chats/"+id, true); err != nil {
+				log.Printf("notify scheduled question for chat %s: %v", id, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -513,20 +518,26 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	m.emit(id, map[string]any{"type": "done", "message": message})
 	var runID, taskID, title string
-	lookupErr := m.db.QueryRow(`SELECT r.id,t.id,t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status='running'`, id).Scan(&runID, &taskID, &title)
+	lookupErr := m.db.QueryRow(`SELECT r.id,t.id,t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status IN ('running','waiting')`, id).Scan(&runID, &taskID, &title)
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return lookupErr
 	}
 	if lookupErr == nil {
+		var openQuestion int
+		if err := m.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chat_message WHERE chat_id=? AND role='question' AND answered=0)`, id).Scan(&openQuestion); err != nil {
+			return err
+		}
 		status, message := "done", "Scheduled task finished: "+title
 		failure := ""
 		if turnErr != nil {
 			status, message, failure = "failed", "Scheduled task failed: "+title, turnErr.Error()
+		} else if openQuestion != 0 {
+			status, message = "waiting", ""
 		}
-		if _, err := m.db.Exec(`UPDATE scheduled_task_run SET status=?,error=? WHERE id=? AND status='running'`, status, failure, runID); err != nil {
+		if _, err := m.db.Exec(`UPDATE scheduled_task_run SET status=?,error=? WHERE id=? AND status IN ('running','waiting')`, status, failure, runID); err != nil {
 			return err
 		}
-		if m.notify != nil {
+		if status != "waiting" && m.notify != nil {
 			if err := m.notify("scheduled", message, "", "/ai/scheduled/"+taskID, true); err != nil {
 				log.Printf("notify scheduled task run %s: %v", runID, err)
 			}

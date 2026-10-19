@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 25 {
-		t.Fatalf("migration count = %d, want 25", migrations)
+	if migrations != 26 {
+		t.Fatalf("migration count = %d, want 26", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -87,6 +87,12 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if auto != 0 {
 		t.Fatalf("new approval auto = %d, want 0", auto)
+	}
+	if _, err := second.Exec(`INSERT INTO scheduled_task(id,title,prompt,schedule,created_at,updated_at) VALUES('migration-task','task','prompt','* * * * *','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Exec(`INSERT INTO scheduled_task_run(id,task_id,scheduled_for,status,created_at) VALUES('migration-waiting','migration-task','now','waiting','now')`); err != nil {
+		t.Fatalf("insert waiting run: %v", err)
 	}
 }
 
