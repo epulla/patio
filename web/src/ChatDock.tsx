@@ -5,6 +5,12 @@ import { Conversation, type PageContext } from "./Chats";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import { isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, unpin, unpinAriaShortcut, unpinShortcut } from "./pins";
+import { useText } from "./i18n";
+
+const text = {
+  en: { pinnedChats: "Pinned chats", resizePinned: "Resize pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, openChats: "Open in Chats", togglePinned: (shortcut: string) => `Toggle pinned chats with ${shortcut}`, closeDock: (shortcut: string) => `Close dock (${shortcut})` },
+  es: { pinnedChats: "Chats fijados", resizePinned: "Cambiar tamaño de chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, openChats: "Abrir en Chats", togglePinned: (shortcut: string) => `Alternar chats fijados con ${shortcut}`, closeDock: (shortcut: string) => `Cerrar panel (${shortcut})` },
+};
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
 const minWidth = 320;
@@ -53,6 +59,8 @@ export default function ChatDock({
   onSeen: (id: string) => void;
   onClose: () => void;
 }) {
+  const t = useText(text);
+  const statusText = useText(statusLabels);
   const [active, setActive] = useState(() => lastPinnedChat() ?? ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
@@ -133,11 +141,11 @@ export default function ChatDock({
   }, [refresh]);
 
   return (
-    <aside className="chat-dock" aria-label="Pinned chats" style={{ width }}>
+    <aside className="chat-dock" aria-label={t.pinnedChats} style={{ width }}>
       <div
         role="separator"
         tabIndex={0}
-        aria-label="Resize pinned chats"
+        aria-label={t.resizePinned}
         aria-orientation="vertical"
         aria-valuemin={minWidth}
         aria-valuemax={maxWidth}
@@ -164,14 +172,14 @@ export default function ChatDock({
       <div className="dock-head">
         <div className="dock-chips">
           {ids.map((id, index) => {
-            const title = chats.find((chat) => chat.id === id)?.title ?? "Chat";
+            const title = chats.find((chat) => chat.id === id)?.title ?? t.chat;
             const state = status[id];
             return (
               <div key={id} className="dock-chip-wrap">
                 <button
                   className="dock-chip"
                   aria-pressed={id === current}
-                  aria-label={state ? `${title}, ${statusLabels[state]}` : title}
+                  aria-label={state ? `${title}, ${statusText[state]}` : title}
                   aria-keyshortcuts={pinAriaShortcut(index + 1)}
                   onClick={() => setActive(id)}
                 >
@@ -188,7 +196,7 @@ export default function ChatDock({
                 <IconButton
                   className="ghost dock-unpin"
                   icon="pin"
-                  label={`Unpin ${title} (${unpinShortcut})`}
+                  label={t.unpin(title, unpinShortcut)}
                   aria-keyshortcuts={id === current ? unpinAriaShortcut : undefined}
                   onClick={() => unpinChat(id)}
                 />
@@ -196,11 +204,11 @@ export default function ChatDock({
             );
           })}
         </div>
-        <IconButton className="ghost" icon="externalLink" label="Open in Chats" onClick={() => navigate(`/ai/chats/${current}`)} />
-        <kbd className="dock-kbd" title={`Toggle pinned chats with ${dockShortcut}`}>
+        <IconButton className="ghost" icon="externalLink" label={t.openChats} onClick={() => navigate(`/ai/chats/${current}`)} />
+        <kbd className="dock-kbd" title={t.togglePinned(dockShortcut)}>
           {dockShortcut}
         </kbd>
-        <IconButton className="ghost" icon="chevronsRight" label={`Close dock (${dockShortcut})`} onClick={onClose} />
+        <IconButton className="ghost" icon="chevronsRight" label={t.closeDock(dockShortcut)} onClick={onClose} />
       </div>
       <Conversation
         key={current}

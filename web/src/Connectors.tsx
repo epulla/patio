@@ -10,18 +10,41 @@ import {
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
+import { lang, locale, useText } from "./i18n";
+
+const text = {
+  en: {
+    localAI: "Local AI",
+    noConnectors: "No connectors yet", first: (then: string) => `Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then ${then}.`, go: "Go to Connectors",
+    connectors: "Connectors", add: "Add connector", intro: "Claude Code, Codex, Copilot, and opencode connectors use the official CLI installed on this computer, signed in with your own account. Their providers' terms apply.", empty: "No connectors yet. Add one to chat with Claude, ChatGPT, Copilot, or a local model.",
+    finishBrowser: "Finish signing in in your browser, then press Refresh.", finishTerminal: "Finish signing in in the Terminal window, then press Refresh.", testing: "Testing…", connected: (n: number, found: boolean, model: string) => `Connected. ${n} model${n === 1 ? "" : "s"} available${found ? "" : `; "${model}" not found`}.`, deleteQuestion: (name: string) => `Delete connector "${name}"?`, noModel: "No model selected", checking: "Checking…", notInstalled: "Not installed", notSignedIn: "Not signed in", signedIn: "Signed in", signInUnknown: "Sign-in unknown", edit: (name: string) => `Edit ${name}`, editText: "Edit", delete: (name: string) => `Delete ${name}`, install: "Install it in a terminal:", installGuide: "Install guide", restart: "Just installed it? Restart Patio.", test: "Test", login: "Log in", refresh: "Refresh", separate: "separate account", existingLogin: "existing login", token: "token",
+    agoNow: "just now", agoMin: (n: number) => `${n} min ago`, agoHour: (n: number) => `${n} h ago`, unknown: "unknown", used: "used", resets: "Resets", premium: "premium requests this month", tokensIn: "tokens in", out: "out", updated: "Updated", claudeUsage: "Claude reports usage after the first reply of each chat",
+    editTitle: "Edit connector", addTitle: "Add connector", close: "Close", type: "Type", name: "Name", account: "Account", useCLI: "Use the account already signed in to the CLI", githubOther: "Use a GitHub token for another account", separateLogin: "Sign in to a separate account", existingTaken: "Another connector already uses the existing login.", githubToken: "GitHub token", savedReplace: "Saved. Type to replace", tokenPlaceholder: "github_pat_…", tokenHelp: "Fine-grained token with the “Copilot Requests” permission. Stored in your system keychain.", server: "Server", custom: "Custom", baseURL: "Base URL", apiKey: "API key (optional)", loadingModels: "Loading models", reloadModels: "Reload models", noModels: "No models found", modelPlaceholder: "Type a model", loadModelsError: "Couldn't load models: ", cancel: "Cancel", save: "Save",
+    model: "Model", notFound: "not found", modelHint: "Small and fast on 8 GB:", and: "or", modelHintEnd: "Both support tools; neither thinks.",
+  },
+  es: {
+    localAI: "IA local",
+    noConnectors: "Aún no hay conectores", first: (then: string) => `Primero agrega un conector (Claude Code, Codex, Copilot, opencode o IA local), luego ${then}.`, go: "Ir a Conectores",
+    connectors: "Conectores", add: "Agregar conector", intro: "Los conectores de Claude Code, Codex, Copilot y opencode usan la CLI oficial instalada en esta computadora, con tu propia cuenta. Se aplican los términos de sus proveedores.", empty: "Aún no hay conectores. Agrega uno para chatear con Claude, ChatGPT, Copilot o un modelo local.",
+    finishBrowser: "Termina de iniciar sesión en tu navegador y luego presiona Actualizar.", finishTerminal: "Termina de iniciar sesión en la ventana de Terminal y luego presiona Actualizar.", testing: "Probando…", connected: (n: number, found: boolean, model: string) => `Conectado. Hay ${n} modelo${n === 1 ? "" : "s"} disponible${n === 1 ? "" : "s"}${found ? "" : `; no se encontró «${model}»`}.`, deleteQuestion: (name: string) => `¿Eliminar el conector «${name}»?`, noModel: "No hay un modelo seleccionado", checking: "Comprobando…", notInstalled: "No está instalado", notSignedIn: "No has iniciado sesión", signedIn: "Sesión iniciada", signInUnknown: "Estado de sesión desconocido", edit: (name: string) => `Editar ${name}`, editText: "Editar", delete: (name: string) => `Eliminar ${name}`, install: "Instálalo en una terminal:", installGuide: "Guía de instalación", restart: "¿Acabas de instalarlo? Reinicia Patio.", test: "Probar", login: "Iniciar sesión", refresh: "Actualizar", separate: "cuenta separada", existingLogin: "sesión existente", token: "token",
+    agoNow: "hace un momento", agoMin: (n: number) => `hace ${n} min`, agoHour: (n: number) => `hace ${n} h`, unknown: "desconocido", used: "usado", resets: "Se restablece", premium: "solicitudes premium este mes", tokensIn: "tokens de entrada", out: "de salida", updated: "Actualizado", claudeUsage: "Claude informa el uso después de la primera respuesta de cada chat",
+    editTitle: "Editar conector", addTitle: "Agregar conector", close: "Cerrar", type: "Tipo", name: "Nombre", account: "Cuenta", useCLI: "Usar la cuenta que ya inició sesión en la CLI", githubOther: "Usar un token de GitHub para otra cuenta", separateLogin: "Iniciar sesión con una cuenta separada", existingTaken: "Otro conector ya usa la sesión existente.", githubToken: "Token de GitHub", savedReplace: "Guardado. Escribe para reemplazarlo", tokenPlaceholder: "github_pat_…", tokenHelp: "Token detallado con el permiso “Copilot Requests”. Se guarda en el llavero del sistema.", server: "Servidor", custom: "Personalizado", baseURL: "URL base", apiKey: "Clave de API (opcional)", loadingModels: "Cargando modelos", reloadModels: "Recargar modelos", noModels: "No se encontraron modelos", modelPlaceholder: "Escribe un modelo", loadModelsError: "No se pudieron cargar los modelos: ", cancel: "Cancelar", save: "Guardar",
+    model: "Modelo", notFound: "no encontrado", modelHint: "Pequeño y rápido con 8 GB:", and: "o", modelHintEnd: "Ambos admiten herramientas; ninguno piensa.",
+  },
+};
 
 export function ConnectorRequired({ then }: { then: string }) {
+  const t = useText(text);
   return (
     <section className="panel skill-empty">
       <span className="skill-empty-mark" aria-hidden="true">
         <Icon name="connector" />
       </span>
-      <h2>No connectors yet</h2>
+      <h2>{t.noConnectors}</h2>
       <p className="muted">
-        Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then {then}.
+        {t.first(then)}
       </p>
-      <button onClick={() => navigate("/ai/connectors")}>Go to Connectors</button>
+      <button onClick={() => navigate("/ai/connectors")}>{t.go}</button>
     </section>
   );
 }
@@ -33,7 +56,7 @@ const kinds: { kind: ConnectorKind; label: string }[] = [
   { kind: "opencode", label: "opencode" },
   { kind: "local", label: "Local AI" },
 ];
-const kindLabel = (kind: ConnectorKind) => kinds.find((k) => k.kind === kind)?.label ?? kind;
+const kindLabel = (kind: ConnectorKind) => (kind === "local" ? text[lang()].localAI : kinds.find((k) => k.kind === kind)?.label ?? kind);
 
 const presets = [
   { label: "Ollama", url: "http://localhost:11434/v1" },
@@ -42,6 +65,7 @@ const presets = [
 ];
 
 export default function Connectors({ refresh }: { refresh: number }) {
+  const t = useText(text);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [error, setError] = useState<unknown>();
   const [editing, setEditing] = useState<Connector | "new">();
@@ -62,19 +86,18 @@ export default function Connectors({ refresh }: { refresh: number }) {
       <div className="page-heading">
         <div>
           <p className="eyebrow">AI</p>
-          <h1>Connectors</h1>
+          <h1>{t.connectors}</h1>
         </div>
         <button className="primary" onClick={() => setEditing("new")}>
-          <Icon name="plus" /> Add connector
+          <Icon name="plus" /> {t.add}
         </button>
       </div>
       <p className="muted">
-        Claude Code, Codex, Copilot, and opencode connectors use the official CLI installed on this
-        computer, signed in with your own account. Their providers' terms apply.
+        {t.intro}
       </p>
       <ErrorText error={error} />
       {connectors.length === 0 && !error && (
-        <p className="callout">No connectors yet. Add one to chat with Claude, ChatGPT, Copilot, or a local model.</p>
+        <p className="callout">{t.empty}</p>
       )}
       <div className="connector-grid">
         {connectors.map((connector) => (
@@ -110,6 +133,7 @@ function ConnectorCard({
   onEdit: () => void;
   onDeleted: () => void;
 }) {
+  const t = useText(text);
   const [status, setStatus] = useState<ConnectorStatus>();
   const [quota, setQuota] = useState<ConnectorQuota>();
   const [error, setError] = useState<unknown>();
@@ -159,8 +183,8 @@ function ConnectorCard({
       const result = await api.post<{ auth_url?: string }>(`/api/connectors/${connector.id}/login`, {});
       setMessage(
         result.auth_url
-          ? "Finish signing in in your browser, then press Refresh."
-          : "Finish signing in in the Terminal window, then press Refresh.",
+          ? t.finishBrowser
+          : t.finishTerminal,
       );
     } catch (reason) {
       setError(reason);
@@ -169,7 +193,7 @@ function ConnectorCard({
 
   async function test() {
     setError(undefined);
-    setMessage("Testing…");
+    setMessage(t.testing);
     try {
       const result = await api.post<{ models: string[] }>("/api/connectors/local-models", {
         id: connector.id,
@@ -177,7 +201,7 @@ function ConnectorCard({
       });
       const found = !connector.model || result.models.includes(connector.model);
       setMessage(
-        `Connected. ${result.models.length} model${result.models.length === 1 ? "" : "s"} available${found ? "" : `; "${connector.model}" not found`}.`,
+        t.connected(result.models.length, found, connector.model ?? ""),
       );
     } catch (reason) {
       setMessage("");
@@ -186,7 +210,7 @@ function ConnectorCard({
   }
 
   async function remove() {
-    if (!(await confirmDialog(`Delete connector "${connector.name}"?`))) return;
+    if (!(await confirmDialog(text[lang()].deleteQuestion(connector.name)))) return;
     try {
       await api.delete(`/api/connectors/${connector.id}`);
       onDeleted();
@@ -205,16 +229,16 @@ function ConnectorCard({
           ? "up"
           : "neutral";
   const stateLabel = local
-    ? connector.model || "No model selected"
+    ? connector.model || t.noModel
     : !status
-      ? "Checking…"
+      ? t.checking
       : status.installed === false
-        ? "Not installed"
+        ? t.notInstalled
         : status.logged_in === false
-          ? "Not signed in"
+          ? t.notSignedIn
           : status.logged_in
-            ? [status.account, status.plan].filter(Boolean).join(" · ") || "Signed in"
-            : "Sign-in unknown";
+            ? [status.account, status.plan].filter(Boolean).join(" · ") || t.signedIn
+            : t.signInUnknown;
 
   return (
     <article className={`panel connector-card ${state}`} aria-labelledby={`connector-${connector.id}`}>
@@ -222,15 +246,15 @@ function ConnectorCard({
         <div>
           <p className="eyebrow">
             {kindLabel(connector.kind)}
-            {!local && (connector.config_dir ? (pat ? " · token" : " · separate account") : " · existing login")}
+            {!local && (connector.config_dir ? (pat ? ` · ${t.token}` : ` · ${t.separate}`) : ` · ${t.existingLogin}`)}
           </p>
           <h2 id={`connector-${connector.id}`}>{connector.name}</h2>
         </div>
         <div className="connector-actions">
-          <button aria-label={`Edit ${connector.name}`} onClick={onEdit}>
-            Edit
+          <button aria-label={t.edit(connector.name)} onClick={onEdit}>
+            {t.editText}
           </button>
-          <IconButton className="danger-text" icon="trash" label={`Delete ${connector.name}`} onClick={remove} />
+          <IconButton className="danger-text" icon="trash" label={t.delete(connector.name)} onClick={remove} />
         </div>
       </header>
 
@@ -245,7 +269,7 @@ function ConnectorCard({
 
       {status?.install && (
         <div className="connector-install">
-          <p>Install it in a terminal:</p>
+          <p>{t.install}</p>
           <pre className="mcp-config">
             <code>{status.install.command}</code>
           </pre>
@@ -259,9 +283,9 @@ function ConnectorCard({
               window.runtime.BrowserOpenURL(status.install!.url);
             }}
           >
-            Install guide
+            {t.installGuide}
           </a>
-          {status.installed === false && <p className="muted">Just installed it? Restart Patio.</p>}
+          {status.installed === false && <p className="muted">{t.restart}</p>}
         </div>
       )}
 
@@ -276,10 +300,10 @@ function ConnectorCard({
 
       <div className="connector-buttons">
         {local ? (
-          <button onClick={test}>Test</button>
+          <button onClick={test}>{t.test}</button>
         ) : (
           !pat &&
-          status?.installed !== false && <button onClick={login}>Log in</button>
+          status?.installed !== false && <button onClick={login}>{t.login}</button>
         )}
         <button
           onClick={() => {
@@ -288,7 +312,7 @@ function ConnectorCard({
             setCheck((value) => value + 1);
           }}
         >
-          Refresh
+          {t.refresh}
         </button>
       </div>
     </article>
@@ -297,14 +321,15 @@ function ConnectorCard({
 
 export function formatAgo(value: string) {
   const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return text[lang()].agoNow;
+  if (minutes < 60) return text[lang()].agoMin(minutes);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return new Date(value).toLocaleDateString();
+  if (hours < 24) return text[lang()].agoHour(hours);
+  return new Date(value).toLocaleDateString(locale());
 }
 
 function Quota({ quota }: { quota: ConnectorQuota }) {
+  const t = useText(text);
   const windows = quota.windows ?? [];
   return (
     <div className="quota">
@@ -314,34 +339,34 @@ function Quota({ quota }: { quota: ConnectorQuota }) {
           <div className="quota-row" key={window.label}>
             <div className="quota-label">
               <span>{window.label}</span>
-              <span>{window.used_percent == null ? "unknown" : `${Math.round(used)}% used`}</span>
+              <span>{window.used_percent == null ? t.unknown : `${Math.round(used)}% ${t.used}`}</span>
             </div>
             <div
               className="quota-bar"
               role="progressbar"
-              aria-label={`${window.label} usage`}
+              aria-label={`${window.label} ${t.used}`}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={window.used_percent == null ? undefined : Math.round(used)}
             >
               <span style={{ width: `${used}%` }} data-high={used >= 80 || undefined} />
             </div>
-            {window.resets_at && <small>Resets {new Date(window.resets_at).toLocaleString()}</small>}
+            {window.resets_at && <small>{t.resets} {new Date(window.resets_at).toLocaleString(locale())}</small>}
           </div>
         );
       })}
-      {quota.requests != null && <p className="muted">{quota.requests} premium requests this month</p>}
+      {quota.requests != null && <p className="muted">{quota.requests} {t.premium}</p>}
       {quota.tokens && (
         <p className="muted">
-          {quota.tokens.input.toLocaleString()} tokens in · {quota.tokens.output.toLocaleString()} out · $
+          {quota.tokens.input.toLocaleString(locale())} {t.tokensIn} · {quota.tokens.output.toLocaleString(locale())} {t.out} · $
           {quota.tokens.cost.toFixed(2)}
         </p>
       )}
       {quota.note && <p className="muted">{quota.note}</p>}
       {quota.updated_at && windows.length > 0 && (
-        <small title={new Date(quota.updated_at).toLocaleString()}>
-          Updated {formatAgo(quota.updated_at)}
-          {quota.kind === "claude" && " · Claude reports usage after the first reply of each chat"}
+        <small title={new Date(quota.updated_at).toLocaleString(locale())}>
+          {t.updated} {formatAgo(quota.updated_at)}
+          {quota.kind === "claude" && ` · ${t.claudeUsage}`}
         </small>
       )}
     </div>
@@ -359,6 +384,7 @@ function ConnectorDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useText(text);
   const [kind, setKind] = useState<ConnectorKind>(connector?.kind ?? "claude");
   const [name, setName] = useState(connector?.name ?? "");
   const [existing, setExisting] = useState(!existingLoginKinds.includes(connector?.kind ?? "claude"));
@@ -437,14 +463,14 @@ function ConnectorDialog({
     <dialog ref={dialog} className="create-dialog" aria-labelledby="connector-dialog-title" onClose={onClose}>
       <section className="panel create create-modal">
         <div className="page-heading">
-          <h2 id="connector-dialog-title">{editing ? "Edit connector" : "Add connector"}</h2>
-          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
+          <h2 id="connector-dialog-title">{editing ? t.editTitle : t.addTitle}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
         </div>
         <form onSubmit={submit}>
           <label>
-            Type
+            {t.type}
             <Picker
-              label="Type"
+              label={t.type}
               options={kinds.map((k) => ({ id: k.kind, name: k.label }))}
               value={kind}
               disabled={editing}
@@ -452,7 +478,7 @@ function ConnectorDialog({
             />
           </label>
           <label>
-            Name
+            {t.name}
             <input
               ref={nameInput}
               placeholder={kindLabel(kind)}
@@ -463,7 +489,7 @@ function ConnectorDialog({
 
           {!local && !editing && (
             <fieldset className="create-columns">
-              <legend>Account</legend>
+              <legend>{t.account}</legend>
               <label className="check-row">
                 <input
                   type="radio"
@@ -472,38 +498,38 @@ function ConnectorDialog({
                   disabled={existingTaken}
                   onChange={() => setExisting(true)}
                 />
-                Use the account already signed in to the CLI
+                {t.useCLI}
               </label>
               <label className="check-row">
                 <input type="radio" name="account" checked={!useExisting} onChange={() => setExisting(false)} />
-                {kind === "copilot" ? "Use a GitHub token for another account" : "Sign in to a separate account"}
+                {kind === "copilot" ? t.githubOther : t.separateLogin}
               </label>
-              {existingTaken && <p className="muted">Another connector already uses the existing login.</p>}
+              {existingTaken && <p className="muted">{t.existingTaken}</p>}
             </fieldset>
           )}
 
           {needsToken && (
             <label className="wide">
-              GitHub token
+              {t.githubToken}
               <input
                 type="password"
                 autoComplete="off"
                 required={!editing}
-                placeholder={editing && connector.has_secret ? "Saved. Type to replace" : "github_pat_…"}
+                placeholder={editing && connector.has_secret ? t.savedReplace : t.tokenPlaceholder}
                 value={secret}
                 onChange={(event) => setSecret(event.target.value)}
               />
-              <small>Fine-grained token with the “Copilot Requests” permission. Stored in your system keychain.</small>
+              <small>{t.tokenHelp}</small>
             </label>
           )}
 
           {local && (
             <>
               <label>
-                Server
+                {t.server}
                 <Picker
-                  label="Server"
-                  options={[...presets.map((p) => ({ id: p.url, name: p.label })), { id: "", name: "Custom" }]}
+                  label={t.server}
+                  options={[...presets.map((p) => ({ id: p.url, name: p.label })), { id: "", name: t.custom }]}
                   value={presets.find((p) => p.url === baseURL)?.url ?? ""}
                   onChange={(url) => {
                     if (url) setBaseURL(url);
@@ -511,7 +537,7 @@ function ConnectorDialog({
                 />
               </label>
               <label>
-                Base URL
+                {t.baseURL}
                 <input
                   required
                   type="url"
@@ -520,26 +546,26 @@ function ConnectorDialog({
                 />
               </label>
               <label>
-                API key (optional)
+                {t.apiKey}
                 <input
                   type="password"
                   autoComplete="off"
-                  placeholder={editing && connector.has_secret ? "Saved. Type to replace" : ""}
+                  placeholder={editing && connector.has_secret ? t.savedReplace : ""}
                   value={secret}
                   onChange={(event) => setSecret(event.target.value)}
                 />
               </label>
               <div className="field">
                 <span className="label-row">
-                  <label htmlFor="local-model">Model</label>
+                  <label htmlFor="local-model">{t.model}</label>
                   {modelsLoading ? (
-                    <span className="spinner" role="status" aria-label="Loading models" />
+                    <span className="spinner" role="status" aria-label={t.loadingModels} />
                   ) : (
                     <IconButton
                       type="button"
                       className="ghost"
                       icon="refresh"
-                      label="Reload models"
+                      label={t.reloadModels}
                       onClick={loadModels}
                     />
                   )}
@@ -547,19 +573,19 @@ function ConnectorDialog({
                 {models ? (
                   <Picker
                     id="local-model"
-                    label="Model"
-                    empty={models.length === 0 ? "No models found" : undefined}
+                     label={t.model}
+                    empty={models.length === 0 ? t.noModels : undefined}
                     options={[
                       ...models.map((id) => ({ id, name: id })),
-                      ...(model && !models.includes(model) ? [{ id: model, name: `${model} (not found)` }] : []),
+                       ...(model && !models.includes(model) ? [{ id: model, name: `${model} (${t.notFound})` }] : []),
                     ]}
                     value={model}
                     onChange={setModel}
                   />
                 ) : (
-                  <input id="local-model" value={model} placeholder="Type a model" onChange={(event) => setModel(event.target.value)} />
+                  <input id="local-model" value={model} placeholder={t.modelPlaceholder} onChange={(event) => setModel(event.target.value)} />
                 )}
-                {modelsError && <small className="muted">Couldn't load models: {modelsError}</small>}
+                {modelsError && <small className="muted">{t.loadModelsError}{modelsError}</small>}
               </div>
               <ModelHint />
             </>
@@ -567,9 +593,9 @@ function ConnectorDialog({
 
           <div className="modal-actions">
             <button type="button" onClick={() => dialog.current?.close()}>
-              Cancel
+              {t.cancel}
             </button>
-            <button className="primary">{editing ? "Save" : "Add connector"}</button>
+            <button className="primary">{editing ? t.save : t.add}</button>
           </div>
         </form>
         <ErrorText error={error} />
@@ -579,10 +605,11 @@ function ConnectorDialog({
 }
 
 function ModelHint() {
+  const t = useText(text);
   return (
     <small className="muted wide model-hint">
-      Small and fast on 8 GB: <code>qwen2.5:3b</code> or <code>llama3.2:3b</code> (<code>ollama pull &lt;name&gt;</code>).
-      Both support tools; neither thinks.
+      {t.modelHint} <code>qwen2.5:3b</code> {text[lang()].and} <code>llama3.2:3b</code> (<code>ollama pull &lt;name&gt;</code>).
+      {" "}{t.modelHintEnd}
     </small>
   );
 }

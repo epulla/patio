@@ -41,6 +41,12 @@ import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
+import { lang, locale, useText } from "./i18n";
+
+const labels = {
+  en: { defaultModel: "Default", lateTitle: "The app was closed at the scheduled time, so this ran when it opened again.", copied: "Copied", copy: "Copy", unpinFirst: (max: number) => `Unpin a chat first (max ${max}).`, chats: "Chats", newChat: "New chat", collapseList: "Collapse chat list", expandList: "Expand chat list", expandNoChats: "Expand chat list (no chats yet)", pinned: (n: number) => `Pinned (${n})`, scheduled: "scheduled", pinnedWord: "pinned", noChats: "No chats yet.", unpin: "Unpin chat", pin: "Pin chat", dragSwap: "Drag to swap", moveChat: "Move chat", moveEarlier: "Move earlier", moveLater: "Move later", resizeColumns: "Resize columns", resizeRows: "Resize rows", pickChat: "Pick a chat or start a new one.", startChat: "start a chat", attachLimit: (max: number) => `Attach at most ${max} files per message.`, imageLarge: (name: string) => `${name} is larger than 10 MB.`, textLarge: (name: string) => `${name} is larger than 1 MB. Text files can be up to 1 MB.`, stopThinking: "Stop the reply to change thinking", thinkingHint: "Let the model reason before answering. Slower but smarter.", thinkingLive: "Thinking…", resultLoadError: (reason: unknown) => `Could not load the result: ${reason}`, resultLoading: "Loading result…", toolResult: "Tool result", chars: (size: number) => `${size} chars`, charsK: (size: string) => `${size}k chars`, showFolder: "Show in folder", approvalRequest: (name: string) => `Approval request for ${name}`, deny: "Deny", questionHint: "Pick any that apply.", otherAnswer: (header: string) => `Other answer for ${header}`, otherOptional: "Other answer (optional)", sendAnswers: "Send answers", next: "Next", chooseFolder: "Choose folder", close: "Close", folderPath: "Folder path", noFolders: "No folders inside.", connector: "Connector", noConnector: "No chat connector", model: "Model", loadingModels: "Loading models", folderLabel: "Folder", folders: "Folders", current: "current", wantFolders: "Want more folders?", addSettings: "Add them in Settings", cancel: "Cancel", useFolder: "Use this folder", startChatButton: "Start chat", scratchFolder: "Scratch folder (no files shared)", addFolders: "Add folders in Settings → Allowed folders.", focusChat: (shortcut: string) => `Focus this chat with ${shortcut}`, attachments: "Attachments", autoAllowed: "Auto-allowed", failed: "failed", allow: (name: string) => `Allow ${name}?`, allowOnce: "Allow once", answeredOne: "Answered 1 question:", answeredMany: (n: number) => `Answered ${n} questions:`, questionsFromAssistant: "Questions from the assistant", questionTabs: "Questions", back: "Back", chatTitle: "Chat title", closeSplit: "Close split", splitSide: "Split side by side", splitOptions: "Split options", sideBySide: "Side by side", stacked: "Stacked", openMain: "Open main window", openWindow: "Open in new window", deleteChat: "Delete chat", scheduledTask: "Scheduled task", assistantReplying: "Assistant is replying.", resizeSplit: "Resize split", otherWindow: "Replying in another window.", openItsWindow: "Open in its window", dropFiles: "Drop files to attach", filesToSend: "Files to send", remove: (name: string) => `Remove ${name}`, uploading: "Uploading…", message: "Message", placeholder: "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)", connectorRemovedPlaceholder: "This chat's connector was removed", attachFiles: "Attach files", folder: (name: string) => `Folder: ${name}`, changeFolder: "Change folder…", fileManager: "Open in file manager", fileManagerHelp: (folder: string) => `Open in file manager: ${folder}. Start a new chat to use another folder.`, chatSettings: "Chat settings", autoAllowOn: "Chat settings (auto-allow is on)", thinking: "Thinking", showThinking: "Show thinking", claudeThinking: "Claude Code doesn't share its reasoning, so no thinking appears in this chat", codexThinking: "Show Codex's reasoning summaries when it sends them; simple questions often have none", modelThinking: "Show the model's reasoning above its replies", autoAllow: "Auto-allow", autoAllowHint: "Every file change and command runs without asking", askEvery: "Ask before every file change and command", share: (label: string) => `Share ${label} with the agent`, sharing: (label: string) => `Sharing ${label} with the agent. Click to stop`, clickShare: (label: string) => `Click to share ${label} with the agent`, connectorRemoved: "Connector removed", stop: "Stop", send: "Send", missingChat: "This chat no longer exists.", loadingChat: "Loading chat…", loadingChatLabel: "Loading chat", folderNone: "Scratch folder (no files shared)", hint: "Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files and images with the paperclip, drag and drop, or paste.", working: "Working", allowChanges: "Allow every file change and command in this chat without asking? You can turn it off anytime.", turnOnAutoAllow: "Turn on auto-allow", deleteConfirm: (title: string) => `Delete chat \"${title}\"?`, replyReceived: "Reply received.", jumpLatest: "Jump to latest" },
+  es: { defaultModel: "Predeterminado", lateTitle: "La app estaba cerrada a la hora programada y se ejecutó al volver a abrirla.", copied: "Copiado", copy: "Copiar", unpinFirst: (max: number) => `Quita un chat de fijados primero (máx. ${max}).`, chats: "Chats", newChat: "Nuevo chat", collapseList: "Contraer lista de chats", expandList: "Expandir lista de chats", expandNoChats: "Expandir lista de chats (aún no hay chats)", pinned: (n: number) => `Fijados (${n})`, scheduled: "programado", pinnedWord: "fijado", noChats: "Aún no hay chats.", unpin: "Quitar chat de fijados", pin: "Fijar chat", dragSwap: "Arrastra para intercambiar", moveChat: "Mover chat", moveEarlier: "Mover antes", moveLater: "Mover después", resizeColumns: "Cambiar tamaño de columnas", resizeRows: "Cambiar tamaño de filas", pickChat: "Elige un chat o inicia uno nuevo.", startChat: "iniciar un chat", attachLimit: (max: number) => `Adjunta como máximo ${max} archivos por mensaje.`, imageLarge: (name: string) => `${name} supera los 10 MB.`, textLarge: (name: string) => `${name} supera 1 MB. Los archivos de texto pueden pesar hasta 1 MB.`, stopThinking: "Detén la respuesta para cambiar el razonamiento", thinkingHint: "Deja que el modelo razone antes de responder. Tardará más, pero será más inteligente.", thinkingLive: "Razonando…", resultLoadError: (reason: unknown) => `No se pudo cargar el resultado: ${reason}`, resultLoading: "Cargando resultado…", toolResult: "Resultado de la herramienta", chars: (size: number) => `${size} caracteres`, charsK: (size: string) => `${size} mil caracteres`, showFolder: "Mostrar en carpeta", approvalRequest: (name: string) => `Solicitud de aprobación para ${name}`, deny: "Rechazar", questionHint: "Elige todas las opciones que correspondan.", otherAnswer: (header: string) => `Otra respuesta para ${header}`, otherOptional: "Otra respuesta (opcional)", sendAnswers: "Enviar respuestas", next: "Siguiente", chooseFolder: "Elegir carpeta", close: "Cerrar", folderPath: "Ruta de la carpeta", noFolders: "No hay carpetas aquí.", connector: "Conector", noConnector: "No hay conector de chat", model: "Modelo", loadingModels: "Cargando modelos", folderLabel: "Carpeta", folders: "Carpetas", current: "actual", wantFolders: "¿Quieres más carpetas?", addSettings: "Agrégalas en Configuración", cancel: "Cancelar", useFolder: "Usar esta carpeta", startChatButton: "Iniciar chat", scratchFolder: "Carpeta temporal (sin archivos compartidos)", addFolders: "Agrega carpetas en Configuración → Carpetas permitidas.", focusChat: (shortcut: string) => `Enfocar este chat con ${shortcut}`, attachments: "Archivos adjuntos", autoAllowed: "Permitido automáticamente", failed: "falló", allow: (name: string) => `¿Permitir ${name}?`, allowOnce: "Permitir una vez", answeredOne: "Pregunta respondida:", answeredMany: (n: number) => `Preguntas respondidas (${n}):`, questionsFromAssistant: "Preguntas del asistente", questionTabs: "Preguntas", back: "Atrás", chatTitle: "Título del chat", closeSplit: "Cerrar división", splitSide: "Dividir en paralelo", splitOptions: "Opciones de división", sideBySide: "En paralelo", stacked: "Apilado", openMain: "Abrir ventana principal", openWindow: "Abrir en ventana nueva", deleteChat: "Eliminar chat", scheduledTask: "Tarea programada", assistantReplying: "El asistente está respondiendo.", resizeSplit: "Cambiar tamaño de división", otherWindow: "Respondiendo en otra ventana.", openItsWindow: "Abrir en su ventana", dropFiles: "Suelta archivos para adjuntarlos", filesToSend: "Archivos para enviar", remove: (name: string) => `Quitar ${name}`, uploading: "Subiendo…", message: "Mensaje", placeholder: "Mensaje… (Enter para enviar, Shift+Enter para salto de línea, @ bot, # ticket)", connectorRemovedPlaceholder: "Se quitó el conector de este chat", attachFiles: "Adjuntar archivos", folder: (name: string) => `Carpeta: ${name}`, changeFolder: "Cambiar carpeta…", fileManager: "Abrir en el administrador de archivos", fileManagerHelp: (folder: string) => `Abrir en el administrador de archivos: ${folder}. Inicia un chat nuevo para usar otra carpeta.`, chatSettings: "Ajustes del chat", autoAllowOn: "Ajustes del chat (permisos automáticos activos)", thinking: "Razonamiento", showThinking: "Mostrar razonamiento", claudeThinking: "Claude Code no comparte su razonamiento, así que no aparece en este chat", codexThinking: "Mostrar resúmenes de razonamiento de Codex cuando los envíe; las preguntas simples a menudo no tienen", modelThinking: "Mostrar el razonamiento del modelo sobre sus respuestas", autoAllow: "Permitir automáticamente", autoAllowHint: "Todos los cambios de archivos y comandos se ejecutan sin preguntar", askEvery: "Preguntar antes de cada cambio de archivo y comando", share: (label: string) => `Compartir ${label} con el agente`, sharing: (label: string) => `Compartiendo ${label} con el agente. Haz clic para dejar de compartir`, clickShare: (label: string) => `Haz clic para compartir ${label} con el agente`, connectorRemoved: "Se quitó el conector", stop: "Detener", send: "Enviar", missingChat: "Este chat ya no existe.", loadingChat: "Cargando chat…", loadingChatLabel: "Cargando chat", folderNone: "Carpeta temporal (sin archivos compartidos)", hint: "Pregunta lo que quieras. El asistente puede leer archivos de la carpeta del chat y usar tus tickets. Adjunta archivos de texto e imágenes con el clip, arrástralos o pégalos.", working: "Procesando", allowChanges: "¿Permitir todos los cambios de archivos y comandos en este chat sin preguntar? Puedes desactivarlo cuando quieras.", turnOnAutoAllow: "Activar permisos automáticos", deleteConfirm: (title: string) => `¿Eliminar el chat \"${title}\"?`, replyReceived: "Llegó una respuesta.", jumpLatest: "Ir al último mensaje" },
+};
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 const newChatShortcut = mac ? "⌘N" : "Ctrl+N";
@@ -62,12 +68,13 @@ type ChatEvent =
   | { type: "error"; message: string }
   | { type: "approval" };
 
-export const lateTitle = "The app was closed at the scheduled time, so this ran when it opened again.";
+export const lateTitle = labels[lang()].lateTitle;
 
-const fallbackModels: ModelOption[] = [{ id: "", label: "Default" }];
 const modelCache = new Map<string, ModelOption[]>();
 
 export function useModels(connectorID: string | null | undefined) {
+  const t = useText(labels);
+  const fallbackModels: ModelOption[] = [{ id: "", label: t.defaultModel }];
   const cached = connectorID ? modelCache.get(connectorID) : fallbackModels;
   const [state, setState] = useState({ id: connectorID, models: cached ?? fallbackModels, loading: !cached });
   useEffect(() => {
@@ -93,6 +100,7 @@ export function useModels(connectorID: string | null | undefined) {
 }
 
 function MessageTime({ iso }: { iso: string }) {
+  const t = useText(labels);
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
   const now = new Date();
@@ -102,13 +110,14 @@ function MessageTime({ iso }: { iso: string }) {
       ? time
       : { month: "short", day: "numeric", ...(date.getFullYear() !== now.getFullYear() && { year: "numeric" }), ...time };
   return (
-    <time className="message-time" dateTime={iso} title={date.toLocaleString()}>
-      {date.toLocaleString(undefined, options)}
+    <time className="message-time" dateTime={iso} title={date.toLocaleString(locale())}>
+      {date.toLocaleString(locale(), options)}
     </time>
   );
 }
 
 function CopyButton({ text }: { text: string }) {
+  const t = useText(labels);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -120,7 +129,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       className="ghost"
       icon={copied ? "check" : "copy"}
-      label={copied ? "Copied" : "Copy"}
+      label={copied ? t.copied : t.copy}
       onClick={() => copyMarkdown(text).then(() => setCopied(true), () => undefined)}
     />
   );
@@ -145,6 +154,8 @@ function LoadMore({ onVisible }: { onVisible: () => void }) {
 }
 
 export default function Chats({ id, refresh, windowed }: { id?: string; refresh: number; windowed?: boolean }) {
+  const t = useText(labels);
+  const statusText = useText(statusLabels);
   const [chats, setChats] = useState<Chat[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -243,7 +254,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
 
   function togglePin(chatID: string) {
     if (pins.ids.includes(chatID)) return setPins(pinLayout(pins.ids.filter((pinned) => pinned !== chatID)));
-    if (pins.ids.length >= maxPins) return setError(new Error(`Unpin a chat first (max ${maxPins}).`));
+    if (pins.ids.length >= maxPins) return setError(new Error(t.unpinFirst(maxPins)));
     setPins(pinLayout([...pins.ids, chatID]));
   }
 
@@ -337,16 +348,16 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   return (
     <div className={windowed ? "chats windowed" : "chats"}>
       {!windowed && (
-      <aside className={listOpen ? "chat-list" : "chat-list collapsed"} aria-label="Chats">
+      <aside className={listOpen ? "chat-list" : "chat-list collapsed"} aria-label={t.chats}>
         <div className="chat-list-head">
           {listOpen && (connectors.length > 0 || !loaded) && (
             <button
               className="primary"
-              data-tip={`New chat (${newChatShortcut})`}
+              data-tip={`${t.newChat} (${newChatShortcut})`}
               aria-keyshortcuts={newChatAriaShortcut}
               onClick={newChat}
             >
-              <Icon name="plus" /> New chat
+              <Icon name="plus" /> {t.newChat}
             </button>
           )}
           <IconButton
@@ -354,10 +365,10 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             icon={listOpen ? "chevronsLeft" : "chevronsRight"}
             label={
               listOpen
-                ? "Collapse chat list"
+                ? t.collapseList
                 : loaded && chats.length === 0 && !error
-                  ? "Expand chat list (no chats yet)"
-                  : "Expand chat list"
+                  ? t.expandNoChats
+                  : t.expandList
             }
             aria-expanded={listOpen}
             onClick={() => {
@@ -371,7 +382,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           <IconButton
             className="ghost"
             icon="plus"
-            label={`New chat (${newChatShortcut})`}
+            label={`${t.newChat} (${newChatShortcut})`}
             aria-keyshortcuts={newChatAriaShortcut}
             onClick={newChat}
           />
@@ -380,7 +391,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           <IconButton
             className="ghost"
             icon="boards"
-            label={`Pinned (${pins.ids.length})`}
+            label={t.pinned(pins.ids.length)}
             aria-current={showGrid ? "page" : undefined}
             onClick={() => navigate("/ai/chats")}
           />
@@ -395,7 +406,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                 <button
                   key={chat.id}
                   className="chat-initial"
-                  aria-label={`${chat.title}${state ? `, ${statusLabels[state]}` : ""}${scheduled ? ", scheduled" : ""}${pinned ? ", pinned" : ""}`}
+                  aria-label={`${chat.title}${state ? `, ${statusText[state]}` : ""}${scheduled ? `, ${t.scheduled}` : ""}${pinned ? `, ${t.pinnedWord}` : ""}`}
                   aria-current={!showGrid && chat.id === id ? "page" : undefined}
                   onClick={() => navigate(`/ai/chats/${chat.id}`)}
                   onMouseEnter={(event) => showTip(event.currentTarget, chat.title, false)}
@@ -435,7 +446,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           </div>
         )}
         <ErrorText error={error} />
-        {listOpen && chats.length === 0 && !error && <p className="muted">No chats yet.</p>}
+        {listOpen && chats.length === 0 && !error && <p className="muted">{t.noChats}</p>}
         {listOpen && (
         <nav>
           {pins.ids.length > 0 && (
@@ -466,18 +477,18 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                       </span>
                     )}
                     <span>{chat.title}</span>
-                    {state && <span className="sr-only">, {statusLabels[state]}</span>}
+                    {state && <span className="sr-only">, {statusText[state]}</span>}
                   </span>
                   <small>
-                    {new Date(chat.updated_at).toLocaleDateString()}
+                    {new Date(chat.updated_at).toLocaleDateString(locale())}
                     {chat.scheduled_task_id && (
                       <>
                         {" · "}
-                        <Icon name="clock" /> Scheduled
+                        <Icon name="clock" /> {t.scheduled}
                       </>
                     )}
                     {chat.scheduled_late && (
-                      <span className="run-label" title={lateTitle}>
+                    <span className="run-label" title={t.lateTitle}>
                         Ran late
                       </span>
                     )}
@@ -486,7 +497,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                 <IconButton
                   className={pinned ? "ghost pinned" : "ghost"}
                   icon="pin"
-                  label={pinned ? "Unpin chat" : "Pin chat"}
+                  label={pinned ? t.unpin : t.pin}
                   onClick={() => togglePin(chat.id)}
                 />
               </div>
@@ -559,7 +570,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                       className="pane-grip"
                       draggable
                       aria-hidden="true"
-                      data-tip="Drag to swap"
+                      data-tip={t.dragSwap}
                       onDragStart={(event) => {
                         event.dataTransfer.setData(paneType, String(index));
                         event.dataTransfer.effectAllowed = "move";
@@ -567,7 +578,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                         const ghost = document.createElement("div");
                         ghost.className = "pane-drag-ghost";
                         ghost.textContent =
-                          event.currentTarget.closest(".conversation-head")?.querySelector("input")?.value || "Chat";
+                        event.currentTarget.closest(".conversation-head")?.querySelector("input")?.value || t.chats;
                         document.body.append(ghost);
                         event.dataTransfer.setDragImage(ghost, 20, 20);
                         // Defer so the preview is captured before the card is removed and the pane dims.
@@ -580,21 +591,21 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                     >
                       <Icon name="grip" />
                     </span>
-                    <kbd className="pin-kbd" data-tip={`Focus this chat with ${pinShortcut(index + 1)}`}>
+                    <kbd className="pin-kbd" data-tip={t.focusChat(pinShortcut(index + 1))}>
                       {pinShortcut(index + 1)}
                     </kbd>
                     {pins.ids.length > 1 && (
-                      <Menu label="Move chat" buttonClassName="icon ghost" button={<Icon name="more" />}>
+                      <Menu label={t.moveChat} buttonClassName="icon ghost" button={<Icon name="more" />}>
                         {(close) => (
                           <>
                             {index > 0 && (
                               <button role="menuitem" onClick={() => (close(), swap(index, index - 1))}>
-                                <Icon name="chevronLeft" /> Move earlier
+                                <Icon name="chevronLeft" /> {t.moveEarlier}
                               </button>
                             )}
                             {index < pins.ids.length - 1 && (
                               <button role="menuitem" onClick={() => (close(), swap(index, index + 1))}>
-                                <Icon name="chevronRight" /> Move later
+                                <Icon name="chevronRight" /> {t.moveLater}
                               </button>
                             )}
                           </>
@@ -611,7 +622,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             <Splitter
               key={`col-${index}`}
               vertical
-              label="Resize columns"
+              label={t.resizeColumns}
               sizes={columns}
               index={index}
               min={240}
@@ -629,7 +640,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           {rows.slice(1).map((_, index) => (
             <Splitter
               key={`row-${index}`}
-              label="Resize rows"
+              label={t.resizeRows}
               sizes={rows}
               index={index}
               min={360}
@@ -653,11 +664,11 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
         />
       ) : connectors.length || !loaded ? (
         <section className="chat-empty">
-          <h1>Chats</h1>
-          <p className="muted">Pick a chat or start a new one.</p>
+          <h1>{t.chats}</h1>
+          <p className="muted">{t.pickChat}</p>
         </section>
       ) : (
-        <ConnectorRequired then="start a chat" />
+        <ConnectorRequired then={t.startChat} />
       )}
       {creating && (
         <NewChatDialog
@@ -768,6 +779,7 @@ export function Conversation({
   onPin?: () => void;
   onChanged: () => void;
 }) {
+  const t = useText(labels);
   const uid = useId();
   const [split, setSplit] = useState<"" | "row" | "column">("");
   const [choosingFolder, setChoosingFolder] = useState(false);
@@ -859,7 +871,7 @@ export function Conversation({
           setStreaming("");
           setThinking("");
           setRunning(false);
-          setAnnouncement("Reply received.");
+          setAnnouncement(t.replyReceived);
           void load();
           return;
         }
@@ -904,7 +916,7 @@ export function Conversation({
       className="jump-latest"
       onClick={() => end.current?.scrollIntoView({ behavior: "smooth", block: "end" })}
     >
-      <Icon name="chevronDown" /> Jump to latest
+      <Icon name="chevronDown" /> {t.jumpLatest}
     </button>
   );
 
@@ -1000,7 +1012,7 @@ export function Conversation({
       changeText("");
       setPending([]);
       addSent(message);
-      if (detail.chat.title === "New chat" && detail.messages.length === 0) {
+        if (detail.chat.title === "New chat" && detail.messages.length === 0) {
         const label = (value || pending.map((a) => a.name).join(", ")).replace(/\s+/g, " ");
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label);
       }
@@ -1052,7 +1064,7 @@ export function Conversation({
   }
 
   async function changeAutoAllow(on: boolean) {
-    if (on && !(await confirmDialog("Allow every file change and command in this chat without asking? You can turn it off anytime.", "Turn on auto-allow"))) return;
+    if (on && !(await confirmDialog(t.allowChanges, t.turnOnAutoAllow))) return;
     await update({ auto_allow: on });
     if (on) void load();
   }
@@ -1074,7 +1086,7 @@ export function Conversation({
   }
 
   async function remove() {
-    if (!(await confirmDialog(`Delete chat "${detail?.chat.title}"?`))) return;
+    if (!(await confirmDialog(t.deleteConfirm(detail?.chat.title ?? "")))) return;
     try {
       await api.delete(`/api/chats/${id}`);
       onChanged();
@@ -1133,25 +1145,24 @@ export function Conversation({
   if (missing)
     return (
       <section className="chat-empty">
-        <p className="muted">This chat no longer exists.</p>
+        <p className="muted">{t.missingChat}</p>
       </section>
     );
   if (!detail)
     return (
-      <section className="chat-empty" aria-busy="true" aria-label="Loading chat">
-        <p role="status">Loading chat…</p>
+      <section className="chat-empty" aria-busy="true" aria-label={t.loadingChatLabel}>
+        <p role="status">{t.loadingChat}</p>
       </section>
     );
 
   const connector = connectors.find((c) => c.id === detail.chat.connector_id);
-  const folderLabel = detail.chat.folder ?? "Scratch folder (no files shared)";
+  const folderLabel = detail.chat.folder ?? t.folderNone;
   const template = `minmax(0, ${splitSizes[0]}fr) 6px minmax(0, ${splitSizes[1]}fr)`;
   const history = (
     <>
       {detail.messages.length === 0 && !streaming && (
         <p className="muted chat-hint">
-          Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files
-          and images with the paperclip, drag and drop, or paste.
+          {t.hint}
         </p>
       )}
       <Timeline chatId={id} detail={detail} running={running} onError={setError} onAnswer={answerQuestion} />
@@ -1163,7 +1174,7 @@ export function Conversation({
       )}
       {running && !streaming && (
         <p className="muted typing">
-          Working<span className="typing-dots" aria-hidden="true" />
+          {t.working}<span className="typing-dots" aria-hidden="true" />
         </p>
       )}
       {detail.pending_approvals.map((approval) => (
@@ -1184,7 +1195,7 @@ export function Conversation({
       <header className="conversation-head">
         <div className="conversation-title">
           <label className="sr-only" htmlFor={`${uid}-title`}>
-            Chat title
+            {t.chatTitle}
           </label>
           <input
             id={`${uid}-title`}
@@ -1199,23 +1210,23 @@ export function Conversation({
           <IconButton
             className={pinned ? "ghost pinned" : "ghost"}
             icon="pin"
-            label={pinned ? `Unpin chat (${unpinShortcut})` : "Pin chat"}
+            label={pinned ? `${t.unpin} (${unpinShortcut})` : t.pin}
             aria-keyshortcuts={pinned ? unpinAriaShortcut : undefined}
             onClick={onPin}
           />
         )}
         {!pane &&
           (split ? (
-            <IconButton className="ghost" icon="square" label="Close split" onClick={() => setSplit("")} />
+            <IconButton className="ghost" icon="square" label={t.closeSplit} onClick={() => setSplit("")} />
           ) : (
-            <SplitButton icon="columns" label="Split side by side" menuLabel="Split options" onClick={() => setSplit("row")}>
+            <SplitButton icon="columns" label={t.splitSide} menuLabel={t.splitOptions} onClick={() => setSplit("row")}>
               {(close) => (
                 <>
                   <button role="menuitem" onClick={() => (close(), setSplit("row"))}>
-                    <Icon name="columns" /> Side by side
+                    <Icon name="columns" /> {t.sideBySide}
                   </button>
                   <button role="menuitem" onClick={() => (close(), setSplit("column"))}>
-                    <Icon name="rows" /> Stacked
+                    <Icon name="rows" /> {t.stacked}
                   </button>
                 </>
               )}
@@ -1224,14 +1235,14 @@ export function Conversation({
         <IconButton
           className="ghost"
           icon={windowed ? "arrowLeft" : "externalLink"}
-          label={windowed ? "Open main window" : "Open in new window"}
+          label={windowed ? t.openMain : t.openWindow}
           onClick={() =>
             api
               .post(windowed ? "/api/windows/main" : `/api/chats/${id}/window`, windowed ? { path: `/ai/chats/${id}` } : {})
               .catch(setError)
           }
         />
-        <IconButton className="danger-text" icon="trash" label="Delete chat" onClick={remove} />
+        <IconButton className="danger-text" icon="trash" label={t.deleteChat} onClick={remove} />
         {detail.chat.scheduled_task_id && (
           <div className="conversation-meta">
             <button
@@ -1239,7 +1250,7 @@ export function Conversation({
               className="folder-chip"
               onClick={() => navigate(`/ai/scheduled/${detail.chat.scheduled_task_id}`)}
             >
-              <Icon name="clock" /> Scheduled task
+              <Icon name="clock" /> {t.scheduledTask}
             </button>
           </div>
         )}
@@ -1257,7 +1268,7 @@ export function Conversation({
       )}
 
       <p className="sr-only" role="status">
-        {running ? "Assistant is replying." : announcement}
+        {running ? t.assistantReplying : announcement}
       </p>
       {split ? (
         <div
@@ -1267,7 +1278,7 @@ export function Conversation({
           <div className="messages">{history}</div>
           <Splitter
             vertical={split === "row"}
-            label="Resize split"
+            label={t.resizeSplit}
             sizes={splitSizes}
             index={0}
             min={120}
@@ -1290,26 +1301,26 @@ export function Conversation({
       <ErrorText error={error} />
       {otherWindow && (
         <p className="muted dock-note">
-          Replying in another window.
+          {t.otherWindow}
           <button type="button" className="ghost" onClick={() => api.post(`/api/chats/${id}/window`, {}).catch(setError)}>
-            Open in its window
+            {t.openItsWindow}
           </button>
         </p>
       )}
       {dragging && (
         <p className="drop-hint" aria-hidden="true">
-          <Icon name="paperclip" /> Drop files to attach
+          <Icon name="paperclip" /> {t.dropFiles}
         </p>
       )}
       {(pending.length > 0 || uploading) && (
-        <ul className="attachments" aria-label="Files to send">
+        <ul className="attachments" aria-label={t.filesToSend}>
           {pending.map((attachment) => (
             <li key={attachment.name} className="attachment">
               <AttachmentLabel attachment={attachment} />
               <IconButton
                 type="button"
                 icon="x"
-                label={`Remove ${attachment.name}`}
+                label={t.remove(attachment.name)}
                 disabled={running}
                 onClick={() => unattach(attachment)}
               />
@@ -1317,7 +1328,7 @@ export function Conversation({
           ))}
           {uploading && (
             <li className="muted" role="status">
-              Uploading…
+              {t.uploading}
             </li>
           )}
         </ul>
@@ -1334,14 +1345,14 @@ export function Conversation({
           }}
         />
         <label className="sr-only" htmlFor={`${uid}-input`}>
-          Message
+          {t.message}
         </label>
         <textarea
           ref={input}
           id={`${uid}-input`}
           rows={compact ? 2 : 3}
           placeholder={
-            connector ? "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)" : "This chat's connector was removed"
+            connector ? t.placeholder : t.connectorRemovedPlaceholder
           }
           disabled={!connector || otherWindow}
           value={text}
@@ -1362,20 +1373,20 @@ export function Conversation({
               type="button"
               className="ghost tip-up"
               icon="paperclip"
-              label="Attach files"
+              label={t.attachFiles}
               disabled={!connector || uploading || pending.length >= maxAttachments}
               onClick={() => filePicker.current?.click()}
             />
             {detail.messages.length === 0 && !running ? (
-              <span className="tip-up" data-tip={`Folder: ${folderLabel}`}>
-                <Menu label={`Folder: ${folderLabel}`} buttonClassName="icon ghost" button={<Icon name="folder" />}>
+              <span className="tip-up" data-tip={t.folder(folderLabel)}>
+                <Menu label={t.folder(folderLabel)} buttonClassName="icon ghost" button={<Icon name="folder" />}>
                   {(close) => (
                     <>
                       <button role="menuitem" onClick={() => (close(false), setChoosingFolder(true))}>
-                        <Icon name="folder" /> Change folder…
+                        <Icon name="folder" /> {t.changeFolder}
                       </button>
                       <button role="menuitem" onClick={() => (close(), reveal(detail.chat.workdir))}>
-                        <Icon name="externalLink" /> Open in file manager
+                        <Icon name="externalLink" /> {t.fileManager}
                       </button>
                     </>
                   )}
@@ -1386,13 +1397,13 @@ export function Conversation({
                 type="button"
                 className="ghost tip-up tip-wide"
                 icon="folder"
-                label={`Open in file manager: ${folderLabel}. Start a new chat to use another folder.`}
+                label={t.fileManagerHelp(folderLabel)}
                 onClick={() => reveal(detail.chat.workdir)}
               />
             )}
-            <span className="tip-up" data-tip="Chat settings">
+            <span className="tip-up" data-tip={t.chatSettings}>
               <Menu
-                label={detail.chat.auto_allow ? "Chat settings (auto-allow is on)" : "Chat settings"}
+                label={detail.chat.auto_allow ? t.autoAllowOn : t.chatSettings}
                 buttonClassName="icon ghost settings-trigger"
                 button={
                   <>
@@ -1404,31 +1415,31 @@ export function Conversation({
                 {() => (
                   <div className="chat-settings">
                     <SettingRow
-                      label="Thinking"
+                      label={t.thinking}
                       hint={thinkingTitle(detail.chat, running)}
                       checked={detail.chat.capabilities.thinking.supported && detail.chat.thinking}
                       disabled={running || !detail.chat.capabilities.thinking.supported}
                       onChange={(thinking) => update({ thinking })}
                     />
                     <SettingRow
-                      label="Show thinking"
+                      label={t.showThinking}
                       hint={
                         connector?.kind === "claude"
-                          ? "Claude Code doesn't share its reasoning, so no thinking appears in this chat"
+                          ? t.claudeThinking
                           : connector?.kind === "codex"
-                            ? "Show Codex's reasoning summaries when it sends them; simple questions often have none"
-                            : "Show the model's reasoning above its replies"
+                            ? t.codexThinking
+                            : t.modelThinking
                       }
                       checked={detail.chat.show_thinking}
                       onChange={(show_thinking) => update({ show_thinking })}
                     />
                     <SettingRow
-                      label="Auto-allow"
+                      label={t.autoAllow}
                       warning
                       hint={
                         detail.chat.auto_allow
-                          ? "Every file change and command runs without asking"
-                          : "Ask before every file change and command"
+                          ? t.autoAllowHint
+                          : t.askEvery
                       }
                       checked={detail.chat.auto_allow}
                       onChange={changeAutoAllow}
@@ -1442,8 +1453,8 @@ export function Conversation({
                 type="button"
                 className="context-chip tip-up"
                 aria-pressed={contextOn}
-                aria-label={`Share ${context.label} with the agent`}
-                data-tip={contextOn ? `Sharing ${context.label} with the agent. Click to stop` : `Click to share ${context.label} with the agent`}
+                aria-label={t.share(context.label)}
+                data-tip={contextOn ? t.sharing(context.label) : t.clickShare(context.label)}
                 onClick={() => setContextOff(contextOn ? context.line : undefined)}
               >
                 <Icon name={context.icon} />
@@ -1454,7 +1465,7 @@ export function Conversation({
           </div>
           <div className="composer-send">
             <div className="composer-model">
-              {!compact && <span className="muted">{connector ? connector.name : "Connector removed"}</span>}
+              {!compact && <span className="muted">{connector ? connector.name : t.connectorRemoved}</span>}
               <ModelPicker
                 up
                 pinKind={connector?.kind}
@@ -1467,11 +1478,11 @@ export function Conversation({
             </div>
             {running ? (
               <button type="button" onClick={stop}>
-                <span className="spinner" aria-hidden="true" /> Stop
+                <span className="spinner" aria-hidden="true" /> {t.stop}
               </button>
             ) : (
               <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector || otherWindow}>
-                <Icon name="send" /> Send
+                <Icon name="send" /> {t.send}
               </button>
             )}
           </div>
@@ -1485,11 +1496,12 @@ const maxAttachments = 10;
 const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 function attachmentProblem(files: File[], alreadyAttached: number) {
-  if (alreadyAttached + files.length > maxAttachments) return `Attach at most ${maxAttachments} files per message.`;
+  const t = labels[lang()];
+  if (alreadyAttached + files.length > maxAttachments) return t.attachLimit(maxAttachments);
   for (const file of files) {
     const image = imageTypes.includes(file.type);
-    if (image && file.size > 10 << 20) return `${file.name} is larger than 10 MB.`;
-    if (!image && file.size > 1 << 20) return `${file.name} is larger than 1 MB. Text files can be up to 1 MB.`;
+    if (image && file.size > 10 << 20) return t.imageLarge(file.name);
+    if (!image && file.size > 1 << 20) return t.textLarge(file.name);
   }
   return "";
 }
@@ -1547,16 +1559,18 @@ function SettingRow({
 }
 
 function thinkingTitle(chat: Chat, running: boolean) {
+  const t = labels[lang()];
   const { supported, reason } = chat.capabilities.thinking;
   if (!supported) return reason;
-  if (running) return "Stop the reply to change thinking";
-  return ["Let the model reason before answering. Slower but smarter.", reason].filter(Boolean).join(" ");
+  if (running) return t.stopThinking;
+  return [t.thinkingHint, reason].filter(Boolean).join(" ");
 }
 
 function ThinkingBlock({ text, live }: { text: string; live?: boolean }) {
+  const t = useText(labels);
   return (
     <details className="thinking">
-      <summary>{live ? "Thinking…" : "Thinking"}</summary>
+      <summary>{live ? t.thinkingLive : t.thinking}</summary>
       <p>{text}</p>
     </details>
   );
@@ -1582,6 +1596,7 @@ const Timeline = memo(function Timeline({
   onError: (reason: unknown) => void;
   onAnswer: (questionID: string, answers: ChatAnswer[]) => void;
 }) {
+  const t = useText(labels);
   async function reveal(path: string) {
     try {
       await api.post(`/api/chats/${chatId}/reveal`, { path });
@@ -1603,7 +1618,7 @@ const Timeline = memo(function Timeline({
     {timeline(detail).map((message) =>
       "tool_name" in message ? (
         <ToolLine key={message.id} body={() => `${message.tool_name}\n${prettyJSON(message.input_json)}`}>
-          <Icon name="check" /> <code>Auto-allowed {approvalSummary(message)}</code>{" "}
+          <Icon name="check" /> <code>{t.autoAllowed} {approvalSummary(message)}</code>{" "}
           <MessageTime iso={message.created_at} />
         </ToolLine>
       ) : message.role === "tool" ? (
@@ -1643,13 +1658,13 @@ const Timeline = memo(function Timeline({
             </div>
           )}
           {message.attachments.length > 0 && (
-            <ul className="attachments sent" aria-label="Attachments">
+            <ul className="attachments sent" aria-label={t.attachments}>
               {message.attachments.map((attachment) => (
                 <li key={attachment.name}>
                   <button
                     type="button"
                     className={attachment.kind === "image" ? "attachment image" : "attachment"}
-                    title="Show in folder"
+                    title={t.showFolder}
                     onClick={() => revealAttachment(attachment)}
                   >
                     {attachment.kind === "image" && (
@@ -1685,6 +1700,7 @@ const Timeline = memo(function Timeline({
 
 // Formats the full input only when expanded; tool inputs can be 20k chars and chats have hundreds.
 function ToolLine({ body, resultURL, children }: { body: () => string; resultURL?: string; children: ReactNode }) {
+  const t = useText(labels);
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<string>();
   useEffect(() => {
@@ -1692,13 +1708,13 @@ function ToolLine({ body, resultURL, children }: { body: () => string; resultURL
     api
       .get<{ tool_result: string }>(resultURL)
       .then((data) => setResult(data.tool_result))
-      .catch((reason) => setResult(`Could not load the result: ${reason}`));
+      .catch((reason) => setResult(t.resultLoadError(reason)));
   }, [open, resultURL, result]);
   return (
     <details className="tool-line" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>{children}</summary>
       {open && <pre>{body()}</pre>}
-      {open && resultURL && <pre aria-label="Tool result">{result === undefined ? "Loading result…" : prettyJSON(result)}</pre>}
+      {open && resultURL && <pre aria-label={t.toolResult}>{result === undefined ? t.resultLoading : prettyJSON(result)}</pre>}
     </details>
   );
 }
@@ -1707,10 +1723,11 @@ function ToolLine({ body, resultURL, children }: { body: () => string; resultURL
 const largeToolResult = 25_000;
 
 function ToolResultBadge({ size, failed }: { size: number; failed: boolean }) {
-  const label = size < 1000 ? `${size} chars` : `${(size / 1000).toFixed(1)}k chars`;
+  const t = useText(labels);
+  const label = size < 1000 ? t.chars(size) : t.charsK((size / 1000).toFixed(1));
   return (
     <span className={`tool-result-size${failed ? " failed" : size > largeToolResult ? " large" : ""}`}>
-      {failed ? `failed · ${label}` : label}
+      {failed ? `${t.failed} · ${label}` : label}
     </span>
   );
 }
@@ -1734,23 +1751,24 @@ function approvalSummary(approval: ChatApproval) {
 }
 
 function ApprovalCard({ approval, onAnswer }: { approval: ChatApproval; onAnswer: (allow: boolean) => void }) {
+  const t = useText(labels);
   let input = approval.input_json;
   try {
     input = JSON.stringify(JSON.parse(approval.input_json), null, 2);
   } catch {}
   return (
-    <section className="panel approval" aria-label={`Approval request for ${approval.tool_name}`}>
+    <section className="panel approval" aria-label={t.approvalRequest(approval.tool_name)}>
       <p>
-        <strong>Allow {approval.tool_name}?</strong>
+        <strong>{t.allow(approval.tool_name)}</strong>
       </p>
       <pre className="mcp-config">
         <code>{input}</code>
       </pre>
       <div className="connector-buttons">
         <button className="primary" onClick={() => onAnswer(true)}>
-          Allow once
+          {t.allowOnce}
         </button>
-        <button onClick={() => onAnswer(false)}>Deny</button>
+        <button onClick={() => onAnswer(false)}>{t.deny}</button>
       </div>
     </section>
   );
@@ -1765,6 +1783,7 @@ function QuestionCard({
   disabled: boolean;
   onAnswer: (answers: ChatAnswer[]) => void;
 }) {
+  const t = useText(labels);
   const questions = parseQuestions(message.content);
   const [answers, setAnswers] = useState<ChatAnswer[]>(() =>
     questions.map((q) => ({ header: q.header, selected: [], other: "" })),
@@ -1801,7 +1820,7 @@ function QuestionCard({
   return (
     <form
       className="panel approval question-card"
-      aria-label="Questions from the assistant"
+      aria-label={t.questionsFromAssistant}
       onSubmit={(event) => {
         event.preventDefault();
         if (!last) return answered(step) && setStep(step + 1);
@@ -1810,7 +1829,7 @@ function QuestionCard({
       }}
     >
       {questions.length > 1 && (
-        <div className="question-steps" role="tablist" aria-label="Questions">
+        <div className="question-steps" role="tablist" aria-label={t.questionTabs}>
           {questions.map((item, index) => (
             <button
               key={index}
@@ -1824,13 +1843,13 @@ function QuestionCard({
             </button>
           ))}
           <span className="muted">
-            {step + 1} of {questions.length}
+            {step + 1} / {questions.length}
           </span>
         </div>
       )}
       <fieldset key={step} disabled={disabled}>
         <legend>{q.question}</legend>
-        {q.multiple && <span className="muted question-hint">Pick any that apply.</span>}
+        {q.multiple && <span className="muted question-hint">{t.questionHint}</span>}
         {q.options.map((option) => {
           const checked = answers[step].selected.includes(option.label);
           return (
@@ -1850,8 +1869,8 @@ function QuestionCard({
         })}
         <input
           className="question-other"
-          aria-label={`Other answer for ${q.header}`}
-          placeholder="Other answer (optional)"
+          aria-label={t.otherAnswer(q.header)}
+          placeholder={t.otherOptional}
           value={answers[step].other}
           onChange={(event) =>
             setAnswers((current) => current.map((a, i) => (i === step ? { ...a, other: event.target.value } : a)))
@@ -1861,11 +1880,11 @@ function QuestionCard({
       <div className="connector-buttons">
         {step > 0 && (
           <button type="button" onClick={() => setStep(step - 1)}>
-            Back
+            {t.back}
           </button>
         )}
         <button className="primary" type="submit" disabled={last ? !ready || disabled : !answered(step)}>
-          {last ? "Send answers" : "Next"}
+          {last ? t.sendAnswers : t.next}
         </button>
       </div>
     </form>
@@ -1894,6 +1913,7 @@ function FolderDialog({
   onClose: () => void;
   onSettings: () => void;
 }) {
+  const t = useText(labels);
   const [roots, setRoots] = useState<AllowedFolder[]>();
   const [trail, setTrail] = useState<BrowsedFolder[]>([]);
   const [folders, setFolders] = useState<BrowsedFolder[]>();
@@ -1934,12 +1954,12 @@ function FolderDialog({
     <dialog ref={dialog} className="create-dialog" aria-labelledby="folder-dialog-title" onClose={onClose}>
       <section className="panel create create-modal">
         <div className="page-heading">
-          <h2 id="folder-dialog-title">Choose folder</h2>
-          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
+          <h2 id="folder-dialog-title">{t.chooseFolder}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
         </div>
-        <nav className="folder-trail" aria-label="Folder path">
+        <nav className="folder-trail" aria-label={t.folderPath}>
           <button type="button" className="ghost" aria-current={at ? undefined : "location"} onClick={() => setTrail([])}>
-            Folders
+            {t.folders}
           </button>
           {trail.map((folder, index) => (
             <span key={folder.path}>
@@ -1960,8 +1980,8 @@ function FolderDialog({
           {!at && (
             <li>
               <button type="button" className="ghost" disabled={saving} onClick={() => pick(null)}>
-                <Icon name="folder" /> Scratch folder (no files shared)
-                {current === null && <span className="muted">current</span>}
+                <Icon name="folder" /> {t.scratchFolder}
+                {current === null && <span className="muted">{t.current}</span>}
               </button>
             </li>
           )}
@@ -1969,14 +1989,14 @@ function FolderDialog({
             <li key={folder.path}>
               <button type="button" className="ghost" onClick={() => (setError(undefined), setTrail([...trail, folder]))}>
                 <Icon name="folder" /> {folder.name}
-                {current === folder.path && <span className="muted">current</span>}
+                {current === folder.path && <span className="muted">{t.current}</span>}
               </button>
             </li>
           ))}
-          {at && folders?.length === 0 && <li className="muted">No folders inside.</li>}
+          {at && folders?.length === 0 && <li className="muted">{t.noFolders}</li>}
         </ul>
         <small className="muted">
-          Want more folders?{" "}
+          {t.wantFolders}{" "}
           <a
             href="/settings"
             onClick={(event) => {
@@ -1985,13 +2005,13 @@ function FolderDialog({
               onSettings();
             }}
           >
-            Add them in Settings
+            {t.addSettings}
           </a>
         </small>
         <ErrorText error={error} />
         <div className="modal-actions">
           <button type="button" onClick={() => dialog.current?.close()}>
-            Cancel
+            {t.cancel}
           </button>
           <button
             type="button"
@@ -1999,7 +2019,7 @@ function FolderDialog({
             disabled={!at || saving || at.path === current}
             onClick={() => at && pick(at.path)}
           >
-            Use this folder
+            {t.useFolder}
           </button>
         </div>
       </section>
@@ -2033,6 +2053,7 @@ export function NewChatDialog({
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
+  const t = useText(labels);
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const defaultModel = (id: string) => startModel(connectors, defaults, id);
   const [connectorID, setConnectorID] = useState(connectors[0]?.id ?? "");
@@ -2083,15 +2104,15 @@ export function NewChatDialog({
     <dialog ref={dialog} className="create-dialog" aria-labelledby="new-chat-title" onClose={onClose}>
       <section className="panel create create-modal">
         <div className="page-heading">
-          <h2 id="new-chat-title">New chat</h2>
-          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
+          <h2 id="new-chat-title">{t.newChat}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
         </div>
         <form onSubmit={submit}>
           <label>
-            Connector
+            {t.connector}
             <Picker
-              label="Connector"
-              empty={connectors.length === 0 ? "No chat connector" : undefined}
+              label={t.connector}
+              empty={connectors.length === 0 ? t.noConnector : undefined}
               options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
               value={connectorID}
               onChange={(id) => {
@@ -2102,7 +2123,7 @@ export function NewChatDialog({
           </label>
           <div className="field">
             <span className="label-row">
-              Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
+              {t.model} {modelsLoading && <span className="spinner" role="status" aria-label={t.loadingModels} />}
             </span>
             <ModelPicker
               models={models}
@@ -2113,22 +2134,22 @@ export function NewChatDialog({
             />
           </div>
           <label className="wide">
-            Folder
+            {t.folderLabel}
             <Picker
-              label="Folder"
-              empty="Scratch folder (no files shared)"
+              label={t.folderLabel}
+              empty={t.scratchFolder}
               options={folders.map((f) => ({ id: f.path, name: f.path }))}
               value={folder}
               onChange={setFolder}
             />
-            {folders.length === 0 && <small>Add folders in Settings → Allowed folders.</small>}
+            {folders.length === 0 && <small>{t.addFolders}</small>}
           </label>
           <div className="modal-actions">
             <button type="button" onClick={() => dialog.current?.close()}>
-              Cancel
+              {t.cancel}
             </button>
             <button className="primary" disabled={!connectorID || starting}>
-              Start chat
+              {t.startChatButton}
             </button>
           </div>
         </form>

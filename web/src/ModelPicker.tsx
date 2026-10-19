@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { Icon } from "./icons";
+import { useText } from "./i18n";
+
+const text = {
+  en: { pinned: "Pinned", loading: "loading", none: "none", modelLabel: "Model", loadingModels: "Loading models…", chooseModel: "Choose a model", searchModels: "Search models", noMatch: (query: string) => `No models match “${query}”`, unpin: "Unpin", pin: "Pin", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Unpin" : "Pin"} (${shortcut})` },
+  es: { pinned: "Fijados", loading: "cargando", none: "ninguno", modelLabel: "Modelo", loadingModels: "Cargando modelos…", chooseModel: "Elige un modelo", searchModels: "Buscar modelos", noMatch: (query: string) => `Ningún modelo coincide con “${query}”`, unpin: "Quitar de fijados", pin: "Fijar", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Quitar de fijados" : "Fijar"} (${shortcut})` },
+};
 
 export type ModelOption = { id: string; label: string; description?: string };
 
@@ -49,6 +55,7 @@ export default function ModelPicker({
   pinKind?: string;
   onChange: (id: string) => void;
 }) {
+  const t = useText(text);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -72,7 +79,7 @@ export default function ModelPicker({
     // The unnamed group (e.g. "Default") has no header, so it stays above "Pinned".
     return [
       ...providers.filter((group) => !group.name),
-      ...(pinned.length ? [{ name: "Pinned", models: pinned }] : []),
+      ...(pinned.length ? [{ name: t.pinned, models: pinned }] : []),
       ...providers.filter((group) => group.name),
     ];
   };
@@ -183,7 +190,7 @@ export default function ModelPicker({
         ref={trigger}
         type="button"
         className={up ? "model-trigger tip-up" : "model-trigger"}
-        aria-label={`Model: ${loading ? "loading" : current ? current.label : "none"}`}
+        aria-label={`${t.modelLabel}: ${loading ? t.loading : current ? current.label : t.none}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-busy={loading}
@@ -191,7 +198,7 @@ export default function ModelPicker({
         disabled={disabled || loading}
         onClick={() => (open ? close() : show())}
       >
-        <span className="model-trigger-label">{loading ? "Loading models…" : current ? shortLabel(current) : "Choose a model"}</span>
+        <span className="model-trigger-label">{loading ? t.loadingModels : current ? shortLabel(current) : t.chooseModel}</span>
         <Icon name="chevronDown" />
       </button>
       {open && (
@@ -204,11 +211,11 @@ export default function ModelPicker({
           <input
             autoFocus
             role="combobox"
-            aria-label="Search models"
+            aria-label={t.searchModels}
             aria-expanded="true"
             aria-controls={`${id}-list`}
             aria-activedescendant={ordered[active] ? optionID(active) : undefined}
-            placeholder="Search models"
+            placeholder={t.searchModels}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -216,8 +223,8 @@ export default function ModelPicker({
             }}
             onKeyDown={keyDown}
           />
-          <ul id={`${id}-list`} role="listbox" aria-label="Models">
-            {ordered.length === 0 && <li className="model-empty muted">No models match “{query.trim()}”</li>}
+          <ul id={`${id}-list`} role="listbox" aria-label={t.searchModels}>
+            {ordered.length === 0 && <li className="model-empty muted">{t.noMatch(query.trim())}</li>}
             {groups.map((group, g) => (
               <li key={g} role="presentation">
                 {group.name && <div className="model-group muted">{group.name}</div>}
@@ -245,10 +252,10 @@ export default function ModelPicker({
                             type="button"
                             tabIndex={-1}
                             className="model-pin"
-                            aria-label={`${isPinned ? "Unpin" : "Pin"} ${model.label}`}
+                            aria-label={`${isPinned ? t.unpin : t.pin} ${model.label}`}
                             aria-pressed={isPinned}
                             aria-keyshortcuts="Alt+P"
-                            data-tip={`${isPinned ? "Unpin" : "Pin"} (${pinShortcut})`}
+                            data-tip={t.pinTip(isPinned, pinShortcut)}
                             onClick={(event) => {
                               event.stopPropagation();
                               togglePin(model);

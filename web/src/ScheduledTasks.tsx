@@ -9,37 +9,41 @@ import {
   type ScheduledTaskRun,
 } from "./api";
 import { ErrorText, navigate } from "./App";
-import { lateTitle, startModel, useModels } from "./Chats";
+import { startModel, useModels } from "./Chats";
 import ModelPicker from "./ModelPicker";
 import { ConnectorRequired } from "./Connectors";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import Switch from "./Switch";
 import Picker from "./Picker";
+import { lang, locale, useText } from "./i18n";
 
 type Repeat = "once" | "hours" | "daily" | "weekdays" | "weekly" | "monthly" | "cron";
 type When = { repeat: Repeat; at: string; time: string; hours: number; days: number[]; day: number; cron: string };
 type Fields = Omit<ScheduledTask, "id" | "next_run_at" | "created_at" | "updated_at">;
 type TaskSort = "recent" | "name";
 
-const repeatLabels: Record<Repeat, string> = {
-  once: "Once",
-  hours: "Every few hours",
-  daily: "Every day",
-  weekdays: "Every weekday (Mon–Fri)",
-  weekly: "Every week",
-  monthly: "Every month",
-  cron: "Advanced (cron)",
+const text = {
+  en: {
+    once: "Once", hours: "Every few hours", daily: "Every day", weekdays: "Every weekday (Mon–Fri)", weekly: "Every week", monthly: "Every month", cron: "Advanced (cron)",
+    days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], skipped: "The previous run was still working, so this one didn't start.",
+    running: "Running", waiting: "Waiting for your answer", done: "Finished", failed: "Failed", skippedStatus: "Skipped",
+    onceOn: "Once on", everyHour: "Every hour", everyHours: (n: number) => `Every ${n} hours`, dailyAt: "Every day at", weekdaysAt: "Weekdays at", everyDaysAt: (days: string) => `Every ${days} at`, monthlyOn: (n: number) => `Monthly on day ${n} at`, custom: (cron: string) => `Custom: ${cron}`,
+    taskGone: "This scheduled task no longer exists.", new: "New scheduled task", description: "A scheduled task sends a prompt to an AI connector at the times you pick. Each run starts a new chat. Tasks run only while Patio is open.", create: "create a scheduled task", empty: "No scheduled tasks yet", example: 'For example, every weekday at 9:00 AM: "Summarize the tickets due this week and list anything overdue."', taskCount: (n: number) => `${n} scheduled task${n === 1 ? "" : "s"}`, ariaTasks: "Scheduled tasks", enable: (title: string) => `Enable ${title}`, more: (title: string) => `More actions for ${title}`, disable: "Disable task", enableTask: "Enable task", edit: "Edit", remove: "Remove", recent: "Most recent", alphabetical: "Alphabetical", sortLabel: "Sort scheduled tasks", sort: "Sort:", back: "Scheduled tasks",
+    editNew: "New scheduled task", editAria: (title: string) => `Edit ${title}`, title: "Title", connector: "Connector", noConnector: "No connector", connectorRemoved: "Connector removed", loadingModels: "Loading models", model: "Model", folder: "Folder", scratch: "Scratch folder (no files shared)", mode: "Mode", ask: "Ask before changes", auto: "Auto-allow everything", autoDesc: "Every file change and command runs without asking.", askDesc: "File changes and commands wait for your approval in the run's chat. You get a notification.", thinking: "Thinking", schedule: "Schedule", repeat: "Repeat", at: "At", on: "On", everyHoursLabel: "Every (hours)", daysWeek: "Days of the week", dayMonth: "Day of month", cronLabel: "Cron expression (minute hour day month weekday)", nextRuns: "Next runs:", openOnly: "Runs only while Patio is open.", enabled: "Enabled", saved: "Saved", save: "Save", createTask: "Create task", deleteTitle: (title: string) => `Delete ${title}`, recentRuns: "Recent runs", noRuns: "No runs yet.", runsAria: "Recent runs", late: "Ran late", openChat: "Open chat",
+  },
+  es: {
+    once: "Una vez", hours: "Cada pocas horas", daily: "Todos los días", weekdays: "Cada día laborable (lun–vie)", weekly: "Cada semana", monthly: "Cada mes", cron: "Avanzado (cron)",
+    days: ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"], skipped: "La ejecución anterior seguía en curso, así que esta no empezó.",
+    running: "En curso", waiting: "Esperando tu respuesta", done: "Terminada", failed: "Fallida", skippedStatus: "Omitida",
+    onceOn: "Una vez el", everyHour: "Cada hora", everyHours: (n: number) => `Cada ${n} horas`, dailyAt: "Todos los días a las", weekdaysAt: "Los días laborables a las", everyDaysAt: (days: string) => `Cada ${days} a las`, monthlyOn: (n: number) => `Cada mes, el día ${n} a las`, custom: (cron: string) => `Personalizado: ${cron}`,
+    taskGone: "Esta tarea programada ya no existe.", new: "Nueva tarea programada", description: "Una tarea programada envía una instrucción a un conector de IA en los horarios que elijas. Cada ejecución inicia un chat nuevo. Las tareas se ejecutan solo mientras Patio esté abierto.", create: "crear una tarea programada", empty: "Aún no hay tareas programadas", example: 'Por ejemplo, cada día laborable a las 9:00: "Resume los tickets que vencen esta semana y enumera los atrasados."', taskCount: (n: number) => `${n} tarea${n === 1 ? "" : "s"} programada${n === 1 ? "" : "s"}`, ariaTasks: "Tareas programadas", enable: (title: string) => `Activar ${title}`, more: (title: string) => `Más acciones para ${title}`, disable: "Desactivar tarea", enableTask: "Activar tarea", edit: "Editar", remove: "Eliminar", recent: "Más recientes", alphabetical: "Alfabético", sortLabel: "Ordenar tareas programadas", sort: "Orden:", back: "Tareas programadas",
+    editNew: "Nueva tarea programada", editAria: (title: string) => `Editar ${title}`, title: "Título", connector: "Conector", noConnector: "Sin conector", connectorRemoved: "Conector eliminado", loadingModels: "Cargando modelos", model: "Modelo", folder: "Carpeta", scratch: "Carpeta temporal (no se comparten archivos)", mode: "Modo", ask: "Preguntar antes de hacer cambios", auto: "Permitir todo automáticamente", autoDesc: "Cada cambio de archivo y comando se ejecuta sin preguntar.", askDesc: "Los cambios y comandos esperan tu aprobación en el chat de la ejecución. Recibirás una notificación.", thinking: "Razonamiento", schedule: "Programación", repeat: "Repetir", at: "A las", on: "El", everyHoursLabel: "Cada (horas)", daysWeek: "Días de la semana", dayMonth: "Día del mes", cronLabel: "Expresión cron (minuto hora día mes día-semana)", nextRuns: "Próximas ejecuciones:", openOnly: "Se ejecuta solo mientras Patio esté abierto.", enabled: "Activada", saved: "Guardada", save: "Guardar", createTask: "Crear tarea", deleteTitle: (title: string) => `Eliminar ${title}`, recentRuns: "Ejecuciones recientes", noRuns: "Aún no hay ejecuciones.", runsAria: "Ejecuciones recientes", late: "Se ejecutó tarde", openChat: "Abrir chat",
+  },
 };
-const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const skippedTitle = "The previous run was still working, so this one didn't start.";
-const statusLabels: Record<ScheduledTaskRun["status"], string> = {
-  running: "Running",
-  waiting: "Waiting for your answer",
-  done: "Finished",
-  failed: "Failed",
-  skipped: "Skipped",
-};
+
+const statusLabel = (status: ScheduledTaskRun["status"]) =>
+  ({ running: text[lang()].running, waiting: text[lang()].waiting, done: text[lang()].done, failed: text[lang()].failed, skipped: text[lang()].skippedStatus })[status];
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -49,11 +53,11 @@ function localInput(date: Date) {
 
 function clock(time: string) {
   const [hour, minute] = time.split(":").map(Number);
-  return new Date(2000, 0, 1, hour, minute).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return new Date(2000, 0, 1, hour, minute).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
 }
 
 function formatRun(iso: string) {
-  return new Date(iso).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return new Date(iso).toLocaleString(locale(), { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function parseWhen(task?: ScheduledTask): When {
@@ -99,19 +103,19 @@ function describe(task: ScheduledTask) {
   const when = parseWhen(task);
   switch (when.repeat) {
     case "once":
-      return `Once on ${formatRun(task.run_at!)}`;
+      return `${text[lang()].onceOn} ${formatRun(task.run_at!)}`;
     case "hours":
-      return when.hours === 1 ? "Every hour" : `Every ${when.hours} hours`;
+      return when.hours === 1 ? text[lang()].everyHour : text[lang()].everyHours(when.hours);
     case "daily":
-      return `Every day at ${clock(when.time)}`;
+      return `${text[lang()].dailyAt} ${clock(when.time)}`;
     case "weekdays":
-      return `Weekdays at ${clock(when.time)}`;
+      return `${text[lang()].weekdaysAt} ${clock(when.time)}`;
     case "weekly":
-      return `Every ${when.days.map((day) => dayNames[day]).join(", ")} at ${clock(when.time)}`;
+      return `${text[lang()].everyDaysAt(when.days.map((day) => text[lang()].days[day]).join(", "))} ${clock(when.time)}`;
     case "monthly":
-      return `Monthly on day ${when.day} at ${clock(when.time)}`;
+      return text[lang()].monthlyOn(when.day) + ` ${clock(when.time)}`;
     case "cron":
-      return `Custom: ${task.schedule}`;
+      return text[lang()].custom(task.schedule);
   }
 }
 
@@ -121,6 +125,7 @@ function fieldsOf(task: ScheduledTask): Fields {
 }
 
 export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: number }) {
+  const t = useText(text);
   const [tasks, setTasks] = useState<ScheduledTask[]>();
   const [connectors, setConnectors] = useState<Connector[]>();
   const [sort, setSort] = useState<TaskSort>(() =>
@@ -151,7 +156,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
   }
 
   async function remove(task: ScheduledTask) {
-    if (!(await confirmDialog(`Delete scheduled task "${task.title}"?`))) return;
+    if (!(await confirmDialog(lang() === "es" ? `¿Eliminar la tarea programada "${task.title}"?` : `Delete scheduled task "${task.title}"?`))) return;
     try {
       await api.delete(`/api/scheduled-tasks/${task.id}`);
       changed();
@@ -166,7 +171,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       return tasks ? (
         <div className="stack">
           <BackLink />
-          <p className="muted">This scheduled task no longer exists.</p>
+          <p className="muted">{t.taskGone}</p>
         </div>
       ) : null;
     }
@@ -187,7 +192,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
   const noConnectors = connectors?.length === 0;
   const newButton = !noConnectors && (
     <button className="primary" onClick={() => navigate("/ai/scheduled/new")}>
-      <Icon name="plus" /> New scheduled task
+      <Icon name="plus" /> {t.new}
     </button>
   );
 
@@ -196,27 +201,24 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       <div className="page-heading">
         <div>
           <p className="eyebrow">AI</p>
-          <h1>Scheduled tasks</h1>
+          <h1>{t.ariaTasks}</h1>
         </div>
         <div className="actions">{newButton}</div>
       </div>
       <p className="muted">
-        A scheduled task sends a prompt to an AI connector at the times you pick. Each run starts a new chat. Tasks
-        run only while Patio is open.
+        {t.description}
       </p>
       <ErrorText error={error} />
 
-      {noConnectors && <ConnectorRequired then="create a scheduled task" />}
+      {noConnectors && <ConnectorRequired then={t.create} />}
 
       {tasks?.length === 0 && !noConnectors && (
         <section className="panel skill-empty">
           <span className="skill-empty-mark" aria-hidden="true">
             <Icon name="clock" />
           </span>
-          <h2>No scheduled tasks yet</h2>
-          <p className="muted">
-            For example, every weekday at 9:00 AM: "Summarize the tickets due this week and list anything overdue."
-          </p>
+          <h2>{t.empty}</h2>
+          <p className="muted">{t.example}</p>
           <div className="actions">{newButton}</div>
         </section>
       )}
@@ -224,7 +226,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       {!!tasks?.length && (
         <div className="list-toolbar">
           <span className="muted">
-            {tasks.length} scheduled task{tasks.length === 1 ? "" : "s"}
+            {t.taskCount(tasks.length)}
           </span>
           <SortMenu
             value={sort}
@@ -237,7 +239,7 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
       )}
 
       {!!tasks?.length && (
-        <ul className="panel skill-list" aria-label="Scheduled tasks">
+        <ul className="panel skill-list" aria-label={t.ariaTasks}>
           {[...tasks]
             .sort((a, b) =>
               sort === "name" ? a.title.localeCompare(b.title) : b.created_at.localeCompare(a.created_at),
@@ -247,27 +249,27 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
                 <button className="skill-item" onClick={() => navigate(`/ai/scheduled/${task.id}`)}>
                   <span className="skill-name">{task.title}</span>
                   <span className="skill-description">
-                    {describe(task)} · {task.next_run_at ? `Next: ${formatRun(task.next_run_at)}` : "Not scheduled"}
+                    {describe(task)} · {task.next_run_at ? `${lang() === "es" ? "Siguiente:" : "Next:"} ${formatRun(task.next_run_at)}` : lang() === "es" ? "Sin programar" : "Not scheduled"}
                   </span>
                 </button>
                 <Switch
                   checked={task.enabled}
                   onChange={() => toggle(task)}
-                  label={`Enable ${task.title}`}
+                  label={t.enable(task.title)}
                   showLabel={false}
                 />
-                <Menu label={`More actions for ${task.title}`} buttonClassName="icon ghost" button={<Icon name="more" />}>
+                <Menu label={t.more(task.title)} buttonClassName="icon ghost" button={<Icon name="more" />}>
                   {(close) => (
                     <>
                       <button role="menuitem" onClick={() => (close(), toggle(task))}>
-                        <Icon name={task.enabled ? "pause" : "play"} /> {task.enabled ? "Disable task" : "Enable task"}
+                        <Icon name={task.enabled ? "pause" : "play"} /> {task.enabled ? t.disable : t.enableTask}
                       </button>
                       <button role="menuitem" onClick={() => (close(false), navigate(`/ai/scheduled/${task.id}`))}>
-                        <Icon name="pencil" /> Edit
+                        <Icon name="pencil" /> {t.edit}
                       </button>
                       <hr className="menu-divider" role="separator" />
                       <button role="menuitem" className="danger-text" onClick={() => (close(), remove(task))}>
-                        <Icon name="trash" /> Remove
+                        <Icon name="trash" /> {t.remove}
                       </button>
                     </>
                   )}
@@ -280,20 +282,22 @@ export default function ScheduledTasks({ id, refresh }: { id?: string; refresh: 
   );
 }
 
-const sortLabels: Record<TaskSort, string> = { recent: "Most recent", name: "Alphabetical" };
+const sortLabels = (t: typeof text.en): Record<TaskSort, string> => ({ recent: t.recent, name: t.alphabetical });
 
 function SortMenu({ value, onChange }: { value: TaskSort; onChange: (value: TaskSort) => void }) {
+  const t = useText(text);
+  const labels = sortLabels(t);
   return (
     <Menu
-      label="Sort scheduled tasks"
+      label={t.sortLabel}
       button={
         <>
-          Sort: {sortLabels[value]} <Icon name="chevronDown" />
+          {t.sort} {labels[value]} <Icon name="chevronDown" />
         </>
       }
     >
       {(close) =>
-        (Object.keys(sortLabels) as TaskSort[]).map((option) => (
+        (Object.keys(labels) as TaskSort[]).map((option) => (
           <button
             key={option}
             role="menuitemradio"
@@ -304,7 +308,7 @@ function SortMenu({ value, onChange }: { value: TaskSort; onChange: (value: Task
             }}
           >
             <span className="menu-check">{option === value && <Icon name="check" />}</span>
-            {sortLabels[option]}
+            {labels[option]}
           </button>
         ))
       }
@@ -313,9 +317,10 @@ function SortMenu({ value, onChange }: { value: TaskSort; onChange: (value: Task
 }
 
 function BackLink() {
+  const t = useText(text);
   return (
     <button type="button" className="back" onClick={() => navigate("/ai/scheduled")}>
-      <Icon name="arrowLeft" /> Scheduled tasks
+      <Icon name="arrowLeft" /> {t.back}
     </button>
   );
 }
@@ -331,6 +336,7 @@ function TaskEditor({
   onSaved: () => void;
   onDeleted: () => void;
 }) {
+  const t = useText(text);
   const [title, setTitle] = useState(task?.title ?? "");
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
   const [connectorID, setConnectorID] = useState(task?.connector_id ?? "");
@@ -427,7 +433,7 @@ function TaskEditor({
   }
 
   async function remove() {
-    if (!task || !(await confirmDialog(`Delete scheduled task "${task.title}"?`))) return;
+    if (!task || !(await confirmDialog(lang() === "es" ? `¿Eliminar la tarea programada "${task.title}"?` : `Delete scheduled task "${task.title}"?`))) return;
     try {
       await api.delete(`/api/scheduled-tasks/${task.id}`);
       onDeleted();
@@ -439,7 +445,7 @@ function TaskEditor({
   const set = (patch: Partial<When>) => setWhen((current) => ({ ...current, ...patch }));
   const timeInput = (
     <label>
-      At
+      {t.at}
       <input type="time" required value={when.time} onChange={(event) => set({ time: event.target.value })} />
     </label>
   );
@@ -448,24 +454,24 @@ function TaskEditor({
     <div className="stack">
       <BackLink />
       <div className="page-heading">
-        <h1>{task ? task.title : "New scheduled task"}</h1>
+        <h1>{task ? task.title : t.editNew}</h1>
       </div>
       {connectors?.length === 0 && (
-        <ConnectorRequired then={task ? "pick it for this task" : "create a scheduled task"} />
+        <ConnectorRequired then={task ? (lang() === "es" ? "elegirlo para esta tarea" : "pick it for this task") : t.create} />
       )}
       {(task || !!connectors?.length) && (
       <form
         className="panel skill-editor"
         onSubmit={submit}
-        aria-label={task ? `Edit ${task.title}` : "New scheduled task"}
+        aria-label={task ? t.editAria(task.title) : t.editNew}
       >
         <div className="skill-fields">
           <label className="grow">
-            Title
+            {t.title}
             <input
               autoFocus
               required
-              placeholder="Weekly ticket summary"
+              placeholder={lang() === "es" ? "Resumen semanal de tickets" : "Weekly ticket summary"}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
             />
@@ -483,10 +489,10 @@ function TaskEditor({
         </label>
         <div className="skill-fields">
           <label>
-            Connector
+            {t.connector}
             <Picker
-              label="Connector"
-              empty={connectors?.length === 0 ? "No connector" : task && !connectorID ? "Connector removed" : undefined}
+              label={t.connector}
+              empty={connectors?.length === 0 ? t.noConnector : task && !connectorID ? t.connectorRemoved : undefined}
               options={(connectors ?? []).map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
               value={connectorID}
               onChange={(id) => {
@@ -497,7 +503,7 @@ function TaskEditor({
           </label>
           <div className="field">
             <span className="label-row">
-              Model {modelsLoading && <span className="spinner" role="status" aria-label="Loading models" />}
+              {t.model} {modelsLoading && <span className="spinner" role="status" aria-label={t.loadingModels} />}
             </span>
             <ModelPicker
               models={models}
@@ -508,10 +514,10 @@ function TaskEditor({
             />
           </div>
           <label className="grow">
-            Folder
+            {t.folder}
             <Picker
-              label="Folder"
-              empty="Scratch folder (no files shared)"
+              label={t.folder}
+              empty={t.scratch}
               options={[
                 ...folders.map((f) => ({ id: f.path, name: f.path })),
                 ...(folder && !folders.some((f) => f.path === folder) ? [{ id: folder, name: folder }] : []),
@@ -521,12 +527,12 @@ function TaskEditor({
             />
           </label>
           <label>
-            Mode
+            {t.mode}
             <Picker
-              label="Mode"
+              label={t.mode}
               options={[
-                { id: "ask", name: "Ask before changes" },
-                { id: "auto", name: "Auto-allow everything" },
+                { id: "ask", name: t.ask },
+                { id: "auto", name: t.auto },
               ]}
               value={autoAllow ? "auto" : "ask"}
               onChange={(mode) => setAutoAllow(mode === "auto")}
@@ -535,31 +541,31 @@ function TaskEditor({
         </div>
         <p className="muted">
           {autoAllow
-            ? "Every file change and command runs without asking."
-            : "File changes and commands wait for your approval in the run's chat. You get a notification."}
+            ? t.autoDesc
+            : t.askDesc}
         </p>
-        <Switch checked={thinking} onChange={setThinking} label="Thinking" />
+        <Switch checked={thinking} onChange={setThinking} label={t.thinking} />
 
         <fieldset className="skill-fields">
-          <legend>Schedule</legend>
+          <legend>{t.schedule}</legend>
           <label>
-            Repeat
+            {t.repeat}
             <Picker
-              label="Repeat"
-              options={(Object.keys(repeatLabels) as Repeat[]).map((repeat) => ({ id: repeat, name: repeatLabels[repeat] }))}
+              label={t.repeat}
+              options={(["once", "hours", "daily", "weekdays", "weekly", "monthly", "cron"] as Repeat[]).map((repeat) => ({ id: repeat, name: t[repeat] }))}
               value={when.repeat}
               onChange={(repeat) => set({ repeat: repeat as Repeat })}
             />
           </label>
           {when.repeat === "once" && (
             <label>
-              On
+              {t.on}
               <input type="datetime-local" required value={when.at} onChange={(event) => set({ at: event.target.value })} />
             </label>
           )}
           {when.repeat === "hours" && (
             <label>
-              Every (hours)
+              {t.everyHoursLabel}
               <input
                 type="number"
                 min={1}
@@ -571,8 +577,8 @@ function TaskEditor({
             </label>
           )}
           {when.repeat === "weekly" && (
-            <div role="group" aria-label="Days of the week" className="day-picker">
-              {dayNames.map((name, day) => (
+            <div role="group" aria-label={t.daysWeek} className="day-picker">
+              {t.days.map((name, day) => (
                 <label key={name}>
                   <input
                     type="checkbox"
@@ -588,7 +594,7 @@ function TaskEditor({
           )}
           {when.repeat === "monthly" && (
             <label>
-              Day of month
+              {t.dayMonth}
               <input
                 type="number"
                 min={1}
@@ -602,7 +608,7 @@ function TaskEditor({
           {["daily", "weekdays", "weekly", "monthly"].includes(when.repeat) && timeInput}
           {when.repeat === "cron" && (
             <label className="grow">
-              Cron expression (minute hour day month weekday)
+              {t.cronLabel}
               <input
                 required
                 spellCheck={false}
@@ -615,23 +621,23 @@ function TaskEditor({
         </fieldset>
         <div aria-live="polite">
           {preview.runs && (
-            <p className="muted">Next runs: {preview.runs.map(formatRun).join(" · ")}</p>
+            <p className="muted">{t.nextRuns} {preview.runs.map(formatRun).join(" · ")}</p>
           )}
           <ErrorText error={preview.error} />
         </div>
-        <p className="muted">Runs only while Patio is open.</p>
+        <p className="muted">{t.openOnly}</p>
 
         <ErrorText error={error} />
         <div className="connector-buttons">
-          <Switch checked={enabled} onChange={setEnabled} label="Enabled" />
+          <Switch checked={enabled} onChange={setEnabled} label={t.enabled} />
           <button
             className="primary"
             disabled={!dirty || !connectorID || (when.repeat === "weekly" && when.days.length === 0)}
           >
-            {saved ? "Saved" : task ? "Save" : "Create task"}
+            {saved ? t.saved : task ? t.save : t.createTask}
           </button>
           {task && (
-            <IconButton type="button" className="danger-text" icon="trash" label={`Delete ${task.title}`} onClick={remove} />
+            <IconButton type="button" className="danger-text" icon="trash" label={t.deleteTitle(task.title)} onClick={remove} />
           )}
         </div>
       </form>
@@ -639,30 +645,30 @@ function TaskEditor({
 
       {task && (
         <section className="stack" aria-labelledby="runs-title">
-          <h2 id="runs-title">Recent runs</h2>
-          {runs.length === 0 && <p className="muted">No runs yet.</p>}
+          <h2 id="runs-title">{t.recentRuns}</h2>
+          {runs.length === 0 && <p className="muted">{t.noRuns}</p>}
           {runs.length > 0 && (
-            <ul className="panel skill-list" aria-label="Recent runs">
+            <ul className="panel skill-list" aria-label={t.runsAria}>
               {runs.map((run) => (
                 <li key={run.id}>
                   <span className="skill-item">
                     <span className="skill-name">
                       {formatRun(run.scheduled_for)}
                       {run.late && (
-                        <span className="run-label" title={lateTitle}>
-                          Ran late
+                        <span className="run-label" title={t.late}>
+                          {t.late}
                         </span>
                       )}
                     </span>
-                    <span className="skill-description" title={run.status === "skipped" ? skippedTitle : run.error}>
-                      {statusLabels[run.status]}
-                      {run.status === "skipped" && ` · ${skippedTitle}`}
+                    <span className="skill-description" title={run.status === "skipped" ? text[lang()].skipped : run.error}>
+                      {statusLabel(run.status)}
+                      {run.status === "skipped" && ` · ${text[lang()].skipped}`}
                       {run.error && ` · ${run.error}`}
                     </span>
                   </span>
                   {run.chat_id && (
                     <button type="button" onClick={() => navigate(`/ai/chats/${run.chat_id}`)}>
-                      <Icon name="chat" /> Open chat
+                      <Icon name="chat" /> {t.openChat}
                     </button>
                   )}
                 </li>

@@ -5,8 +5,29 @@ import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 import Picker from "./Picker";
+import { lang, useText } from "./i18n";
+
+const text = {
+  en: {
+    addServer: "Add server", title: "MCP servers", settings: "Settings", intro: "Enabled servers are available in every chat, next to the built-in Patio tools (status in ",
+    introEnd: "). Claude Code, Copilot, and opencode ask before using their tools; Codex runs them without asking.",
+    empty: "No servers yet. Add a remote URL (HTTP) or a local command (stdio).", finishLogin: "Finish signing in in your browser.",
+    deleteQuestion: (name: string) => `Delete MCP server "${name}"?`, signInRequired: "Sign in required", checking: "Checking…", healthy: (latency: number, n: number) => `Healthy · ${latency} ms · ${n} tool${n === 1 ? "" : "s"}`, unreachable: "Unreachable",
+    localCommand: "Local command", remote: "Remote", edit: (name: string) => `Edit ${name}`, editText: "Edit", delete: (name: string) => `Delete ${name}`, tools: "Tools", enabled: "Enabled in chats", signInAgain: "Sign in again", signIn: "Sign in", test: "Test",
+    editTitle: "Edit MCP server", addTitle: "Add MCP server", close: "Close", name: "Name", type: "Type", remoteURL: "Remote URL (HTTP)", localStdio: "Local command (stdio)", command: "Command", commandPlaceholder: "npx or /usr/local/bin/my-server", args: "Arguments (one per line)", environment: "Environment (KEY=value, one per line)", savedKeep: (keys: string) => `Saved: ${keys}. Leave empty to keep.`, apiKey: "API_KEY=…", envNote: "Values are stored in your system keychain. Entering any lines replaces all saved values.", removeValues: "Remove saved values", url: "URL", signInLabel: "Sign-in", none: "None", accessToken: "Access token", oauth: "OAuth (sign in with browser)", tokenReplace: "Saved. Type to replace", afterSave: "After saving, press Sign in on the server card.", cancel: "Cancel", save: "Save",
+  },
+  es: {
+    addServer: "Agregar servidor", title: "Servidores MCP", settings: "Configuración", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
+    introEnd: "). Claude Code, Copilot y opencode preguntan antes de usar sus herramientas; Codex las ejecuta sin preguntar.",
+    empty: "Aún no hay servidores. Agrega una URL remota (HTTP) o un comando local (stdio).", finishLogin: "Termina de iniciar sesión en tu navegador.",
+    deleteQuestion: (name: string) => `¿Eliminar el servidor MCP «${name}»?`, signInRequired: "Debes iniciar sesión", checking: "Comprobando…", healthy: (latency: number, n: number) => `Disponible · ${latency} ms · ${n} herramienta${n === 1 ? "" : "s"}`, unreachable: "No disponible",
+    localCommand: "Comando local", remote: "Remoto", edit: (name: string) => `Editar ${name}`, editText: "Editar", delete: (name: string) => `Eliminar ${name}`, tools: "Herramientas", enabled: "Habilitado en chats", signInAgain: "Iniciar sesión de nuevo", signIn: "Iniciar sesión", test: "Probar",
+    editTitle: "Editar servidor MCP", addTitle: "Agregar servidor MCP", close: "Cerrar", name: "Nombre", type: "Tipo", remoteURL: "URL remota (HTTP)", localStdio: "Comando local (stdio)", command: "Comando", commandPlaceholder: "npx o /usr/local/bin/my-server", args: "Argumentos (uno por línea)", environment: "Entorno (KEY=value, uno por línea)", savedKeep: (keys: string) => `Guardadas: ${keys}. Déjalo vacío para conservarlas.`, apiKey: "API_KEY=…", envNote: "Los valores se guardan en el llavero del sistema. Si ingresas líneas, se reemplazan todos los valores guardados.", removeValues: "Eliminar valores guardados", url: "URL", signInLabel: "Inicio de sesión", none: "Ninguno", accessToken: "Token de acceso", oauth: "OAuth (inicia sesión con el navegador)", tokenReplace: "Guardado. Escribe para reemplazarlo", afterSave: "Después de guardar, presiona Iniciar sesión en la tarjeta del servidor.", cancel: "Cancelar", save: "Guardar",
+  },
+};
 
 export default function McpServers({ refresh }: { refresh: number }) {
+  const t = useText(text);
   const [servers, setServers] = useState<McpServer[]>([]);
   const [error, setError] = useState<unknown>();
   const [editing, setEditing] = useState<McpServer | "new">();
@@ -29,14 +50,14 @@ export default function McpServers({ refresh }: { refresh: number }) {
       <div className="page-heading">
         <div>
           <p className="eyebrow">AI</p>
-          <h1>MCP servers</h1>
+          <h1>{t.title}</h1>
         </div>
         <button className="primary" onClick={() => setEditing("new")}>
-          <Icon name="plus" /> Add server
+          <Icon name="plus" /> {t.addServer}
         </button>
       </div>
       <p className="muted">
-        Enabled servers are available in every chat, next to the built-in Patio tools (status in{" "}
+        {t.intro}{" "}
         <a
           href="/settings"
           onClick={(event) => {
@@ -44,13 +65,13 @@ export default function McpServers({ refresh }: { refresh: number }) {
             navigate("/settings");
           }}
         >
-          Settings
+          {t.settings}
         </a>
-        ). Claude Code, Copilot, and opencode ask before using their tools; Codex runs them without asking.
+        {t.introEnd}
       </p>
       <ErrorText error={error} />
       {servers.length === 0 && !error && (
-        <p className="callout">No servers yet. Add a remote URL (HTTP) or a local command (stdio).</p>
+        <p className="callout">{t.empty}</p>
       )}
       <div className="connector-grid">
         {servers.map((server) => (
@@ -80,6 +101,7 @@ function ServerCard({
   onEdit: () => void;
   onChanged: () => void;
 }) {
+  const t = useText(text);
   const [check, setCheck] = useState<McpServerCheck>();
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -127,7 +149,7 @@ function ServerCard({
     setError(undefined);
     try {
       await api.post(`/api/mcp-servers/${server.id}/login`, {});
-      setMessage("Finish signing in in your browser.");
+      setMessage(t.finishLogin);
       const started = Date.now();
       window.clearInterval(poll.current);
       poll.current = window.setInterval(async () => {
@@ -148,7 +170,7 @@ function ServerCard({
   }
 
   async function remove() {
-    if (!(await confirmDialog(`Delete MCP server "${server.name}"?`))) return;
+    if (!(await confirmDialog(text[lang()].deleteQuestion(server.name)))) return;
     try {
       await api.delete(`/api/mcp-servers/${server.id}`);
       onChanged();
@@ -159,28 +181,28 @@ function ServerCard({
 
   const state = needsSignIn ? "down" : checking || !check ? "pending" : check.ok ? "up" : "down";
   const label = needsSignIn
-    ? "Sign in required"
+    ? t.signInRequired
     : checking || !check
-      ? "Checking…"
+      ? t.checking
       : check.ok
-        ? `Healthy · ${check.latency_ms} ms · ${check.tools.length} tool${check.tools.length === 1 ? "" : "s"}`
-        : "Unreachable";
+        ? t.healthy(check.latency_ms, check.tools.length)
+        : t.unreachable;
 
   return (
     <article className={`panel connector-card ${state}`} aria-labelledby={`mcp-${server.id}`}>
       <header className="connector-head">
         <div>
           <p className="eyebrow">
-            {server.kind === "stdio" ? "Local command" : "Remote"}
+            {server.kind === "stdio" ? t.localCommand : t.remote}
             {server.auth === "oauth" ? " · OAuth" : server.auth === "bearer" ? " · token" : ""}
           </p>
           <h2 id={`mcp-${server.id}`}>{server.name}</h2>
         </div>
         <div className="connector-actions">
-          <button aria-label={`Edit ${server.name}`} onClick={onEdit}>
-            Edit
+          <button aria-label={t.edit(server.name)} onClick={onEdit}>
+            {t.editText}
           </button>
-          <IconButton className="danger-text" icon="trash" label={`Delete ${server.name}`} onClick={remove} />
+          <IconButton className="danger-text" icon="trash" label={t.delete(server.name)} onClick={remove} />
         </div>
       </header>
 
@@ -194,7 +216,7 @@ function ServerCard({
       {check && !check.ok && check.error && <p className="muted connector-note">{check.error}</p>}
       {check?.ok && check.tools.length > 0 && (
         <details className="mcp-tool-list">
-          <summary>Tools</summary>
+          <summary>{t.tools}</summary>
           <dl className="mcp-tools">
             {check.tools.map((tool) => (
               <div key={tool.name}>
@@ -215,12 +237,12 @@ function ServerCard({
       <ErrorText error={error} />
 
       <div className="connector-buttons">
-        <Switch checked={server.enabled} onChange={toggle} label="Enabled in chats" />
+        <Switch checked={server.enabled} onChange={toggle} label={t.enabled} />
         {server.auth === "oauth" && (
-          <button onClick={signIn}>{server.has_oauth_token ? "Sign in again" : "Sign in"}</button>
+          <button onClick={signIn}>{server.has_oauth_token ? t.signInAgain : t.signIn}</button>
         )}
         <button disabled={checking || needsSignIn} onClick={() => setRun((value) => value + 1)}>
-          Test
+          {t.test}
         </button>
       </div>
     </article>
@@ -248,6 +270,7 @@ function ServerDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useText(text);
   const [name, setName] = useState(server?.name ?? "");
   const [kind, setKind] = useState<McpServer["kind"]>(server?.kind ?? "http");
   const [command, setCommand] = useState(server?.command ?? "");
@@ -292,21 +315,21 @@ function ServerDialog({
     <dialog ref={dialog} className="create-dialog" aria-labelledby="mcp-dialog-title" onClose={onClose}>
       <section className="panel create create-modal">
         <div className="page-heading">
-          <h2 id="mcp-dialog-title">{server ? "Edit MCP server" : "Add MCP server"}</h2>
-          <IconButton type="button" className="ghost" icon="x" label="Close" onClick={() => dialog.current?.close()} />
+          <h2 id="mcp-dialog-title">{server ? t.editTitle : t.addTitle}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
         </div>
         <form onSubmit={submit}>
           <label>
-            Name
+            {t.name}
             <input ref={nameInput} required maxLength={64} value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <label>
-            Type
+            {t.type}
             <Picker
-              label="Type"
+              label={t.type}
               options={[
-                { id: "http", name: "Remote URL (HTTP)" },
-                { id: "stdio", name: "Local command (stdio)" },
+                { id: "http", name: t.remoteURL },
+                { id: "stdio", name: t.localStdio },
               ]}
               value={kind}
               disabled={!!server}
@@ -317,41 +340,41 @@ function ServerDialog({
           {kind === "stdio" ? (
             <>
               <label className="wide">
-                Command
+                {t.command}
                 <input
                   required
-                  placeholder="npx or /usr/local/bin/my-server"
+                  placeholder={t.commandPlaceholder}
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}
                 />
               </label>
               <label className="wide">
-                Arguments (one per line)
+                {t.args}
                 <textarea rows={3} value={args} onChange={(event) => setArgs(event.target.value)} />
               </label>
               <label className="wide">
-                Environment (KEY=value, one per line)
+                {t.environment}
                 <textarea
                   rows={3}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder={server?.env_keys.length ? `Saved: ${server.env_keys.join(", ")}. Leave empty to keep.` : "API_KEY=…"}
+                  placeholder={server?.env_keys.length ? t.savedKeep(server.env_keys.join(", ")) : t.apiKey}
                   value={env}
                   onChange={(event) => setEnv(event.target.value)}
                 />
-                <small>Values are stored in your system keychain. Entering any lines replaces all saved values.</small>
+                <small>{t.envNote}</small>
               </label>
               {!!server?.env_keys.length && (
                 <label className="check-row wide">
                   <input type="checkbox" checked={clearEnv} onChange={(event) => setClearEnv(event.target.checked)} />
-                  Remove saved values
+                  {t.removeValues}
                 </label>
               )}
             </>
           ) : (
             <>
               <label className="wide">
-                URL
+                {t.url}
                 <input
                   required
                   type="url"
@@ -361,13 +384,13 @@ function ServerDialog({
                 />
               </label>
               <label>
-                Sign-in
+                {t.signInLabel}
                 <Picker
-                  label="Sign-in"
+                  label={t.signInLabel}
                   options={[
-                    { id: "none", name: "None" },
-                    { id: "bearer", name: "Access token" },
-                    { id: "oauth", name: "OAuth (sign in with browser)" },
+                    { id: "none", name: t.none },
+                    { id: "bearer", name: t.accessToken },
+                    { id: "oauth", name: t.oauth },
                   ]}
                   value={auth}
                   onChange={(a) => setAuth(a as McpServer["auth"])}
@@ -375,28 +398,28 @@ function ServerDialog({
               </label>
               {auth === "bearer" && (
                 <label>
-                  Access token
+                  {t.accessToken}
                   <input
                     type="password"
                     autoComplete="off"
                     required={!server?.has_bearer_token}
-                    placeholder={server?.has_bearer_token ? "Saved. Type to replace" : ""}
+                    placeholder={server?.has_bearer_token ? t.tokenReplace : ""}
                     value={token}
                     onChange={(event) => setToken(event.target.value)}
                   />
                 </label>
               )}
               {auth === "oauth" && (
-                <p className="muted wide">After saving, press Sign in on the server card.</p>
+                <p className="muted wide">{t.afterSave}</p>
               )}
             </>
           )}
 
           <div className="modal-actions">
             <button type="button" onClick={() => dialog.current?.close()}>
-              Cancel
+              {t.cancel}
             </button>
-            <button className="primary">{server ? "Save" : "Add server"}</button>
+            <button className="primary">{server ? t.save : t.addServer}</button>
           </div>
         </form>
         <ErrorText error={error} />

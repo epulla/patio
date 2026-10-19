@@ -1,6 +1,12 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { marked } from "marked";
 import { IconButton } from "./icons";
+import { useText } from "./i18n";
+
+const textLabels = {
+  en: { stopReading: "Stop reading", readAloud: "Read aloud" },
+  es: { stopReading: "Dejar de leer", readAloud: "Leer en voz alta" },
+};
 
 export const canSpeak = typeof speechSynthesis !== "undefined" && typeof SpeechSynthesisUtterance !== "undefined";
 
@@ -92,6 +98,7 @@ function pickVoice(lang: string) {
 }
 
 export function SpeakButton({ text, shortcut }: { text: string; shortcut?: boolean }) {
+  const t = useText(textLabels);
   const mine = useRef<SpeechSynthesisUtterance | null>(null);
   const current = useSyncExternalStore(subscribe, () => active);
   const speaking = current !== null && current === mine.current;
@@ -131,7 +138,7 @@ export function SpeakButton({ text, shortcut }: { text: string; shortcut?: boole
     speechSynthesis.speak(utterance);
   }
 
-  const label = speaking ? "Stop reading" : "Read aloud";
+  const label = speaking ? t.stopReading : t.readAloud;
   return (
     <IconButton
       type="button"

@@ -4,7 +4,10 @@ import type { IconName } from "./icons";
 
 export type ChatStatus = "working" | "approval" | "reply";
 export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", reply: "check" };
-export const statusLabels: Record<ChatStatus, string> = { working: "working", approval: "waiting for approval", reply: "new reply" };
+export const statusLabels: Record<"en" | "es", Record<ChatStatus, string>> = {
+  en: { working: "working", approval: "waiting for approval", reply: "new reply" },
+  es: { working: "trabajando", approval: "esperando aprobación", reply: "respuesta nueva" },
+};
 
 let current: Record<string, ChatStatus | undefined> = {};
 const listeners = new Set<() => void>();

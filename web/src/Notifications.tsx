@@ -5,7 +5,12 @@ import Markdown from "./Markdown";
 import { Icon, IconButton, type IconName } from "./icons";
 import { api } from "./api";
 import { ErrorText, navigate } from "./App";
-import { formatAgo } from "./Connectors";
+import { lang, locale, useText } from "./i18n";
+
+const text = {
+  en: { unread: "Unread: ", notifications: "Notifications", caughtUp: "You're all caught up.", new: "New: ", all: "See all notifications", now: "now", dismiss: "Dismiss notification", today: "Today", yesterday: "Yesterday", inbox: "Inbox", description: "Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days. Opening this page or the bell marks them read.", empty: "No notifications in the last 7 days.", loading: "Loading…", more: "Load more" },
+  es: { unread: "Sin leer: ", notifications: "Notificaciones", caughtUp: "Estás al día.", new: "Nuevo: ", all: "Ver todas las notificaciones", now: "ahora", dismiss: "Descartar notificación", today: "Hoy", yesterday: "Ayer", inbox: "Bandeja de entrada", description: "Respuestas de chat, aprobaciones, recordatorios, tareas programadas y cambios de Martin. Se conservan durante 7 días. Al abrir esta página o la campana, se marcan como leídas.", empty: "No hay notificaciones de los últimos 7 días.", loading: "Cargando…", more: "Cargar más" },
+};
 
 type Notification = {
   id: string;
@@ -25,9 +30,10 @@ function markRead(item: Notification) {
 }
 
 function RowBody({ item, body, onOpen }: { item: Notification; body: ReactNode; onOpen?: () => void }) {
+  const t = useText(text);
   const title = (
     <>
-      {!item.read_at && <span className="sr-only">Unread: </span>}
+      {!item.read_at && <span className="sr-only">{t.unread}</span>}
       {item.title}
     </>
   );
@@ -47,7 +53,7 @@ function RowBody({ item, body, onOpen }: { item: Notification; body: ReactNode; 
         {body}
       </span>
       <time className="notif-time" dateTime={item.created_at}>
-        {formatAgo(item.created_at)}
+        {shortAgo(item.created_at)}
       </time>
       {!item.read_at && <span className="notif-dot" aria-hidden="true" />}
     </>
@@ -55,6 +61,7 @@ function RowBody({ item, body, onOpen }: { item: Notification; body: ReactNode; 
 }
 
 export default function Notifications({ refresh, onScreen }: { refresh: number; onScreen: (link: string) => boolean }) {
+  const t = useText(text);
   const [list, setList] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [toasts, setToasts] = useState<Notification[]>([]);
@@ -120,7 +127,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
   return (
     <div className="notifications">
       <Menu
-        label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        label={unread ? `${t.notifications}, ${unread} ${lang() === "es" ? "sin leer" : "unread"}` : t.notifications}
         buttonClassName="icon ghost notif-toggle"
         button={
           <>
@@ -137,10 +144,10 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
           <>
             <Opened onChange={setPopoverOpen} />
             <div className="notif-head">
-              <strong>Notifications</strong>
+              <strong>{t.notifications}</strong>
             </div>
             {list.length === 0 ? (
-              <p className="muted notif-empty">You're all caught up.</p>
+              <p className="muted notif-empty">{t.caughtUp}</p>
             ) : (
               <div className="notif-list">
                 {list.map((item) => (
@@ -157,7 +164,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
                       <Icon name={kindIcons[item.kind] ?? "dot"} />
                     </span>
                     <span className="notif-line-text">
-                      {fresh.has(item.id) && <span className="sr-only">New: </span>}
+                      {fresh.has(item.id) && <span className="sr-only">{t.new}</span>}
                       {item.title}
                     </span>
                     <time className="notif-time" dateTime={item.created_at}>
@@ -173,7 +180,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
               className="notif-footer"
               onClick={() => (close(false), navigate("/notifications"))}
             >
-              See all notifications
+              {t.all}
             </button>
           </>
         )}
@@ -212,11 +219,12 @@ function Opened({ onChange }: { onChange: (open: boolean) => void }) {
 }
 
 function shortAgo(value: string) {
+  const t = text[lang()];
   const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60_000);
-  if (minutes < 1) return "now";
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
-  return `${Math.floor(minutes / 1440)}d`;
+  if (minutes < 1) return t.now;
+  if (minutes < 60) return lang() === "es" ? `hace ${minutes} min` : `${minutes}m`;
+  if (minutes < 1440) return lang() === "es" ? `hace ${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)}h`;
+  return lang() === "es" ? `hace ${Math.floor(minutes / 1440)} d` : `${Math.floor(minutes / 1440)}d`;
 }
 
 function plain(markdown: string) {
@@ -224,6 +232,7 @@ function plain(markdown: string) {
 }
 
 function Toast({ item, onOpen, onClose }: { item: Notification; onOpen: () => void; onClose: () => void }) {
+  const t = useText(text);
   useEffect(() => {
     const timer = setTimeout(onClose, 6000);
     return () => clearTimeout(timer);
@@ -233,20 +242,22 @@ function Toast({ item, onOpen, onClose }: { item: Notification; onOpen: () => vo
       <button type="button" className="notif-row" onClick={onOpen}>
         <RowBody item={item} body={item.body && <span className="notif-body">{plain(item.body)}</span>} />
       </button>
-      <IconButton type="button" className="ghost" icon="x" label="Dismiss notification" onClick={onClose} />
+      <IconButton type="button" className="ghost" icon="x" label={t.dismiss} onClick={onClose} />
     </div>
   );
 }
 
 function dayLabel(value: string) {
+  const t = text[lang()];
   const day = new Date(value).toDateString();
   const today = new Date();
-  if (day === today.toDateString()) return "Today";
-  if (day === new Date(today.getTime() - 86_400_000).toDateString()) return "Yesterday";
-  return new Date(value).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+  if (day === today.toDateString()) return t.today;
+  if (day === new Date(today.getTime() - 86_400_000).toDateString()) return t.yesterday;
+  return new Date(value).toLocaleDateString(locale(), { weekday: "long", month: "short", day: "numeric" });
 }
 
 export function NotificationsPage({ refresh }: { refresh: number }) {
+  const t = useText(text);
   const [items, setItems] = useState<Notification[]>();
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -301,17 +312,16 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
     <div className="stack notif-page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Inbox</p>
-          <h1>Notifications</h1>
+          <p className="eyebrow">{t.inbox}</p>
+          <h1>{t.notifications}</h1>
         </div>
       </div>
       <p className="muted">
-        Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days. Opening this page or
-        the bell marks them read.
+        {t.description}
       </p>
       <ErrorText error={error} />
       <div className="stack notif-groups">
-        {items?.length === 0 && <p className="panel muted notif-page-empty">No notifications in the last 7 days.</p>}
+        {items?.length === 0 && <p className="panel muted notif-page-empty">{t.empty}</p>}
         {groups.map(([label, list]) => (
           <section key={label} aria-label={label}>
             <h2 className="notif-day">{label}</h2>
@@ -336,7 +346,7 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
         ))}
         {cursor && (
           <button type="button" className="notif-more" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading…" : "Load more"}
+            {loadingMore ? t.loading : t.more}
           </button>
         )}
       </div>
