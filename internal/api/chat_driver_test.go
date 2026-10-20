@@ -581,14 +581,11 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 	if _, err := io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"OK"}`+"\n"); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return !server.chats.Running(chatID) })
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "stop me"}, nil); code != http.StatusAccepted {
-		t.Fatalf("second turn status = %d", code)
-	}
+	waitFor(t, func() bool { return server.chats.Running(chatID) })
 	select {
 	case <-fake.input:
 	case <-time.After(time.Second):
-		t.Fatal("second input not received")
+		t.Fatal("queued input not received")
 	}
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/stop", nil, nil); code != http.StatusNoContent {
 		t.Fatalf("stop status = %d", code)
@@ -667,6 +664,103 @@ func TestChatQueueSendNow(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='busy'`).Scan(&queued); err != nil || queued != 1 {
 		t.Fatalf("busy queue row count=%d err=%v", queued, err)
+	}
+}
+
+func TestChatQueueDrainsFIFOOnePerSuccessfulTurn(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	fake := newPipeChatProcess()
+	server := New(database, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer server.Close()
+	for _, item := range []struct{ id, text, created string }{{"q1", "first queued", "2020-01-01"}, {"q2", "second queued", "2020-01-02"}} {
+		if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES(?,?,?,?)`, item.id, chatID, item.text, item.created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "start"}, nil); code != http.StatusAccepted {
+		t.Fatalf("start send = %d", code)
+	}
+	read := func(want string) {
+		t.Helper()
+		select {
+		case line := <-fake.input:
+			var input struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(line), &input); err != nil || input.Message.Content != want {
+				t.Fatalf("driver input=%s err=%v, want %q", line, err, want)
+			}
+		case <-time.After(time.Second * 2):
+			t.Fatalf("timed out waiting for %q", want)
+		}
+	}
+	finish := func() {
+		t.Helper()
+		if _, err := io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"done"}`+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read("start")
+	finish()
+	read("first queued")
+	finish()
+	read("second queued")
+	finish()
+	var count int
+	waitFor(t, func() bool {
+		if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&count); err != nil {
+			return false
+		}
+		return count == 0 && !server.chats.Running(chatID)
+	})
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("queue count=%d err=%v", count, err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user' AND content IN ('first queued','second queued')`, chatID).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("queued messages=%d err=%v", count, err)
+	}
+}
+
+func TestChatQueueHeldAfterStopOrTurnError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop bool
+	}{{"stop", true}, {"turn error", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, _, root := chatAPI(t)
+			connectorID := createTestConnector(t, database)
+			chatID := createDriverTestChat(t, database, connectorID, root)
+			fake := newPipeChatProcess()
+			server := New(database, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+			defer server.Close()
+			if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('held',?,'held item','now')`, chatID); err != nil {
+				t.Fatal(err)
+			}
+			if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "active"}, nil); code != http.StatusAccepted {
+				t.Fatalf("send = %d", code)
+			}
+			select {
+			case <-fake.input:
+			case <-time.After(time.Second):
+				t.Fatal("driver input not received")
+			}
+			if tc.stop {
+				if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/stop", nil, nil); code != http.StatusNoContent {
+					t.Fatalf("stop = %d", code)
+				}
+			} else if _, err := io.WriteString(fake.stdoutW, `{"type":"result","is_error":true,"result":"failed"}`+"\n"); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, func() bool { return !server.chats.Running(chatID) })
+			var count int
+			if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='held'`).Scan(&count); err != nil || count != 1 {
+				t.Fatalf("held queue count=%d err=%v", count, err)
+			}
+		})
 	}
 }
 

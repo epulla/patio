@@ -77,48 +77,61 @@ func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 // sendQueuedChatMessage sends one queued item; callers may reuse this operation to drain FIFO.
 func (s *Server) sendQueuedChatMessage(w http.ResponseWriter, r *http.Request) {
 	chatID, qid := idParam(r, "id"), idParam(r, "qid")
-	var item chatQueueItem
-	var raw string
-	err := s.db.QueryRow(`SELECT id,text,attachments,created_at FROM chat_queue WHERE id=? AND chat_id=?`, qid, chatID).Scan(&item.ID, &item.Text, &raw, &item.CreatedAt)
+	message, err := s.chats.sendQueued(chatID, qid)
 	if errors.Is(err, sql.ErrNoRows) {
 		errw(w, 404, "queued message not found")
 		return
 	}
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	if err := json.Unmarshal([]byte(raw), &item.Attachments); err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, chatID))
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	if c.ConnectorID == nil {
-		errw(w, 400, errChatConnectorMissing.Error())
-		return
-	}
-	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
-	if err != nil {
-		errw(w, 400, err.Error())
-		return
-	}
-	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: item.Text, Attachments: item.Attachments})
 	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
 		errw(w, 409, err.Error())
 		return
 	}
+	if errors.Is(err, errChatConnectorMissing) || errors.Is(err, errChatUnsupported) {
+		errw(w, 400, err.Error())
+		return
+	}
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
-	if _, err := s.db.Exec(`DELETE FROM chat_queue WHERE id=? AND chat_id=?`, qid, chatID); err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	s.chats.emit(chatID, map[string]any{"type": "queue"})
 	write(w, http.StatusAccepted, message)
+}
+
+func (m *chatManager) sendQueued(chatID, qid string) (ChatMessage, error) {
+	lock := m.queueLock(chatID)
+	lock.Lock()
+	defer lock.Unlock()
+	return m.sendQueuedLocked(chatID, qid)
+}
+
+func (m *chatManager) sendQueuedLocked(chatID, qid string) (ChatMessage, error) {
+	var item chatQueueItem
+	var raw string
+	err := m.db.QueryRow(`SELECT id,text,attachments,created_at FROM chat_queue WHERE id=? AND chat_id=?`, qid, chatID).Scan(&item.ID, &item.Text, &raw, &item.CreatedAt)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	if err := json.Unmarshal([]byte(raw), &item.Attachments); err != nil {
+		return ChatMessage{}, err
+	}
+	var connectorID sql.NullString
+	if err := m.db.QueryRow(`SELECT connector_id FROM chat WHERE id=?`, chatID).Scan(&connectorID); err != nil {
+		return ChatMessage{}, err
+	}
+	if !connectorID.Valid {
+		return ChatMessage{}, errChatConnectorMissing
+	}
+	kind, dir, err := m.connectorConfig(connectorID.String)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	message, err := m.Send(chat{ID: chatID, ConnectorID: &connectorID.String}, kind, dir, ChatSendRequest{Text: item.Text, Attachments: item.Attachments})
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	if _, err := m.db.Exec(`DELETE FROM chat_queue WHERE id=? AND chat_id=?`, qid, chatID); err != nil {
+		return ChatMessage{}, err
+	}
+	m.emit(chatID, map[string]any{"type": "queue"})
+	return message, nil
 }

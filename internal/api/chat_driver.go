@@ -59,6 +59,7 @@ type chatManager struct {
 	idleTimeout time.Duration
 	mu          sync.Mutex
 	chats       map[string]*chatRuntime
+	queueLocks  map[string]*sync.Mutex
 	closed      bool
 	windowID    string
 }
@@ -135,6 +136,7 @@ func newChatManager(database *sql.DB, options Options) *chatManager {
 		approvalTimeout: chatApprovalTimeout, approvalPollInterval: 300 * time.Millisecond,
 		idleTimeout: defaultChatIdleTimeout,
 		chats:       make(map[string]*chatRuntime),
+		queueLocks:  make(map[string]*sync.Mutex),
 	}
 }
 
@@ -478,8 +480,10 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		role, content = "error", turnErr.Error()
 	}
 	message, err := InsertChatMessage(m.db, id, role, content)
+	stopping := false
 	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
+		stopping = rt.stopping
 		rt.busy = false
 		rt.streamMu.Lock()
 		rt.assistantHasText, rt.toolAfterText = false, false
@@ -495,6 +499,19 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	if err := m.releaseTurn(id); err != nil {
 		return err
+	}
+	if turnErr == nil && !stopping {
+		var qid string
+		if err := m.db.QueryRow(`SELECT id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid LIMIT 1`, id).Scan(&qid); err == nil {
+			go func() {
+				qid, err := m.drainQueued(id)
+				if err != nil {
+					log.Printf("send queued chat message %s/%s: %v", id, qid, err)
+				}
+			}()
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("send queued chat message %s: %v", id, err)
+		}
 	}
 	m.emit(id, map[string]any{"type": "done", "message": message})
 	var runID, taskID, title string
@@ -540,6 +557,33 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		}
 	}
 	return nil
+}
+
+func (m *chatManager) queueLock(chatID string) *sync.Mutex {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.queueLocks == nil {
+		m.queueLocks = make(map[string]*sync.Mutex)
+	}
+	lock := m.queueLocks[chatID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		m.queueLocks[chatID] = lock
+	}
+	return lock
+}
+
+func (m *chatManager) drainQueued(chatID string) (string, error) {
+	lock := m.queueLock(chatID)
+	lock.Lock()
+	defer lock.Unlock()
+	var qid string
+	err := m.db.QueryRow(`SELECT id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid LIMIT 1`, chatID).Scan(&qid)
+	if err != nil {
+		return qid, err
+	}
+	_, err = m.sendQueuedLocked(chatID, qid)
+	return qid, err
 }
 
 func (m *chatManager) saveSession(id, sessionID string) error {
