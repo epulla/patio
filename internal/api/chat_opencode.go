@@ -436,106 +436,184 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	return nil
 }
 
+type opencodeMCPState struct {
+	Status string `json:"status"`
+	Error  string `json:"error"`
+}
+
+const (
+	opencodeMCPReconnectAttempts = 2
+	opencodeMCPReconnectCap      = 35 * time.Second
+)
+
+func (d *opencodeRuntime) mcpStates(ctx context.Context) (map[string]opencodeMCPState, error) {
+	endpoint := "/mcp?directory=" + url.QueryEscape(d.directory)
+	if d.server.major >= 2 {
+		endpoint = "/api/mcp?location%5Bdirectory%5D=" + url.QueryEscape(d.directory)
+	}
+	resp, err := d.server.request(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	states := make(map[string]opencodeMCPState)
+	if d.server.major < 2 {
+		err = json.NewDecoder(resp.Body).Decode(&states)
+		return states, err
+	}
+	var result struct {
+		Data []struct {
+			Name   string           `json:"name"`
+			Status opencodeMCPState `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	for _, item := range result.Data {
+		states[item.Name] = item.Status
+	}
+	return states, nil
+}
+
 func (d *opencodeRuntime) waitMCP() {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(d.ctx, 15*time.Second)
-	defer cancel()
-	notes := make(map[string]string)
-	defer func() {
-		for _, name := range d.mcpNames {
-			if note, ok := notes[name]; ok {
-				if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
-					d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
-				}
+	states := d.awaitMCPSettled(started)
+	d.reconnectFailedMCP(states)
+	for _, name := range d.mcpNames {
+		if state := states[name]; state.Status == "failed" || state.Status == "needs_auth" {
+			note := fmt.Sprintf("MCP server %s unavailable: %s", name, state.Error)
+			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
+				d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
 			}
 		}
-	}()
+	}
+}
+
+// awaitMCPSettled polls until no configured server is missing or pending, or 15s pass.
+func (d *opencodeRuntime) awaitMCPSettled(started time.Time) map[string]opencodeMCPState {
+	ctx, cancel := context.WithTimeout(d.ctx, 15*time.Second)
+	defer cancel()
+	var states map[string]opencodeMCPState
 	var lastErr error
 	firstPoll := true
 	needsCatalogSettle := false
 	for {
-		endpoint := "/mcp?directory=" + url.QueryEscape(d.directory)
-		if d.server.major >= 2 {
-			endpoint = "/api/mcp?location%5Bdirectory%5D=" + url.QueryEscape(d.directory)
-		}
-		resp, err := d.server.request(ctx, http.MethodGet, endpoint, nil)
+		current, err := d.mcpStates(ctx)
 		if err == nil {
-			var states map[string]struct {
-				Status string `json:"status"`
-				Error  string `json:"error"`
-			}
-			if d.server.major >= 2 {
-				var result struct {
-					Data []struct {
-						Name   string `json:"name"`
-						Status struct {
-							Status string `json:"status"`
-							Error  string `json:"error"`
-						} `json:"status"`
-					} `json:"data"`
-				}
-				err = json.NewDecoder(resp.Body).Decode(&result)
-				_ = resp.Body.Close()
-				states = make(map[string]struct {
-					Status string `json:"status"`
-					Error  string `json:"error"`
-				})
-				for _, item := range result.Data {
-					states[item.Name] = struct {
-						Status string `json:"status"`
-						Error  string `json:"error"`
-					}{item.Status.Status, item.Status.Error}
-				}
-			} else {
-				err = json.NewDecoder(resp.Body).Decode(&states)
-				_ = resp.Body.Close()
-			}
-			if err == nil {
-				settled := true
-				for _, name := range d.mcpNames {
-					state, ok := states[name]
-					if !ok || state.Status == "pending" {
-						settled = false
-						continue
-					}
-					if state.Status == "failed" || state.Status == "needs_auth" {
-						notes[name] = fmt.Sprintf("MCP server %s unavailable: %s", name, state.Error)
-					}
-				}
-				if firstPoll && !settled {
-					needsCatalogSettle = true
-				}
-				firstPoll = false
-				if settled {
-					if needsCatalogSettle {
-						// burnedout: assumed 1s; OpenCode adds tools to the catalog shortly after reporting connected
-						timer := time.NewTimer(time.Second)
-						select {
-						case <-ctx.Done():
-							timer.Stop()
-							log.Printf("OpenCode MCP wait timed out after %s", time.Since(started))
-							return
-						case <-timer.C:
-						}
-					}
-					log.Printf("OpenCode MCP ready after %s", time.Since(started))
-					break
+			states = current
+			settled := true
+			for _, name := range d.mcpNames {
+				if state, ok := states[name]; !ok || state.Status == "pending" {
+					settled = false
 				}
 			}
-			lastErr = err
-		} else {
-			lastErr = err
+			if firstPoll && !settled {
+				needsCatalogSettle = true
+			}
+			firstPoll = false
+			if settled {
+				// burnedout: assumed 1s; OpenCode adds tools to the catalog shortly after reporting connected
+				if needsCatalogSettle && !sleepCtx(ctx, time.Second) {
+					log.Printf("OpenCode MCP wait timed out chat=%s after %s", d.chatID, time.Since(started))
+					return states
+				}
+				log.Printf("OpenCode MCP ready chat=%s after %s", d.chatID, time.Since(started))
+				return states
+			}
 		}
-		select {
-		case <-ctx.Done():
+		lastErr = err
+		if !sleepCtx(ctx, 100*time.Millisecond) {
 			if lastErr != nil {
-				log.Printf("OpenCode MCP status failed after %s: %v", time.Since(started), lastErr)
+				log.Printf("OpenCode MCP status failed chat=%s after %s: %v", d.chatID, time.Since(started), lastErr)
 			} else {
-				log.Printf("OpenCode MCP wait timed out after %s", time.Since(started))
+				log.Printf("OpenCode MCP wait timed out chat=%s after %s", d.chatID, time.Since(started))
 			}
-			return
-		case <-time.After(100 * time.Millisecond):
+			return states
 		}
+	}
+}
+
+// reconnectFailedMCP retries servers in the failed state only; needs_auth and disabled are
+// left alone because reconnecting cannot fix auth and OpenCode's connect overrides disabled.
+func (d *opencodeRuntime) reconnectFailedMCP(states map[string]opencodeMCPState) {
+	ctx, cancel := context.WithTimeout(d.ctx, opencodeMCPReconnectCap)
+	defer cancel()
+	recovered := false
+	for _, name := range d.mcpNames {
+		state := states[name]
+		if state.Status != "failed" {
+			continue
+		}
+		log.Printf("OpenCode MCP failed chat=%s server=%s error=%q; reconnecting", d.chatID, name, shortText(state.Error, 200))
+		for attempt := 1; attempt <= opencodeMCPReconnectAttempts && state.Status == "failed"; attempt++ {
+			// burnedout: assumed backoff precedes each attempt (1s, then 2s)
+			backoff := time.Duration(attempt) * time.Second
+			if !sleepCtx(ctx, backoff) {
+				break
+			}
+			started := time.Now()
+			next, err := d.connectMCP(ctx, name)
+			if err != nil {
+				log.Printf("OpenCode MCP reconnect chat=%s server=%s attempt=%d/%d backoff=%s duration=%s failed: %v", d.chatID, name, attempt, opencodeMCPReconnectAttempts, backoff, time.Since(started), err)
+				continue
+			}
+			state = next
+			if state.Status == "connected" {
+				recovered = true
+				log.Printf("OpenCode MCP recovered chat=%s server=%s attempt=%d/%d duration=%s", d.chatID, name, attempt, opencodeMCPReconnectAttempts, time.Since(started))
+				break
+			}
+			log.Printf("OpenCode MCP reconnect chat=%s server=%s attempt=%d/%d backoff=%s duration=%s status=%s error=%q", d.chatID, name, attempt, opencodeMCPReconnectAttempts, backoff, time.Since(started), state.Status, shortText(state.Error, 200))
+		}
+		if state.Status != "connected" {
+			log.Printf("OpenCode MCP still unavailable chat=%s server=%s status=%s", d.chatID, name, state.Status)
+		}
+		states[name] = state
+	}
+	if recovered {
+		// Same catalog delay as after the initial connect (PROJ-14).
+		sleepCtx(ctx, time.Second)
+	}
+}
+
+// connectMCP asks OpenCode to connect one server for this chat's directory, then polls
+// until the server leaves pending.
+func (d *opencodeRuntime) connectMCP(ctx context.Context, name string) (opencodeMCPState, error) {
+	endpoint := "/mcp/" + url.PathEscape(name) + "/connect?directory=" + url.QueryEscape(d.directory)
+	if d.server.major >= 2 {
+		endpoint = "/api/experimental/mcp/" + url.PathEscape(name) + "/connect?location%5Bdirectory%5D=" + url.QueryEscape(d.directory)
+	}
+	resp, err := d.server.request(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return opencodeMCPState{}, err
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return opencodeMCPState{}, fmt.Errorf("connect returned %s", resp.Status)
+	}
+	for {
+		states, err := d.mcpStates(ctx)
+		if err != nil {
+			return opencodeMCPState{}, err
+		}
+		if state, ok := states[name]; ok && state.Status != "pending" {
+			return state, nil
+		}
+		if !sleepCtx(ctx, 100*time.Millisecond) {
+			return opencodeMCPState{}, ctx.Err()
+		}
+	}
+}
+
+func sleepCtx(ctx context.Context, wait time.Duration) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
