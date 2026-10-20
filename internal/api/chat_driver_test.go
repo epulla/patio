@@ -625,7 +625,7 @@ func TestChatQueueSendNow(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('queued',?,'from queue','now')`, chatID); err != nil {
 		t.Fatal(err)
 	}
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/queued/send", nil, nil); code != http.StatusAccepted {
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/send", nil, nil); code != http.StatusAccepted {
 		t.Fatalf("send-now = %d", code)
 	}
 	select {
@@ -647,9 +647,6 @@ func TestChatQueueSendNow(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
-	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('busy',?,'busy','now')`, chatID); err != nil {
-		t.Fatal(err)
-	}
 	// Start another turn, then verify queue row survives a busy send-now.
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "active"}, nil); code != http.StatusAccepted {
 		t.Fatalf("active send = %d", code)
@@ -659,7 +656,10 @@ func TestChatQueueSendNow(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("active input not received")
 	}
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/busy/send", nil, nil); code != http.StatusConflict {
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('busy',?,'busy','now')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/send", nil, nil); code != http.StatusConflict {
 		t.Fatalf("busy send-now = %d", code)
 	}
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='busy'`).Scan(&queued); err != nil || queued != 1 {
@@ -667,7 +667,7 @@ func TestChatQueueSendNow(t *testing.T) {
 	}
 }
 
-func TestChatQueueDrainsFIFOOnePerSuccessfulTurn(t *testing.T) {
+func TestChatQueueDrainsAllAsOneMessageAfterSuccessfulTurn(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
@@ -706,9 +706,7 @@ func TestChatQueueDrainsFIFOOnePerSuccessfulTurn(t *testing.T) {
 	}
 	read("start")
 	finish()
-	read("first queued")
-	finish()
-	read("second queued")
+	read("first queued\n\nsecond queued")
 	finish()
 	var count int
 	waitFor(t, func() bool {
@@ -720,7 +718,7 @@ func TestChatQueueDrainsFIFOOnePerSuccessfulTurn(t *testing.T) {
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("queue count=%d err=%v", count, err)
 	}
-	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user' AND content IN ('first queued','second queued')`, chatID).Scan(&count); err != nil || count != 2 {
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user' AND content=?`, chatID, "first queued\n\nsecond queued").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("queued messages=%d err=%v", count, err)
 	}
 }

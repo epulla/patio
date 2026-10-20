@@ -1208,3 +1208,61 @@ func (p *openCodeV2FakeProcess) Kill() error {
 }
 
 func (p *openCodeV2FakeProcess) Wait() error { <-p.done; return nil }
+
+func TestOpenCodeV2QueueDrainResumesSessionWithoutDeadlock(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	_, _ = database.Exec(`UPDATE connector SET kind='opencode' WHERE id=?`, connectorID)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	idleID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET session_id='ses-stored' WHERE id=?`, idleID); err != nil {
+		t.Fatal(err)
+	}
+	fake := newOpenCodeV2Fake(t)
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
+		opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
+	})
+	addChatMCPTestServers(t, server)
+	t.Cleanup(func() { _ = server.Close() })
+	prompted := func(text string) bool {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		return slices.Contains(fake.prompts, text)
+	}
+
+	// Trailing deltas after the turn ends start an autonomous turn while the drain sends.
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "hello"}, nil); code != http.StatusAccepted {
+		t.Fatalf("first send = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "interrupt"}, nil); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitFor(t, func() bool { return prompted("interrupt") })
+	for _, text := range []string{"one", "two"} {
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": text}, nil); code != http.StatusAccepted {
+			t.Fatalf("queue = %d", code)
+		}
+	}
+	fake.publish(map[string]any{"type": "session.execution.succeeded", "data": map[string]string{"sessionID": "ses-v2-1"}})
+	fake.publish(map[string]any{"type": "session.text.delta", "data": map[string]string{"sessionID": "ses-v2-1", "delta": "late"}})
+	// If the late delta won, the drain found the chat busy; that turn's end drains instead.
+	fake.publish(map[string]any{"type": "session.execution.succeeded", "data": map[string]string{"sessionID": "ses-v2-1"}})
+	waitFor(t, func() bool { return prompted("one\n\ntwo") })
+
+	// A queued message for a chat without a live runtime resumes its stored session.
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('q-idle',?,'resume me',?)`, idleID, now()); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+idleID+"/queue/send", nil, nil); code != http.StatusAccepted {
+		t.Fatalf("send queued = %d", code)
+	}
+	waitFor(t, func() bool { return prompted("resume me") })
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if last := fake.promptSessions[len(fake.promptSessions)-1]; last != "ses-stored" || fake.creates != 1 {
+		t.Fatalf("queued send used session %q with %d creates; want stored session and no new one", last, fake.creates)
+	}
+}
