@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +84,76 @@ func TestDBPath(t *testing.T) {
 			}
 			if got != test.want {
 				t.Errorf("dbPath() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestLogPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		goos    string
+		env     map[string]string
+		home    string
+		want    string
+		wantErr bool
+	}{
+		{name: "windows", goos: "windows", env: map[string]string{"LOCALAPPDATA": `C:\Users\test\AppData\Local`}, want: filepath.Join(`C:\Users\test\AppData\Local`, "patio", "logs", "patio.log")},
+		{name: "windows unset", goos: "windows", wantErr: true},
+		{name: "darwin", goos: "darwin", home: "/Users/test", want: filepath.Join("/Users/test", "Library", "Logs", "patio", "patio.log")},
+		{name: "linux XDG absolute", goos: "linux", env: map[string]string{"XDG_STATE_HOME": "/tmp/state"}, home: "/home/test", want: filepath.Join("/tmp/state", "patio", "patio.log")},
+		{name: "linux XDG relative", goos: "linux", env: map[string]string{"XDG_STATE_HOME": "relative"}, home: "/home/test", want: filepath.Join("/home/test", ".local", "state", "patio", "patio.log")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := logPath(test.goos, func(key string) string { return test.env[key] }, test.home)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("logPath() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Errorf("logPath() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRotateLog(t *testing.T) {
+	for _, over := range []bool{true, false} {
+		t.Run(map[bool]string{true: "over limit", false: "under limit"}[over], func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "patio.log")
+			size := 32
+			if over {
+				size = 5*1024*1024 + 1
+			}
+			if err := os.WriteFile(file, []byte(strings.Repeat("x", size)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for i, content := range []string{"one", "two", "three"} {
+				if err := os.WriteFile(file+"."+string(rune('1'+i)), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := rotateLog(file); err != nil {
+				t.Fatal(err)
+			}
+			if !over {
+				got, err := os.ReadFile(file + ".1")
+				if err != nil || string(got) != "one" {
+					t.Fatalf("under-limit backup = %q, %v", got, err)
+				}
+				return
+			}
+			for suffix, want := range map[string]string{".1": strings.Repeat("x", size), ".2": "one", ".3": "two"} {
+				got, err := os.ReadFile(file + suffix)
+				if err != nil || string(got) != want {
+					t.Errorf("%s = %q, %v; want %q", suffix, got, err, want)
+				}
 			}
 		})
 	}

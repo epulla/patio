@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"mime"
@@ -46,12 +47,32 @@ func main() {
 	chatWindow := flag.String("chat", "", "open a chat in its own window")
 	openPath := flag.String("open", "", "navigate main window to an app path")
 	flag.Parse()
-	home := ""
-	if *dbFile == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		if *dbFile == "" {
 			log.Fatal(err)
+		}
+		log.Printf("configure log file: %v", err)
+	}
+	logFilePath := ""
+	var logFile *os.File
+	if err == nil {
+		logFilePath, err = logPath(runtime.GOOS, os.Getenv, home)
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(logFilePath), 0o700)
+		}
+		if err == nil && *chatWindow == "" {
+			err = rotateLog(logFilePath)
+		}
+		if err == nil {
+			logFile, err = os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		}
+		if err != nil {
+			log.Printf("configure log file: %v", err)
+			logFilePath = ""
+		} else {
+			log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+			log.SetPrefix(fmt.Sprintf("[%d] ", os.Getpid()))
 		}
 	}
 	path, err := dbPath(*dbFile, runtime.GOOS, os.Getenv, home)
@@ -98,6 +119,7 @@ func main() {
 			return ""
 		}(),
 		WindowID:    windowID,
+		LogPath:     logFilePath,
 		StartWindow: func(args []string) error { return startWindow(exe, args) },
 		FocusWindow: func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
 		Notify:      notes.Notify,
@@ -450,6 +472,54 @@ func dbPath(flagValue, goos string, getenv func(string) string, home string) (st
 		}
 		return filepath.Join(home, ".local", "share", "patio", "patio.db"), nil
 	}
+}
+
+func logPath(goos string, getenv func(string) string, home string) (string, error) {
+	switch goos {
+	case "windows":
+		local := getenv("LOCALAPPDATA")
+		if local == "" {
+			return "", fmt.Errorf("LOCALAPPDATA is not set")
+		}
+		return filepath.Join(local, "patio", "logs", "patio.log"), nil
+	case "darwin":
+		return filepath.Join(home, "Library", "Logs", "patio", "patio.log"), nil
+	default:
+		xdg := getenv("XDG_STATE_HOME")
+		if path.IsAbs(xdg) {
+			return filepath.Join(xdg, "patio", "patio.log"), nil
+		}
+		return filepath.Join(home, ".local", "state", "patio", "patio.log"), nil
+	}
+}
+
+func rotateLog(path string) error {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) || err == nil && info.Size() <= 5*1024*1024 {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for i := 3; i >= 1; i-- {
+		old := path
+		if i > 1 {
+			old = fmt.Sprintf("%s.%d", path, i-1)
+		}
+		if i == 3 {
+			if err := os.Remove(fmt.Sprintf("%s.3", path)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+		if _, err := os.Stat(old); err == nil {
+			if err := os.Rename(old, fmt.Sprintf("%s.%d", path, i)); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func spaHandler(w http.ResponseWriter, r *http.Request) {
