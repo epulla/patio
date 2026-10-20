@@ -566,8 +566,9 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 	if err := json.Unmarshal([]byte(line), &input); err != nil || input.Type != "user" || input.Message.Role != "user" || input.Message.Content != "hello" || input.ParentToolUseID != nil {
 		t.Fatalf("stdin line = %s, %v", line, err)
 	}
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "again"}, nil); code != http.StatusConflict {
-		t.Fatalf("concurrent send status = %d", code)
+	var queued map[string]any
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "again"}, &queued); code != http.StatusAccepted || queued["queued"] == nil {
+		t.Fatalf("concurrent send status/data = %d %#v", code, queued)
 	}
 	var state struct {
 		Chat struct {
@@ -597,6 +598,75 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestChatQueueCancel(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	server := New(database, "local", false, "dev", root)
+	defer server.Close()
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('queued',?,'hello','now')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodDelete, "/api/chats/"+chatID+"/queue/queued", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("cancel = %d", code)
+	}
+	if code := requestJSON(t, server, http.MethodDelete, "/api/chats/"+chatID+"/queue/queued", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("missing cancel = %d", code)
+	}
+}
+
+func TestChatQueueSendNow(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	fake := newPipeChatProcess()
+	server := New(database, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer server.Close()
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('queued',?,'from queue','now')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/queued/send", nil, nil); code != http.StatusAccepted {
+		t.Fatalf("send-now = %d", code)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("queued input not received")
+	}
+	var queued, messages int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='queued'`).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user' AND content='from queue'`, chatID).Scan(&messages); err != nil {
+		t.Fatal(err)
+	}
+	if queued != 0 || messages != 1 {
+		t.Fatalf("queued=%d user messages=%d", queued, messages)
+	}
+	if _, err := io.WriteString(fake.stdoutW, `{"type":"result","result":"done"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('busy',?,'busy','now')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	// Start another turn, then verify queue row survives a busy send-now.
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "active"}, nil); code != http.StatusAccepted {
+		t.Fatalf("active send = %d", code)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("active input not received")
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/busy/send", nil, nil); code != http.StatusConflict {
+		t.Fatalf("busy send-now = %d", code)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='busy'`).Scan(&queued); err != nil || queued != 1 {
+		t.Fatalf("busy queue row count=%d err=%v", queued, err)
 	}
 }
 

@@ -717,11 +717,11 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if errors.Is(err, errChatTurnRunning) {
-		errw(w, http.StatusConflict, err.Error())
+		s.queueChatMessage(w, id, in.Text, selected)
 		return
 	}
 	if errors.Is(err, errChatTurnOtherWindow) {
-		errw(w, http.StatusConflict, err.Error())
+		s.queueChatMessage(w, id, in.Text, selected)
 		return
 	}
 	if err != nil {
@@ -733,6 +733,21 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, http.StatusAccepted, message)
+}
+
+func (s *Server) queueChatMessage(w http.ResponseWriter, chatID, text string, attachments []ChatAttachment) {
+	encoded, err := json.Marshal(attachments)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	item := chatQueueItem{ID: uid(), Text: text, Attachments: attachments, CreatedAt: now()}
+	if _, err := s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES(?,?,?,?,?)`, item.ID, chatID, text, string(encoded), item.CreatedAt); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.chats.emit(chatID, map[string]any{"type": "queue"})
+	write(w, http.StatusAccepted, map[string]any{"queued": item})
 }
 
 func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
