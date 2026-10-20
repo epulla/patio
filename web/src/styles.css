@@ -3534,7 +3534,7 @@ main.chat-window {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
-  .chat-list nav {
+  .chat-list:not(.collapsed) nav {
     flex-direction: row;
     overflow-x: auto;
   }
