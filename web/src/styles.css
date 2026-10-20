@@ -3988,6 +3988,24 @@ main.chat-window {
 .attachments.sent {
   justify-content: flex-end;
 }
+.queued {
+  display: grid;
+  gap: 4px;
+}
+.queued p {
+  margin: 0;
+  font-size: 13px;
+}
+.queued-list {
+  flex-direction: column;
+}
+.queued-list .attachment {
+  max-width: none;
+}
+.queued-list .attachment-label {
+  flex: 1;
+  min-width: 0;
+}
 .attachment {
   display: inline-flex;
   align-items: center;

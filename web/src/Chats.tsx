@@ -44,8 +44,8 @@ import { canSpeak, SpeakButton } from "./speech";
 import { lang, locale, useText } from "./i18n";
 
 const labels = {
-  en: { defaultModel: "Default", lateTitle: "The app was closed at the scheduled time, so this ran when it opened again.", copied: "Copied", copy: "Copy", unpinFirst: (max: number) => `Unpin a chat first (max ${max}).`, chats: "Chats", newChat: "New chat", collapseList: "Collapse chat list", expandList: "Expand chat list", expandNoChats: "Expand chat list (no chats yet)", pinned: (n: number) => `Pinned (${n})`, scheduled: "scheduled", pinnedWord: "pinned", noChats: "No chats yet.", unpin: "Unpin chat", pin: "Pin chat", dragSwap: "Drag to swap", moveChat: "Move chat", moveEarlier: "Move earlier", moveLater: "Move later", resizeColumns: "Resize columns", resizeRows: "Resize rows", pickChat: "Pick a chat or start a new one.", startChat: "start a chat", attachLimit: (max: number) => `Attach at most ${max} files per message.`, imageLarge: (name: string) => `${name} is larger than 10 MB.`, textLarge: (name: string) => `${name} is larger than 1 MB. Text files can be up to 1 MB.`, stopThinking: "Stop the reply to change thinking", thinkingHint: "Let the model reason before answering. Slower but smarter.", thinkingLive: "Thinking…", resultLoadError: (reason: unknown) => `Could not load the result: ${reason}`, resultLoading: "Loading result…", toolResult: "Tool result", chars: (size: number) => `${size} chars`, charsK: (size: string) => `${size}k chars`, showFolder: "Show in folder", approvalRequest: (name: string) => `Approval request for ${name}`, deny: "Deny", chooseMany: "Choose one or more", selectedCount: (n: number) => `${n} selected`, otherAnswer: (header: string) => `Other answer for ${header}`, otherOptional: "Other answer (optional)", sendAnswers: "Send answers", next: "Next", chooseFolder: "Choose folder", close: "Close", folderPath: "Folder path", noFolders: "No folders inside.", connector: "Connector", noConnector: "No chat connector", model: "Model", loadingModels: "Loading models", folderLabel: "Folder", folders: "Folders", current: "current", wantFolders: "Want more folders?", addSettings: "Add them in Settings", cancel: "Cancel", useFolder: "Use this folder", startChatButton: "Start chat", scratchFolder: "Scratch folder (no files shared)", addFolders: "Add folders in Settings → Allowed folders.", focusChat: (shortcut: string) => `Focus this chat with ${shortcut}`, attachments: "Attachments", autoAllowed: "Auto-allowed", failed: "failed", allow: (name: string) => `Allow ${name}?`, allowOnce: "Allow once", askedOne: "Asked 1 question:", askedMany: (n: number) => `Asked ${n} questions:`, questionsFromAssistant: "Questions from the assistant", questionTabs: "Questions", back: "Back", chatTitle: "Chat title", closeSplit: "Close split", splitSide: "Split side by side", splitOptions: "Split options", sideBySide: "Side by side", stacked: "Stacked", openMain: "Open main window", openWindow: "Open in new window", deleteChat: "Delete chat", scheduledTask: "Scheduled task", assistantReplying: "Assistant is replying.", resizeSplit: "Resize split", otherWindow: "Replying in another window.", openItsWindow: "Open in its window", dropFiles: "Drop files to attach", filesToSend: "Files to send", remove: (name: string) => `Remove ${name}`, uploading: "Uploading…", message: "Message", placeholder: "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)", connectorRemovedPlaceholder: "This chat's connector was removed", attachFiles: "Attach files", folder: (name: string) => `Folder: ${name}`, changeFolder: "Change folder…", fileManager: "Open in file manager", fileManagerHelp: (folder: string) => `Open in file manager: ${folder}. Start a new chat to use another folder.`, chatSettings: "Chat settings", autoAllowOn: "Chat settings (auto-allow is on)", thinking: "Thinking", showThinking: "Show thinking", claudeThinking: "Claude Code doesn't share its reasoning, so no thinking appears in this chat", codexThinking: "Show Codex's reasoning summaries when it sends them; simple questions often have none", modelThinking: "Show the model's reasoning above its replies", autoAllow: "Auto-allow", autoAllowHint: "Every file change and command runs without asking", askEvery: "Ask before every file change and command", share: (label: string) => `Share ${label} with the agent`, sharing: (label: string) => `Sharing ${label} with the agent. Click to stop`, clickShare: (label: string) => `Click to share ${label} with the agent`, connectorRemoved: "Connector removed", stop: "Stop", send: "Send", missingChat: "This chat no longer exists.", loadingChat: "Loading chat…", loadingChatLabel: "Loading chat", folderNone: "Scratch folder (no files shared)", hint: "Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files and images with the paperclip, drag and drop, or paste.", working: "Working", allowChanges: "Allow every file change and command in this chat without asking? You can turn it off anytime.", turnOnAutoAllow: "Turn on auto-allow", deleteConfirm: (title: string) => `Delete chat \"${title}\"?`, replyReceived: "Reply received.", jumpLatest: "Jump to latest" },
-  es: { defaultModel: "Predeterminado", lateTitle: "La app estaba cerrada a la hora programada y se ejecutó al volver a abrirla.", copied: "Copiado", copy: "Copiar", unpinFirst: (max: number) => `Quita un chat de fijados primero (máx. ${max}).`, chats: "Chats", newChat: "Nuevo chat", collapseList: "Contraer lista de chats", expandList: "Expandir lista de chats", expandNoChats: "Expandir lista de chats (aún no hay chats)", pinned: (n: number) => `Fijados (${n})`, scheduled: "programado", pinnedWord: "fijado", noChats: "Aún no hay chats.", unpin: "Quitar chat de fijados", pin: "Fijar chat", dragSwap: "Arrastra para intercambiar", moveChat: "Mover chat", moveEarlier: "Mover antes", moveLater: "Mover después", resizeColumns: "Cambiar tamaño de columnas", resizeRows: "Cambiar tamaño de filas", pickChat: "Elige un chat o inicia uno nuevo.", startChat: "iniciar un chat", attachLimit: (max: number) => `Adjunta como máximo ${max} archivos por mensaje.`, imageLarge: (name: string) => `${name} supera los 10 MB.`, textLarge: (name: string) => `${name} supera 1 MB. Los archivos de texto pueden pesar hasta 1 MB.`, stopThinking: "Detén la respuesta para cambiar el razonamiento", thinkingHint: "Deja que el modelo razone antes de responder. Tardará más, pero será más inteligente.", thinkingLive: "Razonando…", resultLoadError: (reason: unknown) => `No se pudo cargar el resultado: ${reason}`, resultLoading: "Cargando resultado…", toolResult: "Resultado de la herramienta", chars: (size: number) => `${size} caracteres`, charsK: (size: string) => `${size} mil caracteres`, showFolder: "Mostrar en carpeta", approvalRequest: (name: string) => `Solicitud de aprobación para ${name}`, deny: "Rechazar", chooseMany: "Elige una o más", selectedCount: (n: number) => (n === 1 ? "1 seleccionada" : `${n} seleccionadas`), otherAnswer: (header: string) => `Otra respuesta para ${header}`, otherOptional: "Otra respuesta (opcional)", sendAnswers: "Enviar respuestas", next: "Siguiente", chooseFolder: "Elegir carpeta", close: "Cerrar", folderPath: "Ruta de la carpeta", noFolders: "No hay carpetas aquí.", connector: "Conector", noConnector: "No hay conector de chat", model: "Modelo", loadingModels: "Cargando modelos", folderLabel: "Carpeta", folders: "Carpetas", current: "actual", wantFolders: "¿Quieres más carpetas?", addSettings: "Agrégalas en Configuración", cancel: "Cancelar", useFolder: "Usar esta carpeta", startChatButton: "Iniciar chat", scratchFolder: "Carpeta temporal (sin archivos compartidos)", addFolders: "Agrega carpetas en Configuración → Carpetas permitidas.", focusChat: (shortcut: string) => `Enfocar este chat con ${shortcut}`, attachments: "Archivos adjuntos", autoAllowed: "Permitido automáticamente", failed: "falló", allow: (name: string) => `¿Permitir ${name}?`, allowOnce: "Permitir una vez", askedOne: "Hizo 1 pregunta:", askedMany: (n: number) => `Hizo ${n} preguntas:`, questionsFromAssistant: "Preguntas del asistente", questionTabs: "Preguntas", back: "Atrás", chatTitle: "Título del chat", closeSplit: "Cerrar división", splitSide: "Dividir en paralelo", splitOptions: "Opciones de división", sideBySide: "En paralelo", stacked: "Apilado", openMain: "Abrir ventana principal", openWindow: "Abrir en ventana nueva", deleteChat: "Eliminar chat", scheduledTask: "Tarea programada", assistantReplying: "El asistente está respondiendo.", resizeSplit: "Cambiar tamaño de división", otherWindow: "Respondiendo en otra ventana.", openItsWindow: "Abrir en su ventana", dropFiles: "Suelta archivos para adjuntarlos", filesToSend: "Archivos para enviar", remove: (name: string) => `Quitar ${name}`, uploading: "Subiendo…", message: "Mensaje", placeholder: "Mensaje… (Enter para enviar, Shift+Enter para salto de línea, @ bot, # ticket)", connectorRemovedPlaceholder: "Se quitó el conector de este chat", attachFiles: "Adjuntar archivos", folder: (name: string) => `Carpeta: ${name}`, changeFolder: "Cambiar carpeta…", fileManager: "Abrir en el administrador de archivos", fileManagerHelp: (folder: string) => `Abrir en el administrador de archivos: ${folder}. Inicia un chat nuevo para usar otra carpeta.`, chatSettings: "Ajustes del chat", autoAllowOn: "Ajustes del chat (permisos automáticos activos)", thinking: "Razonamiento", showThinking: "Mostrar razonamiento", claudeThinking: "Claude Code no comparte su razonamiento, así que no aparece en este chat", codexThinking: "Mostrar resúmenes de razonamiento de Codex cuando los envíe; las preguntas simples a menudo no tienen", modelThinking: "Mostrar el razonamiento del modelo sobre sus respuestas", autoAllow: "Permitir automáticamente", autoAllowHint: "Todos los cambios de archivos y comandos se ejecutan sin preguntar", askEvery: "Preguntar antes de cada cambio de archivo y comando", share: (label: string) => `Compartir ${label} con el agente`, sharing: (label: string) => `Compartiendo ${label} con el agente. Haz clic para dejar de compartir`, clickShare: (label: string) => `Haz clic para compartir ${label} con el agente`, connectorRemoved: "Se quitó el conector", stop: "Detener", send: "Enviar", missingChat: "Este chat ya no existe.", loadingChat: "Cargando chat…", loadingChatLabel: "Cargando chat", folderNone: "Carpeta temporal (sin archivos compartidos)", hint: "Pregunta lo que quieras. El asistente puede leer archivos de la carpeta del chat y usar tus tickets. Adjunta archivos de texto e imágenes con el clip, arrástralos o pégalos.", working: "Procesando", allowChanges: "¿Permitir todos los cambios de archivos y comandos en este chat sin preguntar? Puedes desactivarlo cuando quieras.", turnOnAutoAllow: "Activar permisos automáticos", deleteConfirm: (title: string) => `¿Eliminar el chat \"${title}\"?`, replyReceived: "Llegó una respuesta.", jumpLatest: "Ir al último mensaje" },
+  en: { defaultModel: "Default", queue: "Queue", queuedList: "Queued messages", queuedNote: "Sends after the current reply.", queueHeld: "Queue paused. Send or cancel each message.", sendQueued: "Send now", cancelQueued: (text: string) => `Cancel queued message: ${text}`, queuedAnnounce: "Message queued", lateTitle: "The app was closed at the scheduled time, so this ran when it opened again.", copied: "Copied", copy: "Copy", unpinFirst: (max: number) => `Unpin a chat first (max ${max}).`, chats: "Chats", newChat: "New chat", collapseList: "Collapse chat list", expandList: "Expand chat list", expandNoChats: "Expand chat list (no chats yet)", pinned: (n: number) => `Pinned (${n})`, scheduled: "scheduled", pinnedWord: "pinned", noChats: "No chats yet.", unpin: "Unpin chat", pin: "Pin chat", dragSwap: "Drag to swap", moveChat: "Move chat", moveEarlier: "Move earlier", moveLater: "Move later", resizeColumns: "Resize columns", resizeRows: "Resize rows", pickChat: "Pick a chat or start a new one.", startChat: "start a chat", attachLimit: (max: number) => `Attach at most ${max} files per message.`, imageLarge: (name: string) => `${name} is larger than 10 MB.`, textLarge: (name: string) => `${name} is larger than 1 MB. Text files can be up to 1 MB.`, stopThinking: "Stop the reply to change thinking", thinkingHint: "Let the model reason before answering. Slower but smarter.", thinkingLive: "Thinking…", resultLoadError: (reason: unknown) => `Could not load the result: ${reason}`, resultLoading: "Loading result…", toolResult: "Tool result", chars: (size: number) => `${size} chars`, charsK: (size: string) => `${size}k chars`, showFolder: "Show in folder", approvalRequest: (name: string) => `Approval request for ${name}`, deny: "Deny", chooseMany: "Choose one or more", selectedCount: (n: number) => `${n} selected`, otherAnswer: (header: string) => `Other answer for ${header}`, otherOptional: "Other answer (optional)", sendAnswers: "Send answers", next: "Next", chooseFolder: "Choose folder", close: "Close", folderPath: "Folder path", noFolders: "No folders inside.", connector: "Connector", noConnector: "No chat connector", model: "Model", loadingModels: "Loading models", folderLabel: "Folder", folders: "Folders", current: "current", wantFolders: "Want more folders?", addSettings: "Add them in Settings", cancel: "Cancel", useFolder: "Use this folder", startChatButton: "Start chat", scratchFolder: "Scratch folder (no files shared)", addFolders: "Add folders in Settings → Allowed folders.", focusChat: (shortcut: string) => `Focus this chat with ${shortcut}`, attachments: "Attachments", autoAllowed: "Auto-allowed", failed: "failed", allow: (name: string) => `Allow ${name}?`, allowOnce: "Allow once", askedOne: "Asked 1 question:", askedMany: (n: number) => `Asked ${n} questions:`, questionsFromAssistant: "Questions from the assistant", questionTabs: "Questions", back: "Back", chatTitle: "Chat title", closeSplit: "Close split", splitSide: "Split side by side", splitOptions: "Split options", sideBySide: "Side by side", stacked: "Stacked", openMain: "Open main window", openWindow: "Open in new window", deleteChat: "Delete chat", scheduledTask: "Scheduled task", assistantReplying: "Assistant is replying.", resizeSplit: "Resize split", otherWindow: "Replying in another window.", openItsWindow: "Open in its window", dropFiles: "Drop files to attach", filesToSend: "Files to send", remove: (name: string) => `Remove ${name}`, uploading: "Uploading…", message: "Message", placeholder: "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)", connectorRemovedPlaceholder: "This chat's connector was removed", attachFiles: "Attach files", folder: (name: string) => `Folder: ${name}`, changeFolder: "Change folder…", fileManager: "Open in file manager", fileManagerHelp: (folder: string) => `Open in file manager: ${folder}. Start a new chat to use another folder.`, chatSettings: "Chat settings", autoAllowOn: "Chat settings (auto-allow is on)", thinking: "Thinking", showThinking: "Show thinking", claudeThinking: "Claude Code doesn't share its reasoning, so no thinking appears in this chat", codexThinking: "Show Codex's reasoning summaries when it sends them; simple questions often have none", modelThinking: "Show the model's reasoning above its replies", autoAllow: "Auto-allow", autoAllowHint: "Every file change and command runs without asking", askEvery: "Ask before every file change and command", share: (label: string) => `Share ${label} with the agent`, sharing: (label: string) => `Sharing ${label} with the agent. Click to stop`, clickShare: (label: string) => `Click to share ${label} with the agent`, connectorRemoved: "Connector removed", stop: "Stop", send: "Send", missingChat: "This chat no longer exists.", loadingChat: "Loading chat…", loadingChatLabel: "Loading chat", folderNone: "Scratch folder (no files shared)", hint: "Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files and images with the paperclip, drag and drop, or paste.", working: "Working", allowChanges: "Allow every file change and command in this chat without asking? You can turn it off anytime.", turnOnAutoAllow: "Turn on auto-allow", deleteConfirm: (title: string) => `Delete chat \"${title}\"?`, replyReceived: "Reply received.", jumpLatest: "Jump to latest" },
+  es: { defaultModel: "Predeterminado", queue: "Encolar", queuedList: "Mensajes en cola", queuedNote: "Se envían después de la respuesta actual.", queueHeld: "Cola en pausa. Envía o cancela cada mensaje.", sendQueued: "Enviar ahora", cancelQueued: (text: string) => `Cancelar mensaje en cola: ${text}`, queuedAnnounce: "Mensaje en cola", lateTitle: "La app estaba cerrada a la hora programada y se ejecutó al volver a abrirla.", copied: "Copiado", copy: "Copiar", unpinFirst: (max: number) => `Quita un chat de fijados primero (máx. ${max}).`, chats: "Chats", newChat: "Nuevo chat", collapseList: "Contraer lista de chats", expandList: "Expandir lista de chats", expandNoChats: "Expandir lista de chats (aún no hay chats)", pinned: (n: number) => `Fijados (${n})`, scheduled: "programado", pinnedWord: "fijado", noChats: "Aún no hay chats.", unpin: "Quitar chat de fijados", pin: "Fijar chat", dragSwap: "Arrastra para intercambiar", moveChat: "Mover chat", moveEarlier: "Mover antes", moveLater: "Mover después", resizeColumns: "Cambiar tamaño de columnas", resizeRows: "Cambiar tamaño de filas", pickChat: "Elige un chat o inicia uno nuevo.", startChat: "iniciar un chat", attachLimit: (max: number) => `Adjunta como máximo ${max} archivos por mensaje.`, imageLarge: (name: string) => `${name} supera los 10 MB.`, textLarge: (name: string) => `${name} supera 1 MB. Los archivos de texto pueden pesar hasta 1 MB.`, stopThinking: "Detén la respuesta para cambiar el razonamiento", thinkingHint: "Deja que el modelo razone antes de responder. Tardará más, pero será más inteligente.", thinkingLive: "Razonando…", resultLoadError: (reason: unknown) => `No se pudo cargar el resultado: ${reason}`, resultLoading: "Cargando resultado…", toolResult: "Resultado de la herramienta", chars: (size: number) => `${size} caracteres`, charsK: (size: string) => `${size} mil caracteres`, showFolder: "Mostrar en carpeta", approvalRequest: (name: string) => `Solicitud de aprobación para ${name}`, deny: "Rechazar", chooseMany: "Elige una o más", selectedCount: (n: number) => (n === 1 ? "1 seleccionada" : `${n} seleccionadas`), otherAnswer: (header: string) => `Otra respuesta para ${header}`, otherOptional: "Otra respuesta (opcional)", sendAnswers: "Enviar respuestas", next: "Siguiente", chooseFolder: "Elegir carpeta", close: "Cerrar", folderPath: "Ruta de la carpeta", noFolders: "No hay carpetas aquí.", connector: "Conector", noConnector: "No hay conector de chat", model: "Modelo", loadingModels: "Cargando modelos", folderLabel: "Carpeta", folders: "Carpetas", current: "actual", wantFolders: "¿Quieres más carpetas?", addSettings: "Agrégalas en Configuración", cancel: "Cancelar", useFolder: "Usar esta carpeta", startChatButton: "Iniciar chat", scratchFolder: "Carpeta temporal (sin archivos compartidos)", addFolders: "Agrega carpetas en Configuración → Carpetas permitidas.", focusChat: (shortcut: string) => `Enfocar este chat con ${shortcut}`, attachments: "Archivos adjuntos", autoAllowed: "Permitido automáticamente", failed: "falló", allow: (name: string) => `¿Permitir ${name}?`, allowOnce: "Permitir una vez", askedOne: "Hizo 1 pregunta:", askedMany: (n: number) => `Hizo ${n} preguntas:`, questionsFromAssistant: "Preguntas del asistente", questionTabs: "Preguntas", back: "Atrás", chatTitle: "Título del chat", closeSplit: "Cerrar división", splitSide: "Dividir en paralelo", splitOptions: "Opciones de división", sideBySide: "En paralelo", stacked: "Apilado", openMain: "Abrir ventana principal", openWindow: "Abrir en ventana nueva", deleteChat: "Eliminar chat", scheduledTask: "Tarea programada", assistantReplying: "El asistente está respondiendo.", resizeSplit: "Cambiar tamaño de división", otherWindow: "Respondiendo en otra ventana.", openItsWindow: "Abrir en su ventana", dropFiles: "Suelta archivos para adjuntarlos", filesToSend: "Archivos para enviar", remove: (name: string) => `Quitar ${name}`, uploading: "Subiendo…", message: "Mensaje", placeholder: "Mensaje… (Enter para enviar, Shift+Enter para salto de línea, @ bot, # ticket)", connectorRemovedPlaceholder: "Se quitó el conector de este chat", attachFiles: "Adjuntar archivos", folder: (name: string) => `Carpeta: ${name}`, changeFolder: "Cambiar carpeta…", fileManager: "Abrir en el administrador de archivos", fileManagerHelp: (folder: string) => `Abrir en el administrador de archivos: ${folder}. Inicia un chat nuevo para usar otra carpeta.`, chatSettings: "Ajustes del chat", autoAllowOn: "Ajustes del chat (permisos automáticos activos)", thinking: "Razonamiento", showThinking: "Mostrar razonamiento", claudeThinking: "Claude Code no comparte su razonamiento, así que no aparece en este chat", codexThinking: "Mostrar resúmenes de razonamiento de Codex cuando los envíe; las preguntas simples a menudo no tienen", modelThinking: "Mostrar el razonamiento del modelo sobre sus respuestas", autoAllow: "Permitir automáticamente", autoAllowHint: "Todos los cambios de archivos y comandos se ejecutan sin preguntar", askEvery: "Preguntar antes de cada cambio de archivo y comando", share: (label: string) => `Compartir ${label} con el agente`, sharing: (label: string) => `Compartiendo ${label} con el agente. Haz clic para dejar de compartir`, clickShare: (label: string) => `Haz clic para compartir ${label} con el agente`, connectorRemoved: "Se quitó el conector", stop: "Detener", send: "Enviar", missingChat: "Este chat ya no existe.", loadingChat: "Cargando chat…", loadingChatLabel: "Cargando chat", folderNone: "Carpeta temporal (sin archivos compartidos)", hint: "Pregunta lo que quieras. El asistente puede leer archivos de la carpeta del chat y usar tus tickets. Adjunta archivos de texto e imágenes con el clip, arrástralos o pégalos.", working: "Procesando", allowChanges: "¿Permitir todos los cambios de archivos y comandos en este chat sin preguntar? Puedes desactivarlo cuando quieras.", turnOnAutoAllow: "Activar permisos automáticos", deleteConfirm: (title: string) => `¿Eliminar el chat \"${title}\"?`, replyReceived: "Llegó una respuesta.", jumpLatest: "Ir al último mensaje" },
 };
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -66,7 +66,9 @@ type ChatEvent =
   | { type: "tool_result"; message_id: string; tool_result_size: number; tool_error: boolean }
   | { type: "done"; message?: ChatMessage }
   | { type: "error"; message: string }
-  | { type: "approval" };
+  | { type: "approval" }
+  | { type: "queue" };
+type QueuedMessage = { id: string; text: string; attachments: ChatAttachment[]; created_at: string };
 
 export const lateTitle = labels[lang()].lateTitle;
 
@@ -789,6 +791,8 @@ export function Conversation({
   const [streaming, setStreaming] = useState("");
   const [thinking, setThinking] = useState("");
   const [running, setRunning] = useState(false);
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const posting = useRef(false);
   const draftKey = `chat-draft:${id}`;
   const [text, setText] = useState(() => localStorage.getItem(draftKey) ?? "");
   function changeText(value: string) {
@@ -839,8 +843,11 @@ export function Conversation({
         else setError(reason);
       });
 
+  const loadQueue = () => api.get<QueuedMessage[]>(`/api/chats/${id}/queue`).then(setQueue).catch(setError);
+
   useEffect(() => {
     void load();
+    void loadQueue();
   }, [id, refresh]);
 
   useEffect(() => {
@@ -852,6 +859,10 @@ export function Conversation({
     const unsubscribe = window.runtime?.EventsOn(`chat:${id}`, (data) => {
       const event = data as ChatEvent;
       if (event.type === "approval") void load();
+      if (event.type === "queue") {
+        void loadQueue();
+        void load();
+      }
       if (event.type === "delta") setStreaming((current) => current + event.text);
       if (event.type === "thinking_delta") setThinking((current) => current + event.text);
       if (event.type === "thinking") setThinking("");
@@ -994,13 +1005,18 @@ export function Conversation({
   async function send(event?: FormEvent) {
     event?.preventDefault();
     const value = text.trim();
-    if ((!value && !pending.length) || running || uploading || !detail) return;
+    if ((!value && !pending.length) || uploading || !detail || posting.current) return;
+    // While a reply runs the backend queues the message instead of sending it.
+    const queueing = running;
+    posting.current = true;
     setError(undefined);
-    setRunning(true);
-    atBottom.current = true;
+    if (!queueing) {
+      setRunning(true);
+      atBottom.current = true;
+    }
     try {
       const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
-      const message = await api.post<ChatMessage>(`/api/chats/${id}/messages`, {
+      const result = await api.post<ChatMessage | { queued: QueuedMessage }>(`/api/chats/${id}/messages`, {
         text: prefix + value,
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
@@ -1011,13 +1027,46 @@ export function Conversation({
       }
       changeText("");
       setPending([]);
+      if ("queued" in result) {
+        const item = result.queued;
+        setQueue((current) => (current.some((q) => q.id === item.id) ? current : [...current, item]));
+        setAnnouncement(t.queuedAnnounce);
+        void load();
+        return;
+      }
+      const message = result;
       addSent(message);
         if (detail.chat.title === "New chat" && detail.messages.length === 0) {
         const label = (value || pending.map((a) => a.name).join(", ")).replace(/\s+/g, " ");
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label);
       }
     } catch (reason) {
+      if (!queueing) setRunning(false);
+      setError(reason);
+    } finally {
+      posting.current = false;
+    }
+  }
+
+  async function sendQueued(item: QueuedMessage) {
+    setError(undefined);
+    setRunning(true);
+    atBottom.current = true;
+    try {
+      addSent(await api.post<ChatMessage>(`/api/chats/${id}/queue/${item.id}/send`, {}));
+      setQueue((current) => current.filter((q) => q.id !== item.id));
+    } catch (reason) {
       setRunning(false);
+      setError(reason);
+      void load();
+    }
+  }
+
+  async function cancelQueued(item: QueuedMessage) {
+    try {
+      await api.delete(`/api/chats/${id}/queue/${item.id}`);
+      setQueue((current) => current.filter((q) => q.id !== item.id));
+    } catch (reason) {
       setError(reason);
     }
   }
@@ -1344,6 +1393,37 @@ export function Conversation({
           onAnswer={(answers) => answerQuestion(openQuestion.id, answers)}
         />
       )}
+      {queue.length > 0 && (
+        <section className="queued" aria-label={t.queuedList}>
+          <p className="muted">{running ? t.queuedNote : t.queueHeld}</p>
+          <ol className="attachments queued-list">
+            {queue.map((item) => (
+              <li key={item.id} className="attachment">
+                <span className="attachment-label">
+                  <Icon name="clock" />
+                  <span className="attachment-name">{item.text || item.attachments.map((a) => a.name).join(", ")}</span>
+                  {item.text && item.attachments.length > 0 && (
+                    <span className="muted">
+                      <Icon name="paperclip" /> {item.attachments.length}
+                    </span>
+                  )}
+                </span>
+                {!running && (
+                  <button type="button" className="ghost" onClick={() => sendQueued(item)}>
+                    {t.sendQueued}
+                  </button>
+                )}
+                <IconButton
+                  type="button"
+                  icon="x"
+                  label={t.cancelQueued(item.text || item.attachments.map((a) => a.name).join(", "))}
+                  onClick={() => cancelQueued(item)}
+                />
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
       <form className="composer" onSubmit={send}>
         <input
           ref={filePicker}
@@ -1488,9 +1568,14 @@ export function Conversation({
               />
             </div>
             {running ? (
-              <button type="button" onClick={stop}>
-                <span className="spinner" aria-hidden="true" /> {t.stop}
-              </button>
+              <>
+                <button type="button" onClick={stop}>
+                  <span className="spinner" aria-hidden="true" /> {t.stop}
+                </button>
+                <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector || otherWindow}>
+                  <Icon name="clock" /> {t.queue}
+                </button>
+              </>
             ) : (
               <button className="primary" disabled={(!text.trim() && !pending.length) || uploading || !connector || otherWindow}>
                 <Icon name="send" /> {t.send}
