@@ -898,9 +898,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		driver.mu.Lock()
 		role := driver.roles[delta.MessageID]
 		partType := driver.parts[delta.PartID]
-		if !child && role == "assistant" && (partType == "text" || partType == "reasoning") {
-			driver.startAutonomousTurnLocked()
-		}
+		started := !child && role == "assistant" && (partType == "text" || partType == "reasoning") && driver.startAutonomousTurnLocked()
 		if !child && delta.Field == "text" && role == "assistant" && partType == "text" {
 			if driver.active {
 				driver.text.WriteString(driver.manager.emitDelta(driver.chatID, delta.Delta))
@@ -909,6 +907,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			driver.manager.emitThinking(driver.chatID, delta.Delta)
 		}
 		driver.mu.Unlock()
+		if started {
+			driver.markBusy()
+		}
 	case "message.part.updated":
 		var part struct {
 			MessageID string `json:"messageID"`
@@ -934,9 +935,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 		driver.mu.Lock()
 		role := driver.roles[part.MessageID]
-		if !child && role == "assistant" && part.Delta != "" && (part.Part.Type == "text" || part.Part.Type == "reasoning") {
-			driver.startAutonomousTurnLocked()
-		}
+		started := !child && role == "assistant" && part.Delta != "" && (part.Part.Type == "text" || part.Part.Type == "reasoning") && driver.startAutonomousTurnLocked()
 		if !child && part.Delta != "" && role == "assistant" && driver.active {
 			switch part.Part.Type {
 			case "text":
@@ -946,6 +945,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			}
 		}
 		driver.mu.Unlock()
+		if started {
+			driver.markBusy()
+		}
 		if !child && role == "assistant" && part.Part.Type == "tool" && (part.Part.State.Status == "completed" || part.Part.State.Status == "error") {
 			driver.startAutonomousTurn()
 			toolInput := part.Part.Input
@@ -1195,11 +1197,14 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			return err
 		}
 		driver.mu.Lock()
+		started := !child && driver.startAutonomousTurnLocked()
 		if !child {
-			driver.startAutonomousTurnLocked()
 			driver.manager.emitThinking(driver.chatID, delta.Text)
 		}
 		driver.mu.Unlock()
+		if started {
+			driver.markBusy()
+		}
 	case "session.text.delta":
 		var delta struct {
 			Text string `json:"delta"`
@@ -1208,11 +1213,14 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			return err
 		}
 		driver.mu.Lock()
+		started := !child && driver.startAutonomousTurnLocked()
 		if !child {
-			driver.startAutonomousTurnLocked()
 			driver.text.WriteString(driver.manager.emitDelta(driver.chatID, delta.Text))
 		}
 		driver.mu.Unlock()
+		if started {
+			driver.markBusy()
+		}
 	case "session.tool.called":
 		var tool struct {
 			ID    string          `json:"id"`
@@ -1329,16 +1337,22 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 	return nil
 }
 
-// startAutonomousTurnLocked is called with d.mu held for event-stream deltas.
-func (d *opencodeRuntime) startAutonomousTurnLocked() {
+// startAutonomousTurnLocked is called with d.mu held for event-stream deltas. When it
+// reports true, the caller must call markBusy after releasing d.mu: Send holds rt.mu
+// while it waits for d.mu, so taking rt.mu here would deadlock.
+func (d *opencodeRuntime) startAutonomousTurnLocked() bool {
 	if d.active {
-		return
+		return false
 	}
 	if err := d.manager.claimTurn(d.chatID); err != nil {
-		return
+		return false
 	}
 	d.text.Reset()
 	d.active = true
+	return true
+}
+
+func (d *opencodeRuntime) markBusy() {
 	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
 		rt.mu.Lock()
 		rt.busy = true
@@ -1349,8 +1363,11 @@ func (d *opencodeRuntime) startAutonomousTurnLocked() {
 
 func (d *opencodeRuntime) startAutonomousTurn() {
 	d.mu.Lock()
-	d.startAutonomousTurnLocked()
+	started := d.startAutonomousTurnLocked()
 	d.mu.Unlock()
+	if started {
+		d.markBusy()
+	}
 }
 
 func (d *opencodeRuntime) finish(err error) error {
