@@ -22,6 +22,7 @@ export type SettingsAbout = {
   os: string;
   arch: string;
   db_path: string;
+  log_path: string;
   data_dir: string;
   data_dir_bytes: number;
   approximate: boolean;
@@ -38,7 +39,7 @@ export type SettingsAbout = {
   secrets_store: string;
   repo_url: string;
 };
-export type SettingsRevealTarget = "database" | "data_dir";
+export type SettingsRevealTarget = "database" | "logs" | "data_dir";
 export type Status = {
   id: string;
   name: string;

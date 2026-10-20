@@ -28,6 +28,7 @@ const text = {
     general: "General",
     version: "Version",
     database: "Database",
+    logs: "Logs",
     showIn: (manager: string) => `Show in ${manager}`,
     fileManager: "file manager",
     copied: "Copied",
@@ -111,6 +112,7 @@ const text = {
     general: "General",
     version: "Versión",
     database: "Base de datos",
+    logs: "Registros",
     showIn: (manager: string) => `Mostrar en ${manager}`,
     fileManager: "el explorador de archivos",
     copied: "Copiado",
@@ -345,6 +347,19 @@ function General() {
                 </button>
               </span>
             </dd>
+            {about.log_path && (
+              <>
+                <dt>{t.logs}</dt>
+                <dd>
+                  <code className="about-path">{about.log_path}</code>
+                  <span className="about-actions">
+                    <button type="button" onClick={() => reveal("logs")}>
+                      {t.showIn(manager)}
+                    </button>
+                  </span>
+                </dd>
+              </>
+            )}
             <dt>{t.dataFolder}</dt>
             <dd>
               <code className="about-path">{about.data_dir}</code>

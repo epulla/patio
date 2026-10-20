@@ -215,6 +215,7 @@ func TestSettingsAboutAndReveal(t *testing.T) {
 	database, handler, root := chatAPI(t)
 	server := handler.(*Server)
 	server.showHidden = true
+	server.logPath = filepath.Join(root, "patio.log")
 	dbPath := filepath.Join(root, "test.db")
 	canonicalDBPath, err := filepath.EvalSymlinks(dbPath)
 	if err != nil {
@@ -259,22 +260,22 @@ func TestSettingsAboutAndReveal(t *testing.T) {
 	}
 	aboutDBPath, pathErr := filepath.EvalSymlinks(about.DBPath)
 	aboutDataDir, dirErr := filepath.EvalSymlinks(about.DataDir)
-	if pathErr != nil || dirErr != nil || about.Version != "dev" || about.OS != runtime.GOOS || about.Arch != runtime.GOARCH || aboutDBPath != canonicalDBPath || aboutDataDir != canonicalRoot || about.DataDirBytes < info.Size() || about.Approximate || about.Counts != (settingsCounts{Boards: 1, Tickets: 1, Chats: 1, Connectors: 1, MCPServers: 1, Skills: 1}) || about.SchemaVersion != schema || !about.ShowHidden || about.SecretsStore == "" || about.RepoURL != "https://github.com/epulla/patio" {
+	if pathErr != nil || dirErr != nil || about.Version != "dev" || about.OS != runtime.GOOS || about.Arch != runtime.GOARCH || aboutDBPath != canonicalDBPath || aboutDataDir != canonicalRoot || about.LogPath != server.logPath || about.DataDirBytes < info.Size() || about.Approximate || about.Counts != (settingsCounts{Boards: 1, Tickets: 1, Chats: 1, Connectors: 1, MCPServers: 1, Skills: 1}) || about.SchemaVersion != schema || !about.ShowHidden || about.SecretsStore == "" || about.RepoURL != "https://github.com/epulla/patio" {
 		t.Fatalf("about fields = %#v", about)
 	}
 	var revealed []string
 	server.revealFile = func(path string) error { revealed = append(revealed, path); return nil }
-	for _, target := range []string{"database", "data_dir"} {
+	for _, target := range []string{"database", "data_dir", "logs"} {
 		if code := requestJSON(t, handler, http.MethodPost, "/api/settings/reveal", map[string]string{"target": target}, nil); code != http.StatusNoContent {
 			t.Fatalf("reveal %s status = %d", target, code)
 		}
 	}
-	if len(revealed) != 2 {
+	if len(revealed) != 3 {
 		t.Fatalf("revealed paths = %#v", revealed)
 	}
 	revealedDBPath, dbErr := filepath.EvalSymlinks(revealed[0])
 	revealedDataDir, dirErr := filepath.EvalSymlinks(revealed[1])
-	if len(revealed) != 2 || dbErr != nil || dirErr != nil || revealedDBPath != canonicalDBPath || revealedDataDir != canonicalRoot {
+	if len(revealed) != 3 || dbErr != nil || dirErr != nil || revealedDBPath != canonicalDBPath || revealedDataDir != canonicalRoot || revealed[2] != server.logPath {
 		t.Fatalf("revealed paths = %#v", revealed)
 	}
 	for _, body := range []any{map[string]string{}, map[string]string{"target": "chat"}} {

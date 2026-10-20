@@ -324,6 +324,7 @@ type settingsAbout struct {
 	OS            string         `json:"os"`
 	Arch          string         `json:"arch"`
 	DBPath        string         `json:"db_path"`
+	LogPath       string         `json:"log_path"`
 	DataDir       string         `json:"data_dir"`
 	DataDirBytes  int64          `json:"data_dir_bytes"`
 	Approximate   bool           `json:"approximate"`
@@ -337,7 +338,7 @@ type settingsAbout struct {
 func (s *Server) settingsAbout(w http.ResponseWriter, _ *http.Request) {
 	about := settingsAbout{
 		Version: s.version, OS: runtime.GOOS, Arch: runtime.GOARCH,
-		DBPath: s.dbPath, DataDir: s.dbDir, ShowHidden: s.showHidden,
+		DBPath: s.dbPath, LogPath: s.logPath, DataDir: s.dbDir, ShowHidden: s.showHidden,
 		SecretsStore: secretsStore(), RepoURL: "https://github.com/epulla/patio",
 	}
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&about.SchemaVersion); err != nil {
@@ -403,13 +404,19 @@ func (s *Server) revealSettingsTarget(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Target string `json:"target"`
 	}
-	if decode(r, &in) != nil || in.Target != "database" && in.Target != "data_dir" {
-		errw(w, http.StatusBadRequest, `target must be "database" or "data_dir"`)
+	if decode(r, &in) != nil || in.Target != "database" && in.Target != "data_dir" && in.Target != "logs" {
+		errw(w, http.StatusBadRequest, `target must be "database", "data_dir", or "logs"`)
 		return
 	}
 	path := s.dbPath
 	if in.Target == "data_dir" {
 		path = s.dbDir
+	} else if in.Target == "logs" {
+		path = s.logPath
+		if path == "" {
+			errw(w, http.StatusNotFound, "log path not set")
+			return
+		}
 	}
 	if err := s.revealFile(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
