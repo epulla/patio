@@ -2793,6 +2793,63 @@ main.chat-window {
 .skill-preview .eyebrow {
   margin-bottom: 8px;
 }
+.item-history > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.create-modal .item-history {
+  margin-top: 16px;
+}
+.item-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.item-history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.item-history-restore {
+  margin-left: auto;
+  height: auto;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+.item-history-changes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.item-history-field {
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.item-history-diff {
+  max-height: 320px;
+  margin: 4px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+}
+.diff-add {
+  background: color-mix(in oklch, var(--success, oklch(70% 0.15 150)) 22%, transparent);
+}
+.diff-del {
+  background: color-mix(in oklch, var(--error, oklch(65% 0.2 25)) 22%, transparent);
+}
+.diff-gap,
+.diff-same {
+  color: var(--muted);
+}
 .button-link {
   display: inline-flex;
   align-items: center;

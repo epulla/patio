@@ -16,6 +16,7 @@ import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import Switch from "./Switch";
 import Picker from "./Picker";
+import History from "./History";
 import { lang, locale, useText } from "./i18n";
 
 type Repeat = "once" | "hours" | "daily" | "weekdays" | "weekly" | "monthly" | "cron";
@@ -682,6 +683,7 @@ function TaskEditor({
           )}
         </section>
       )}
+      {task && <History itemType="scheduled_task" itemId={task.id} refresh={refresh} />}
     </div>
   );
 }

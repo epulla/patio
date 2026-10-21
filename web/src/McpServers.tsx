@@ -5,6 +5,7 @@ import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 import Picker from "./Picker";
+import History from "./History";
 import { lang, useText } from "./i18n";
 
 const text = {
@@ -458,6 +459,7 @@ function ServerDialog({
           </div>
         </form>
         <ErrorText error={error} />
+        {server && <History itemType="mcp_server" itemId={server.id} />}
       </section>
     </dialog>
   );

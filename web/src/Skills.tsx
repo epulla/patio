@@ -6,6 +6,7 @@ import { Icon, IconButton } from "./icons";
 import Markdown from "./Markdown";
 import Switch from "./Switch";
 import Menu from "./Menu";
+import History from "./History";
 import { lang, useText } from "./i18n";
 
 const text = { en: { skills: "Skills", memory: "Memory", skill: "skill", new: "New", import: "Import SKILL.md", changes: "Changes apply to new chats.", memoriesEmpty: "No memories yet", memoriesHint: 'Tell the model "remember that…" in any chat, or add one here.', skillsEmpty: "No skills yet", skillHint: "A skill is a set of instructions the model loads when a task matches its description. Write one here or import a", countSkill: (n: number) => `${n} skill${n === 1 ? "" : "s"}`, countMemory: (n: number) => `${n} memor${n === 1 ? "y" : "ies"}`, enable: "Enable", more: "More actions for", disableSkill: "Disable skill", enableSkill: "Enable skill", edit: "Edit", remove: "Remove", recent: "Most recent", alphabetical: "Alphabetical", sort: "Sort skills", sortPrefix: "Sort:", back: "Skills", deleted: "This skill no longer exists.", delete: "Delete skill", editLabel: "Edit", name: "Name", nameTitle: "Lowercase letters, digits, and hyphens", type: "Type", description: "Description", descriptionPlaceholder: "Use when the user asks for…", instructions: "Instructions (Markdown)", preview: "Preview", nothing: "Nothing to preview yet.", enabled: "Enabled in chats", saved: "Saved", save: "Save", createSkill: "Create skill", export: "Export", previewLabel: "Preview" }, es: { skills: "Habilidades", memory: "Memoria", skill: "habilidad", new: "Nueva", import: "Importar SKILL.md", changes: "Los cambios se aplican a los chats nuevos.", memoriesEmpty: "Aún no hay recuerdos", memoriesHint: 'Dile al modelo «recuerda que…» en cualquier chat, o agrega uno aquí.', skillsEmpty: "Aún no hay habilidades", skillHint: "Una habilidad es un conjunto de instrucciones que el modelo carga cuando una tarea coincide con su descripción. Escribe una aquí o importa un", countSkill: (n: number) => `${n} ${n === 1 ? "habilidad" : "habilidades"}`, countMemory: (n: number) => `${n} ${n === 1 ? "recuerdo" : "recuerdos"}`, enable: "Activar", more: "Más acciones para", disableSkill: "Desactivar habilidad", enableSkill: "Activar habilidad", edit: "Editar", remove: "Eliminar", recent: "Más recientes", alphabetical: "Alfabético", sort: "Ordenar habilidades", sortPrefix: "Ordenar:", back: "Habilidades", deleted: "Esta habilidad ya no existe.", delete: "Eliminar habilidad", editLabel: "Editar", name: "Nombre", nameTitle: "Letras minúsculas, números y guiones", type: "Tipo", description: "Descripción", descriptionPlaceholder: "Usar cuando el usuario pida…", instructions: "Instrucciones (Markdown)", preview: "Vista previa", nothing: "Aún no hay nada para previsualizar.", enabled: "Activa en chats", saved: "Guardado", save: "Guardar", createSkill: "Crear habilidad", export: "Exportar", previewLabel: "Vista previa" } };
@@ -109,6 +110,7 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
         key={id}
         skill={skill}
         defaultKind={kind}
+        refresh={refresh + reload}
         onSaved={(saved) => {
           chooseKind(saved.kind);
           changed();
@@ -313,11 +315,13 @@ function BackLink() {
 function SkillEditor({
   skill,
   defaultKind,
+  refresh,
   onSaved,
   onDeleted,
 }: {
   skill?: Skill;
   defaultKind: Skill["kind"];
+  refresh: number;
   onSaved: (skill: Skill) => void;
   onDeleted: () => void;
 }) {
@@ -431,6 +435,18 @@ function SkillEditor({
         {skill && <IconButton type="button" className="danger-text" icon="trash" label={`${t.delete} ${skill.name}`} onClick={remove} />}
       </div>
     </form>
+      {skill && (
+        <History<Skill>
+          itemType="skill"
+          itemId={skill.id}
+          refresh={refresh}
+          onRestored={(restored) => {
+            setDescription(restored.description);
+            setBody(restored.body);
+            onSaved(restored);
+          }}
+        />
+      )}
     </div>
   );
 }

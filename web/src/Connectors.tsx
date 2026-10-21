@@ -10,6 +10,7 @@ import {
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
+import History from "./History";
 import { lang, locale, useText } from "./i18n";
 
 const text = {
@@ -599,6 +600,7 @@ function ConnectorDialog({
           </div>
         </form>
         <ErrorText error={error} />
+        {connector && <History itemType="connector" itemId={connector.id} />}
       </section>
     </dialog>
   );
