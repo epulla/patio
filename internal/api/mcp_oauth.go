@@ -226,6 +226,33 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 	if err != nil {
 		return fmt.Errorf("connect to OAuth MCP server: %w", err)
 	}
+	// Some MCP servers allow unauthenticated initialization. Explicit login must
+	// still start OAuth in that case; don't repeat it when Connect already did.
+	tokenSource, err := authHandler.TokenSource(ctx)
+	if err != nil {
+		_ = session.Close()
+		return fmt.Errorf("get OAuth token source: %w", err)
+	}
+	var token *oauth2.Token
+	if tokenSource != nil {
+		token, err = tokenSource.Token()
+		if err != nil {
+			_ = session.Close()
+			return fmt.Errorf("get OAuth token: %w", err)
+		}
+	}
+	if token == nil || !token.Valid() {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, nil)
+		if err != nil {
+			_ = session.Close()
+			return fmt.Errorf("create OAuth authorization request: %w", err)
+		}
+		resp := &http.Response{StatusCode: http.StatusUnauthorized, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: req}
+		if err := authHandler.Authorize(ctx, req, resp); err != nil {
+			_ = session.Close()
+			return fmt.Errorf("authorize OAuth MCP server: %w", err)
+		}
+	}
 	return session.Close()
 }
 

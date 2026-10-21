@@ -178,8 +178,9 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 	sdkServer := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	streamable := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return sdkServer }, &mcp.StreamableHTTPOptions{Stateless: true})
 	var resourceURL string
+	allowUnauthenticated := false
 	protected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/.well-known/oauth-protected-resource" {
+		if r.URL.Path == "/.well-known/oauth-protected-resource" || r.URL.Path == "/.well-known/oauth-protected-resource/mcp" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"resource": resourceURL, "authorization_servers": []string{state.issuer}})
 			return
@@ -188,7 +189,7 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Header.Get("Authorization") != "Bearer access-1" && r.Header.Get("Authorization") != "Bearer access-2" {
+		if !allowUnauthenticated && r.Header.Get("Authorization") != "Bearer access-1" && r.Header.Get("Authorization") != "Bearer access-2" {
 			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+strings.TrimSuffix(resourceURL, "/mcp")+`/.well-known/oauth-protected-resource"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -242,6 +243,19 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 	if !registered || !pkce || !resourceSent {
 		t.Fatalf("registration/PKCE/resource = %v/%v/%v; authorization resource/method = %q/%q", registered, pkce, resourceSent, authorizationResource, challengeMethod)
 	}
+	allowUnauthenticated = true
+	unauthenticated := createServer("Unauthenticated Initialize", "oauth")
+	if code, response := login(unauthenticated.ID); code != http.StatusAccepted || response["auth_url"] == "" {
+		t.Fatalf("unauthenticated initialize login = %d %#v", code, response)
+	}
+	waitOAuthLogin(t, server, unauthenticated.ID)
+	if _, err := keyring.Get(connectorService, mcpServerSecret(unauthenticated.ID, "oauth")); err != nil {
+		t.Fatalf("unauthenticated initialize did not store token: %v", err)
+	}
+	if code := requestJSON(t, server, http.MethodDelete, "/api/mcp-servers/"+unauthenticated.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete unauthenticated server = %d", code)
+	}
+	allowUnauthenticated = false
 	state.mu.Lock()
 	state.registered = false
 	state.mu.Unlock()
