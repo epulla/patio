@@ -33,6 +33,18 @@ func (s *Server) Notify(kind, title, body, link string, native bool) error {
 	return nil
 }
 
+func (s *Server) notifyMCPSignIn(name string) error {
+	title := "MCP server " + name + " needs sign-in"
+	var exists bool
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM notification WHERE kind='mcp' AND title=? AND read_at IS NULL)`, title).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	return s.Notify("mcp", title, "Chats and scheduled tasks run without its tools until you sign in again.", "/ai/mcp", false)
+}
+
 func NotifyScheduledQuestion(database *sql.DB, chatID string) error {
 	var title string
 	err := database.QueryRow(`SELECT t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status IN ('running','waiting') ORDER BY r.created_at DESC,r.rowid DESC LIMIT 1`, chatID).Scan(&title)

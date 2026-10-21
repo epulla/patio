@@ -53,6 +53,7 @@ type chatManager struct {
 	emitEvent            func(string, any)
 	options              Options
 	notify               func(string, string, string, string, bool) error
+	notifyMCPSignIn      func(string) error
 	approvalTimeout      time.Duration
 	approvalPollInterval time.Duration
 	// burnedout: assumed 10-minute idle timeout for all chat kinds
@@ -82,11 +83,11 @@ func (m *chatManager) chatMCPServersWithNotes(chatID string, notes bool) ([]mcpS
 			if !notes {
 				continue
 			}
-			message := "MCP server " + spec.Name + " skipped: sign in again"
-			if _, err := InsertChatMessage(m.db, chatID, "error", message); err != nil {
-				return nil, err
+			if m.notifyMCPSignIn != nil {
+				if err := m.notifyMCPSignIn(spec.Name); err != nil {
+					return nil, err
+				}
 			}
-			m.emit(chatID, map[string]any{"type": "error", "message": message})
 			continue
 		}
 		servers = append(servers, spec)

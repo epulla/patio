@@ -333,9 +333,15 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 	if specs, err := server.chats.chatMCPServers(chatID); err != nil || len(specs) != 0 {
 		t.Fatalf("chat MCP specs after refresh failure = %#v, %v", specs, err)
 	}
-	var role, content string
-	if err := database.QueryRow(`SELECT role,content FROM chat_message WHERE chat_id=?`, chatID).Scan(&role, &content); err != nil || role != "error" || content != "MCP server protected-oauth skipped: sign in again" {
-		t.Fatalf("refresh failure note = %q %q, %v", role, content, err)
+	if specs, err := server.chats.chatMCPServers(chatID); err != nil || len(specs) != 0 {
+		t.Fatalf("second chat MCP specs after refresh failure = %#v, %v", specs, err)
+	}
+	var errors, notifications int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='error'`, chatID).Scan(&errors); err != nil || errors != 0 {
+		t.Fatalf("refresh failure error messages = %d, %v", errors, err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='mcp' AND title=? AND read_at IS NULL`, "MCP server protected-oauth needs sign-in").Scan(&notifications); err != nil || notifications != 1 {
+		t.Fatalf("refresh failure notifications = %d, %v", notifications, err)
 	}
 
 	state.mu.Lock()

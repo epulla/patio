@@ -102,6 +102,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	opts.version = version
 	s.chats = newChatManager(db, opts)
 	s.chats.notify = s.Notify
+	s.chats.notifyMCPSignIn = s.notifyMCPSignIn
 	s.chats.dbDir = s.dbDir
 	s.chats.enabledMCPServers = s.enabledMCPServers
 	m := http.NewServeMux()
