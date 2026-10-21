@@ -145,9 +145,9 @@ type searchArgs struct {
 	Limit       int    `json:"limit,omitempty" jsonschema:"Optional maximum rows, default 50, at most 200"`
 }
 type notificationArgs struct {
-	Title string `json:"title" jsonschema:"Headline, max 200 chars"`
-	Body  string `json:"body,omitempty" jsonschema:"Markdown"`
-	Link  string `json:"link,omitempty" jsonschema:"In-app path (/tickets/<id>) or https URL"`
+	Title string `json:"title" jsonschema:"Short headline, at most 200 characters"`
+	Body  string `json:"body,omitempty" jsonschema:"Optional Markdown details, at most 4000 characters"`
+	Link  string `json:"link,omitempty" jsonschema:"Optional destination: in-app path like /tickets/<id>, /boards/<id>, /ai/chats/<id>, or an https URL"`
 }
 type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
@@ -562,7 +562,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
-	addGeneric(s, "create_notification", "Notify the user in Patio (toast; native alert when Patio is in background)", h, func(a notificationArgs) request {
+	addGeneric(s, "create_notification", "Notify the user inside Patio (bell, toast, and a native alert when Patio is in the background). Use instead of external messages for alerts meant only for the user.", h, func(a notificationArgs) request {
 		return request{http.MethodPost, "/api/notifications", a}
 	})
 	addGeneric(s, "create_calendar_item", "Create a calendar event or reminder", h, func(a createCalendarItemArgs) request {

@@ -167,6 +167,9 @@ func TestLocalChatReadToolLoopAndTicketNamespacedTool(t *testing.T) {
 			if !strings.Contains(string(encoded), `"name":"file__read_file"`) || !strings.Contains(string(encoded), `"name":"ticket__list_boards"`) {
 				t.Errorf("namespaced tools missing: %s", encoded)
 			}
+			if strings.Contains(string(encoded), `"name":"ticket__query_db"`) {
+				t.Errorf("admin tool query_db offered to local model: %s", encoded)
+			}
 			writeSSE(w,
 				`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"file__read_","arguments":"{\"path\":"}}]}}]}`,
 				`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"file","arguments":"\"hello.txt\"}"}}]}}]}`,
@@ -466,7 +469,7 @@ func fakeLocalMCPConnect() mcpConnector {
 }
 
 func fakeTicketTools() []*mcp.Tool {
-	names := []string{"list_boards", "get_board", "create_board", "create_ticket", "get_ticket", "update_ticket", "move_ticket", "search_tickets", "add_comment", "list_calendar", "create_calendar_item", "update_calendar_item", "delete_calendar_item", "list_skills", "load_skill"}
+	names := []string{"list_boards", "get_board", "create_board", "create_ticket", "get_ticket", "update_ticket", "move_ticket", "search_tickets", "add_comment", "list_calendar", "create_calendar_item", "update_calendar_item", "delete_calendar_item", "list_skills", "load_skill", "query_db"}
 	tools := make([]*mcp.Tool, 0, len(names))
 	for _, name := range names {
 		properties := map[string]any{}
@@ -558,6 +561,13 @@ func TestLocalRuntimeToolListFits(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, tool := range page.Tools {
+			local, listed := localMCPTools[tool.Name]
+			if !listed {
+				t.Errorf("MCP tool %s is not in localMCPTools; add it as true (local models get it) or false", tool.Name)
+			}
+			if !local {
+				continue
+			}
 			definition, err := localToolDefinition("ticket__"+tool.Name, tool.Description, tool.InputSchema)
 			if err != nil {
 				t.Fatalf("local definition for %s: %v", tool.Name, err)
@@ -603,6 +613,10 @@ func TestLocalRuntimeToolListFits(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("runtime tool definitions: %d bytes, %d tools", len(encoded), len(got))
+	// Headroom so the next local tool doesn't hit the limit.
+	if headroom := localToolsMaxBytes - len(encoded); headroom < 8<<10 {
+		t.Fatalf("local tool definitions = %d bytes, headroom %d; want at least 8 KB under %d", len(encoded), headroom, localToolsMaxBytes)
+	}
 }
 
 func TestLocalChatAlwaysOffersToolsOpenAI(t *testing.T) {

@@ -157,6 +157,25 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 	return d, nil
 }
 
+// localMCPTools decides which Patio MCP tools local models see: true = offered, false = left out.
+// Small local models have a tight tool budget (localToolsMaxBytes), so admin tools stay out; other
+// connectors get every tool. Every MCP tool must be listed here (TestLocalRuntimeToolListFits checks).
+var localMCPTools = map[string]bool{
+	"list_boards": true, "get_board": true, "create_board": true, "list_users": true,
+	"create_ticket": true, "get_ticket": true, "update_ticket": true, "move_ticket": true, "search_tickets": true,
+	"link_tickets": true, "unlink_tickets": true, "add_comment": true, "list_comments": true, "get_ticket_history": true,
+	"list_calendar": true, "create_calendar_item": true, "update_calendar_item": true, "delete_calendar_item": true,
+	"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true,
+	"ask_user": true, "create_notification": true,
+
+	"update_board": false, "reorder_boards": false, "create_column": false, "update_column": false, "delete_column": false,
+	"reorder_columns": false, "create_ticket_type": false, "update_ticket_type": false, "delete_skill": false,
+	"list_scheduled_tasks": false, "get_scheduled_task": false, "create_scheduled_task": false, "update_scheduled_task": false, "delete_scheduled_task": false,
+	"list_mcp_servers": false, "create_mcp_server": false, "update_mcp_server": false, "check_mcp_server": false,
+	"list_connectors": false, "create_connector": false, "update_connector": false, "list_connector_models": false,
+	"get_settings_defaults": false, "update_settings_defaults": false, "query_db": false, "get_item_history": false,
+}
+
 func (d *localRuntime) loadTools(ctx context.Context) error {
 	cursor := ""
 	seen := make(map[string]bool)
@@ -166,7 +185,7 @@ func (d *localRuntime) loadTools(ctx context.Context) error {
 			return err
 		}
 		for _, tool := range result.Tools {
-			if tool == nil || tool.Name == "" {
+			if tool == nil || tool.Name == "" || !localMCPTools[tool.Name] {
 				continue
 			}
 			name := "ticket__" + tool.Name
