@@ -4092,6 +4092,7 @@ main.chat-window {
 }
 /* The sticky sidebar is its own stacking context, so it must sit above <main> while the popover or a tooltip is open. */
 .sidebar:has(.notifications .menu-list),
+.sidebar:has(.rail-tip),
 .sidebar:has([data-tip]:hover, [data-tip]:focus-visible, [data-tip]:has(:focus-visible)) {
   z-index: 25;
 }
