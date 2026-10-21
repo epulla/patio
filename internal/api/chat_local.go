@@ -59,6 +59,7 @@ type localRuntime struct {
 	mu             sync.Mutex
 	turnCancel     context.CancelFunc
 	turnDone       chan struct{}
+	turns          sync.WaitGroup
 	turnRequest    ChatSendRequest
 	closed         bool
 	toolsOff       bool
@@ -301,7 +302,7 @@ func (d *localRuntime) send(request ChatSendRequest) error {
 	ctx, cancel := context.WithCancel(d.ctx)
 	d.turnCancel, d.turnDone = cancel, make(chan struct{})
 	d.turnRequest = request
-	go d.runTurn(ctx)
+	d.turns.Go(func() { d.runTurn(ctx) })
 	return nil
 }
 
@@ -1388,6 +1389,8 @@ func (d *localRuntime) stop() error {
 	if done != nil {
 		<-done
 	}
+	// turnDone is cleared before finishTurn; wait for that tail too.
+	d.turns.Wait()
 	d.cleanupRuntime()
 	return nil
 }

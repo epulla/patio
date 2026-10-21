@@ -227,6 +227,28 @@ func TestLocalChatCallsTicketMCPTool(t *testing.T) {
 	}
 }
 
+func TestLocalChatCloseWaitsForTurnFinish(t *testing.T) {
+	database, _, chatID, server, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		writeSSE(w, `{"choices":[{"delta":{"content":"Hi"}}]}`)
+	})
+	notify := server.chats.notify
+	server.chats.notify = func(kind, title, body, link string, native bool) error {
+		time.Sleep(200 * time.Millisecond)
+		return notify(kind, title, body, link, native)
+	}
+	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
+		t.Fatalf("send = %d", code)
+	}
+	waitLocalDone(t, events)
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM notification WHERE kind='chat'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("finish notification count = %d, %v; Close returned before the turn finished", count, err)
+	}
+}
+
 func TestLocalChatWriteApprovalAllowAndDeny(t *testing.T) {
 	for _, allow := range []bool{true, false} {
 		t.Run(fmt.Sprintf("allow_%v", allow), func(t *testing.T) {
