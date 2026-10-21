@@ -307,7 +307,7 @@ export default function TicketDetail({
           aria-labelledby={`tab-${tab}`}
         >
           {tab === "comments" && (
-            <Comments ticketId={ticket.id} comments={comments} onReload={load} />
+            <Comments key={ticket.id} ticketId={ticket.id} comments={comments} onReload={load} />
           )}
           {tab === "history" &&
             history.map((item) => (
@@ -359,7 +359,13 @@ function Comments({
   onReload: () => void;
 }) {
   const t = useText(text);
-  const [content, setContent] = useState("");
+  const draftKey = `ticket-comment-draft:${ticketId}`;
+  const [content, setContentState] = useState(() => localStorage.getItem(draftKey) ?? "");
+  function setContent(value: string) {
+    setContentState(value);
+    if (value) localStorage.setItem(draftKey, value);
+    else localStorage.removeItem(draftKey);
+  }
   async function add() {
     if (!content.trim()) return;
     await api.post(`/api/tickets/${ticketId}/comments`, {
