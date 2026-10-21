@@ -194,6 +194,18 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if !task.AutoAllow || len(tasks) != 1 || tasks[0].ID != task.ID {
 		t.Fatalf("scheduled task round trip: %#v %#v", task, tasks)
 	}
+	updatedTask := callTool(t, session, "update_scheduled_task", map[string]any{"id": task.ID, "title": "MCP scheduled", "prompt": "do other work", "model": "", "thinking": false, "schedule": "0 9 * * *", "enabled": true})
+	if updatedTask.IsError {
+		t.Fatalf("update scheduled task: %s", updatedTask.Content[0].(*sdk.TextContent).Text)
+	}
+	var savedTask struct {
+		ID     string `json:"id"`
+		Prompt string `json:"prompt"`
+	}
+	decodeText(t, updatedTask, &savedTask)
+	if savedTask.ID != task.ID || savedTask.Prompt != "do other work" {
+		t.Fatalf("scheduled task update: %#v", savedTask)
+	}
 
 	boardResult := callTool(t, session, "create_board", map[string]any{
 		"name": "AI Board", "short_name": "AI", "statuses": []map[string]any{

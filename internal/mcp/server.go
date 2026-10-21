@@ -551,9 +551,15 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return request{http.MethodGet, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil}
 	})
 	description := "Schedule is a 5-field cron in local time or run_at RFC3339 for one-off (exactly one); auto_allow defaults true; connector_id must come from existing connectors."
-	addGeneric(s, "create_scheduled_task", "Create scheduled task. "+description, h, func(a scheduledTaskArgs) request { return request{http.MethodPost, "/api/scheduled-tasks", a} })
+	addGeneric(s, "create_scheduled_task", "Create scheduled task. "+description, h, func(a scheduledTaskArgs) request {
+		a.ID = ""
+		return request{http.MethodPost, "/api/scheduled-tasks", a}
+	})
 	addGeneric(s, "update_scheduled_task", "Update scheduled task; all fields are replaced. "+description, h, func(a scheduledTaskArgs) request {
-		return request{http.MethodPut, "/api/scheduled-tasks/" + url.PathEscape(a.ID), a}
+		path := "/api/scheduled-tasks/" + url.PathEscape(a.ID)
+		// The API rejects unknown body fields, and the ID belongs in the path.
+		a.ID = ""
+		return request{http.MethodPut, path, a}
 	})
 	addGenericHandler(s, "delete_scheduled_task", "Delete scheduled task", func(a scheduledTaskIDArgs) (*sdk.CallToolResult, error) {
 		_, err := doJSON(h, request{http.MethodDelete, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil})
