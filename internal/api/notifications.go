@@ -268,7 +268,10 @@ func (s *Server) PurgeNotifications() error {
 		if _, err := tx.Exec(`DELETE FROM notification WHERE created_at < ?`, time.Now().UTC().Add(-7*24*time.Hour).Format("2006-01-02T15:04:05.000Z")); err != nil {
 			return err
 		}
-		_, err := tx.Exec(`DELETE FROM notification WHERE id IN (SELECT id FROM notification ORDER BY created_at DESC,rowid DESC LIMIT -1 OFFSET 500)`)
+		if _, err := tx.Exec(`DELETE FROM notification WHERE id IN (SELECT id FROM notification ORDER BY created_at DESC,rowid DESC LIMIT -1 OFFSET 500)`); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM item_history WHERE created_at < ?`, time.Now().UTC().Add(-90*24*time.Hour).Format("2006-01-02T15:04:05.000Z"))
 		return err
 	})
 }

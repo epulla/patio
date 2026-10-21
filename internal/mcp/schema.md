@@ -31,8 +31,10 @@ erDiagram
   app_window { TEXT id; TEXT chat_id; INTEGER pid; TEXT heartbeat_at; TEXT focus_at; TEXT focus_path }
   chat_turn { TEXT chat_id; TEXT window_id; TEXT started_at }
   notification { TEXT id; TEXT kind; TEXT title; TEXT body; TEXT link; TEXT created_at; TEXT read_at }
+  item_history { TEXT id; TEXT item_type; TEXT item_id; TEXT item_name; TEXT action; TEXT changes_json; TEXT snapshot_json; TEXT user_id; TEXT created_at }
 ```
 
 Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.
 Links use `blocks`, `relates`, or `duplicates`; each link has one direction and appears inversely from the other ticket. Links cascade-delete with either ticket.
 Scheduled run statuses are `running`, `waiting`, `done`, `failed`, or `skipped`.
+Item history covers `skill`, `connector`, `mcp_server`, and `scheduled_task` (`created`, `updated`, `deleted`, `restored`); secret fields appear by name only and entries are kept 90 days.

@@ -92,6 +92,10 @@ type createTicketArgs struct {
 	TicketTypeID *string `json:"ticket_type_id,omitempty" jsonschema:"Optional ticket type UUID"`
 	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional due date in YYYY-MM-DD format"`
 }
+type itemHistoryArgs struct {
+	ItemType string `json:"item_type" jsonschema:"skill, connector, mcp_server or scheduled_task"`
+	ItemID   string `json:"item_id"`
+}
 type ticketIDArgs struct {
 	ID string `json:"id" jsonschema:"Ticket UUID or code"`
 }
@@ -141,9 +145,9 @@ type searchArgs struct {
 	Limit       int    `json:"limit,omitempty" jsonschema:"Optional maximum rows, default 50, at most 200"`
 }
 type notificationArgs struct {
-	Title string `json:"title" jsonschema:"Short headline, at most 200 characters"`
-	Body  string `json:"body,omitempty" jsonschema:"Optional Markdown details, at most 4000 characters"`
-	Link  string `json:"link,omitempty" jsonschema:"Optional destination: in-app path like /tickets/<id>, /boards/<id>, /ai/chats/<id>, or an https URL"`
+	Title string `json:"title" jsonschema:"Headline, max 200 chars"`
+	Body  string `json:"body,omitempty" jsonschema:"Markdown"`
+	Link  string `json:"link,omitempty" jsonschema:"In-app path (/tickets/<id>) or https URL"`
 }
 type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
@@ -510,6 +514,9 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "get_ticket_history", "Get ticket history", h, func(a ticketIDArgs) request {
 		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID) + "/history", nil}
 	})
+	addGeneric(s, "get_item_history", "Change history of a skill, memory, connector, MCP server or task", h, func(a itemHistoryArgs) request {
+		return request{http.MethodGet, "/api/history?" + url.Values{"item_type": {a.ItemType}, "item_id": {a.ItemID}}.Encode(), nil}
+	})
 	addGeneric(s, "list_users", "List users", h, func(struct{}) request { return request{http.MethodGet, "/api/users", nil} })
 	addGeneric(s, "get_settings_defaults", "Get chat settings defaults", h, func(struct{}) request { return request{http.MethodGet, "/api/settings/defaults", nil} })
 	addGeneric(s, "update_settings_defaults", "Update settings defaults; auto_allow cannot be changed", h, func(a settingsDefaultsArgs) request {
@@ -555,7 +562,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
-	addGeneric(s, "create_notification", "Notify the user inside Patio (bell, toast, and a native alert when Patio is in the background). Use instead of external messages for alerts meant only for the user.", h, func(a notificationArgs) request {
+	addGeneric(s, "create_notification", "Notify the user in Patio (toast; native alert when Patio is in background)", h, func(a notificationArgs) request {
 		return request{http.MethodPost, "/api/notifications", a}
 	})
 	addGeneric(s, "create_calendar_item", "Create a calendar event or reminder", h, func(a createCalendarItemArgs) request {

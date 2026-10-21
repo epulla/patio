@@ -154,7 +154,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
-		"ask_user": true, "create_notification": true,
+		"ask_user": true, "create_notification": true, "get_item_history": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -172,8 +172,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 49 {
-		t.Fatalf("tool count = %d, want 49", count)
+	if count != 50 {
+		t.Fatalf("tool count = %d, want 50", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -768,6 +768,18 @@ func TestMCPSkillTools(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT title,link FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&skillChange, &skillLink); err != nil || skillChange != "Martin updated skill repeatable" || skillLink != "/ai/skills/"+skillID {
 		t.Fatalf("skill change notification = %q %q, %v", skillChange, skillLink, err)
+	}
+	var history []struct {
+		Action   string `json:"action"`
+		UserIsAI bool   `json:"user_is_ai"`
+		Changes  []struct {
+			Field string `json:"field"`
+			New   any    `json:"new"`
+		} `json:"changes"`
+	}
+	decodeText(t, callTool(t, session, "get_item_history", map[string]any{"item_type": "skill", "item_id": skillID}), &history)
+	if len(history) != 2 || history[0].Action != "updated" || !history[0].UserIsAI || len(history[0].Changes) != 1 || history[0].Changes[0].New != "Updated steps" {
+		t.Fatalf("skill history = %#v", history)
 	}
 	deleted := callTool(t, session, "delete_skill", map[string]any{"name": "repeatable"})
 	if deleted.IsError || deleted.Content[0].(*sdk.TextContent).Text != "deleted" {
