@@ -44,6 +44,11 @@ type oauthCallback struct {
 	err    error
 }
 
+type mcpOAuthLogin struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 	id := idParam(r, "id")
 	server, err := s.loadMCPServer(id)
@@ -61,22 +66,24 @@ func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.oauthMu.Lock()
-	if s.oauthLogins[id] {
-		s.oauthMu.Unlock()
-		errw(w, http.StatusConflict, "OAuth login already in progress")
-		return
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	login := &mcpOAuthLogin{cancel: cancel, done: make(chan struct{})}
+	if previous := s.oauthLogins[id]; previous != nil {
+		previous.cancel()
 	}
-	s.oauthLogins[id] = true
+	s.oauthLogins[id] = login
 	s.oauthMu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	started := make(chan string, 1)
 	finished := make(chan error, 1)
 	go func() {
 		defer cancel()
 		defer func() {
+			close(login.done)
 			s.oauthMu.Lock()
-			delete(s.oauthLogins, id)
+			if s.oauthLogins[id] == login {
+				delete(s.oauthLogins, id)
+			}
 			s.oauthMu.Unlock()
 		}()
 		finished <- s.runMCPOAuthLogin(ctx, server, started)

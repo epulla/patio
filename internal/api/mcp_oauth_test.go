@@ -364,41 +364,30 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 		t.Fatalf("non-OAuth login status = %d", code)
 	}
 
-	concurrent := createServer("Concurrent OAuth", "oauth")
-	gate.mu.Lock()
-	gate.blocked = true
-	gate.entered = make(chan struct{})
-	gate.release = make(chan struct{})
-	entered, release := gate.entered, gate.release
-	gate.mu.Unlock()
-	firstResponse := httptest.NewRecorder()
-	firstRequest := httptest.NewRequest(http.MethodPost, "/api/mcp-servers/"+concurrent.ID+"/login", nil)
-	firstDone := make(chan struct{})
-	go func() {
-		server.ServeHTTP(firstResponse, firstRequest)
-		close(firstDone)
-	}()
+	pending := createServer("Retry OAuth", "oauth")
+	server.openOAuthURL = func(string) error { return nil }
+	if code, result := login(pending.ID); code != http.StatusAccepted || result["auth_url"] == "" {
+		t.Fatalf("first pending login = %d %#v", code, result)
+	}
+	server.oauthMu.Lock()
+	firstAttempt := server.oauthLogins[pending.ID]
+	server.oauthMu.Unlock()
+	if code, result := login(pending.ID); code != http.StatusAccepted || result["auth_url"] == "" {
+		t.Fatalf("replacement pending login = %d %#v", code, result)
+	}
 	select {
-	case <-entered:
+	case <-firstAttempt.done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("browser opener was not reached")
+		t.Fatal("first OAuth attempt was not cancelled")
 	}
-	if code := requestJSON(t, server, http.MethodPost, "/api/mcp-servers/"+concurrent.ID+"/login", nil, nil); code != http.StatusConflict {
-		t.Fatalf("concurrent login status = %d", code)
+	server.oauthMu.Lock()
+	secondAttempt := server.oauthLogins[pending.ID]
+	server.oauthMu.Unlock()
+	if secondAttempt == nil || secondAttempt == firstAttempt {
+		t.Fatal("replacement OAuth attempt was removed by previous attempt cleanup")
 	}
-	gate.mu.Lock()
-	gate.blocked = false
-	gate.mu.Unlock()
-	close(release)
-	select {
-	case <-firstDone:
-	case <-time.After(10 * time.Second):
-		t.Fatal("first login did not finish")
-	}
-	if firstResponse.Code != http.StatusAccepted {
-		t.Fatalf("first concurrent login = %d %s", firstResponse.Code, firstResponse.Body.String())
-	}
-	waitOAuthLogin(t, server, concurrent.ID)
+	secondAttempt.cancel()
+	waitOAuthLogin(t, server, pending.ID)
 }
 
 func waitOAuthLogin(t *testing.T, server *Server, id string) {
@@ -409,7 +398,7 @@ func waitOAuthLogin(t *testing.T, server *Server, id string) {
 	defer ticker.Stop()
 	for {
 		server.oauthMu.Lock()
-		pending := server.oauthLogins[id]
+		pending := server.oauthLogins[id] != nil
 		server.oauthMu.Unlock()
 		if !pending {
 			return
