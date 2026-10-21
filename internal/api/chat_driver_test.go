@@ -166,6 +166,7 @@ func TestDriverThinkingOnOff(t *testing.T) {
 				connectorID := createTestConnector(t, database)
 				chatID := createDriverTestChat(t, database, connectorID, root)
 				manager := newChatManager(database, Options{})
+				t.Cleanup(func() { manager.Close() })
 				rt := manager.runtime(chatID)
 				rt.showThinking = enabled
 				switch driverName {

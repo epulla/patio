@@ -63,6 +63,8 @@ type chatManager struct {
 	queueLocks  map[string]*sync.Mutex
 	closed      bool
 	windowID    string
+	// background tracks goroutines that outlive a turn, so Close can wait for them.
+	background sync.WaitGroup
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
@@ -502,11 +504,11 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		return err
 	}
 	if turnErr == nil && !stopping {
-		go func() {
+		m.background.Go(func() {
 			if _, err := m.drainQueued(id); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				log.Printf("send queued chat messages %s: %v", id, err)
 			}
-		}()
+		})
 	}
 	m.emit(id, map[string]any{"type": "done", "message": message})
 	var runID, taskID, title string
@@ -922,6 +924,9 @@ func (m *chatManager) stopRuntimeTimerLocked(rt *chatRuntime) {
 func (m *chatManager) Close() error {
 	m.mu.Lock()
 	m.closed = true
+	m.mu.Unlock()
+	m.background.Wait()
+	m.mu.Lock()
 	ids := make([]string, 0, len(m.chats))
 	for id := range m.chats {
 		ids = append(ids, id)
