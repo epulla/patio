@@ -15,11 +15,13 @@ export default function MarkdownEditor({
   value,
   onChange,
   onBlur,
+  onSubmit,
   label,
 }: {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
+  onSubmit?: () => void;
   label: string;
 }) {
   const t = useText(text);
@@ -80,6 +82,7 @@ export default function MarkdownEditor({
     if (key === "b") wrap("**", "**", "bold");
     else if (key === "i") wrap("_", "_", "italic");
     else if (key === "k") wrap("[", "](https://)", "link");
+    else if (key === "enter" && onSubmit) onSubmit();
     else return;
     event.preventDefault();
   }
