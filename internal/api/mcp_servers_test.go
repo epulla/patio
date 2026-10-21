@@ -194,6 +194,55 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	}
 }
 
+func TestMCPServerOAuthClientSecretIsWriteOnly(t *testing.T) {
+	keyring.MockInit()
+	_, handler, _ := chatAPI(t)
+	code, raw := requestRaw(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{
+		"name": "OAuth Client", "kind": "http", "url": "https://example.test/mcp", "auth": "oauth",
+		"oauth_client_id": "client-one", "oauth_client_secret": "secret-one", "oauth_scopes": []string{"read"},
+	})
+	var server mcpServer
+	if code != http.StatusCreated || strings.Contains(raw, "secret-one") || json.Unmarshal([]byte(raw), &server) != nil || !server.HasOAuthClientSecret || server.OAuthClientID != "client-one" || len(server.OAuthScopes) != 1 {
+		t.Fatalf("create = %d %s %#v", code, raw, server)
+	}
+	secret, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth-registered-secret"))
+	if err != nil || secret != "secret-one" {
+		t.Fatalf("stored client secret = %q, %v", secret, err)
+	}
+	code, raw = requestRaw(t, handler, http.MethodPut, "/api/mcp-servers/"+server.ID, map[string]any{"oauth_client_id": "client-two"})
+	if code != http.StatusOK || strings.Contains(raw, "secret-one") || strings.Contains(raw, "secret-two") {
+		t.Fatalf("client update = %d %s", code, raw)
+	}
+	if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth")); !errors.Is(err, keyring.ErrNotFound) {
+		t.Fatalf("OAuth token remained after client change: %v", err)
+	}
+	if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth-registered-secret")); err != nil {
+		t.Fatalf("omitted secret not kept: %v", err)
+	}
+	code, raw = requestRaw(t, handler, http.MethodPut, "/api/mcp-servers/"+server.ID, map[string]any{"oauth_client_secret": ""})
+	var updated mcpServer
+	if code != http.StatusOK || json.Unmarshal([]byte(raw), &updated) != nil || updated.HasOAuthClientSecret {
+		t.Fatalf("clear secret = %d %s", code, raw)
+	}
+	if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth-registered-secret")); !errors.Is(err, keyring.ErrNotFound) {
+		t.Fatalf("client secret remains after clear: %v", err)
+	}
+	if err := keyring.Set(connectorService, mcpServerSecret(server.ID, "oauth-registered-secret"), "secret-two"); err != nil {
+		t.Fatal(err)
+	}
+	if err := keyring.Set(connectorService, mcpServerSecret(server.ID, "oauth"), `{"access_token":"token"}`); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := requestRaw(t, handler, http.MethodPut, "/api/mcp-servers/"+server.ID, map[string]any{"auth": "none"}); code != http.StatusOK {
+		t.Fatalf("auth switch = %d", code)
+	}
+	for _, suffix := range []string{"oauth", "oauth-registered-secret"} {
+		if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, suffix)); !errors.Is(err, keyring.ErrNotFound) {
+			t.Fatalf("%s remained after auth switch: %v", suffix, err)
+		}
+	}
+}
+
 func TestMCPServerNamesAndEnabledSpec(t *testing.T) {
 	keyring.MockInit()
 	database, handler, root := chatAPI(t)

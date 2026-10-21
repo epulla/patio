@@ -15,6 +15,7 @@ const text = {
     deleteQuestion: (name: string) => `Delete MCP server "${name}"?`, signInRequired: "Sign in required", checking: "Checking…", healthy: (latency: number, n: number) => `Healthy · ${latency} ms · ${n} tool${n === 1 ? "" : "s"}`, unreachable: "Unreachable",
     localCommand: "Local command", remote: "Remote", edit: (name: string) => `Edit ${name}`, editText: "Edit", delete: (name: string) => `Delete ${name}`, tools: "Tools", enabled: "Enabled in chats", signInAgain: "Sign in again", signIn: "Sign in", test: "Test",
     editTitle: "Edit MCP server", addTitle: "Add MCP server", close: "Close", name: "Name", type: "Type", remoteURL: "Remote URL (HTTP)", localStdio: "Local command (stdio)", command: "Command", commandPlaceholder: "npx or /usr/local/bin/my-server", args: "Arguments (one per line)", environment: "Environment (KEY=value, one per line)", savedKeep: (keys: string) => `Saved: ${keys}. Leave empty to keep.`, apiKey: "API_KEY=…", envNote: "Values are stored in your system keychain. Entering any lines replaces all saved values.", removeValues: "Remove saved values", url: "URL", signInLabel: "Sign-in", none: "None", accessToken: "Access token", oauth: "OAuth (sign in with browser)", tokenReplace: "Saved. Type to replace", afterSave: "After saving, press Sign in on the server card.", cancel: "Cancel", save: "Save",
+    clientId: "OAuth client ID (optional)", clientSecret: "OAuth client secret", scopes: "Scopes (space-separated)", clientNote: "Only for providers without automatic client registration, like Google. Leave empty otherwise.",
   },
   es: {
     addServer: "Agregar servidor", title: "Servidores MCP", settings: "Configuración", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
@@ -23,6 +24,7 @@ const text = {
     deleteQuestion: (name: string) => `¿Eliminar el servidor MCP «${name}»?`, signInRequired: "Debes iniciar sesión", checking: "Comprobando…", healthy: (latency: number, n: number) => `Disponible · ${latency} ms · ${n} herramienta${n === 1 ? "" : "s"}`, unreachable: "No disponible",
     localCommand: "Comando local", remote: "Remoto", edit: (name: string) => `Editar ${name}`, editText: "Editar", delete: (name: string) => `Eliminar ${name}`, tools: "Herramientas", enabled: "Habilitado en chats", signInAgain: "Iniciar sesión de nuevo", signIn: "Iniciar sesión", test: "Probar",
     editTitle: "Editar servidor MCP", addTitle: "Agregar servidor MCP", close: "Cerrar", name: "Nombre", type: "Tipo", remoteURL: "URL remota (HTTP)", localStdio: "Comando local (stdio)", command: "Comando", commandPlaceholder: "npx o /usr/local/bin/my-server", args: "Argumentos (uno por línea)", environment: "Entorno (KEY=value, uno por línea)", savedKeep: (keys: string) => `Guardadas: ${keys}. Déjalo vacío para conservarlas.`, apiKey: "API_KEY=…", envNote: "Los valores se guardan en el llavero del sistema. Si ingresas líneas, se reemplazan todos los valores guardados.", removeValues: "Eliminar valores guardados", url: "URL", signInLabel: "Inicio de sesión", none: "Ninguno", accessToken: "Token de acceso", oauth: "OAuth (inicia sesión con el navegador)", tokenReplace: "Guardado. Escribe para reemplazarlo", afterSave: "Después de guardar, presiona Iniciar sesión en la tarjeta del servidor.", cancel: "Cancelar", save: "Guardar",
+    clientId: "ID de cliente OAuth (opcional)", clientSecret: "Secreto de cliente OAuth", scopes: "Scopes (separados por espacios)", clientNote: "Solo para proveedores sin registro automático de clientes, como Google. Si no, déjalo vacío.",
   },
 };
 
@@ -280,6 +282,9 @@ function ServerDialog({
   const [url, setURL] = useState(server?.url ?? "");
   const [auth, setAuth] = useState<McpServer["auth"]>(server?.auth ?? "none");
   const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState(server?.oauth_client_id ?? "");
+  const [clientSecret, setClientSecret] = useState("");
+  const [scopes, setScopes] = useState(server?.oauth_scopes.join(" ") ?? "");
   const [error, setError] = useState<unknown>();
   const dialog = useRef<HTMLDialogElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
@@ -302,6 +307,11 @@ function ServerDialog({
         body.url = url.trim();
         body.auth = auth;
         if (auth === "bearer" && token) body.bearer_token = token;
+        if (auth === "oauth") {
+          body.oauth_client_id = clientId.trim();
+          body.oauth_scopes = clientId.trim() ? scopes.split(/\s+/).filter(Boolean) : [];
+          if (clientId.trim() && clientSecret) body.oauth_client_secret = clientSecret;
+        }
       }
       if (server) await api.put(`/api/mcp-servers/${server.id}`, body);
       else await api.post("/api/mcp-servers", { ...body, enabled: true });
@@ -410,7 +420,32 @@ function ServerDialog({
                 </label>
               )}
               {auth === "oauth" && (
-                <p className="muted wide">{t.afterSave}</p>
+                <>
+                  <label className="wide">
+                    {t.clientId}
+                    <input autoComplete="off" spellCheck={false} value={clientId} onChange={(event) => setClientId(event.target.value)} />
+                    <small>{t.clientNote}</small>
+                  </label>
+                  {clientId.trim() && (
+                    <>
+                      <label>
+                        {t.clientSecret}
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          placeholder={server?.has_oauth_client_secret ? t.tokenReplace : ""}
+                          value={clientSecret}
+                          onChange={(event) => setClientSecret(event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        {t.scopes}
+                        <input autoComplete="off" spellCheck={false} value={scopes} onChange={(event) => setScopes(event.target.value)} />
+                      </label>
+                    </>
+                  )}
+                  <p className="muted wide">{t.afterSave}</p>
+                </>
               )}
             </>
           )}

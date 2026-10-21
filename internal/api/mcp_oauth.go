@@ -139,7 +139,7 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 
 	var clientConfig mcpOAuthCredential
 	client := &http.Client{Timeout: 15 * time.Second}
-	authHandler, err := auth.NewAuthorizationCodeHandler(&auth.AuthorizationCodeHandlerConfig{
+	handlerConfig := &auth.AuthorizationCodeHandlerConfig{
 		DynamicClientRegistrationConfig: &auth.DynamicClientRegistrationConfig{Metadata: &oauthex.ClientRegistrationMetadata{
 			ClientName:    "patio",
 			RedirectURIs:  []string{redirectURL},
@@ -154,6 +154,8 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 			if err != nil || parsed.Query().Get("state") == "" {
 				return nil, errors.New("authorization server returned invalid authorization URL")
 			}
+			args.URL = addGoogleOfflineParams(args.URL)
+			parsed, _ = url.Parse(args.URL)
 			stateMu.Lock()
 			expectedState = parsed.Query().Get("state")
 			stateMu.Unlock()
@@ -191,7 +193,24 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 				return storeMCPOAuthCredential(server.ID, credential)
 			}}, nil
 		},
-	})
+	}
+	if server.OAuthClientID != "" {
+		handlerConfig.DynamicClientRegistrationConfig = nil
+		credentials := &oauthex.ClientCredentials{ClientID: server.OAuthClientID}
+		secret, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth-registered-secret"))
+		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return fmt.Errorf("read OAuth client secret: %w", err)
+		}
+		if err == nil {
+			credentials.ClientSecretAuth = &oauthex.ClientSecretAuth{ClientSecret: secret}
+		}
+		handlerConfig.PreregisteredClient = credentials
+		if len(server.OAuthScopes) > 0 {
+			scopes := append([]string(nil), server.OAuthScopes...)
+			handlerConfig.ScopeFilter = func([]string) []string { return scopes }
+		}
+	}
+	authHandler, err := auth.NewAuthorizationCodeHandler(handlerConfig)
 	if err != nil {
 		return fmt.Errorf("create OAuth handler: %w", err)
 	}
@@ -208,6 +227,18 @@ func (s *Server) runMCPOAuthLogin(ctx context.Context, server mcpServer, started
 		return fmt.Errorf("connect to OAuth MCP server: %w", err)
 	}
 	return session.Close()
+}
+
+func addGoogleOfflineParams(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Hostname(), "accounts.google.com") {
+		return raw
+	}
+	q := u.Query()
+	q.Set("access_type", "offline")
+	q.Set("prompt", "consent")
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 type persistedOAuthTokenSource struct {

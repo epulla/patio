@@ -275,6 +275,9 @@ export type McpServer = {
   enabled: boolean;
   has_bearer_token: boolean;
   has_oauth_token: boolean;
+  oauth_client_id: string;
+  oauth_scopes: string[];
+  has_oauth_client_secret: boolean;
   created_at: string;
 };
 export type McpServerCheck = {

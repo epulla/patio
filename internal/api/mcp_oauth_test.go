@@ -35,6 +35,7 @@ type fakeOAuthServer struct {
 	refreshCount          int
 	resourceInCode        bool
 	resourceInRefresh     bool
+	authorizationClientID string
 }
 
 func (f *fakeOAuthServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +70,7 @@ func (f *fakeOAuthServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.challenge, f.state = query.Get("code_challenge"), query.Get("state")
 		f.authorizationResource, f.challengeMethod = query.Get("resource"), query.Get("code_challenge_method")
+		f.authorizationClientID = query.Get("client_id")
 		badState := f.badState
 		f.mu.Unlock()
 		if query.Get("code_challenge_method") != "S256" || query.Get("resource") != f.resource {
@@ -240,6 +242,29 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 	if !registered || !pkce || !resourceSent {
 		t.Fatalf("registration/PKCE/resource = %v/%v/%v; authorization resource/method = %q/%q", registered, pkce, resourceSent, authorizationResource, challengeMethod)
 	}
+	state.mu.Lock()
+	state.registered = false
+	state.mu.Unlock()
+	var preregistered mcpServer
+	if code := requestJSON(t, server, http.MethodPost, "/api/mcp-servers", map[string]any{
+		"name": "Pre-registered OAuth", "kind": "http", "url": resourceURL, "auth": "oauth",
+		"oauth_client_id": "test-client", "oauth_client_secret": "test-secret", "oauth_scopes": []string{"offline_access"},
+	}, &preregistered); code != http.StatusCreated {
+		t.Fatalf("create preregistered server = %d", code)
+	}
+	if code, response := login(preregistered.ID); code != http.StatusAccepted || response["auth_url"] == "" {
+		t.Fatalf("preregistered login = %d %#v", code, response)
+	}
+	waitOAuthLogin(t, server, preregistered.ID)
+	state.mu.Lock()
+	registered, clientID := state.registered, state.authorizationClientID
+	state.mu.Unlock()
+	if registered || clientID != "test-client" {
+		t.Fatalf("pre-registered client registration/client_id = %v/%q", registered, clientID)
+	}
+	if code := requestJSON(t, server, http.MethodDelete, "/api/mcp-servers/"+preregistered.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete preregistered server = %d", code)
+	}
 	var listed []mcpServer
 	if code := requestJSON(t, server, http.MethodGet, "/api/mcp-servers", nil, &listed); code != http.StatusOK || len(listed) != 1 || !listed[0].HasOAuthToken {
 		t.Fatalf("OAuth token not listed: status=%d servers=%#v", code, listed)
@@ -395,5 +420,17 @@ func TestMCPOAuthCredentialUsesSeparateKeychainItemWhenLarge(t *testing.T) {
 	header, err := s.oauthHeader(t.Context(), id)
 	if err != nil || header != "Bearer "+credential.AccessToken {
 		t.Fatalf("header from split credential = %q, %v", header, err)
+	}
+}
+
+func TestGoogleOAuthAuthorizationURLRequestsOfflineAccess(t *testing.T) {
+	for _, tc := range []struct{ raw, access, prompt string }{
+		{"https://accounts.google.com/o/oauth2/auth?state=s", "offline", "consent"},
+		{"https://auth.example.test/authorize?state=s", "", ""},
+	} {
+		u, err := url.Parse(addGoogleOfflineParams(tc.raw))
+		if err != nil || u.Query().Get("access_type") != tc.access || u.Query().Get("prompt") != tc.prompt {
+			t.Fatalf("URL rewrite %q => %v, %v", tc.raw, u, err)
+		}
 	}
 }

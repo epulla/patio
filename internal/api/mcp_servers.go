@@ -23,20 +23,23 @@ import (
 )
 
 type mcpServer struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Kind           string   `json:"kind"`
-	Command        string   `json:"command"`
-	Args           []string `json:"args"`
-	EnvKeys        []string `json:"env_keys"`
-	URL            string   `json:"url"`
-	Auth           string   `json:"auth"`
-	Enabled        bool     `json:"enabled"`
-	HasBearerToken bool     `json:"has_bearer_token"`
-	HasOAuthToken  bool     `json:"has_oauth_token"`
-	CreatedAt      string   `json:"created_at"`
-	argsJSON       string
-	envKeysJSON    string
+	ID                   string   `json:"id"`
+	Name                 string   `json:"name"`
+	Kind                 string   `json:"kind"`
+	Command              string   `json:"command"`
+	Args                 []string `json:"args"`
+	EnvKeys              []string `json:"env_keys"`
+	URL                  string   `json:"url"`
+	Auth                 string   `json:"auth"`
+	Enabled              bool     `json:"enabled"`
+	HasBearerToken       bool     `json:"has_bearer_token"`
+	HasOAuthToken        bool     `json:"has_oauth_token"`
+	OAuthClientID        string   `json:"oauth_client_id"`
+	OAuthScopes          []string `json:"oauth_scopes"`
+	HasOAuthClientSecret bool     `json:"has_oauth_client_secret"`
+	CreatedAt            string   `json:"created_at"`
+	argsJSON             string
+	envKeysJSON          string
 }
 
 type mcpServerSpec struct {
@@ -72,7 +75,8 @@ func sanitizedName(name string) string {
 func readMCPServer(row interface{ Scan(...any) error }) (mcpServer, error) {
 	var server mcpServer
 	var enabled int
-	if err := row.Scan(&server.ID, &server.Name, &server.Kind, &server.Command, &server.argsJSON, &server.envKeysJSON, &server.URL, &server.Auth, &enabled, &server.CreatedAt); err != nil {
+	var scopesJSON string
+	if err := row.Scan(&server.ID, &server.Name, &server.Kind, &server.Command, &server.argsJSON, &server.envKeysJSON, &server.URL, &server.Auth, &enabled, &server.CreatedAt, &server.OAuthClientID, &scopesJSON); err != nil {
 		return server, err
 	}
 	if err := json.Unmarshal([]byte(server.argsJSON), &server.Args); err != nil {
@@ -89,6 +93,12 @@ func readMCPServer(row interface{ Scan(...any) error }) (mcpServer, error) {
 	}
 	sort.Strings(server.EnvKeys)
 	server.Enabled = enabled != 0
+	if err := json.Unmarshal([]byte(scopesJSON), &server.OAuthScopes); err != nil {
+		return server, fmt.Errorf("decode MCP OAuth scopes: %w", err)
+	}
+	if server.OAuthScopes == nil {
+		server.OAuthScopes = []string{}
+	}
 	_, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "bearer"))
 	if errors.Is(err, keyring.ErrNotFound) {
 		err = nil
@@ -104,10 +114,19 @@ func readMCPServer(row interface{ Scan(...any) error }) (mcpServer, error) {
 	} else if err == nil {
 		server.HasOAuthToken = true
 	}
+	if err != nil {
+		return server, err
+	}
+	_, err = keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth-registered-secret"))
+	if errors.Is(err, keyring.ErrNotFound) {
+		err = nil
+	} else if err == nil {
+		server.HasOAuthClientSecret = true
+	}
 	return server, err
 }
 
-const mcpServerSelect = `SELECT id,name,kind,command,args_json,env_keys_json,url,auth,enabled,created_at FROM mcp_server`
+const mcpServerSelect = `SELECT id,name,kind,command,args_json,env_keys_json,url,auth,enabled,created_at,oauth_client_id,oauth_scopes FROM mcp_server`
 
 func (s *Server) loadMCPServer(id string) (mcpServer, error) {
 	return readMCPServer(s.db.QueryRow(mcpServerSelect+` WHERE id=?`, id))
@@ -137,26 +156,31 @@ func (s *Server) listMCPServers(w http.ResponseWriter, _ *http.Request) {
 }
 
 type mcpServerInput struct {
-	Name        *string         `json:"name"`
-	Kind        *string         `json:"kind"`
-	Command     *string         `json:"command"`
-	Args        *[]string       `json:"args"`
-	Env         json.RawMessage `json:"env"`
-	URL         *string         `json:"url"`
-	Auth        *string         `json:"auth"`
-	BearerToken *string         `json:"bearer_token"`
-	Enabled     *bool           `json:"enabled"`
+	Name              *string         `json:"name"`
+	Kind              *string         `json:"kind"`
+	Command           *string         `json:"command"`
+	Args              *[]string       `json:"args"`
+	Env               json.RawMessage `json:"env"`
+	URL               *string         `json:"url"`
+	Auth              *string         `json:"auth"`
+	BearerToken       *string         `json:"bearer_token"`
+	OAuthClientID     *string         `json:"oauth_client_id"`
+	OAuthClientSecret *string         `json:"oauth_client_secret"`
+	OAuthScopes       *[]string       `json:"oauth_scopes"`
+	Enabled           *bool           `json:"enabled"`
 }
 
 type mcpServerConfig struct {
-	Name    string
-	Kind    string
-	Command string
-	Args    []string
-	Env     map[string]string
-	URL     string
-	Auth    string
-	Enabled bool
+	OAuthClientID string
+	OAuthScopes   []string
+	Name          string
+	Kind          string
+	Command       string
+	Args          []string
+	Env           map[string]string
+	URL           string
+	Auth          string
+	Enabled       bool
 }
 
 func validMCPAuth(auth string) bool {
@@ -219,6 +243,9 @@ func validateMCPServer(config mcpServerConfig) error {
 	}
 	if !validMCPEnv(config.Env) {
 		return errors.New("environment keys must match [A-Za-z_][A-Za-z0-9_]*")
+	}
+	if (config.OAuthClientID != "" || len(config.OAuthScopes) > 0) && (config.Kind != "http" || config.Auth != "oauth") {
+		return errors.New("OAuth client fields require an http server with oauth auth")
 	}
 	if !validMCPAuth(config.Auth) {
 		return errors.New("auth must be none, bearer, or oauth")
@@ -356,6 +383,16 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		config.Enabled = *in.Enabled
 	}
+	if in.OAuthClientID != nil {
+		config.OAuthClientID = *in.OAuthClientID
+	}
+	if in.OAuthScopes != nil {
+		config.OAuthScopes = *in.OAuthScopes
+	}
+	if (in.OAuthClientID != nil || in.OAuthClientSecret != nil || in.OAuthScopes != nil) && (config.Kind != "http" || config.Auth != "oauth") {
+		errw(w, http.StatusBadRequest, "OAuth client fields require an http server with oauth auth")
+		return
+	}
 	if err := validateMCPServer(config); err != nil {
 		errw(w, http.StatusBadRequest, err.Error())
 		return
@@ -383,6 +420,11 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := uid()
+	scopesJSON, err := json.Marshal(config.OAuthScopes)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	changed := []string{}
 	if len(config.Env) > 0 {
 		if err := applyMCPSecret(id, "env", envJSON, true); err != nil {
@@ -401,7 +443,18 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 		changed = append(changed, "bearer")
 	}
-	_, err = s.db.Exec(`INSERT INTO mcp_server(id,name,kind,command,args_json,env_keys_json,url,auth,enabled,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, config.Name, config.Kind, config.Command, string(argsJSON), keysJSON, config.URL, config.Auth, config.Enabled, now())
+	if in.OAuthClientSecret != nil && *in.OAuthClientSecret != "" {
+		if err := applyMCPSecret(id, "oauth-registered-secret", *in.OAuthClientSecret, true); err != nil {
+			cleanupErr := restoreMCPSecrets(id, map[string]string{}, map[string]bool{}, changed)
+			if cleanupErr != nil {
+				err = fmt.Errorf("%w; cleanup secrets: %v", err, cleanupErr)
+			}
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		changed = append(changed, "oauth-registered-secret")
+	}
+	_, err = s.db.Exec(`INSERT INTO mcp_server(id,name,kind,command,args_json,env_keys_json,url,auth,enabled,created_at,oauth_client_id,oauth_scopes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, config.Name, config.Kind, config.Command, string(argsJSON), keysJSON, config.URL, config.Auth, config.Enabled, now(), config.OAuthClientID, string(scopesJSON))
 	if err != nil {
 		cleanupErr := restoreMCPSecrets(id, map[string]string{}, map[string]bool{}, changed)
 		if cleanupErr != nil {
@@ -438,7 +491,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	config := mcpServerConfig{Name: old.Name, Kind: old.Kind, Command: old.Command, Args: old.Args, URL: old.URL, Auth: old.Auth, Enabled: old.Enabled}
+	config := mcpServerConfig{Name: old.Name, Kind: old.Kind, Command: old.Command, Args: old.Args, URL: old.URL, Auth: old.Auth, Enabled: old.Enabled, OAuthClientID: old.OAuthClientID, OAuthScopes: old.OAuthScopes}
 	if in.Name != nil {
 		config.Name = *in.Name
 	}
@@ -459,6 +512,20 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Enabled != nil {
 		config.Enabled = *in.Enabled
+	}
+	if in.OAuthClientID != nil {
+		config.OAuthClientID = *in.OAuthClientID
+	}
+	if in.OAuthScopes != nil {
+		config.OAuthScopes = *in.OAuthScopes
+	}
+	if (in.OAuthClientID != nil || in.OAuthClientSecret != nil || in.OAuthScopes != nil) && (config.Kind != "http" || config.Auth != "oauth") {
+		errw(w, http.StatusBadRequest, "OAuth client fields require an http server with oauth auth")
+		return
+	}
+	if config.Auth != "oauth" {
+		config.OAuthClientID = ""
+		config.OAuthScopes = []string{}
 	}
 	envJSON := ""
 	keysJSON := old.envKeysJSON
@@ -517,13 +584,18 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	registeredSecret, hasRegisteredSecret, err := snapshotMCPSecret(id, "oauth-registered-secret")
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	envSecret, hasEnv, err := snapshotMCPSecret(id, "env")
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	previous := map[string]string{"env": envSecret, "bearer": bearer, "oauth": oauth, "oauth-client": oauthClient}
-	present := map[string]bool{"env": hasEnv, "bearer": hasBearer, "oauth": hasOAuth, "oauth-client": hasOAuthClient}
+	previous := map[string]string{"env": envSecret, "bearer": bearer, "oauth": oauth, "oauth-client": oauthClient, "oauth-registered-secret": registeredSecret}
+	present := map[string]bool{"env": hasEnv, "bearer": hasBearer, "oauth": hasOAuth, "oauth-client": hasOAuthClient, "oauth-registered-secret": hasRegisteredSecret}
 	changed := []string{}
 	if len(in.Env) > 0 {
 		if err := applyMCPSecret(id, "env", envJSON, len(env) > 0); err != nil {
@@ -541,6 +613,23 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		changed = append(changed, "bearer")
+	}
+	clientChanged := in.OAuthClientID != nil && *in.OAuthClientID != old.OAuthClientID
+	if in.OAuthClientSecret != nil {
+		if err := applyMCPSecret(id, "oauth-registered-secret", *in.OAuthClientSecret, *in.OAuthClientSecret != ""); err != nil {
+			_ = restoreMCPSecrets(id, previous, present, changed)
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		changed = append(changed, "oauth-registered-secret")
+	}
+	if clientChanged || in.OAuthClientSecret != nil {
+		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
+			_ = restoreMCPSecrets(id, previous, present, changed)
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		changed = append(changed, "oauth")
 	}
 	if config.Auth != "bearer" && present["bearer"] {
 		if err := applyMCPSecret(id, "bearer", "", false); err != nil {
@@ -572,6 +661,22 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 		changed = append(changed, "oauth-client")
 	}
+	if config.Auth != "oauth" && present["oauth-registered-secret"] {
+		if err := applyMCPSecret(id, "oauth-registered-secret", "", false); err != nil {
+			if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
+				err = fmt.Errorf("%w; restore secrets: %v", err, restoreErr)
+			}
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		changed = append(changed, "oauth-registered-secret")
+	}
+	scopesJSON, err := json.Marshal(config.OAuthScopes)
+	if err != nil {
+		_ = restoreMCPSecrets(id, previous, present, changed)
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	argsJSON, err := json.Marshal(config.Args)
 	if err != nil {
 		if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
@@ -580,7 +685,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_, err = s.db.Exec(`UPDATE mcp_server SET name=?,kind=?,command=?,args_json=?,env_keys_json=?,url=?,auth=?,enabled=? WHERE id=?`, config.Name, config.Kind, config.Command, string(argsJSON), keysJSON, config.URL, config.Auth, config.Enabled, id)
+	_, err = s.db.Exec(`UPDATE mcp_server SET name=?,kind=?,command=?,args_json=?,env_keys_json=?,url=?,auth=?,enabled=?,oauth_client_id=?,oauth_scopes=? WHERE id=?`, config.Name, config.Kind, config.Command, string(argsJSON), keysJSON, config.URL, config.Auth, config.Enabled, config.OAuthClientID, string(scopesJSON), id)
 	if err != nil {
 		if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
 			err = fmt.Errorf("%w; restore secrets: %v", err, restoreErr)
@@ -611,7 +716,7 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 	previous := map[string]string{}
 	present := map[string]bool{}
-	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client"} {
+	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client", "oauth-registered-secret"} {
 		value, exists, err := snapshotMCPSecret(id, suffix)
 		if err != nil {
 			errw(w, http.StatusInternalServerError, err.Error())
@@ -620,7 +725,7 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		previous[suffix], present[suffix] = value, exists
 	}
 	changed := []string{}
-	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client"} {
+	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client", "oauth-registered-secret"} {
 		if !present[suffix] {
 			continue
 		}
