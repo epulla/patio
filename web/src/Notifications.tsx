@@ -4,7 +4,7 @@ import Menu from "./Menu";
 import Markdown from "./Markdown";
 import { Icon, IconButton, type IconName } from "./icons";
 import { api } from "./api";
-import { ErrorText, navigate } from "./App";
+import { ErrorText, navigate, openLink } from "./App";
 import { lang, locale, useText } from "./i18n";
 
 const text = {
@@ -23,7 +23,7 @@ type Notification = {
 };
 type Page = { notifications: Notification[]; unread: number; next_cursor: string | null };
 
-const kindIcons: Record<string, IconName> = { chat: "chat", approval: "hand", scheduled: "clock", calendar: "calendar", change: "sparkles", health: "plug" };
+const kindIcons: Record<string, IconName> = { chat: "chat", approval: "hand", scheduled: "clock", calendar: "calendar", change: "sparkles", health: "plug", custom: "bell" };
 
 function markRead(item: Notification) {
   return { ...item, read_at: item.read_at ?? new Date().toISOString() };
@@ -79,10 +79,10 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
         // A reply in a chat the user is looking at needs no notification at all.
         const drop = first || !document.hasFocus() ? [] : fresh.filter((item) => item.kind === "chat" && onScreen(item.link));
         drop.forEach((item) => api.delete(`/api/notifications/${item.id}`).catch(() => undefined));
-        // The server alerts natively for approvals, schedules and reminders; chat replies only when Patio is in the background.
+        // The server alerts natively for approvals, schedules and reminders; chat replies and custom ones only when Patio is in the background.
         if (!first && !document.hasFocus())
           fresh
-            .filter((item) => item.kind === "chat")
+            .filter((item) => item.kind === "chat" || item.kind === "custom")
             .forEach((item) => api.post(`/api/notifications/${item.id}/native`, {}).catch(() => undefined));
         setList(value.notifications.filter((item) => !drop.includes(item)));
         setUnread(value.unread - drop.length);
@@ -114,7 +114,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
   function open(item: Notification) {
     read(item);
     dismiss(item.id);
-    navigate(item.link);
+    openLink(item.link);
   }
 
   function dismiss(id: string) {
@@ -330,7 +330,7 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
                 <li key={item.id} className="notif-row" data-unread={fresh.has(item.id) ? "" : undefined}>
                   <RowBody
                     item={{ ...item, read_at: fresh.has(item.id) ? null : item.read_at }}
-                    onOpen={() => navigate(item.link)}
+                    onOpen={() => openLink(item.link)}
                     body={
                       item.body && (
                         <div className="notif-body">

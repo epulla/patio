@@ -43,6 +43,14 @@ export function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+// Notification links are in-app paths or https URLs; the latter open in the browser.
+export function openLink(link: string) {
+  if (!link) return;
+  if (!/^https:\/\//i.test(link)) return navigate(link);
+  if (window.runtime) window.runtime.BrowserOpenURL(link);
+  else window.open(link, "_blank", "noopener");
+}
+
 export function ErrorText({ error }: { error: unknown }) {
   if (!error) return null;
   return (
@@ -232,7 +240,7 @@ export default function App() {
     return () => unsubscribe?.();
   }, []);
 
-  useEffect(() => window.runtime?.EventsOn("navigate", (to) => navigate(String(to))), []);
+  useEffect(() => window.runtime?.EventsOn("navigate", (to) => openLink(String(to))), []);
 
   useEffect(() => {
     const blockFileDrop = (event: DragEvent) => {

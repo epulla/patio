@@ -154,7 +154,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
-		"ask_user": true,
+		"ask_user": true, "create_notification": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -172,8 +172,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 48 {
-		t.Fatalf("tool count = %d, want 48", count)
+	if count != 49 {
+		t.Fatalf("tool count = %d, want 49", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -544,6 +544,54 @@ func TestMCPConnectorTools(t *testing.T) {
 	text := listed.Content[0].(*sdk.TextContent).Text
 	if strings.Contains(text, secret) || !strings.Contains(text, `"has_secret":true`) || !strings.Contains(text, `"name":"Updated"`) {
 		t.Fatalf("connector listing leaks secret or misses update: %s", text)
+	}
+}
+
+func TestMCPCreateNotification(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "notifications.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	for _, link := range []string{"", "/tickets/abc", "https://example.com/report?x=1"} {
+		var created struct {
+			ID, Kind, Title, Body, Link string
+		}
+		decodeText(t, callTool(t, session, "create_notification", map[string]any{"title": "  Funds delivered  ", "body": "All **3** messages", "link": link}), &created)
+		if created.ID == "" || created.Kind != "custom" || created.Title != "Funds delivered" || created.Body != "All **3** messages" || created.Link != link {
+			t.Fatalf("created = %#v, link %q", created, link)
+		}
+	}
+	for name, args := range map[string]map[string]any{
+		"missing title":     {"title": "  "},
+		"long title":        {"title": strings.Repeat("x", 201)},
+		"long body":         {"title": "x", "body": strings.Repeat("x", 4001)},
+		"http link":         {"title": "x", "link": "http://example.com"},
+		"protocol-relative": {"title": "x", "link": "//evil.example"},
+		"javascript link":   {"title": "x", "link": "javascript:alert(1)"},
+		"relative link":     {"title": "x", "link": "tickets/abc"},
+	} {
+		if result := callTool(t, session, "create_notification", args); !result.IsError {
+			t.Errorf("%s: want error, got %#v", name, result.Content)
+		}
+	}
+	var custom, other int
+	if err := database.QueryRow(`SELECT COUNT(*) FILTER (WHERE kind='custom'), COUNT(*) FILTER (WHERE kind<>'custom') FROM notification`).Scan(&custom, &other); err != nil || custom != 3 || other != 0 {
+		t.Fatalf("custom = %d, other = %d, %v; want 3 custom and no change notification", custom, other, err)
 	}
 }
 

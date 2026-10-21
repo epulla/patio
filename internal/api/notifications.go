@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type notification struct {
@@ -22,15 +24,65 @@ type notification struct {
 }
 
 func (s *Server) Notify(kind, title, body, link string, native bool) error {
-	title, body = notificationText(s.db, title), notificationText(s.db, body)
-	_, err := s.db.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, uid(), kind, title, body, link, now())
+	n, err := s.insertNotification(kind, title, body, link)
 	if err != nil {
 		return err
 	}
 	if native && s.notify != nil {
-		return s.notify(title, body, link)
+		return s.notify(n.Title, n.Body, n.Link)
 	}
 	return nil
+}
+
+func (s *Server) insertNotification(kind, title, body, link string) (notification, error) {
+	n := notification{ID: uid(), Kind: kind, Title: notificationText(s.db, title), Body: notificationText(s.db, body), Link: link, CreatedAt: now()}
+	_, err := s.db.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, n.ID, n.Kind, n.Title, n.Body, n.Link, n.CreatedAt)
+	return n, err
+}
+
+// createNotification stores a custom notification. The app pops it as a toast, or natively when Patio is in the background.
+func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		Link  string `json:"link"`
+	}
+	if err := decode(r, &in); err != nil {
+		errw(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	in.Title, in.Link = strings.TrimSpace(in.Title), strings.TrimSpace(in.Link)
+	switch {
+	case in.Title == "":
+		errw(w, http.StatusBadRequest, "title is required")
+		return
+	case utf8.RuneCountInString(in.Title) > 200:
+		errw(w, http.StatusBadRequest, "title must be at most 200 characters")
+		return
+	case utf8.RuneCountInString(in.Body) > 4000:
+		errw(w, http.StatusBadRequest, "body must be at most 4000 characters")
+		return
+	case !validNotificationLink(in.Link):
+		errw(w, http.StatusBadRequest, "link must be an in-app path like /tickets/<id> or an https URL")
+		return
+	}
+	n, err := s.insertNotification("custom", in.Title, in.Body, in.Link)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusCreated, n)
+}
+
+func validNotificationLink(link string) bool {
+	if link == "" {
+		return true
+	}
+	if strings.HasPrefix(link, "/") {
+		return !strings.HasPrefix(link, "//") && !strings.Contains(link, `\`)
+	}
+	u, err := url.Parse(link)
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil
 }
 
 func (s *Server) notifyMCPSignIn(name string) error {
