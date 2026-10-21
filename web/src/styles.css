@@ -130,6 +130,8 @@
 }
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--content) 25%, transparent) transparent;
 }
 body {
   margin: 0;
@@ -150,9 +152,12 @@ a {
 }
 
 /* Shell */
+/* clip, not hidden: hidden makes .app a scroll container and breaks the sticky sidebar and dock.
+   Hidden tooltips near the right edge still take layout space and would add a page scrollbar. */
 .app {
   display: flex;
   min-height: 100vh;
+  overflow-x: clip;
 }
 .sidebar {
   position: sticky;
@@ -311,9 +316,13 @@ main {
 }
 .page-heading {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: end;
   gap: 16px;
+}
+.page-heading .actions {
+  flex-wrap: wrap;
 }
 .page-heading h1 {
   font-size: 32px;
@@ -1938,6 +1947,9 @@ main:has(> .chats) {
   overflow: hidden auto;
   padding-block: 2px;
   scrollbar-gutter: stable both-edges;
+  /* auto lets the 6px ::-webkit-scrollbar below apply instead of the global thin one. */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
 }
 .chat-rail::-webkit-scrollbar {
   width: 6px;
