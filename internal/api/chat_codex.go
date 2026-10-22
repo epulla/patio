@@ -233,6 +233,28 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 	return nil
 }
 
+func (d *codexRuntime) canSteer() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.turnID != ""
+}
+
+func (d *codexRuntime) steer(request ChatSendRequest) error {
+	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
+	if err != nil {
+		return err
+	}
+	d.mu.Lock()
+	turnID := d.turnID
+	d.mu.Unlock()
+	if turnID == "" {
+		return errChatTurnRunning
+	}
+	return d.client.Call(d.ctx, "turn/steer", map[string]any{
+		"threadId": d.threadID, "expectedTurnId": turnID, "input": codexUserInput(request.Text, files),
+	}, nil)
+}
+
 func codexUserInput(text string, files []chatAttachmentFile) []map[string]string {
 	input := []map[string]string{{"type": "text", "text": promptWithAttachmentPaths(text, files, true)}}
 	for _, file := range files {
@@ -600,6 +622,7 @@ func (d *codexRuntime) finish(turnErr error) error {
 		return nil
 	}
 	d.finished = true
+	d.turnID = ""
 	text := d.assistant.String()
 	d.assistant.Reset()
 	d.mu.Unlock()

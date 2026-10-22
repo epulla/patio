@@ -42,6 +42,11 @@ type chatRuntimeDriver interface {
 	close() error
 }
 
+type chatSteerer interface {
+	canSteer() bool
+	steer(request ChatSendRequest) error
+}
+
 var runtimes = map[string]startFunc{}
 
 type chatManager struct {
@@ -167,6 +172,17 @@ func (m *chatManager) Running(id string) bool {
 	return rt.busy
 }
 
+func (m *chatManager) CanSteer(id string) bool {
+	rt := m.lookupRuntime(id)
+	if rt == nil {
+		return false
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	steerer, ok := rt.driver.(chatSteerer)
+	return rt.busy && !rt.stopping && ok && steerer.canSteer()
+}
+
 func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendRequest) (ChatMessage, error) {
 	m.mu.Lock()
 	if m.closed {
@@ -182,6 +198,26 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	m.mu.Unlock()
 	defer rt.mu.Unlock()
 	if rt.busy || rt.stopping {
+		if request.Steer && rt.busy && !rt.stopping {
+			steerer, ok := rt.driver.(chatSteerer)
+			if ok && steerer.canSteer() {
+				storedText := request.StoredText
+				if storedText == "" {
+					storedText = request.Text
+				}
+				message, err := insertChatMessage(m.db, c.ID, "user", storedText, request.Attachments, request.FromChatID, request.ReportToChatID)
+				if err != nil {
+					return ChatMessage{}, err
+				}
+				if err := steerer.steer(request); err != nil {
+					if _, deleteErr := m.db.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, message.ID, c.ID); deleteErr != nil {
+						return message, errors.Join(err, deleteErr)
+					}
+					return ChatMessage{}, err
+				}
+				return message, nil
+			}
+		}
 		return ChatMessage{}, errChatTurnRunning
 	}
 	start, ok := runtimes[kind]

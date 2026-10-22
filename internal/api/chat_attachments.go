@@ -36,6 +36,7 @@ type ChatAttachment struct {
 // attachment delivery is implemented separately.
 type ChatSendRequest struct {
 	Text             string           `json:"text"`
+	Steer            bool             `json:"-"`
 	StoredText       string           `json:"-"`
 	Attachments      []ChatAttachment `json:"attachments,omitempty"`
 	FromChatID       *string          `json:"-"`

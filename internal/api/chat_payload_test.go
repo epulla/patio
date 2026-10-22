@@ -32,3 +32,20 @@ func TestChatPayloadIncludesLinksAndMessageSender(t *testing.T) {
 		t.Fatalf("queue sender fields missing: %s", body)
 	}
 }
+
+func TestChatPayloadSteerCapabilityIsDriverBased(t *testing.T) {
+	db, handler, root := chatAPI(t)
+	connectorID := createCodexTestConnector(t, db)
+	codexID := createDriverTestChat(t, db, connectorID, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('local-chat','Local','1','1')`); err != nil {
+		t.Fatal(err)
+	}
+	_, codexBody := requestRaw(t, handler, http.MethodGet, "/api/chats/"+codexID, nil)
+	_, localBody := requestRaw(t, handler, http.MethodGet, "/api/chats/local-chat", nil)
+	if !strings.Contains(codexBody, `"steer":true`) {
+		t.Fatalf("codex payload missing steer capability: %s", codexBody)
+	}
+	if !strings.Contains(localBody, `"steer":false`) {
+		t.Fatalf("local payload has steer capability: %s", localBody)
+	}
+}

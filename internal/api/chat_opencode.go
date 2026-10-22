@@ -444,6 +444,34 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	return nil
 }
 
+func (d *opencodeRuntime) canSteer() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.server.major >= 2 && d.active && !d.closed
+}
+
+func (d *opencodeRuntime) steer(request ChatSendRequest) error {
+	if d.server.major < 2 {
+		return errChatTurnRunning
+	}
+	files, err := loadChatAttachmentFiles(d.directory, request.Attachments)
+	if err != nil {
+		return err
+	}
+	body := opencodeV2Prompt(request.Text, files)
+	body["delivery"] = "steer"
+	resp, err := d.server.request(context.Background(), http.MethodPost, "/api/session/"+url.PathEscape(d.session)+"/prompt", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fmt.Errorf("opencode steer returned %s: %s", resp.Status, strings.TrimSpace(string(data)))
+	}
+	return nil
+}
+
 type opencodeMCPState struct {
 	Status string `json:"status"`
 	Error  string `json:"error"`

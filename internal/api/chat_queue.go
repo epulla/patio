@@ -102,6 +102,9 @@ func (s *Server) sendQueuedChatMessages(w http.ResponseWriter, r *http.Request) 
 // drainQueued sends the chat's queued messages, oldest first, as one user message.
 // Items that would push the attachments past the per-message limit stay queued.
 func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, error) {
+	if manual && m.Running(chatID) && !m.CanSteer(chatID) {
+		return ChatMessage{}, errChatTurnRunning
+	}
 	lock := m.queueLock(chatID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -227,7 +230,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 			reportID = &reportTo.String
 		}
 	}
-	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID, AgentHopsManaged: true})
+	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID, AgentHopsManaged: true, Steer: manual})
 	if err != nil {
 		err = restore(err, message.ID)
 		log.Printf("queued chat send failed; restored rows for %s: %v", chatID, err)

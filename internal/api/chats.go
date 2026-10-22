@@ -52,6 +52,7 @@ type chat struct {
 
 type chatCapabilities struct {
 	Thinking thinkingCapability `json:"thinking"`
+	Steer    bool               `json:"steer"`
 }
 
 type thinkingCapability struct {
@@ -217,7 +218,7 @@ func capabilitiesForKind(kind string) chatCapabilities {
 	case "claude":
 		capability.Reason = "Some models always think"
 	}
-	return chatCapabilities{Thinking: capability}
+	return chatCapabilities{Thinking: capability, Steer: kind == "codex" || kind == "opencode"}
 }
 
 func (s *Server) chatWorkdir(c chat) string {
