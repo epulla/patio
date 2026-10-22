@@ -272,6 +272,8 @@ export type ChatMessage = {
   answered: boolean;
   tool_result_size?: number;
   tool_error?: boolean;
+  from_chat_id?: string | null;
+  from_chat_title?: string;
 };
 export type ChatQuestion = {
   header: string;

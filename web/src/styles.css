@@ -3059,6 +3059,14 @@ main.chat-window {
   align-self: flex-end;
   align-items: flex-end;
 }
+.chat-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
 .message-time {
   flex-shrink: 0;
   padding: 0 4px;
