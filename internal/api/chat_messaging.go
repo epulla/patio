@@ -43,6 +43,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	prefix := agentMessageLabel(in.FromChatID, senderTitle, in.ReportBack)
 	if hops >= 10 {
 		if err := s.queueAgentMessage(id, in); err != nil {
+			log.Printf("queue held agent message for %s: %v", id, err)
 			errw(w, 500, err.Error())
 			return
 		}
@@ -73,6 +74,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	message, sendErr := s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, StoredText: in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
 	if errors.Is(sendErr, errChatTurnRunning) || errors.Is(sendErr, errChatTurnOtherWindow) {
 		if err := s.queueAgentMessage(id, in); err != nil {
+			log.Printf("queue busy agent message for %s: %v", id, err)
 			errw(w, 500, err.Error())
 			return
 		}
@@ -88,6 +90,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if err := s.queueAgentMessage(id, in); err != nil {
+			log.Printf("queue agent message after delivery failure for %s: %v", id, err)
 			errw(w, 500, err.Error())
 			return
 		}

@@ -105,7 +105,9 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		prompt, promptErr := ChatPrompt(m.db, c.ID)
 		if promptErr != nil {
 			cancel()
-			_ = client.Close()
+			if closeErr := client.Close(); closeErr != nil {
+				log.Printf("close Codex client after prompt error for %s: %v", c.ID, closeErr)
+			}
 			return nil, promptErr
 		}
 		params["developerInstructions"] = prompt
@@ -114,7 +116,9 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 		}
 		err = client.Call(ctx, "thread/start", params, &result)
 		if err != nil {
-			_ = client.Close()
+			if closeErr := client.Close(); closeErr != nil {
+				log.Printf("close Codex client before fallback for %s: %v", c.ID, closeErr)
+			}
 			overrides, overrideErr := codexMCPOverrides(ticket)
 			if overrideErr != nil {
 				cancel()
@@ -143,7 +147,9 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	}
 	if err != nil {
 		cancel()
-		_ = driver.client.Close()
+		if closeErr := driver.client.Close(); closeErr != nil {
+			log.Printf("close failed Codex client for %s: %v", c.ID, closeErr)
+		}
 		return nil, fmt.Errorf("start Codex thread: %w", err)
 	}
 	rt.driver = driver
@@ -295,7 +301,10 @@ func (d *codexRuntime) watch() {
 				continue
 			}
 			if err := d.handleNotification(notification); err != nil {
-				d.finish(err)
+				log.Printf("handle Codex notification for %s: %v", d.chatID, err)
+				if finishErr := d.finish(err); finishErr != nil {
+					log.Printf("finish Codex notification error for %s: %v", d.chatID, finishErr)
+				}
 			}
 		case request, ok := <-requests:
 			if !ok {
@@ -309,7 +318,17 @@ func (d *codexRuntime) watch() {
 	closing := d.closing
 	d.mu.Unlock()
 	if !closing && d.manager.runtime(d.chatID).busy {
-		d.finish(errors.New("Codex app-server exited"))
+		err := errors.New("Codex app-server exited")
+		if finishErr := d.finish(err); finishErr != nil {
+			log.Printf("finish exited Codex chat %s: %v", d.chatID, finishErr)
+		}
+	}
+}
+
+func (d *codexRuntime) finishAndLog(err error) {
+	log.Printf("Codex chat %s: %v", d.chatID, err)
+	if finishErr := d.finish(err); finishErr != nil {
+		log.Printf("finish Codex chat %s: %v", d.chatID, finishErr)
 	}
 }
 
@@ -420,12 +439,12 @@ func (d *codexRuntime) handleRequest(request connectorcli.Request) {
 		}
 		input, err := d.approvalInput(request.Params)
 		if err != nil {
-			d.finish(err)
+			d.finishAndLog(err)
 			return
 		}
 		allowed, err := d.manager.requestApproval(d.ctx, d.chatID, toolName, input)
 		if err != nil {
-			d.finish(err)
+			d.finishAndLog(err)
 			return
 		}
 		decision := "decline"
@@ -443,24 +462,24 @@ func (d *codexRuntime) handleRequest(request connectorcli.Request) {
 			} `json:"_meta"`
 		}
 		if err := json.Unmarshal(request.Params, &params); err != nil {
-			d.finish(err)
+			d.finishAndLog(err)
 			return
 		}
 		if params.Meta.Kind == "mcp_tool_call" {
 			start := strings.Index(params.Message, `tool "`)
 			if start < 0 {
-				d.finish(errors.New("Codex MCP approval missing tool name"))
+				d.finishAndLog(errors.New("Codex MCP approval missing tool name"))
 				return
 			}
 			start += len(`tool "`)
 			end := strings.Index(params.Message[start:], `"`)
 			if end < 0 {
-				d.finish(errors.New("Codex MCP approval missing tool name"))
+				d.finishAndLog(errors.New("Codex MCP approval missing tool name"))
 				return
 			}
 			allowed, err := d.manager.requestApproval(d.ctx, d.chatID, params.ServerName+"."+params.Message[start:start+end], params.Meta.ToolParams)
 			if err != nil {
-				d.finish(err)
+				d.finishAndLog(err)
 				return
 			}
 			action := "decline"
@@ -472,6 +491,8 @@ func (d *codexRuntime) handleRequest(request connectorcli.Request) {
 			note := fmt.Sprintf("MCP server %s asked for input; Patio doesn't support that yet", params.ServerName)
 			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
 				d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
+			} else {
+				log.Printf("store Codex elicitation error for %s: %v", d.chatID, err)
 			}
 			log.Printf("unsupported Codex MCP elicitation from server %q", params.ServerName)
 			result = map[string]string{"action": "cancel"}
@@ -481,14 +502,16 @@ func (d *codexRuntime) handleRequest(request connectorcli.Request) {
 		log.Printf("unsupported Codex request method %q", request.Method)
 		if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", message); err == nil {
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": message})
+		} else {
+			log.Printf("store unsupported Codex request error for %s: %v", d.chatID, err)
 		}
 		if err := d.client.RespondError(request.ID, -32601, message); err != nil {
-			d.finish(fmt.Errorf("respond to Codex request: %w", err))
+			d.finishAndLog(fmt.Errorf("respond to Codex request: %w", err))
 		}
 		return
 	}
 	if err := d.client.Respond(request.ID, result); err != nil {
-		d.finish(fmt.Errorf("respond to Codex request: %w", err))
+		d.finishAndLog(fmt.Errorf("respond to Codex request: %w", err))
 	}
 }
 
