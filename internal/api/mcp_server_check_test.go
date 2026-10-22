@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 	if os.Getenv("PATIO_MCP_TEST_SERVER") == "1" {
 		server := mcp.NewServer(&mcp.Implementation{Name: "check-test-server", Version: "1"}, nil)
 		server.AddTool(&mcp.Tool{Name: "zebra", Description: "last", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return &mcp.CallToolResult{}, nil
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "monitor result text"}}}, nil
 		})
 		server.AddTool(&mcp.Tool{Name: "apple", Description: "first", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{}, nil
@@ -35,6 +35,42 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+func TestMonitorTestEndpoint(t *testing.T) {
+	keyring.MockInit()
+	database, server := newMCPCheckServer(t, Options{})
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := json.Marshal([]string{"-test.run=^$"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envJSON, keysJSON, err := encodeMCPEnv(map[string]string{"HEALTH_CHECK_TEST_ENV": "from-keychain", "PATIO_MCP_TEST_SERVER": "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := insertMCPCheckServer(t, database, "stdio", executable, string(args), keysJSON, "", "none", false)
+	if err := keyring.Set(connectorService, mcpServerSecret(id, "env"), envJSON); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		tool, result string
+		wantError    bool
+	}{{"zebra", "monitor result text", false}, {"missing-tool", "", true}} {
+		var result map[string]string
+		if code := requestJSON(t, server, http.MethodPost, "/api/monitors/test", map[string]any{"mcp_server_id": id, "tool": tc.tool, "args": map[string]any{}}, &result); code != http.StatusOK {
+			t.Fatalf("tool %q status=%d", tc.tool, code)
+		}
+		if tc.wantError && result["error"] == "" {
+			t.Fatalf("unknown tool response=%v", result)
+		}
+		if !tc.wantError && result["result"] != tc.result {
+			t.Fatalf("tool result=%v", result)
+		}
+	}
 }
 
 func TestMCPServerCheckStdio(t *testing.T) {

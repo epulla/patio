@@ -28,6 +28,9 @@ erDiagram
   app_setting { TEXT key; TEXT value }
   scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT model; TEXT folder; INTEGER thinking; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
   scheduled_task_run { TEXT id; TEXT task_id; TEXT chat_id; TEXT scheduled_for; TEXT status; INTEGER late; TEXT error; TEXT created_at }
+  monitor { TEXT id; TEXT name; TEXT mcp_server_id; TEXT tool; TEXT args; TEXT schedule; TEXT next_run_at; TEXT condition; TEXT result_path; TEXT id_path; TEXT actions; INTEGER enabled; TEXT last_run_at; TEXT last_status; TEXT last_error; TEXT last_hash; INTEGER fail_streak; TEXT created_at; TEXT updated_at }
+  monitor_run { TEXT id; TEXT monitor_id; TEXT started_at; TEXT status; TEXT result_hash; INTEGER new_count; TEXT error }
+  monitor_seen { TEXT monitor_id; TEXT item_id }
   app_window { TEXT id; TEXT chat_id; INTEGER pid; TEXT heartbeat_at; TEXT focus_at; TEXT focus_path }
   chat_turn { TEXT chat_id; TEXT window_id; TEXT started_at }
   notification { TEXT id; TEXT kind; TEXT title; TEXT body; TEXT link; TEXT created_at; TEXT read_at }
