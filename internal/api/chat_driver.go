@@ -254,6 +254,19 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if _, err := m.db.Exec(`UPDATE chat SET agent_hops=0 WHERE id=?`, c.ID); err != nil {
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
+	failTurn := func(stage string, cause error) error {
+		rt.busy = false
+		if _, err := InsertChatMessage(m.db, c.ID, "error", cause.Error()); err != nil {
+			cause = errors.Join(cause, err)
+		}
+		m.emit(c.ID, map[string]any{"type": "error", "message": cause.Error()})
+		m.markRuntimeActiveLocked(c.ID, rt)
+		if err := m.releaseTurn(c.ID); err != nil {
+			cause = errors.Join(cause, err)
+		}
+		log.Printf("chat driver %s failed for %s: %v", stage, c.ID, cause)
+		return cause
+	}
 	rt.connectorID = *c.ConnectorID
 	rt.streamMu.Lock()
 	rt.showThinking = c.ShowThinking
@@ -264,13 +277,11 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if rt.driver == nil {
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
 		if specErr != nil {
-			rt.busy = false
-			return message, errors.Join(specErr, m.releaseTurn(c.ID))
+			return message, failTurn("configuration", specErr)
 		}
 		rt.driver, err = start(m, c, configDir, rt)
 		if err != nil {
-			rt.busy = false
-			return message, errors.Join(err, m.releaseTurn(c.ID))
+			return message, failTurn("start", err)
 		}
 		rt.mcpSpecs = specs
 		if kind == "claude" || kind == "copilot" {
@@ -279,12 +290,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		}
 	}
 	if err := rt.driver.send(request); err != nil {
-		rt.busy = false
-		if releaseErr := m.releaseTurn(c.ID); releaseErr != nil {
-			return message, errors.Join(err, releaseErr)
-		}
-		m.markRuntimeActiveLocked(c.ID, rt)
-		return message, fmt.Errorf("send chat message: %w", err)
+		return message, failTurn("send", fmt.Errorf("send chat message: %w", err))
 	}
 	m.markRuntimeActiveLocked(c.ID, rt)
 	return message, nil
