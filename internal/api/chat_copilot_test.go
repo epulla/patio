@@ -161,6 +161,114 @@ func TestCopilotACPDriver(t *testing.T) {
 	}
 }
 
+func TestCopilotSteersRunningPrompt(t *testing.T) {
+	keyring.MockInit()
+	database, _, root := chatAPI(t)
+	connectorID := createCopilotTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	process := newPipeChatProcess()
+	events := make(chan any, 32)
+	server := New(database, "local", false, "test", root, Options{
+		DBPath:         filepath.Join(root, "test.db"),
+		findCopilot:    func() (string, error) { return "copilot-test", nil },
+		processFactory: func(string, []string, []string, string) (chatProcess, error) { return process, nil },
+		Emit:           func(_ string, event any) { events <- event },
+	})
+	defer server.Close()
+	requests := make(chan acpMessage, 8)
+	go func() {
+		for line := range process.input {
+			var message acpMessage
+			if json.Unmarshal([]byte(line), &message) == nil {
+				requests <- message
+			}
+		}
+	}()
+	readRequest := func(method string) acpMessage {
+		t.Helper()
+		select {
+		case got := <-requests:
+			if got.Method != method {
+				t.Fatalf("ACP method=%q want %q", got.Method, method)
+			}
+			return got
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for %s", method)
+		}
+		return acpMessage{}
+	}
+	reply := func(id json.RawMessage, result any) {
+		t.Helper()
+		writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+	}
+	initialResponse := make(chan int, 1)
+	go func() {
+		code, _ := requestRaw(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "first"})
+		initialResponse <- code
+	}()
+	initialize := readRequest("initialize")
+	reply(initialize.ID, map[string]any{"agentCapabilities": map[string]any{"promptCapabilities": map[string]any{"image": false}}})
+	newSession := readRequest("session/new")
+	reply(newSession.ID, map[string]any{"sessionId": "steer-session"})
+	if code := <-initialResponse; code != http.StatusAccepted {
+		t.Fatalf("initial prompt=%d", code)
+	}
+	first := readRequest("session/prompt")
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('steer-q',?,'second','[]','1')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/send", nil, nil); code != http.StatusAccepted {
+		t.Fatalf("queue send=%d", code)
+	}
+	second := readRequest("session/prompt")
+	writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "steer-session", "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"text": "before "}}}})
+	reply(first.ID, map[string]any{"stopReason": "cancelled"})
+	if !server.chats.Running(chatID) {
+		t.Fatal("turn stopped after superseded prompt returned cancelled")
+	}
+	for _, event := range drainEvents(events) {
+		if isDoneChatEvent(event) {
+			t.Fatal("superseded prompt emitted done")
+		}
+	}
+	writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "steer-session", "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"text": "after"}}}})
+	reply(second.ID, map[string]any{"stopReason": "end_turn"})
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	var count int
+	var content string
+	if err := database.QueryRow(`SELECT COUNT(*),MAX(content) FROM chat_message WHERE chat_id=? AND role='assistant'`, chatID).Scan(&count, &content); err != nil || count != 1 || content != "before after" {
+		t.Fatalf("assistant count=%d content=%q err=%v", count, content, err)
+	}
+	done := 0
+	for _, event := range drainEvents(events) {
+		if isDoneChatEvent(event) {
+			done++
+		}
+	}
+	if done != 1 {
+		t.Fatalf("done events=%d want 1", done)
+	}
+}
+
+func drainEvents(events <-chan any) []any {
+	var result []any
+	for {
+		select {
+		case event := <-events:
+			result = append(result, event)
+		default:
+			return result
+		}
+	}
+}
+
+func isDoneChatEvent(event any) bool {
+	data, _ := json.Marshal(event)
+	var value map[string]any
+	_ = json.Unmarshal(data, &value)
+	return value["type"] == "done" || value["event"] == "done"
+}
+
 func TestCopilotPermissionAllowsOnlyPatioMCP(t *testing.T) {
 	tests := []struct {
 		name      string

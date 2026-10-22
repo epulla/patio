@@ -218,7 +218,7 @@ func capabilitiesForKind(kind string) chatCapabilities {
 	case "claude":
 		capability.Reason = "Some models always think"
 	}
-	return chatCapabilities{Thinking: capability, Steer: kind == "codex" || kind == "opencode"}
+	return chatCapabilities{Thinking: capability, Steer: kind == "codex" || kind == "opencode" || kind == "copilot" || kind == "claude"}
 }
 
 func (s *Server) chatWorkdir(c chat) string {

@@ -25,30 +25,33 @@ const copilotAuthError = "Sign in to Copilot: run `copilot login` (Connectors â†
 func init() { runtimes["copilot"] = startCopilot }
 
 type copilotRuntime struct {
-	manager       *chatManager
-	chatID        string
-	workdir       string
-	runtime       *chatRuntime
-	process       chatProcess
-	client        *acpClient
-	processDone   chan struct{}
-	sessionID     string
-	ctx           context.Context
-	cancel        context.CancelFunc
-	assistantMu   sync.Mutex
-	assistant     strings.Builder
-	toolMu        sync.Mutex
-	toolRows      map[string]string // ACP toolCallId -> tool chat message ID
-	toolNames     map[string]string
-	replaying     atomic.Bool
-	stopped       atomic.Bool
-	closing       atomic.Bool
-	authFailed    bool
-	imagePrompt   bool
-	external      []mcpServerSpec
-	mcpConfigDir  string
-	configCleanup sync.Once
-	firstPrompt   bool
+	manager             *chatManager
+	chatID              string
+	workdir             string
+	runtime             *chatRuntime
+	process             chatProcess
+	client              *acpClient
+	processDone         chan struct{}
+	sessionID           string
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	assistantMu         sync.Mutex
+	assistant           strings.Builder
+	toolMu              sync.Mutex
+	toolRows            map[string]string // ACP toolCallId -> tool chat message ID
+	toolNames           map[string]string
+	replaying           atomic.Bool
+	stopped             atomic.Bool
+	closing             atomic.Bool
+	authFailed          bool
+	imagePrompt         bool
+	external            []mcpServerSpec
+	mcpConfigDir        string
+	configCleanup       sync.Once
+	firstPrompt         bool
+	promptGeneration    atomic.Uint64
+	pendingPermissionMu sync.Mutex
+	pendingPermissions  map[string]uint64
 }
 
 func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (chatRuntimeDriver, error) {
@@ -215,6 +218,7 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 	d.assistantMu.Lock()
 	d.assistant.Reset()
 	d.assistantMu.Unlock()
+	generation := d.promptGeneration.Add(1)
 	if d.firstPrompt {
 		prompt, err := ChatPrompt(d.manager.db, d.chatID)
 		if err != nil {
@@ -232,6 +236,9 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 	}
 	go func() {
 		got := <-result
+		if d.promptGeneration.Load() != generation {
+			return
+		}
 		if got.err != nil {
 			if !d.stopped.Load() {
 				d.finish("", got.err)
@@ -241,6 +248,57 @@ func (d *copilotRuntime) send(request ChatSendRequest) error {
 		d.finishPrompt(got.result)
 	}()
 	return nil
+}
+
+func (d *copilotRuntime) canSteer() bool {
+	return !d.stopped.Load() && !d.authFailed && d.promptGeneration.Load() > 0
+}
+
+func (d *copilotRuntime) steer(request ChatSendRequest) error {
+	if d.stopped.Load() || d.authFailed {
+		return errors.New("Copilot turn is not steerable")
+	}
+	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
+	if err != nil {
+		return err
+	}
+	if !d.imagePrompt && hasChatImage(files) {
+		if err := saveChatImageNote(d.manager, d.chatID, "Copilot can't take images; sent the file path instead"); err != nil {
+			return err
+		}
+	}
+	generation := d.promptGeneration.Add(1)
+	result, err := d.client.callAsync("session/prompt", map[string]any{"sessionId": d.sessionID, "prompt": copilotPromptContent(request.Text, files, d.imagePrompt)})
+	if err != nil {
+		d.promptGeneration.CompareAndSwap(generation, generation-1)
+		return err
+	}
+	d.cancelPendingPermissions(generation)
+	go func() {
+		got := <-result
+		if d.promptGeneration.Load() != generation {
+			return
+		}
+		if got.err != nil {
+			if !d.stopped.Load() {
+				d.finish("", got.err)
+			}
+			return
+		}
+		d.finishPrompt(got.result)
+	}()
+	return nil
+}
+
+func (d *copilotRuntime) cancelPendingPermissions(generation uint64) {
+	d.pendingPermissionMu.Lock()
+	defer d.pendingPermissionMu.Unlock()
+	for id, owner := range d.pendingPermissions {
+		if owner < generation {
+			_ = d.client.respond(json.RawMessage(id), map[string]any{"outcome": map[string]string{"outcome": "cancelled"}})
+			delete(d.pendingPermissions, id)
+		}
+	}
 }
 
 func hasChatImage(files []chatAttachmentFile) bool {
@@ -414,6 +472,15 @@ func copilotToolText(raw json.RawMessage) string {
 }
 
 func (d *copilotRuntime) handlePermission(message acpMessage) {
+	id := string(message.ID)
+	generation := d.promptGeneration.Load()
+	d.pendingPermissionMu.Lock()
+	if d.pendingPermissions == nil {
+		d.pendingPermissions = make(map[string]uint64)
+	}
+	d.pendingPermissions[id] = generation
+	d.pendingPermissionMu.Unlock()
+	defer func() { d.pendingPermissionMu.Lock(); delete(d.pendingPermissions, id); d.pendingPermissionMu.Unlock() }()
 	var params struct {
 		ToolCall struct {
 			Title      string `json:"title"`
