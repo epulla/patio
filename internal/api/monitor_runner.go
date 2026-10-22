@@ -27,28 +27,49 @@ type monitorRunResult struct {
 	result    string
 }
 
+var monitorFlights = struct {
+	sync.Mutex
+	servers map[*Server]map[string]bool
+}{servers: map[*Server]map[string]bool{}}
+
+func (s *Server) acquireMonitor(id string) bool {
+	monitorFlights.Lock()
+	defer monitorFlights.Unlock()
+	if monitorFlights.servers[s] == nil {
+		monitorFlights.servers[s] = map[string]bool{}
+	}
+	if monitorFlights.servers[s][id] {
+		return false
+	}
+	monitorFlights.servers[s][id] = true
+	return true
+}
+
+func (s *Server) releaseMonitor(id string) {
+	monitorFlights.Lock()
+	defer monitorFlights.Unlock()
+	delete(monitorFlights.servers[s], id)
+	if len(monitorFlights.servers[s]) == 0 {
+		delete(monitorFlights.servers, s)
+	}
+}
+
 func (s *Server) StartMonitorRunner(ctx context.Context, every time.Duration) error {
 	if every <= 0 {
 		return fmt.Errorf("monitor interval must be positive")
 	}
 	sem := make(chan struct{}, 4)
-	var inFlightMu sync.Mutex
-	inFlight := map[string]bool{}
 	check := func() error {
 		claims, err := s.claimMonitors(ctx, time.Now())
 		if err != nil {
 			return err
 		}
 		for _, claim := range claims {
-			inFlightMu.Lock()
-			if inFlight[claim.monitor.ID] {
-				inFlightMu.Unlock()
+			if !s.acquireMonitor(claim.monitor.ID) {
 				continue
 			}
-			inFlight[claim.monitor.ID] = true
-			inFlightMu.Unlock()
 			go func(c monitorClaim) {
-				defer func() { inFlightMu.Lock(); delete(inFlight, c.monitor.ID); inFlightMu.Unlock() }()
+				defer s.releaseMonitor(c.monitor.ID)
 				select {
 				case sem <- struct{}{}:
 				case <-ctx.Done():

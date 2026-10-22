@@ -45,6 +45,42 @@ func TestMonitorRunnerNewItems(t *testing.T) {
 	}
 }
 
+func TestMonitorRunNow(t *testing.T) {
+	keyring.MockInit()
+	database, server := newMCPCheckServer(t, Options{})
+	file := filepath.Join(t.TempDir(), "result.json")
+	if err := os.WriteFile(file, []byte(`{"value":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	serverID := insertRunnerMCPServer(t, database)
+	m := insertRunnerMonitor(t, database, serverID, "read_file", map[string]any{"path": file}, "changed", "")
+	var nextBefore string
+	if err := database.QueryRow(`SELECT next_run_at FROM monitor WHERE id=?`, m.ID).Scan(&nextBefore); err != nil {
+		t.Fatal(err)
+	}
+	var updated monitor
+	if code := requestJSON(t, server, "POST", "/api/monitors/"+m.ID+"/run", nil, &updated); code != 200 {
+		t.Fatalf("run-now status=%d", code)
+	}
+	if updated.ID != m.ID || updated.LastStatus == nil || *updated.LastStatus != "ok" {
+		t.Fatalf("updated monitor=%#v", updated)
+	}
+	var nextAfter string
+	var runs int
+	if err := database.QueryRow(`SELECT next_run_at FROM monitor WHERE id=?`, m.ID).Scan(&nextAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM monitor_run WHERE monitor_id=?`, m.ID).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if nextAfter != nextBefore || runs != 1 {
+		t.Fatalf("next_run_at %q -> %q, runs=%d", nextBefore, nextAfter, runs)
+	}
+	if code := requestJSON(t, server, "POST", "/api/monitors/missing/run", nil, nil); code != 404 {
+		t.Fatalf("unknown monitor status=%d", code)
+	}
+}
+
 func TestMonitorRunnerFailureRecoveryNotifications(t *testing.T) {
 	keyring.MockInit()
 	database, server := newMCPCheckServer(t, Options{})

@@ -251,6 +251,36 @@ func (s *Server) monitorRuns(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, out)
 }
 
+func (s *Server) runMonitorNow(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	m, err := scanMonitor(s.db.QueryRow(`SELECT `+monitorColumns+` FROM monitor WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "monitor not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !s.acquireMonitor(id) {
+		errw(w, http.StatusConflict, "monitor is already running")
+		return
+	}
+	defer s.releaseMonitor(id)
+	run, err := s.runMonitor(r.Context(), m, time.Now())
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.applyChangedMonitorActions(r.Context(), m, run)
+	updated, err := scanMonitor(s.db.QueryRow(`SELECT `+monitorColumns+` FROM monitor WHERE id=?`, id))
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, updated)
+}
+
 func (s *Server) callMonitorTool(ctx context.Context, serverID, tool string, args map[string]any) (string, error) {
 	server, err := s.loadMCPServer(serverID)
 	if err != nil {
