@@ -156,10 +156,10 @@ func (s *Server) runMonitor(ctx context.Context, m monitor, at time.Time) (monit
 	result, callErr := s.callMonitorTool(ctx, m.MCPServerID, m.Tool, args)
 	computed := monitorRunResult{result: result, status: "ok"}
 	var rawItems []json.RawMessage
+	var itemIDs []string
 	if callErr == nil {
 		sum := sha256.Sum256([]byte(result))
 		hash := hex.EncodeToString(sum[:])
-		newCount := 0
 		changed := false
 		switch m.Condition {
 		case "changed":
@@ -198,27 +198,11 @@ func (s *Server) runMonitor(ctx context.Context, m monitor, at time.Time) (monit
 					callErr = errors.New("id_path not found")
 					break
 				}
-				id := monitorID(idValue)
-				var exists int
-				err := s.db.QueryRowContext(ctx, `SELECT 1 FROM monitor_seen WHERE monitor_id=? AND item_id=?`, m.ID, id).Scan(&exists)
-				if errors.Is(err, sql.ErrNoRows) {
-					if m.LastRunAt != nil {
-						newCount++
-						computed.newItems = append(computed.newItems, item)
-					}
-					if _, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO monitor_seen(monitor_id,item_id) VALUES(?,?)`, m.ID, id); err != nil {
-						callErr = err
-						break
-					}
-				} else if err != nil {
-					callErr = err
-					break
-				}
+				itemIDs = append(itemIDs, monitorID(idValue))
 			}
-			changed = newCount > 0
 		}
 		if callErr == nil {
-			if changed {
+			if changed && m.Condition != "new_items" {
 				computed.status = "changed"
 			}
 		}
@@ -248,6 +232,43 @@ func (s *Server) runMonitor(ctx context.Context, m monitor, at time.Time) (monit
 			nextStreak++
 		} else {
 			nextStreak = 0
+		}
+		if callErr == nil && m.Condition == "new_items" {
+			rows, e := tx.QueryContext(ctx, `SELECT item_id FROM monitor_seen WHERE monitor_id=?`, m.ID)
+			if e != nil {
+				return e
+			}
+			seen := map[string]bool{}
+			for rows.Next() {
+				var id string
+				if e := rows.Scan(&id); e != nil {
+					rows.Close()
+					return e
+				}
+				seen[id] = true
+			}
+			if e := rows.Err(); e != nil {
+				rows.Close()
+				return e
+			}
+			if e := rows.Close(); e != nil {
+				return e
+			}
+			for i, id := range itemIDs {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+				if m.LastRunAt != nil {
+					computed.newItems = append(computed.newItems, rawItems[i])
+				}
+				if _, e := tx.ExecContext(ctx, `INSERT INTO monitor_seen(monitor_id,item_id) VALUES(?,?)`, m.ID, id); e != nil {
+					return e
+				}
+			}
+			if len(computed.newItems) > 0 {
+				computed.status = "changed"
+			}
 		}
 		if _, e := tx.ExecContext(ctx, `INSERT INTO monitor_run(id,monitor_id,started_at,status,result_hash,new_count,error) VALUES(?,?,?,?,?,?,?)`, computed.runID, m.ID, stamp, computed.status, hash, len(computed.newItems), errText); e != nil {
 			return e

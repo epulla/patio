@@ -45,6 +45,31 @@ func TestMonitorRunnerNewItems(t *testing.T) {
 	}
 }
 
+func TestMonitorRunnerInvalidItemDoesNotRecordSeenIDs(t *testing.T) {
+	keyring.MockInit()
+	database, server := newMCPCheckServer(t, Options{})
+	file := filepath.Join(t.TempDir(), "result.json")
+	if err := os.WriteFile(file, []byte(`[{"id":"first"},{}]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	serverID := insertRunnerMCPServer(t, database)
+	m := insertRunnerMonitor(t, database, serverID, "read_file", map[string]any{"path": file}, "new_items", "id")
+	result, err := server.runMonitor(context.Background(), m, time.Now())
+	if err != nil || result.status != "failed" {
+		t.Fatalf("run=%#v err=%v", result, err)
+	}
+	var seen, runs int
+	if err := database.QueryRow(`SELECT count(*) FROM monitor_seen WHERE monitor_id=?`, m.ID).Scan(&seen); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM monitor_run WHERE monitor_id=? AND status='failed'`, m.ID).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if seen != 0 || runs != 1 {
+		t.Fatalf("seen=%d failed runs=%d", seen, runs)
+	}
+}
+
 func TestMonitorRunNow(t *testing.T) {
 	keyring.MockInit()
 	database, server := newMCPCheckServer(t, Options{})
