@@ -181,6 +181,11 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 	}
 	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID})
 	if err != nil {
+		if sender.Valid && message.ID != "" {
+			if _, deleteErr := m.db.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, message.ID, chatID); deleteErr != nil {
+				return ChatMessage{}, errors.Join(err, deleteErr)
+			}
+		}
 		return ChatMessage{}, err
 	}
 	if sender.Valid {
@@ -202,11 +207,4 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 	}
 	m.emit(chatID, map[string]any{"type": "queue"})
 	return message, nil
-}
-
-func nullableString(v sql.NullString) any {
-	if v.Valid {
-		return v.String
-	}
-	return nil
 }

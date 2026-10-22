@@ -738,11 +738,19 @@ func TestChatQueueDoesNotMergeAgentAndUserRows(t *testing.T) {
 		t.Fatalf("start=%d", code)
 	}
 	<-fake.input
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "sender", "text": "agent text"}, nil); code != 200 {
-		t.Fatalf("agent=%d", code)
+	var agentResult map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "sender", "text": "agent text"}, &agentResult); code != 200 || agentResult["status"] != "queued" {
+		t.Fatalf("agent=%d %#v", code, agentResult)
 	}
 	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/messages", map[string]string{"text": "user text"}, nil); code != http.StatusAccepted {
 		t.Fatalf("user=%d", code)
+	}
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var queuedCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, target).Scan(&queuedCount); err != nil || queuedCount != 2 {
+		t.Fatalf("busy queue count=%d err=%v", queuedCount, err)
 	}
 	_, _ = io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"done"}`+"\n")
 	select {
@@ -789,8 +797,15 @@ func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
 	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer s.Close()
 	var result map[string]string
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]any{"from_chat_id": "sender-chat", "text": "hello"}, &result); code != 200 || result["status"] != "sent" {
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]any{"from_chat_id": "sender-chat", "text": "hello", "report_back": true}, &result); code != 200 || result["status"] != "queued" {
 		t.Fatalf("delivery=%d %#v", code, result)
+	}
+	var queuedText, queuedFrom, queuedReport string
+	if err := db.QueryRow(`SELECT text,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=?`, target).Scan(&queuedText, &queuedFrom, &queuedReport); err != nil || queuedText != "hello" || queuedFrom != "sender-chat" || queuedReport != "sender-chat" {
+		t.Fatalf("queued row=(%q,%q,%q) err=%v", queuedText, queuedFrom, queuedReport, err)
+	}
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	var line string
 	select {
@@ -803,12 +818,12 @@ func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
 			Content string `json:"content"`
 		} `json:"message"`
 	}
-	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[Message from chat_id sender-chat, title "Sender". Reply with send_to_chat if needed.]`) {
+	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[Message from chat_id sender-chat, title "Sender". Final reply will be sent back automatically; do not call send_to_chat to answer.]`) {
 		t.Fatalf("driver content=%q err=%v", input.Message.Content, err)
 	}
-	var sender sql.NullString
-	if err := db.QueryRow(`SELECT from_chat_id FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&sender); err != nil || sender.String != "sender-chat" {
-		t.Fatalf("stored sender=%v err=%v", sender, err)
+	var sender, report sql.NullString
+	if err := db.QueryRow(`SELECT from_chat_id,report_to_chat_id FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&sender, &report); err != nil || sender.String != "sender-chat" || report.String != "sender-chat" {
+		t.Fatalf("stored sender=%v report=%v err=%v", sender, report, err)
 	}
 	var stored string
 	if err := db.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&stored); err != nil || stored != "hello" {
@@ -827,6 +842,26 @@ func TestAgentMessageLabelReportBackVariants(t *testing.T) {
 	}
 }
 
+func TestDeliverAgentMessagesEmptyQueueDoesNotStartDriver(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	chatID := createDriverTestChat(t, db, connector, root)
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if s.chats.Running(chatID) {
+		t.Fatal("empty delivery started chat")
+	}
+	select {
+	case line := <-fake.input:
+		t.Fatalf("empty delivery sent input %q", line)
+	default:
+	}
+}
+
 func TestCreateChatHandoffLinksParentAndRejectsDepthSix(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
@@ -838,12 +873,16 @@ func TestCreateChatHandoffLinksParentAndRejectsDepthSix(t *testing.T) {
 		ChatID string `json:"chat_id"`
 		Status string `json:"status"`
 	}
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+caller+"/handoff", map[string]any{"connector_id": connector, "prompt": "do work"}, &out); code != 200 || out.ChatID == "" || out.Status != "sent" {
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+caller+"/handoff", map[string]any{"connector_id": connector, "prompt": "do work"}, &out); code != 200 || out.ChatID == "" || out.Status != "queued" {
 		t.Fatalf("handoff=%d %#v", code, out)
 	}
 	var parent string
 	if err := db.QueryRow(`SELECT parent_chat_id FROM chat WHERE id=?`, out.ChatID).Scan(&parent); err != nil || parent != caller {
 		t.Fatalf("parent=%q err=%v", parent, err)
+	}
+	var queuedText, queuedFrom string
+	if err := db.QueryRow(`SELECT text,from_chat_id FROM chat_queue WHERE chat_id=?`, out.ChatID).Scan(&queuedText, &queuedFrom); err != nil || queuedText != "do work" || queuedFrom != caller {
+		t.Fatalf("handoff queue=%q from=%q err=%v", queuedText, queuedFrom, err)
 	}
 	prev := caller
 	for i := 1; i <= 5; i++ {
@@ -875,6 +914,9 @@ func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	var result map[string]string
 	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "held"}, &result); code != 200 || result["status"] != "held" || !notified {
 		t.Fatalf("held delivery=%d %#v notified=%v", code, result, notified)
+	}
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := s.chats.drainQueued(target, false); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("automatic drain err=%v", err)

@@ -215,6 +215,11 @@ func main() {
 			apiServer.RunWindowHeartbeat(windowStop, showPath)
 			backgroundCtx, cancel := context.WithCancel(ctx)
 			stopBackground = cancel
+			if *chatWindow == "" {
+				if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+					log.Printf("deliver queued agent messages at startup: %v", err)
+				}
+			}
 			background.Add(1)
 			go func() {
 				defer background.Done()
@@ -240,6 +245,11 @@ func main() {
 				defer background.Done()
 				if err := db.Watch(backgroundCtx, database, time.Second, func() {
 					wruntime.EventsEmit(ctx, "db-changed")
+					if *chatWindow == "" {
+						if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+							log.Printf("deliver queued agent messages after database change: %v", err)
+						}
+					}
 				}); err != nil {
 					log.Printf("watch database changes: %v", err)
 				}

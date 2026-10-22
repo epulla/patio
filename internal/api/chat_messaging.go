@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -30,17 +31,17 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	lock := s.chats.queueLock(id)
 	lock.Lock()
 	defer lock.Unlock()
-	var title, senderTitle string
+	var title string
 	var hops int
 	if err := s.db.QueryRow(`SELECT title,agent_hops FROM chat WHERE id=?`, id).Scan(&title, &hops); err != nil {
 		errw(w, 404, "chat not found")
 		return
 	}
-	if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, in.FromChatID).Scan(&senderTitle); err != nil {
+	var senderExists int
+	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, in.FromChatID).Scan(&senderExists); err != nil {
 		errw(w, 400, "sender chat not found")
 		return
 	}
-	prefix := agentMessageLabel(in.FromChatID, senderTitle, in.ReportBack)
 	if hops >= 10 {
 		if err := s.queueAgentMessage(id, in); err != nil {
 			log.Printf("queue held agent message for %s: %v", id, err)
@@ -52,57 +53,12 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "held"})
 		return
 	}
-	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, id))
-	if err != nil {
+	if err := s.queueAgentMessage(id, in); err != nil {
+		log.Printf("queue agent message for %s: %v", id, err)
 		errw(w, 500, err.Error())
 		return
 	}
-	if c.ConnectorID == nil {
-		errw(w, 400, errChatConnectorMissing.Error())
-		return
-	}
-	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
-	if err != nil {
-		errw(w, 400, err.Error())
-		return
-	}
-	fromID := in.FromChatID
-	var reportTo *string
-	if in.ReportBack {
-		reportTo = &fromID
-	}
-	message, sendErr := s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, StoredText: in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
-	if errors.Is(sendErr, errChatTurnRunning) || errors.Is(sendErr, errChatTurnOtherWindow) {
-		if err := s.queueAgentMessage(id, in); err != nil {
-			log.Printf("queue busy agent message for %s: %v", id, err)
-			errw(w, 500, err.Error())
-			return
-		}
-		write(w, 200, map[string]string{"status": "queued"})
-		return
-	}
-	if sendErr != nil {
-		log.Printf("agent message delivery to %s failed; queueing: %v", id, sendErr)
-		if message.ID != "" {
-			if _, err := s.db.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, message.ID, id); err != nil {
-				errw(w, 500, errors.Join(sendErr, err).Error())
-				return
-			}
-		}
-		if err := s.queueAgentMessage(id, in); err != nil {
-			log.Printf("queue agent message after delivery failure for %s: %v", id, err)
-			errw(w, 500, err.Error())
-			return
-		}
-		write(w, 200, map[string]string{"status": "queued"})
-		return
-	}
-	_, err = s.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, id)
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	write(w, 200, map[string]string{"status": "sent"})
+	write(w, 200, map[string]string{"status": "queued"})
 }
 
 func reportTarget(report bool, id string) any {
@@ -146,6 +102,12 @@ func (s *Server) reportChatResult(target, from, text string) error {
 			log.Printf("notify report-back failure to %s: %v", target, err)
 		}
 		return deliveryErr
+	}
+	if s.chatWindow != "" || s.userID != "local" {
+		return nil
+	}
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -237,17 +199,5 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &outcome)
-	if outcome.Status == "queued" {
-		cause := errors.New("child chat could not start its first turn")
-		_, deleteErr := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
-		if deleteErr != nil {
-			cause = errors.Join(cause, deleteErr)
-		}
-		if createdWorkdir {
-			cause = cleanupConnectorDir(s.chatWorkdir(child), cause)
-		}
-		errw(w, 500, cause.Error())
-		return
-	}
 	write(w, 200, map[string]string{"chat_id": id, "status": outcome.Status})
 }

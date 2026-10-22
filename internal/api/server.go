@@ -33,6 +33,7 @@ type Server struct {
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
 	attachmentsMu   sync.Mutex
+	agentDeliveryMu sync.Mutex
 	attachments     map[string]map[string]ChatAttachment
 	chatWindow      string
 	openPath        string

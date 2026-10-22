@@ -56,40 +56,6 @@ func TestCodexStartFailureLeavesMessageAndRetryCanHang(t *testing.T) {
 	}
 }
 
-func TestAgentMessageStartFailureQueuesWithoutDuplicateUserRow(t *testing.T) {
-	db, _, root := chatAPI(t)
-	connector := createCodexTestConnector(t, db)
-	target := createDriverTestChat(t, db, connector, root)
-	sender := uid()
-	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, sender, "Sender", now(), now()); err != nil {
-		t.Fatal(err)
-	}
-	var starts int
-	server := New(db, "local", false, "test", root, Options{findCodex: func() (string, error) { return "codex-test", nil }, codexStart: func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error) {
-		starts++
-		return &incidentCodexClient{n: starts, notifications: make(chan connectorcli.Notification)}, nil
-	}})
-	defer server.Close()
-	var result map[string]string
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": sender, "text": "raw agent text"}, &result); code != 200 || result["status"] != "queued" {
-		t.Fatalf("agent delivery=%d %#v", code, result)
-	}
-	var users, errorsCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&users); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='error'`, target).Scan(&errorsCount); err != nil {
-		t.Fatal(err)
-	}
-	var from, text string
-	if err := db.QueryRow(`SELECT from_chat_id,text FROM chat_queue WHERE chat_id=?`, target).Scan(&from, &text); err != nil {
-		t.Fatal(err)
-	}
-	if users != 0 || errorsCount != 1 || from != sender || text != "raw agent text" {
-		t.Fatalf("users=%d errors=%d queue=(%s,%q)", users, errorsCount, from, text)
-	}
-}
-
 type incidentCodexClient struct {
 	n             int
 	notifications chan connectorcli.Notification
