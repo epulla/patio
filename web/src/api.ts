@@ -203,7 +203,7 @@ export type Chat = {
   thinking: boolean;
   show_thinking: boolean;
   auto_allow: boolean;
-  capabilities: { thinking: { supported: boolean; reason: string } };
+  capabilities: { thinking: { supported: boolean; reason: string }; steer: boolean };
   scheduled_task_id: string | null;
   scheduled_late: boolean;
 };
