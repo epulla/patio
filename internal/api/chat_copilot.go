@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,27 +24,28 @@ const copilotAuthError = "Sign in to Copilot: run `copilot login` (Connectors â†
 func init() { runtimes["copilot"] = startCopilot }
 
 type copilotRuntime struct {
-	manager     *chatManager
-	chatID      string
-	workdir     string
-	runtime     *chatRuntime
-	process     chatProcess
-	client      *acpClient
-	processDone chan struct{}
-	sessionID   string
-	ctx         context.Context
-	cancel      context.CancelFunc
-	assistantMu sync.Mutex
-	assistant   strings.Builder
-	toolMu      sync.Mutex
-	toolRows    map[string]string // ACP toolCallId -> tool chat message ID
-	replaying   atomic.Bool
-	stopped     atomic.Bool
-	closing     atomic.Bool
-	authFailed  bool
-	imagePrompt bool
-	external    []mcpServerSpec
-	firstPrompt bool
+	manager      *chatManager
+	chatID       string
+	workdir      string
+	runtime      *chatRuntime
+	process      chatProcess
+	client       *acpClient
+	processDone  chan struct{}
+	sessionID    string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	assistantMu  sync.Mutex
+	assistant    strings.Builder
+	toolMu       sync.Mutex
+	toolRows     map[string]string // ACP toolCallId -> tool chat message ID
+	replaying    atomic.Bool
+	stopped      atomic.Bool
+	closing      atomic.Bool
+	authFailed   bool
+	imagePrompt  bool
+	external     []mcpServerSpec
+	mcpConfigDir string
+	firstPrompt  bool
 }
 
 func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (chatRuntimeDriver, error) {
@@ -58,6 +61,34 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	if err != nil {
 		return nil, err
 	}
+	ticket, err := m.ticketMCPServerSpec()
+	if err != nil {
+		return nil, err
+	}
+	mcpConfigDir, err := os.MkdirTemp("", "patio-copilot-*")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(mcpConfigDir, 0700); err != nil {
+		_ = os.RemoveAll(mcpConfigDir)
+		return nil, err
+	}
+	servers := map[string]any{"patio": map[string]any{"type": "stdio", "command": ticket["command"], "args": ticket["args"], "env": map[string]string{}}}
+	for _, spec := range external {
+		if spec.Kind == "stdio" {
+			servers[spec.Name] = map[string]any{"type": "stdio", "command": spec.Command, "args": spec.Args, "env": nonNilMap(spec.Env)}
+		}
+	}
+	configPath := filepath.Join(mcpConfigDir, "mcp.json")
+	data, err := json.Marshal(map[string]any{"mcpServers": servers})
+	if err != nil {
+		_ = os.RemoveAll(mcpConfigDir)
+		return nil, err
+	}
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		_ = os.RemoveAll(mcpConfigDir)
+		return nil, err
+	}
 	secret, err := keyring.Get(connectorService, connectorSecret(*c.ConnectorID))
 	if errors.Is(err, keyring.ErrNotFound) {
 		secret, err = "", nil
@@ -70,15 +101,17 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 		factory = startOSChatProcess
 	}
 	args := []string{"--acp", "--stdio"}
+	args = append(args, "--additional-mcp-config", "@"+configPath)
 	if !c.Thinking {
 		args = append(args, "--reasoning-effort", "low")
 	}
 	process, err := factory(path, args, connectorcli.Env("copilot", configDir, secret), c.Workdir)
 	if err != nil {
+		_ = os.RemoveAll(mcpConfigDir)
 		return nil, fmt.Errorf("start copilot: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external, firstPrompt: c.SessionID == nil || *c.SessionID == ""}
+	d := &copilotRuntime{manager: m, chatID: c.ID, workdir: c.Workdir, runtime: rt, process: process, processDone: make(chan struct{}), ctx: ctx, cancel: cancel, external: external, mcpConfigDir: mcpConfigDir, firstPrompt: c.SessionID == nil || *c.SessionID == ""}
 	d.client = newACPClient(process.Stdin(), process.Stdout(), d.handleMessage)
 	go d.watch()
 	if err := d.initialize(c); err != nil {
@@ -104,14 +137,10 @@ func (d *copilotRuntime) initialize(c chat) error {
 		return fmt.Errorf("decode Copilot ACP capabilities: %w", err)
 	}
 	d.imagePrompt = imagePrompt
-	mcp, err := d.manager.ticketMCPServerSpec()
-	if err != nil {
-		return err
-	}
 	d.replaying.Store(true)
 	var session json.RawMessage
 	method := "session/new"
-	params := map[string]any{"cwd": c.Workdir, "mcpServers": copilotMCPServers(mcp, d.external)}
+	params := map[string]any{"cwd": c.Workdir, "mcpServers": copilotMCPServers(nil, d.external)}
 	if c.SessionID != nil && *c.SessionID != "" {
 		method = "session/load"
 		params["sessionId"] = *c.SessionID
@@ -456,7 +485,11 @@ func (d *copilotRuntime) stop() error {
 	return d.terminate()
 }
 
-func (d *copilotRuntime) close() error { return d.terminate() }
+func (d *copilotRuntime) close() error {
+	err := d.terminate()
+	_ = os.RemoveAll(d.mcpConfigDir)
+	return err
+}
 
 func (d *copilotRuntime) terminate() error {
 	d.closing.Store(true)

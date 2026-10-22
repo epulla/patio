@@ -23,12 +23,9 @@ func codexMCPServers(ticket map[string]any, external []mcpServerSpec) map[string
 }
 
 func copilotMCPServers(ticket map[string]any, external []mcpServerSpec) []any {
-	servers := []any{map[string]any{"name": "patio", "command": ticket["command"], "args": ticket["args"], "env": []any{}}}
+	servers := []any{}
 	for _, spec := range external {
 		if spec.Kind == "stdio" {
-			servers = append(servers, map[string]any{
-				"name": spec.Name, "command": spec.Command, "args": spec.Args, "env": copilotEnv(spec.Env),
-			})
 			continue
 		}
 		servers = append(servers, map[string]any{

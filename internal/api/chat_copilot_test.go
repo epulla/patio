@@ -32,7 +32,7 @@ func TestCopilotACPDriver(t *testing.T) {
 		DBPath:      filepath.Join(root, "test.db"),
 		findCopilot: func() (string, error) { return "copilot-test", nil },
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
-			if path != "copilot-test" || strings.Join(args, " ") != "--acp --stdio --reasoning-effort low" || cwd != filepath.Join(root, "chats", chatID) {
+			if path != "copilot-test" || len(args) < 6 || args[0] != "--acp" || args[1] != "--stdio" || args[2] != "--additional-mcp-config" || !strings.HasPrefix(args[3], "@") || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("Copilot process launch = %q %v %q", path, args, cwd)
 			}
 			if !hasEnv(env, "COPILOT_GITHUB_TOKEN", "copilot-test-secret") {

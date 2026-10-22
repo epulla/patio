@@ -59,14 +59,10 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	}
 
 	copilot := copilotMCPServers(ticket, external)
-	if len(copilot) != 3 || copilot[0].(map[string]any)["name"] != "patio" {
+	if len(copilot) != 1 {
 		t.Fatalf("Copilot servers = %#v", copilot)
 	}
-	copilotStdio := copilot[1].(map[string]any)
-	if copilotStdio["name"] != "stdio-test" || copilotStdio["command"] != "/bin/test" || !reflect.DeepEqual(copilotStdio["args"], stdio.Args) || !reflect.DeepEqual(copilotStdio["env"], []any{map[string]string{"name": "TOKEN", "value": "stdio-secret"}}) {
-		t.Fatalf("Copilot stdio config = %#v", copilotStdio)
-	}
-	copilotHTTP := copilot[2].(map[string]any)
+	copilotHTTP := copilot[0].(map[string]any)
 	if copilotHTTP["type"] != "http" || copilotHTTP["name"] != "http-test" || copilotHTTP["url"] != httpServer.URL || !reflect.DeepEqual(copilotHTTP["headers"], []any{map[string]string{"name": "Authorization", "value": token}}) {
 		t.Fatalf("Copilot HTTP config = %#v", copilotHTTP)
 	}
