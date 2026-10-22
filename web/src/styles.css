@@ -2975,6 +2975,20 @@ main.chat-window {
   width: 14px;
   height: 14px;
 }
+.chat-link-chip,
+.chat-link-item {
+  max-width: 100%;
+}
+.chat-link-chip > span,
+.chat-link-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-link-item {
+  max-width: 360px;
+}
 .folder-trail {
   display: flex;
   flex-wrap: wrap;
