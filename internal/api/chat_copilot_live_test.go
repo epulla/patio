@@ -28,13 +28,12 @@ func TestCopilotLivePermission(t *testing.T) {
 	})
 	server.chats.approvalPollInterval = 100 * time.Millisecond
 	defer server.Close()
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "Run the shell command `true` with bash, then reply ok"}, nil); code != http.StatusAccepted {
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "Use patio-list_boards to list boards, then reply ok"}, nil); code != http.StatusAccepted {
 		t.Fatalf("send = %d", code)
 	}
 
 	deadline := time.NewTimer(2 * time.Minute)
 	defer deadline.Stop()
-	approvalID := ""
 	done := false
 	for !done {
 		select {
@@ -45,30 +44,22 @@ func TestCopilotLivePermission(t *testing.T) {
 			}
 			switch event["type"] {
 			case "approval":
-				if approvalID != "" {
-					continue
-				}
-				if err := database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&approvalID); err != nil {
-					t.Fatalf("approval event without pending row: %v", err)
-				}
-				if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+approvalID, map[string]bool{"allow": true}, nil); code != http.StatusOK {
-					t.Fatalf("allow approval = %d", code)
-				}
+				t.Fatalf("Patio MCP tool unexpectedly requested approval: %v", event)
 			case "done":
 				done = true
 			case "error":
 				t.Fatalf("Copilot turn failed: %v", event)
 			}
 		case <-deadline.C:
-			t.Fatalf("Copilot permission turn timed out; approval id=%q", approvalID)
+			t.Fatal("Copilot Patio tool turn timed out")
 		}
 	}
-	if approvalID == "" {
-		t.Fatal("Copilot completed without requesting shell approval")
+	var toolCalls, approvals int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='tool' AND content='patio-list_boards'`, chatID).Scan(&toolCalls); err != nil || toolCalls == 0 {
+		t.Fatalf("Patio tool call rows = %d, %v", toolCalls, err)
 	}
-	var status, toolName string
-	if err := database.QueryRow(`SELECT status,tool_name FROM chat_approval WHERE id=? AND chat_id=?`, approvalID, chatID).Scan(&status, &toolName); err != nil || status != "allowed" || toolName == "" {
-		t.Fatalf("approval = (%q,%q), %v", status, toolName, err)
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_approval WHERE chat_id=?`, chatID).Scan(&approvals); err != nil || approvals != 0 {
+		t.Fatalf("Patio approvals = %d, %v", approvals, err)
 	}
 	var activeTurns int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_turn WHERE chat_id=?`, chatID).Scan(&activeTurns); err != nil || activeTurns != 0 {

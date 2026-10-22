@@ -39,6 +39,7 @@ type copilotRuntime struct {
 	assistant     strings.Builder
 	toolMu        sync.Mutex
 	toolRows      map[string]string // ACP toolCallId -> tool chat message ID
+	toolNames     map[string]string
 	replaying     atomic.Bool
 	stopped       atomic.Bool
 	closing       atomic.Bool
@@ -369,6 +370,10 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 					d.toolRows = make(map[string]string)
 				}
 				d.toolRows[toolCallID] = messageID
+				if d.toolNames == nil {
+					d.toolNames = make(map[string]string)
+				}
+				d.toolNames[toolCallID] = label
 				d.toolMu.Unlock()
 			}
 		}
@@ -383,6 +388,7 @@ func (d *copilotRuntime) handleUpdate(raw json.RawMessage) {
 		d.toolMu.Lock()
 		messageID := d.toolRows[toolCallID]
 		delete(d.toolRows, toolCallID)
+		delete(d.toolNames, toolCallID)
 		d.toolMu.Unlock()
 		if messageID != "" {
 			_ = d.manager.attachToolResult(d.chatID, messageID, copilotToolText(params.Update.Content), params.Update.Status == "failed")
@@ -410,8 +416,13 @@ func copilotToolText(raw json.RawMessage) string {
 func (d *copilotRuntime) handlePermission(message acpMessage) {
 	var params struct {
 		ToolCall struct {
-			Title string `json:"title"`
-			Kind  string `json:"kind"`
+			Title      string          `json:"title"`
+			Kind       string          `json:"kind"`
+			ToolCallID string          `json:"toolCallId"`
+			Server     string          `json:"server"`
+			ServerName string          `json:"serverName"`
+			RawInput   json.RawMessage `json:"rawInput"`
+			Meta       json.RawMessage `json:"_meta"`
 		} `json:"toolCall"`
 		Options []struct {
 			OptionID string `json:"optionId"`
@@ -427,7 +438,10 @@ func (d *copilotRuntime) handlePermission(message acpMessage) {
 	if toolName == "" {
 		toolName = params.ToolCall.Kind
 	}
-	allowed := isTicketMCPTool(toolName)
+	d.toolMu.Lock()
+	toolRowName := d.toolNames[params.ToolCall.ToolCallID]
+	d.toolMu.Unlock()
+	allowed := isTicketMCPPermission(params.ToolCall.Kind, params.ToolCall.Server, params.ToolCall.ServerName, params.ToolCall.RawInput, params.ToolCall.Meta, toolRowName)
 	var err error
 	if !allowed {
 		allowed, err = d.manager.requestApproval(d.ctx, d.chatID, toolName, message.Params)
@@ -448,9 +462,33 @@ func (d *copilotRuntime) handlePermission(message acpMessage) {
 	_ = d.client.respond(message.ID, map[string]any{"outcome": map[string]string{"outcome": "selected", "optionId": option}})
 }
 
-func isTicketMCPTool(name string) bool {
+func isTicketMCPPermission(kind, server, serverName string, rawInput, meta json.RawMessage, toolLabel string) bool {
+	if strings.EqualFold(server, "patio") || strings.EqualFold(serverName, "patio") || strings.EqualFold(copilotMCPServerName(meta), "patio") {
+		return true
+	}
+	if strings.EqualFold(kind, "mcp") && strings.EqualFold(copilotMCPServerName(rawInput), "patio") {
+		return true
+	}
+	return isTicketMCPToolLabel(toolLabel)
+}
+
+func copilotMCPServerName(raw json.RawMessage) string {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return ""
+	}
+	for _, key := range []string{"serverName", "server_name", "mcpServerName", "mcp_server_name"} {
+		var name string
+		if json.Unmarshal(fields[key], &name) == nil && name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func isTicketMCPToolLabel(name string) bool {
 	name = strings.ToLower(name)
-	return strings.Contains(name, "patio") || strings.HasPrefix(name, "mcp__patio__")
+	return strings.HasPrefix(name, "patio-") || strings.HasPrefix(name, "mcp__patio__") || strings.HasPrefix(name, "patio.")
 }
 
 func findACPOption(options []struct {

@@ -159,6 +159,40 @@ func TestCopilotACPDriver(t *testing.T) {
 	}
 }
 
+func TestCopilotPermissionAllowsOnlyPatioMCP(t *testing.T) {
+	tests := []struct {
+		name      string
+		params    string
+		toolLabel string
+		want      bool
+	}{
+		{"captured Patio MCP request", `{"sessionId":"6e391eff-802a-4348-afc1-67828d9b4b35","toolCall":{"toolCallId":"call_M7k0BA0y7VhvSu1JutXncGCW","title":"list_boards","kind":"other","status":"pending","rawInput":{}},"options":[{"optionId":"allow_once","kind":"allow_once","name":"Allow once"},{"optionId":"allow_always","kind":"allow_always","name":"Always allow"},{"optionId":"reject_once","kind":"reject_once","name":"Deny"}]}`, "patio-list_boards", true},
+		{"structured Patio server", `{"toolCall":{"title":"list_boards","kind":"mcp","rawInput":{"serverName":"patio"}}}`, "", true},
+		{"bash command mentions Patio", `{"toolCall":{"title":"Run shell command","kind":"execute","rawInput":{"command":"echo patio-list_boards"}}}`, "", false},
+		{"similarly named MCP server", `{"toolCall":{"title":"list_boards","kind":"other","rawInput":{}}}`, "my-patio-clone-list_boards", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var params struct {
+				ToolCall struct {
+					Kind       string          `json:"kind"`
+					Server     string          `json:"server"`
+					ServerName string          `json:"serverName"`
+					RawInput   json.RawMessage `json:"rawInput"`
+					Meta       json.RawMessage `json:"_meta"`
+				} `json:"toolCall"`
+			}
+			if err := json.Unmarshal([]byte(test.params), &params); err != nil {
+				t.Fatal(err)
+			}
+			got := isTicketMCPPermission(params.ToolCall.Kind, params.ToolCall.Server, params.ToolCall.ServerName, params.ToolCall.RawInput, params.ToolCall.Meta, test.toolLabel)
+			if got != test.want {
+				t.Fatalf("isTicketMCPPermission = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestCopilotStartFailureRemovesConfigDir(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	keyring.MockInit()
@@ -431,10 +465,10 @@ func serveCopilotFake(process *pipeChatProcess, method func(acpMessage), process
 				if !readACPResponse(process, &unknown) || unknown.Error == nil || unknown.Error.Code != -32601 {
 					return
 				}
-				writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "session-copilot", "update": map[string]any{"sessionUpdate": "tool_call", "title": "Write file"}}})
+				writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "session-copilot", "update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "call_true", "title": "my-patio-clone-list_boards", "kind": "other", "status": "pending"}}})
 				writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": 0, "method": "session/request_permission", "params": map[string]any{
 					"sessionId": "session-copilot",
-					"toolCall":  map[string]any{"toolCallId": "call_true", "title": "Run true exactly", "kind": "execute", "status": "pending", "rawInput": map[string]any{"command": "true", "commands": []string{"true"}}},
+					"toolCall":  map[string]any{"toolCallId": "call_true", "title": "list_boards", "kind": "other", "status": "pending", "rawInput": map[string]any{}},
 					"options":   []any{map[string]any{"optionId": "allow_once", "kind": "allow_once", "name": "Allow once"}, map[string]any{"optionId": "allow_always", "kind": "allow_always", "name": "Always allow"}, map[string]any{"optionId": "reject_once", "kind": "reject_once", "name": "Deny"}},
 				}})
 				var answer acpMessage
