@@ -225,6 +225,7 @@ a {
   color: var(--primary-content);
 }
 .nav-mark {
+  position: relative;
   width: 24px;
   height: 24px;
   flex-shrink: 0;
@@ -238,6 +239,49 @@ a {
 .nav-mark:has(> .svg-icon) {
   background: transparent;
   color: var(--muted);
+}
+.nav-count {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-content);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.monitor-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  border: 1.5px solid var(--muted);
+}
+.monitor-dot.ok {
+  background: oklch(72% 0.19 150);
+  border-color: oklch(72% 0.19 150);
+}
+.monitor-dot.changed {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.monitor-dot.failed {
+  background: var(--error);
+  border-color: var(--error);
+}
+.monitor-args {
+  font-family: var(--mono);
+}
+.monitor-result {
+  max-height: 320px;
+  overflow: auto;
 }
 .nav-item[aria-current="page"] .nav-mark:has(> .svg-icon) {
   color: inherit;

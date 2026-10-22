@@ -233,6 +233,34 @@ export type ScheduledTaskRun = {
   error: string;
   created_at: string;
 };
+export type Monitor = {
+  id: string;
+  name: string;
+  mcp_server_id: string;
+  tool: string;
+  args: string;
+  schedule: string;
+  next_run_at: string | null;
+  condition: "changed" | "non_empty" | "new_items";
+  result_path: string;
+  id_path: string;
+  actions: string;
+  enabled: boolean;
+  last_run_at: string | null;
+  last_status: "ok" | "changed" | "failed" | null;
+  last_error: string;
+  fail_streak: number;
+  created_at: string;
+  updated_at: string;
+};
+export type MonitorRun = {
+  id: string;
+  monitor_id: string;
+  started_at: string;
+  status: "ok" | "changed" | "failed";
+  new_count: number;
+  error: string;
+};
 export type ChatAttachment = { name: string; kind: "text" | "image"; mime: string; size: number };
 export type ChatMessage = {
   id: string;

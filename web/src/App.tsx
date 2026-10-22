@@ -12,6 +12,7 @@ import { getPins, lastPinnedChat, rememberPinnedChat, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
+import Monitors from "./Monitors";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import Notifications, { NotificationsPage } from "./Notifications";
@@ -26,6 +27,7 @@ const text = {
     never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
     boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
     skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings",
+    monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
     pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
   },
@@ -33,6 +35,7 @@ const text = {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
     boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
     skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Configuración",
+    monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
     pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
   },
@@ -90,6 +93,7 @@ export default function App() {
   const [config, setConfig] = useState<Config>();
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
+  const [monitorChanges, setMonitorChanges] = useState(0);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar") === "closed",
   );
@@ -225,6 +229,13 @@ export default function App() {
   }, [path, refresh]);
 
   useEffect(() => {
+    api
+      .get<{ notifications: { kind: string }[] }>("/api/notifications?unread=1&limit=200")
+      .then((page) => setMonitorChanges(page.notifications.filter((item) => item.kind === "monitor").length))
+      .catch(() => undefined);
+  }, [path, refresh]);
+
+  useEffect(() => {
     const onPopState = () => {
       setPath(currentPath());
       setDockFocus(undefined);
@@ -326,6 +337,8 @@ export default function App() {
     );
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
+  const monitorMatch = path.match(/^\/monitors(?:\/([^/]+))?$/);
+  if (monitorMatch) page = <Monitors id={monitorMatch[1] && decodeURIComponent(monitorMatch[1])} refresh={refresh} />;
   if (isTickets) page = <Tickets refresh={refresh} />;
   if (path === "/ai/connectors") page = <Connectors refresh={refresh} />;
   const chatMatch = path.match(/^\/ai\/chats(?:\/([^/]+))?$/);
@@ -366,7 +379,7 @@ export default function App() {
       {...props}
       key={to}
       className="nav-item"
-      aria-label={label}
+      aria-label={props?.["aria-label"] ?? label}
       aria-current={active ? "page" : undefined}
       onMouseEnter={(event) => showTip(event.currentTarget, label, false)}
       onFocus={(event) => showTip(event.currentTarget, label, true)}
@@ -408,6 +421,20 @@ export default function App() {
           {navItem("/", t.boards, <Icon name="boards" />, path === "/")}
           {navItem("/tickets", t.tickets, <Icon name="ticket" />, isTickets)}
           {navItem("/calendar", t.calendar, <Icon name="calendar" />, isCalendar)}
+          {navItem(
+            "/monitors",
+            t.monitors,
+            <>
+              <Icon name="eye" />
+              {monitorChanges > 0 && (
+                <span className="nav-count" aria-hidden="true">
+                  {monitorChanges > 9 ? "9+" : monitorChanges}
+                </span>
+              )}
+            </>,
+            !!monitorMatch,
+            { "aria-label": t.monitors + (monitorChanges ? t.monitorChanges(monitorChanges) : "") },
+          )}
           <div className="ai-nav-group">
             <p className="sidebar-label nav-label">AI</p>
             {navItem(
