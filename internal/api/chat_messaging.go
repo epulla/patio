@@ -36,8 +36,12 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	prefix := `[From chat "` + senderTitle + `" (chat_id ` + in.FromChatID + `). Reply with send_to_chat if needed.]` + "\n\n"
 	if hops >= 10 {
-		s.queueAgentMessage(id, in, prefix)
-		_ = s.Notify("chat", "Chat paused: too many agent messages", title+" received 10 agent messages in a row. Open it to continue.", "/ai/chats/"+id, true)
+		if err := s.queueAgentMessage(id, in, prefix); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if err := s.Notify("chat", "Chat paused: too many agent messages", title+" received 10 agent messages in a row. Open it to continue.", "/ai/chats/"+id, true); err != nil { /* notification is best effort */
+		}
 		write(w, 200, map[string]string{"status": "held"})
 		return
 	}
@@ -57,7 +61,10 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text})
 	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
-		s.queueAgentMessage(id, in, prefix)
+		if err := s.queueAgentMessage(id, in, prefix); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
 		write(w, 200, map[string]string{"status": "queued"})
 		return
 	}
@@ -84,9 +91,12 @@ func reportTarget(report bool, id string) any {
 	}
 	return nil
 }
-func (s *Server) queueAgentMessage(id string, in agentMessageRequest, prefix string) {
-	_, _ = s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, prefix+in.Text, now(), in.FromChatID, reportTarget(in.ReportBack, in.FromChatID))
+func (s *Server) queueAgentMessage(id string, in agentMessageRequest, prefix string) error {
+	if _, err := s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, prefix+in.Text, now(), in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
+		return err
+	}
 	s.chats.emit(id, map[string]any{"type": "queue"})
+	return nil
 }
 
 func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {

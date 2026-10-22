@@ -508,7 +508,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	if turnErr == nil && !stopping {
 		m.background.Go(func() {
-			if _, err := m.drainQueued(id); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			if _, err := m.drainQueued(id, false); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				log.Printf("send queued chat messages %s: %v", id, err)
 			}
 		})

@@ -77,7 +77,7 @@ func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sendQueuedChatMessages(w http.ResponseWriter, r *http.Request) {
-	message, err := s.chats.drainQueued(idParam(r, "id"))
+	message, err := s.chats.drainQueued(idParam(r, "id"), true)
 	if errors.Is(err, sql.ErrNoRows) {
 		errw(w, 404, "no queued messages")
 		return
@@ -99,10 +99,14 @@ func (s *Server) sendQueuedChatMessages(w http.ResponseWriter, r *http.Request) 
 
 // drainQueued sends the chat's queued messages, oldest first, as one user message.
 // Items that would push the attachments past the per-message limit stay queued.
-func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
+func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, error) {
 	lock := m.queueLock(chatID)
 	lock.Lock()
 	defer lock.Unlock()
+	var hops int
+	if err := m.db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, chatID).Scan(&hops); err != nil {
+		return ChatMessage{}, err
+	}
 	rows, err := m.db.Query(`SELECT id,text,attachments,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
 	if err != nil {
 		return ChatMessage{}, err
@@ -124,6 +128,9 @@ func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
 			return ChatMessage{}, err
 		}
 		if len(ids) > 0 && (from != sender || len(attachments)+len(items) > maxChatAttachments) {
+			break
+		}
+		if !manual && from.Valid && hops >= 10 {
 			break
 		}
 		if len(ids) == 0 {
@@ -166,8 +173,10 @@ func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
 		if _, err := m.db.Exec(`UPDATE chat_message SET from_chat_id=?,report_to_chat_id=? WHERE id=?`, sender.String, nullableString(reportTo), message.ID); err != nil {
 			return ChatMessage{}, err
 		}
-		if _, err := m.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, chatID); err != nil {
-			return ChatMessage{}, err
+		if !manual {
+			if _, err := m.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, chatID); err != nil {
+				return ChatMessage{}, err
+			}
 		}
 	}
 	if err := txrun(m.db, func(tx *sql.Tx) error {

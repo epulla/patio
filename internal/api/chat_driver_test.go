@@ -724,6 +724,155 @@ func TestChatQueueDrainsAllAsOneMessageAfterSuccessfulTurn(t *testing.T) {
 	}
 }
 
+func TestChatQueueDoesNotMergeAgentAndUserRows(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connectorID, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/messages", map[string]string{"text": "start"}, nil); code != http.StatusAccepted {
+		t.Fatalf("start=%d", code)
+	}
+	<-fake.input
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "sender", "text": "agent text"}, nil); code != 200 {
+		t.Fatalf("agent=%d", code)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/messages", map[string]string{"text": "user text"}, nil); code != http.StatusAccepted {
+		t.Fatalf("user=%d", code)
+	}
+	_, _ = io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"done"}`+"\n")
+	select {
+	case line := <-fake.input:
+		var in struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &in); err != nil || in.Message.Content != "[From chat \"Sender\" (chat_id sender). Reply with send_to_chat if needed.]\n\nagent text" {
+			t.Fatalf("first drain=%s %v", line, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("agent queue did not drain")
+	}
+	_, _ = io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"done"}`+"\n")
+	select {
+	case line := <-fake.input:
+		var in struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &in); err != nil || in.Message.Content != "user text" {
+			t.Fatalf("user queue merged: %s %v", line, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("user queue did not drain separately")
+	}
+}
+
+func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('sender-chat','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	var result map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]any{"from_chat_id": "sender-chat", "text": "hello"}, &result); code != 200 || result["status"] != "sent" {
+		t.Fatalf("delivery=%d %#v", code, result)
+	}
+	var line string
+	select {
+	case line = <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("driver received no delivery")
+	}
+	var input struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[From chat "Sender" (chat_id sender-chat). Reply with send_to_chat if needed.]`) {
+		t.Fatalf("driver content=%q err=%v", input.Message.Content, err)
+	}
+	var sender sql.NullString
+	if err := db.QueryRow(`SELECT from_chat_id FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&sender); err != nil || sender.String != "sender-chat" {
+		t.Fatalf("stored sender=%v err=%v", sender, err)
+	}
+}
+
+func TestCreateChatHandoffLinksParentAndRejectsDepthSix(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	caller := createDriverTestChat(t, db, connector, root)
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	var out struct {
+		ChatID string `json:"chat_id"`
+		Status string `json:"status"`
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+caller+"/handoff", map[string]any{"connector_id": connector, "prompt": "do work"}, &out); code != 200 || out.ChatID == "" || out.Status != "sent" {
+		t.Fatalf("handoff=%d %#v", code, out)
+	}
+	var parent string
+	if err := db.QueryRow(`SELECT parent_chat_id FROM chat WHERE id=?`, out.ChatID).Scan(&parent); err != nil || parent != caller {
+		t.Fatalf("parent=%q err=%v", parent, err)
+	}
+	prev := caller
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("depth-%d", i)
+		if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at,parent_chat_id) VALUES(?,?,?, ?,?)`, id, id, now(), now(), prev); err != nil {
+			t.Fatal(err)
+		}
+		prev = id
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+prev+"/handoff", map[string]any{"connector_id": connector, "prompt": "too deep"}, nil); code != 400 {
+		t.Fatalf("depth-six handoff=%d", code)
+	}
+}
+
+func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('hop-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=10 WHERE id=?`, target); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	notified := false
+	s := New(db, "local", false, "dev", root, Options{Notify: func(_, _, _ string) error { notified = true; return nil }, findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	var result map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "held"}, &result); code != 200 || result["status"] != "held" || !notified {
+		t.Fatalf("held delivery=%d %#v notified=%v", code, result, notified)
+	}
+	if _, err := s.chats.drainQueued(target, false); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("automatic drain err=%v", err)
+	}
+	var queued int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, target).Scan(&queued); err != nil || queued != 1 {
+		t.Fatalf("held queue=%d err=%v", queued, err)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/messages", map[string]string{"text": "user"}, nil); code != http.StatusAccepted {
+		t.Fatalf("user send=%d", code)
+	}
+	var hops int
+	if err := db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, target).Scan(&hops); err != nil || hops != 0 {
+		t.Fatalf("agent_hops=%d err=%v", hops, err)
+	}
+}
+
 func TestChatQueueHeldAfterStopOrTurnError(t *testing.T) {
 	for _, tc := range []struct {
 		name string
