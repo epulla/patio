@@ -104,6 +104,9 @@ func TestCopilotACPDriver(t *testing.T) {
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/stop", nil, nil); code != http.StatusNoContent {
 		t.Fatalf("stop status = %d", code)
 	}
+	if _, err := os.Stat(configPaths[1]); !os.IsNotExist(err) {
+		t.Errorf("Copilot config still exists after stop: %v", err)
+	}
 
 	var sessionID string
 	if err := database.QueryRow(`SELECT session_id FROM chat WHERE id=?`, chatID).Scan(&sessionID); err != nil || sessionID != "session-copilot" {
@@ -153,6 +156,56 @@ func TestCopilotACPDriver(t *testing.T) {
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCopilotStartFailureRemovesConfigDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	keyring.MockInit()
+	database, _, root := chatAPI(t)
+	connectorID := createCopilotTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath:         filepath.Join(root, "test.db"),
+		findCopilot:    func() (string, error) { return "copilot-test", nil },
+		processFactory: func(string, []string, []string, string) (chatProcess, error) { return nil, errors.New("launch failed") },
+	})
+	defer server.Close()
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "start"}, nil); code != http.StatusInternalServerError {
+		t.Fatalf("send = %d", code)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	parent, err := copilotMCPConfigParent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("config dirs remain after start failure: %v", entries)
+	}
+}
+
+func TestCleanupStaleCopilotMCPConfigs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	parent, err := copilotMCPConfigParent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(parent, "chat-stale")
+	if err := os.Mkdir(stale, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "mcp.json"), []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CleanupStaleCopilotMCPConfigs(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale config dir remains: %v", err)
 	}
 }
 

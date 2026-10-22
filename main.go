@@ -178,6 +178,11 @@ func main() {
 		Height: 800,
 		OnStartup: func(ctx context.Context) {
 			appCtx = ctx
+			if *chatWindow == "" {
+				if err := api.CleanupStaleCopilotMCPConfigs(); err != nil {
+					log.Printf("clean stale Copilot MCP configs: %v", err)
+				}
+			}
 			showPath := func(path string) {
 				wruntime.WindowUnminimise(ctx)
 				wruntime.WindowShow(ctx)

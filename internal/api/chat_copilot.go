@@ -24,28 +24,29 @@ const copilotAuthError = "Sign in to Copilot: run `copilot login` (Connectors â†
 func init() { runtimes["copilot"] = startCopilot }
 
 type copilotRuntime struct {
-	manager      *chatManager
-	chatID       string
-	workdir      string
-	runtime      *chatRuntime
-	process      chatProcess
-	client       *acpClient
-	processDone  chan struct{}
-	sessionID    string
-	ctx          context.Context
-	cancel       context.CancelFunc
-	assistantMu  sync.Mutex
-	assistant    strings.Builder
-	toolMu       sync.Mutex
-	toolRows     map[string]string // ACP toolCallId -> tool chat message ID
-	replaying    atomic.Bool
-	stopped      atomic.Bool
-	closing      atomic.Bool
-	authFailed   bool
-	imagePrompt  bool
-	external     []mcpServerSpec
-	mcpConfigDir string
-	firstPrompt  bool
+	manager       *chatManager
+	chatID        string
+	workdir       string
+	runtime       *chatRuntime
+	process       chatProcess
+	client        *acpClient
+	processDone   chan struct{}
+	sessionID     string
+	ctx           context.Context
+	cancel        context.CancelFunc
+	assistantMu   sync.Mutex
+	assistant     strings.Builder
+	toolMu        sync.Mutex
+	toolRows      map[string]string // ACP toolCallId -> tool chat message ID
+	replaying     atomic.Bool
+	stopped       atomic.Bool
+	closing       atomic.Bool
+	authFailed    bool
+	imagePrompt   bool
+	external      []mcpServerSpec
+	mcpConfigDir  string
+	configCleanup sync.Once
+	firstPrompt   bool
 }
 
 func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (chatRuntimeDriver, error) {
@@ -65,7 +66,11 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	if err != nil {
 		return nil, err
 	}
-	mcpConfigDir, err := os.MkdirTemp("", "patio-copilot-*")
+	mcpConfigParent, err := copilotMCPConfigParent()
+	if err != nil {
+		return nil, err
+	}
+	mcpConfigDir, err := os.MkdirTemp(mcpConfigParent, "chat-*")
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +99,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 		secret, err = "", nil
 	}
 	if err != nil {
+		_ = os.RemoveAll(mcpConfigDir)
 		return nil, fmt.Errorf("read Copilot credential: %w", err)
 	}
 	factory := m.options.processFactory
@@ -473,6 +479,7 @@ func findACPOption(options []struct {
 }
 
 func (d *copilotRuntime) stop() error {
+	defer d.cleanupMCPConfig()
 	d.stopped.Store(true)
 	var session sql.NullString
 	if err := d.manager.db.QueryRow(`SELECT session_id FROM chat WHERE id=?`, d.chatID).Scan(&session); err != nil {
@@ -487,8 +494,47 @@ func (d *copilotRuntime) stop() error {
 
 func (d *copilotRuntime) close() error {
 	err := d.terminate()
-	_ = os.RemoveAll(d.mcpConfigDir)
+	d.cleanupMCPConfig()
 	return err
+}
+
+func (d *copilotRuntime) cleanupMCPConfig() {
+	d.configCleanup.Do(func() { _ = os.RemoveAll(d.mcpConfigDir) })
+}
+
+func copilotMCPConfigParent() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("find Copilot config cache: %w", err)
+	}
+	parent := filepath.Join(cacheDir, "patio", "copilot-mcp")
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(parent, 0700); err != nil {
+		return "", err
+	}
+	return parent, nil
+}
+
+// CleanupStaleCopilotMCPConfigs removes per-chat config directories left by a crashed app.
+func CleanupStaleCopilotMCPConfigs() error {
+	parent, err := copilotMCPConfigParent()
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if err := os.RemoveAll(filepath.Join(parent, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (d *copilotRuntime) terminate() error {
@@ -508,6 +554,7 @@ func (d *copilotRuntime) watch() {
 	go func() { _, _ = io.Copy(io.Discard, d.process.Stderr()) }()
 	<-d.client.done
 	_ = d.process.Wait()
+	d.cleanupMCPConfig()
 	close(d.processDone)
 	d.runtime.mu.Lock()
 	expected := d.runtime.stopping
