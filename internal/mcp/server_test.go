@@ -148,6 +148,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"add_comment": true, "list_calendar": true, "create_calendar_item": true,
 		"update_calendar_item": true, "delete_calendar_item": true,
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
+		"list_monitors": true, "create_monitor": true, "update_monitor": true, "delete_monitor": true, "test_monitor": true,
 		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
 		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
 		"query_db": true, "list_connectors": true, "create_connector": true,
@@ -172,8 +173,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 50 {
-		t.Fatalf("tool count = %d, want 50", count)
+	if count != 55 {
+		t.Fatalf("tool count = %d, want 55", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -205,6 +206,39 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	decodeText(t, updatedTask, &savedTask)
 	if savedTask.ID != task.ID || savedTask.Prompt != "do other work" {
 		t.Fatalf("scheduled task update: %#v", savedTask)
+	}
+	if _, err := database.Exec(`INSERT INTO mcp_server(id,name,kind,command,args_json,env_keys_json,url,auth,enabled,created_at) VALUES('monitor-mcp','Monitor MCP','stdio','test','[]','[]','','none',1,'now')`); err != nil {
+		t.Fatal(err)
+	}
+	createdMonitor := callTool(t, session, "create_monitor", map[string]any{"name": "MCP monitor", "mcp_server_id": "monitor-mcp", "tool": "fetch", "args": map[string]any{}, "schedule": "@every 5m", "condition": "changed"})
+	var monitorOut struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	decodeText(t, createdMonitor, &monitorOut)
+	var monitors []struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "list_monitors", map[string]any{}), &monitors)
+	if monitorOut.ID == "" || monitorOut.Name != "MCP monitor" || len(monitors) != 1 || monitors[0].ID != monitorOut.ID {
+		t.Fatalf("monitor round trip: %#v %#v", monitorOut, monitors)
+	}
+	updatedMonitor := callTool(t, session, "update_monitor", map[string]any{"id": monitorOut.ID, "name": "MCP monitor updated", "mcp_server_id": "monitor-mcp", "tool": "fetch", "args": map[string]any{}, "schedule": "@every 5m", "condition": "changed"})
+	var savedMonitor struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	decodeText(t, updatedMonitor, &savedMonitor)
+	if savedMonitor.ID != monitorOut.ID || savedMonitor.Name != "MCP monitor updated" {
+		t.Fatalf("monitor update: %#v", savedMonitor)
+	}
+	var testError map[string]string
+	decodeText(t, callTool(t, session, "test_monitor", map[string]any{"mcp_server_id": "missing", "tool": "fetch", "args": map[string]any{}}), &testError)
+	if testError["error"] == "" {
+		t.Fatalf("test_monitor error response=%v", testError)
+	}
+	if deleted := callTool(t, session, "delete_monitor", map[string]any{"id": monitorOut.ID}); deleted.IsError {
+		t.Fatalf("delete monitor: %#v", deleted)
 	}
 
 	boardResult := callTool(t, session, "create_board", map[string]any{

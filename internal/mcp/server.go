@@ -220,6 +220,39 @@ type scheduledTaskArgs struct {
 	RunAt       *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
 	Enabled     *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
 }
+type monitorIDArgs struct {
+	ID string `json:"id" jsonschema:"Monitor UUID"`
+}
+type monitorTicketActionArgs struct {
+	BoardID string `json:"board_id"`
+	Title   string `json:"title"`
+}
+type monitorChatActionArgs struct {
+	Prompt string `json:"prompt"`
+}
+type monitorActionsArgs struct {
+	Notify bool                     `json:"notify"`
+	Ticket *monitorTicketActionArgs `json:"ticket,omitempty"`
+	Chat   *monitorChatActionArgs   `json:"chat,omitempty"`
+}
+type monitorArgs struct {
+	ID          string             `json:"id,omitempty" jsonschema:"Monitor UUID for updates"`
+	Name        string             `json:"name"`
+	MCPServerID string             `json:"mcp_server_id"`
+	Tool        string             `json:"tool"`
+	Args        map[string]any     `json:"args,omitempty"`
+	Schedule    string             `json:"schedule"`
+	Condition   string             `json:"condition,omitempty" jsonschema:"changed, non_empty, or new_items"`
+	ResultPath  string             `json:"result_path,omitempty"`
+	IDPath      string             `json:"id_path,omitempty"`
+	Actions     monitorActionsArgs `json:"actions,omitempty"`
+	Enabled     *bool              `json:"enabled,omitempty"`
+}
+type testMonitorArgs struct {
+	MCPServerID string         `json:"mcp_server_id"`
+	Tool        string         `json:"tool"`
+	Args        map[string]any `json:"args,omitempty"`
+}
 type mcpServerIDArgs struct {
 	ID string `json:"id" jsonschema:"MCP server UUID"`
 }
@@ -567,6 +600,27 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return errorResult(err), nil
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
+	})
+	addGeneric(s, "list_monitors", "List monitors", h, func(struct{}) request { return request{http.MethodGet, "/api/monitors", nil} })
+	monitorDescription := `Schedule accepts "@every 5m" or cron, minimum 1 minute; conditions are changed, non_empty, or new_items (requires id_path, a dot path such as "ts"); action templates support {{name}}, {{count}}, and {{items}}.`
+	addGeneric(s, "create_monitor", "Create monitor. "+monitorDescription, h, func(a monitorArgs) request {
+		a.ID = ""
+		return request{http.MethodPost, "/api/monitors", a}
+	})
+	addGeneric(s, "update_monitor", "Update monitor; all fields are replaced.", h, func(a monitorArgs) request {
+		path := "/api/monitors/" + url.PathEscape(a.ID)
+		a.ID = ""
+		return request{http.MethodPut, path, a}
+	})
+	addGenericHandler(s, "delete_monitor", "Delete monitor", func(a monitorIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(h, request{http.MethodDelete, "/api/monitors/" + url.PathEscape(a.ID), nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
+	})
+	addGeneric(s, "test_monitor", "Call one monitor tool once and return its result", h, func(a testMonitorArgs) request {
+		return request{http.MethodPost, "/api/monitors/test", a}
 	})
 	addGeneric(s, "create_notification", "Notify the user inside Patio (bell, toast, and a native alert when Patio is in the background). Use instead of external messages for alerts meant only for the user.", h, func(a notificationArgs) request {
 		return request{http.MethodPost, "/api/notifications", a}

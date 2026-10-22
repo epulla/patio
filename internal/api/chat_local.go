@@ -172,6 +172,7 @@ var localMCPTools = map[string]bool{
 	"update_board": false, "reorder_boards": false, "create_column": false, "update_column": false, "delete_column": false,
 	"reorder_columns": false, "create_ticket_type": false, "update_ticket_type": false, "delete_skill": false,
 	"list_scheduled_tasks": false, "get_scheduled_task": false, "create_scheduled_task": false, "update_scheduled_task": false, "delete_scheduled_task": false,
+	"list_monitors": false, "create_monitor": false, "update_monitor": false, "delete_monitor": false, "test_monitor": false,
 	"list_mcp_servers": false, "create_mcp_server": false, "update_mcp_server": false, "check_mcp_server": false,
 	"list_connectors": false, "create_connector": false, "update_connector": false, "list_connector_models": false,
 	"get_settings_defaults": false, "update_settings_defaults": false, "query_db": false, "get_item_history": false,
