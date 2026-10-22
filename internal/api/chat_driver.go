@@ -56,6 +56,7 @@ type chatManager struct {
 	notifyMCPSignIn      func(string) error
 	approvalTimeout      time.Duration
 	approvalPollInterval time.Duration
+	reportBack           func(string, string, string) error
 	// burnedout: assumed 10-minute idle timeout for all chat kinds
 	idleTimeout time.Duration
 	mu          sync.Mutex
@@ -505,6 +506,25 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	if err := m.releaseTurn(id); err != nil {
 		return err
+	}
+	var reportTo sql.NullString
+	if err := m.db.QueryRow(`SELECT report_to_chat_id FROM chat_message WHERE chat_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1`, id).Scan(&reportTo); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if reportTo.Valid && m.reportBack != nil {
+		result := assistantText
+		if stopping {
+			result = "Stopped by the user before finishing."
+		} else if turnErr != nil {
+			result = "Turn failed: " + turnErr.Error()
+		}
+		from := id
+		target := reportTo.String
+		m.background.Go(func() {
+			if err := m.reportBack(target, from, result); err != nil {
+				log.Printf("report chat result %s to %s: %v", from, target, err)
+			}
+		})
 	}
 	if turnErr == nil && !stopping {
 		m.background.Go(func() {

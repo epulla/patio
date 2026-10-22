@@ -99,6 +99,21 @@ func (s *Server) queueAgentMessage(id string, in agentMessageRequest, prefix str
 	return nil
 }
 
+func (s *Server) reportChatResult(target, from, text string) error {
+	data, err := json.Marshal(agentMessageRequest{FromChatID: from, Text: text})
+	if err != nil {
+		return err
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/chats/"+target+"/agent-messages", bytes.NewReader(data))
+	req.SetPathValue("id", target)
+	rec := httptest.NewRecorder()
+	s.agentMessage(rec, req)
+	if rec.Code < 200 || rec.Code >= 300 {
+		return errors.New(strings.TrimSpace(rec.Body.String()))
+	}
+	return nil
+}
+
 func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ConnectorID string `json:"connector_id"`

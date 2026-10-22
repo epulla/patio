@@ -101,7 +101,10 @@ func NotifyScheduledQuestion(database *sql.DB, chatID string) error {
 	var title string
 	err := database.QueryRow(`SELECT t.title FROM scheduled_task_run r JOIN scheduled_task t ON t.id=r.task_id WHERE r.chat_id=? AND r.status IN ('running','waiting') ORDER BY r.created_at DESC,r.rowid DESC LIMIT 1`, chatID).Scan(&title)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		err = database.QueryRow(`SELECT c.title FROM chat c WHERE c.id=? AND (c.parent_chat_id IS NOT NULL OR COALESCE((SELECT from_chat_id FROM chat_message m WHERE m.chat_id=c.id AND m.role='user' ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1),'')<>'')`, chatID).Scan(&title)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 	}
 	if err != nil {
 		return err
