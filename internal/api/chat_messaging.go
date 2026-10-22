@@ -70,8 +70,8 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	if in.ReportBack {
 		reportTo = &fromID
 	}
-	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, StoredText: in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
-	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
+	message, sendErr := s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, StoredText: in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
+	if errors.Is(sendErr, errChatTurnRunning) || errors.Is(sendErr, errChatTurnOtherWindow) {
 		if err := s.queueAgentMessage(id, in); err != nil {
 			errw(w, 500, err.Error())
 			return
@@ -79,8 +79,19 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "queued"})
 		return
 	}
-	if err != nil {
-		errw(w, 500, err.Error())
+	if sendErr != nil {
+		log.Printf("agent message delivery to %s failed; queueing: %v", id, sendErr)
+		if message.ID != "" {
+			if _, err := s.db.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, message.ID, id); err != nil {
+				errw(w, 500, errors.Join(sendErr, err).Error())
+				return
+			}
+		}
+		if err := s.queueAgentMessage(id, in); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		write(w, 200, map[string]string{"status": "queued"})
 		return
 	}
 	_, err = s.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, id)
