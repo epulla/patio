@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -104,63 +105,103 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 	lock := m.queueLock(chatID)
 	lock.Lock()
 	defer lock.Unlock()
-	var hops int
-	if err := m.db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, chatID).Scan(&hops); err != nil {
-		return ChatMessage{}, err
+	type queuedRow struct {
+		id, text, raw, createdAt string
+		from, report             sql.NullString
 	}
-	rows, err := m.db.Query(`SELECT id,text,attachments,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
+	var claimed []queuedRow
+	var oldHops int
+	var sender, reportTo sql.NullString
+	var texts []string
+	var attachments []ChatAttachment
+	err := txrun(m.db, func(tx *sql.Tx) error {
+		if err := tx.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, chatID).Scan(&oldHops); err != nil {
+			return err
+		}
+		rows, err := tx.Query(`SELECT id,text,attachments,created_at,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var row queuedRow
+			var rawItems []ChatAttachment
+			if err := rows.Scan(&row.id, &row.text, &row.raw, &row.createdAt, &row.from, &row.report); err != nil {
+				rows.Close()
+				return err
+			}
+			if err := json.Unmarshal([]byte(row.raw), &rawItems); err != nil {
+				rows.Close()
+				return err
+			}
+			if len(claimed) > 0 && (row.from != sender || len(attachments)+len(rawItems) > maxChatAttachments) {
+				break
+			}
+			if len(claimed) == 0 && !manual && row.from.Valid && oldHops >= 10 {
+				break
+			}
+			if len(claimed) == 0 {
+				sender, reportTo = row.from, row.report
+			}
+			claimed = append(claimed, row)
+			if row.text != "" {
+				texts = append(texts, row.text)
+			}
+			attachments = append(attachments, rawItems...)
+		}
+		rowsErr := rows.Err()
+		closeErr := rows.Close()
+		if err := errors.Join(rowsErr, closeErr); err != nil {
+			return err
+		}
+		if len(claimed) == 0 {
+			return sql.ErrNoRows
+		}
+		for _, row := range claimed {
+			if _, err := tx.Exec(`DELETE FROM chat_queue WHERE id=? AND chat_id=?`, row.id, chatID); err != nil {
+				return err
+			}
+		}
+		nextHops := oldHops + 1
+		if manual || !sender.Valid {
+			nextHops = 0
+		}
+		_, err = tx.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, nextHops, chatID)
+		return err
+	})
 	if err != nil {
 		return ChatMessage{}, err
 	}
-	var ids, texts []string
-	var sender sql.NullString
-	var reportTo sql.NullString
-	var attachments []ChatAttachment
-	for rows.Next() {
-		var id, text, raw string
-		var from, report sql.NullString
-		var items []ChatAttachment
-		if err := rows.Scan(&id, &text, &raw, &from, &report); err != nil {
-			rows.Close()
-			return ChatMessage{}, err
+	restore := func(cause error, messageID string) error {
+		restoreErr := txrun(m.db, func(tx *sql.Tx) error {
+			if messageID != "" {
+				if _, err := tx.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, messageID, chatID); err != nil {
+					return err
+				}
+			}
+			for _, row := range claimed {
+				if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,?,?,?,?)`, row.id, chatID, row.text, row.raw, row.createdAt, nullableQueueSender(row.from), nullableQueueSender(row.report)); err != nil {
+					return err
+				}
+			}
+			_, err := tx.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, oldHops, chatID)
+			return err
+		})
+		m.emit(chatID, map[string]any{"type": "queue"})
+		if restoreErr != nil {
+			return errors.Join(cause, restoreErr)
 		}
-		if err := json.Unmarshal([]byte(raw), &items); err != nil {
-			rows.Close()
-			return ChatMessage{}, err
-		}
-		if len(ids) > 0 && (from != sender || len(attachments)+len(items) > maxChatAttachments) {
-			break
-		}
-		if !manual && from.Valid && hops >= 10 {
-			break
-		}
-		if len(ids) == 0 {
-			sender = from
-			reportTo = report
-		}
-		ids = append(ids, id)
-		if text != "" {
-			texts = append(texts, text)
-		}
-		attachments = append(attachments, items...)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return ChatMessage{}, err
-	}
-	if len(ids) == 0 {
-		return ChatMessage{}, sql.ErrNoRows
+		return cause
 	}
 	var connectorID, sessionID sql.NullString
 	if err := m.db.QueryRow(`SELECT connector_id,session_id FROM chat WHERE id=?`, chatID).Scan(&connectorID, &sessionID); err != nil {
-		return ChatMessage{}, err
+		return ChatMessage{}, restore(err, "")
 	}
 	if !connectorID.Valid {
-		return ChatMessage{}, errChatConnectorMissing
+		return ChatMessage{}, restore(errChatConnectorMissing, "")
 	}
 	kind, dir, err := m.connectorConfig(connectorID.String)
 	if err != nil {
-		return ChatMessage{}, err
+		return ChatMessage{}, restore(err, "")
 	}
 	c := chat{ID: chatID, ConnectorID: &connectorID.String}
 	if sessionID.Valid {
@@ -171,7 +212,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 	if sender.Valid {
 		var senderTitle string
 		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, sender.String).Scan(&senderTitle); err != nil {
-			return ChatMessage{}, err
+			return ChatMessage{}, restore(err, "")
 		}
 		text = agentMessageLabel(sender.String, senderTitle, reportTo.Valid) + text
 		fromID = &sender.String
@@ -179,32 +220,18 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 			reportID = &reportTo.String
 		}
 	}
-	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID})
+	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID, AgentHopsManaged: true})
 	if err != nil {
-		if sender.Valid && message.ID != "" {
-			if _, deleteErr := m.db.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, message.ID, chatID); deleteErr != nil {
-				return ChatMessage{}, errors.Join(err, deleteErr)
-			}
-		}
+		err = restore(err, message.ID)
+		log.Printf("queued chat send failed; restored rows for %s: %v", chatID, err)
 		return ChatMessage{}, err
 	}
-	if sender.Valid {
-		if !manual {
-			if _, err := m.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, chatID); err != nil {
-				return ChatMessage{}, err
-			}
-		}
-	}
-	if err := txrun(m.db, func(tx *sql.Tx) error {
-		for _, id := range ids {
-			if _, err := tx.Exec(`DELETE FROM chat_queue WHERE id=? AND chat_id=?`, id, chatID); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return ChatMessage{}, err
-	}
-	m.emit(chatID, map[string]any{"type": "queue"})
 	return message, nil
+}
+
+func nullableQueueSender(v sql.NullString) any {
+	if v.Valid {
+		return v.String
+	}
+	return nil
 }

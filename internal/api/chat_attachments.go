@@ -35,11 +35,12 @@ type ChatAttachment struct {
 // ChatSendRequest is passed intact to the runtime driver's Send path. Runtime
 // attachment delivery is implemented separately.
 type ChatSendRequest struct {
-	Text           string           `json:"text"`
-	StoredText     string           `json:"-"`
-	Attachments    []ChatAttachment `json:"attachments,omitempty"`
-	FromChatID     *string          `json:"-"`
-	ReportToChatID *string          `json:"-"`
+	Text             string           `json:"text"`
+	StoredText       string           `json:"-"`
+	Attachments      []ChatAttachment `json:"attachments,omitempty"`
+	FromChatID       *string          `json:"-"`
+	ReportToChatID   *string          `json:"-"`
+	AgentHopsManaged bool             `json:"-"`
 }
 
 func decodeChatAttachments(raw string) ([]ChatAttachment, error) {

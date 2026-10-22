@@ -862,6 +862,91 @@ func TestDeliverAgentMessagesEmptyQueueDoesNotStartDriver(t *testing.T) {
 	}
 }
 
+func TestDrainQueuedSendFailureRestoresRowsAndHops(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	chatID := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('restore-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=3 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES('restore-row',?,'raw','[]','old','restore-sender','restore-sender')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "", errors.New("missing runtime") }})
+	defer s.Close()
+	if _, err := s.chats.drainQueued(chatID, false); err == nil {
+		t.Fatal("drain succeeded without runtime")
+	}
+	var id, text, attachments, created, from, report string
+	if err := db.QueryRow(`SELECT id,text,attachments,created_at,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=?`, chatID).Scan(&id, &text, &attachments, &created, &from, &report); err != nil {
+		t.Fatal(err)
+	}
+	if id != "restore-row" || text != "raw" || attachments != "[]" || created != "old" || from != "restore-sender" || report != "restore-sender" {
+		t.Fatalf("restored row=(%s,%s,%s,%s,%s,%s)", id, text, attachments, created, from, report)
+	}
+	var hops, users int
+	if err := db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, chatID).Scan(&hops); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user'`, chatID).Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if hops != 3 || users != 0 {
+		t.Fatalf("hops=%d duplicate users=%d", hops, users)
+	}
+}
+
+func TestConcurrentQueueDrainsSendRowsOnce(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	chatID := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('concurrent-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id) VALUES('once',?,'once text','[]','old','concurrent-sender')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	results := make(chan error, 2)
+	for range 2 {
+		go func() { _, err := s.chats.drainQueued(chatID, false); results <- err }()
+	}
+	for range 2 {
+		err := <-results
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("drain error=%v", err)
+		}
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("no delivery")
+	}
+	select {
+	case line := <-fake.input:
+		t.Fatalf("duplicate driver delivery %q", line)
+	default:
+	}
+	var users, queued, hops int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user' AND content='once text'`, chatID).Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='once'`).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, chatID).Scan(&hops); err != nil {
+		t.Fatal(err)
+	}
+	if users != 1 || queued != 0 || hops != 1 {
+		t.Fatalf("users=%d queued=%d hops=%d", users, queued, hops)
+	}
+}
+
 func TestCreateChatHandoffLinksParentAndRejectsDepthSix(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
