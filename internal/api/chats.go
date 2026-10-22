@@ -47,6 +47,7 @@ type chat struct {
 	Capabilities    chatCapabilities `json:"capabilities"`
 	ScheduledTaskID *string          `json:"scheduled_task_id"`
 	ScheduledLate   bool             `json:"scheduled_late"`
+	ParentChatID    *string          `json:"parent_chat_id"`
 }
 
 type chatCapabilities struct {
@@ -67,8 +68,9 @@ type ChatMessage struct {
 	Attachments []ChatAttachment `json:"attachments"`
 	Answered    bool             `json:"answered"`
 	// The result preview itself loads on demand from the tool-result endpoint.
-	ToolResultSize int  `json:"tool_result_size,omitempty"`
-	ToolError      bool `json:"tool_error,omitempty"`
+	ToolResultSize int     `json:"tool_result_size,omitempty"`
+	ToolError      bool    `json:"tool_error,omitempty"`
+	FromChatID     *string `json:"from_chat_id"`
 }
 
 type chatApproval struct {
@@ -191,7 +193,7 @@ func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 
 func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string, string, string, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID); err != nil {
 		return c, "", "", "", err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -224,7 +226,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0)`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id`
 
 func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	limit := 50
@@ -433,7 +435,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	}
 	c.Running = s.chats.Running(c.ID)
 	messages := []ChatMessage{}
-	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments,answered,tool_result_size,tool_error FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
+	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments,answered,tool_result_size,tool_error,from_chat_id FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -441,7 +443,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var m ChatMessage
 		var rawAttachments string
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError); err == nil {
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError, &m.FromChatID); err == nil {
 			if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
 				_ = rows.Close()
 				errw(w, 500, "invalid chat message attachments: "+err.Error())
@@ -510,7 +512,28 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, rowsErr.Error())
 		return
 	}
-	response := map[string]any{"chat": c, "messages": messages, "pending_approvals": approvals, "auto_approvals": autoApprovals}
+	children := []map[string]string{}
+	childRows, err := s.db.Query(`SELECT id,title FROM chat WHERE parent_chat_id=? ORDER BY created_at,rowid`, c.ID)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	for childRows.Next() {
+		var child map[string]string
+		var id, title string
+		if err := childRows.Scan(&id, &title); err != nil {
+			childRows.Close()
+			errw(w, 500, err.Error())
+			return
+		}
+		child = map[string]string{"id": id, "title": title}
+		children = append(children, child)
+	}
+	if err := childRows.Close(); err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	response := map[string]any{"chat": c, "messages": messages, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals}
 	data, err := json.Marshal(response)
 	if err != nil {
 		errw(w, 500, err.Error())
