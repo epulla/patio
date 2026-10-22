@@ -64,26 +64,31 @@ type opencodeServer struct {
 }
 
 type opencodeRuntime struct {
-	manager       *chatManager
-	chatID        string
-	server        *opencodeServer
-	session       string
-	directory     string
-	model         string
-	storedSession bool
-	ctx           context.Context
-	cancel        context.CancelFunc
-	mu            sync.Mutex
-	text          strings.Builder
-	roles         map[string]string
-	parts         map[string]string
-	toolRows      map[string]string // v2 tool call ID -> tool chat message ID
-	active        bool
-	closed        bool
-	release       sync.Once
-	firstPrompt   bool
-	personaPrompt bool
-	mcpNames      []string
+	manager         *chatManager
+	chatID          string
+	server          *opencodeServer
+	session         string
+	directory       string
+	model           string
+	storedSession   bool
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	text            strings.Builder
+	roles           map[string]string
+	parts           map[string]string
+	toolRows        map[string]string // v2 tool call ID -> tool chat message ID
+	active          bool
+	closed          bool
+	release         sync.Once
+	firstPrompt     bool
+	personaPrompt   bool
+	mcpNames        []string
+	mcpMu           sync.Mutex
+	cachedMCPStates map[string]opencodeMCPState
+	mcpNoted        map[string]bool
+	mcpReconnect    bool
+	mcpJobs         sync.WaitGroup
 }
 
 var opencodeServers = struct {
@@ -363,7 +368,10 @@ func (d *opencodeRuntime) createSession() error {
 
 func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	if d.firstPrompt {
+		d.firstPrompt = false
 		d.waitMCP()
+	} else {
+		d.triggerMCPReconnect()
 	}
 	files, err := loadChatAttachmentFiles(d.directory, request.Attachments)
 	if err != nil {
@@ -444,6 +452,7 @@ type opencodeMCPState struct {
 const (
 	opencodeMCPReconnectAttempts = 2
 	opencodeMCPReconnectCap      = 35 * time.Second
+	opencodeMCPSettleBudget      = 3 * time.Second
 )
 
 func (d *opencodeRuntime) mcpStates(ctx context.Context) (map[string]opencodeMCPState, error) {
@@ -479,20 +488,81 @@ func (d *opencodeRuntime) mcpStates(ctx context.Context) (map[string]opencodeMCP
 func (d *opencodeRuntime) waitMCP() {
 	started := time.Now()
 	states := d.awaitMCPSettled(started)
-	d.reconnectFailedMCP(states)
+	d.mcpMu.Lock()
+	d.cachedMCPStates = states
+	d.mcpMu.Unlock()
 	for _, name := range d.mcpNames {
 		if state := states[name]; state.Status == "failed" || state.Status == "needs_auth" {
-			note := fmt.Sprintf("MCP server %s unavailable: %s", name, state.Error)
-			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
-				d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
-			}
+			d.noteMCPUnavailable(name, state)
 		}
+	}
+	d.triggerMCPReconnect()
+}
+
+func (d *opencodeRuntime) noteMCPUnavailable(name string, state opencodeMCPState) {
+	d.mcpMu.Lock()
+	if d.mcpNoted == nil {
+		d.mcpNoted = make(map[string]bool)
+	}
+	if d.mcpNoted[name] {
+		d.mcpMu.Unlock()
+		return
+	}
+	d.mcpNoted[name] = true
+	d.mcpMu.Unlock()
+	note := fmt.Sprintf("MCP server %s unavailable: %s", name, state.Error)
+	if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
+		d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
 	}
 }
 
-// awaitMCPSettled polls until no configured server is missing or pending, or 15s pass.
+func (d *opencodeRuntime) triggerMCPReconnect() {
+	d.mcpMu.Lock()
+	if d.ctx.Err() != nil || d.mcpReconnect {
+		d.mcpMu.Unlock()
+		return
+	}
+	refresh := false
+	for _, state := range d.cachedMCPStates {
+		if state.Status == "failed" || state.Status == "pending" {
+			refresh = true
+			break
+		}
+	}
+	if !refresh {
+		d.mcpMu.Unlock()
+		return
+	}
+	d.mcpReconnect = true
+	d.mcpJobs.Add(1)
+	states := make(map[string]opencodeMCPState, len(d.cachedMCPStates))
+	for name, state := range d.cachedMCPStates {
+		states[name] = state
+	}
+	d.mcpMu.Unlock()
+	go func() {
+		defer d.mcpJobs.Done()
+		ctx, cancel := context.WithTimeout(d.ctx, 2*time.Second)
+		if current, err := d.mcpStates(ctx); err == nil {
+			states = current
+			for name, state := range states {
+				if state.Status == "failed" || state.Status == "needs_auth" {
+					d.noteMCPUnavailable(name, state)
+				}
+			}
+		}
+		cancel()
+		d.reconnectFailedMCP(states)
+		d.mcpMu.Lock()
+		d.cachedMCPStates = states
+		d.mcpReconnect = false
+		d.mcpMu.Unlock()
+	}()
+}
+
+// awaitMCPSettled polls until no configured server is missing or pending, or budget passes.
 func (d *opencodeRuntime) awaitMCPSettled(started time.Time) map[string]opencodeMCPState {
-	ctx, cancel := context.WithTimeout(d.ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(d.ctx, opencodeMCPSettleBudget)
 	defer cancel()
 	var states map[string]opencodeMCPState
 	var lastErr error
@@ -539,7 +609,6 @@ func (d *opencodeRuntime) awaitMCPSettled(started time.Time) map[string]opencode
 func (d *opencodeRuntime) reconnectFailedMCP(states map[string]opencodeMCPState) {
 	ctx, cancel := context.WithTimeout(d.ctx, opencodeMCPReconnectCap)
 	defer cancel()
-	recovered := false
 	for _, name := range d.mcpNames {
 		state := states[name]
 		if state.Status != "failed" {
@@ -560,8 +629,16 @@ func (d *opencodeRuntime) reconnectFailedMCP(states map[string]opencodeMCPState)
 			}
 			state = next
 			if state.Status == "connected" {
-				recovered = true
 				log.Printf("OpenCode MCP recovered chat=%s server=%s attempt=%d/%d duration=%s", d.chatID, name, attempt, opencodeMCPReconnectAttempts, time.Since(started))
+				d.mcpMu.Lock()
+				noted := d.mcpNoted[name]
+				d.mcpMu.Unlock()
+				if noted {
+					note := fmt.Sprintf("MCP server %s reconnected.", name)
+					if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err == nil {
+						d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
+					}
+				}
 				break
 			}
 			log.Printf("OpenCode MCP reconnect chat=%s server=%s attempt=%d/%d backoff=%s duration=%s status=%s error=%q", d.chatID, name, attempt, opencodeMCPReconnectAttempts, backoff, time.Since(started), state.Status, shortText(state.Error, 200))
@@ -570,10 +647,6 @@ func (d *opencodeRuntime) reconnectFailedMCP(states map[string]opencodeMCPState)
 			log.Printf("OpenCode MCP still unavailable chat=%s server=%s status=%s", d.chatID, name, state.Status)
 		}
 		states[name] = state
-	}
-	if recovered {
-		// Same catalog delay as after the initial connect (PROJ-14).
-		sleepCtx(ctx, time.Second)
 	}
 }
 
@@ -675,6 +748,9 @@ func (d *opencodeRuntime) close() error {
 func (d *opencodeRuntime) releaseServer() {
 	d.release.Do(func() {
 		d.cancel()
+		d.mcpMu.Lock()
+		d.mcpMu.Unlock()
+		d.mcpJobs.Wait()
 		d.mu.Lock()
 		d.closed = true
 		d.mu.Unlock()
