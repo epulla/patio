@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func TestCopilotACPDriver(t *testing.T) {
 			}
 			configPath := strings.TrimPrefix(args[3], "@")
 			info, err := os.Stat(configPath)
-			if err != nil || info.Mode().Perm() != 0600 {
+			if err != nil || !info.Mode().IsRegular() || runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 				t.Errorf("Copilot config mode/stat = %v, %v", info, err)
 			}
 			data, err := os.ReadFile(configPath)
