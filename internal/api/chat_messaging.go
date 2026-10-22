@@ -138,14 +138,37 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		Prompt      string `json:"prompt"`
 		ReportBack  bool   `json:"report_back"`
 	}
-	if decode(r, &in) != nil || !required(in.ConnectorID) || !required(in.Prompt) {
-		errw(w, 400, "connector_id and prompt required")
+	if decode(r, &in) != nil || !required(in.Prompt) {
+		errw(w, 400, "prompt required")
 		return
 	}
 	caller, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, idParam(r, "id")))
 	if err != nil {
 		errw(w, 404, "caller chat not found")
 		return
+	}
+	defaults, err := s.chatDefaults()
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	connectorID := in.ConnectorID
+	if connectorID == "" && caller.ConnectorID != nil {
+		connectorID = *caller.ConnectorID
+	}
+	if connectorID == "" && defaults.ConnectorID != nil {
+		connectorID = *defaults.ConnectorID
+	}
+	if connectorID == "" {
+		errw(w, 400, "connector_id required")
+		return
+	}
+	model := in.Model
+	if model == "" && caller.ConnectorID != nil && connectorID == *caller.ConnectorID {
+		model = caller.Model
+	}
+	if model == "" && defaults.ConnectorID != nil && connectorID == *defaults.ConnectorID {
+		model = defaults.Model
 	}
 	depth := 0
 	parent := caller.ID
@@ -188,7 +211,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id) VALUES(?,?,?,?,?,?,?,0,0,0,?)`, id, in.ConnectorID, title, in.Model, folder, created, created, caller.ID); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, caller.Thinking, caller.ShowThinking, caller.AutoAllow, caller.ID); err != nil {
 		if createdWorkdir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}

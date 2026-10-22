@@ -982,6 +982,45 @@ func TestCreateChatHandoffLinksParentAndRejectsDepthSix(t *testing.T) {
 	}
 }
 
+func TestCreateChatHandoffInheritsChatSettings(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	caller := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`UPDATE chat SET model='caller-model',thinking=1,show_thinking=1,auto_allow=1 WHERE id=?`, caller); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	var out struct {
+		ChatID string `json:"chat_id"`
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+caller+"/handoff", map[string]any{"prompt": "inherit"}, &out); code != 200 {
+		t.Fatalf("handoff=%d", code)
+	}
+	var gotConnector, model string
+	var thinking, showThinking, autoAllow bool
+	if err := db.QueryRow(`SELECT connector_id,model,thinking,show_thinking,auto_allow FROM chat WHERE id=?`, out.ChatID).Scan(&gotConnector, &model, &thinking, &showThinking, &autoAllow); err != nil {
+		t.Fatal(err)
+	}
+	if gotConnector != connector || model != "caller-model" || !thinking || !showThinking || !autoAllow {
+		t.Fatalf("child settings=%q %q %v %v %v", gotConnector, model, thinking, showThinking, autoAllow)
+	}
+	var explicit struct {
+		ChatID string `json:"chat_id"`
+	}
+	other := uid()
+	if _, err := db.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'local','Local',?)`, other, now()); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+caller+"/handoff", map[string]any{"connector_id": other, "prompt": "other"}, &explicit); code != 200 {
+		t.Fatalf("explicit handoff=%d", code)
+	}
+	if err := db.QueryRow(`SELECT model FROM chat WHERE id=?`, explicit.ChatID).Scan(&model); err != nil || model != "" {
+		t.Fatalf("explicit connector model=%q err=%v", model, err)
+	}
+}
+
 func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)

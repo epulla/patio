@@ -1080,7 +1080,8 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			properties["connector_id"] = map[string]any{"type": "string"}
 			properties["model"] = map[string]any{"type": "string"}
 			properties["prompt"] = map[string]any{"type": "string"}
-			required = append(required, "connector_id", "prompt")
+			required = append(required, "prompt")
+			description = "Create child chat handoff. Connector, model, thinking and auto-allow default to the calling chat's."
 		}
 		n := name
 		s.AddTool(&sdk.Tool{Name: n, Description: description, InputSchema: map[string]any{"type": "object", "properties": properties, "required": required}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
