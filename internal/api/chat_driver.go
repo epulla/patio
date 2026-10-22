@@ -252,12 +252,15 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
 	if !request.AgentHopsManaged {
-		if _, err := m.db.Exec(`UPDATE chat SET agent_hops=0,agent_hops_notified=0 WHERE id=?`, c.ID); err != nil {
+		if _, err := m.db.Exec(`UPDATE chat SET agent_hops=0,agent_hops_notified=0,queue_held=0 WHERE id=?`, c.ID); err != nil {
 			return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 		}
 	}
 	failTurn := func(stage string, cause error) error {
 		rt.busy = false
+		if _, err := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, c.ID); err != nil {
+			cause = errors.Join(cause, err)
+		}
 		if _, err := InsertChatMessage(m.db, c.ID, "error", cause.Error()); err != nil {
 			cause = errors.Join(cause, err)
 		}
@@ -498,11 +501,20 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	if turnErr != nil {
 		role, content = "error", turnErr.Error()
 	}
-	message, err := InsertChatMessage(m.db, id, role, content)
 	stopping := false
 	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
 		stopping = rt.stopping
+		rt.mu.Unlock()
+	}
+	message, err := InsertChatMessage(m.db, id, role, content)
+	if err == nil && (turnErr != nil || stopping) {
+		if _, holdErr := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, id); holdErr != nil {
+			err = holdErr
+		}
+	}
+	if rt := m.lookupRuntime(id); rt != nil {
+		rt.mu.Lock()
 		rt.busy = false
 		rt.streamMu.Lock()
 		rt.assistantHasText, rt.toolAfterText = false, false
@@ -754,6 +766,9 @@ func (m *chatManager) Stop(id string) error {
 	m.stopRuntimeTimerLocked(rt)
 	rt.mu.Unlock()
 	err := driver.stop()
+	if _, holdErr := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, id); holdErr != nil {
+		err = errors.Join(err, holdErr)
+	}
 	rt.mu.Lock()
 	if rt.driver == driver {
 		rt.driver = nil

@@ -1068,7 +1068,87 @@ func TestChatQueueHeldAfterStopOrTurnError(t *testing.T) {
 			if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='held'`).Scan(&count); err != nil || count != 1 {
 				t.Fatalf("held queue count=%d err=%v", count, err)
 			}
+			var queueHeld int
+			if err := database.QueryRow(`SELECT queue_held FROM chat WHERE id=?`, chatID).Scan(&queueHeld); err != nil || queueHeld != 1 {
+				t.Fatalf("queue_held=%d err=%v", queueHeld, err)
+			}
 		})
+	}
+}
+
+func TestFailedTurnHoldsAgentQueueUntilUserSend(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	chatID := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('held-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id) VALUES(?,?,?,'[]',?, 'held-sender')`, fmt.Sprintf("agent-%d", i), chatID, fmt.Sprintf("agent %d", i), fmt.Sprintf("%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "fail this turn"}, nil); code != http.StatusAccepted {
+		t.Fatalf("initial send=%d", code)
+	}
+	<-fake.input
+	if _, err := io.WriteString(fake.stdoutW, `{"type":"result","is_error":true,"result":"offline"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		var held int
+		return db.QueryRow(`SELECT queue_held FROM chat WHERE id=?`, chatID).Scan(&held) == nil && held == 1 && !s.chats.Running(chatID)
+	})
+	for i := 0; i < 4; i++ {
+		if err := s.DeliverAgentMessages(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var queued, errorsCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='error'`, chatID).Scan(&errorsCount); err != nil {
+		t.Fatal(err)
+	}
+	if queued != 3 || errorsCount != 1 {
+		t.Fatalf("queued=%d errors=%d", queued, errorsCount)
+	}
+	select {
+	case line := <-fake.input:
+		t.Fatalf("held queue sent before user recovery: %s", line)
+	default:
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "user recovery"}, nil); code != http.StatusAccepted {
+		t.Fatalf("user recovery send=%d", code)
+	}
+	var held int
+	if err := db.QueryRow(`SELECT queue_held FROM chat WHERE id=?`, chatID).Scan(&held); err != nil || held != 0 {
+		t.Fatalf("queue_held after user send=%d err=%v", held, err)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("recovery user message not sent")
+	}
+	if _, err := io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"recovered"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case line := <-fake.input:
+		var input struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.Contains(input.Message.Content, "agent 0") {
+			t.Fatalf("agent queue not released: %s err=%v", line, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued agents were not released after user turn")
 	}
 }
 
