@@ -130,6 +130,7 @@ func TestAskUserToolStoresQuestionAndNotifiesScheduledRun(t *testing.T) {
 }
 
 func TestMCPToolsAndAudit(t *testing.T) {
+	keyring.MockInit()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
