@@ -163,6 +163,31 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Fatal(err)
 		}
 		if tool != nil {
+			if tool.Name == "create_monitor" || tool.Name == "update_monitor" {
+				encoded, err := json.Marshal(tool.InputSchema)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var schema struct {
+					Properties map[string]json.RawMessage `json:"properties"`
+					Required   []string                   `json:"required"`
+				}
+				if err := json.Unmarshal(encoded, &schema); err != nil {
+					t.Fatal(err)
+				}
+				hasID, requiredID := len(schema.Properties["id"]) > 0, false
+				for _, name := range schema.Required {
+					if name == "id" {
+						requiredID = true
+					}
+				}
+				if tool.Name == "create_monitor" && hasID {
+					t.Fatal("create_monitor schema must omit id")
+				}
+				if tool.Name == "update_monitor" && (!hasID || !requiredID) {
+					t.Fatalf("update_monitor schema must require id: %s", encoded)
+				}
+			}
 			if tool.Name == "approve" {
 				t.Fatal("approve tool registered without flag")
 			}

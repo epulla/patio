@@ -235,8 +235,21 @@ type monitorActionsArgs struct {
 	Ticket *monitorTicketActionArgs `json:"ticket,omitempty"`
 	Chat   *monitorChatActionArgs   `json:"chat,omitempty"`
 }
-type monitorArgs struct {
-	ID          string             `json:"id,omitempty" jsonschema:"Monitor UUID for updates"`
+type monitorBody struct {
+	Name        string             `json:"name"`
+	MCPServerID string             `json:"mcp_server_id"`
+	Tool        string             `json:"tool"`
+	Args        map[string]any     `json:"args,omitempty"`
+	Schedule    string             `json:"schedule"`
+	Condition   string             `json:"condition,omitempty" jsonschema:"changed, non_empty, or new_items"`
+	ResultPath  string             `json:"result_path,omitempty"`
+	IDPath      string             `json:"id_path,omitempty"`
+	Actions     monitorActionsArgs `json:"actions,omitempty"`
+	Enabled     *bool              `json:"enabled,omitempty"`
+}
+type createMonitorArgs monitorBody
+type updateMonitorArgs struct {
+	ID          string             `json:"id" jsonschema:"Monitor UUID"`
 	Name        string             `json:"name"`
 	MCPServerID string             `json:"mcp_server_id"`
 	Tool        string             `json:"tool"`
@@ -603,14 +616,13 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	})
 	addGeneric(s, "list_monitors", "List monitors", h, func(struct{}) request { return request{http.MethodGet, "/api/monitors", nil} })
 	monitorDescription := `Schedule accepts "@every 5m" or cron, minimum 1 minute; conditions are changed, non_empty, or new_items (requires id_path, a dot path such as "ts"); action templates support {{name}}, {{count}}, and {{items}}.`
-	addGeneric(s, "create_monitor", "Create monitor. "+monitorDescription, h, func(a monitorArgs) request {
-		a.ID = ""
-		return request{http.MethodPost, "/api/monitors", a}
+	addGeneric(s, "create_monitor", "Create monitor. "+monitorDescription, h, func(a createMonitorArgs) request {
+		return request{http.MethodPost, "/api/monitors", monitorBody(a)}
 	})
-	addGeneric(s, "update_monitor", "Update monitor; all fields are replaced.", h, func(a monitorArgs) request {
+	addGeneric(s, "update_monitor", "Update monitor; all fields are replaced.", h, func(a updateMonitorArgs) request {
 		path := "/api/monitors/" + url.PathEscape(a.ID)
-		a.ID = ""
-		return request{http.MethodPut, path, a}
+		body := monitorBody{Name: a.Name, MCPServerID: a.MCPServerID, Tool: a.Tool, Args: a.Args, Schedule: a.Schedule, Condition: a.Condition, ResultPath: a.ResultPath, IDPath: a.IDPath, Actions: a.Actions, Enabled: a.Enabled}
+		return request{http.MethodPut, path, body}
 	})
 	addGenericHandler(s, "delete_monitor", "Delete monitor", func(a monitorIDArgs) (*sdk.CallToolResult, error) {
 		_, err := doJSON(h, request{http.MethodDelete, "/api/monitors/" + url.PathEscape(a.ID), nil})
