@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/zalando/go-keyring"
+	"patio/internal/db"
 )
 
 func TestMonitorRunnerNewItems(t *testing.T) {
@@ -71,6 +73,115 @@ func TestMonitorRunnerFailureRecoveryNotifications(t *testing.T) {
 	if failures != 1 || recoveries != 1 {
 		t.Fatalf("failure notifications=%d recovery notifications=%d", failures, recoveries)
 	}
+}
+
+func TestMonitorActionsNotifyTicketChat(t *testing.T) {
+	database, server, fake, board, m := monitorActionFixture(t, true)
+	m.Actions = `{"notify":true,"ticket":{"board_id":"` + board.ID + `","title":"{{name}} ({{count}})"},"chat":{"prompt":"{{name}} found {{count}}: {{items}}"}}`
+	stamp := now()
+	runID := uid()
+	if _, err := database.Exec(`UPDATE monitor SET actions=?,last_run_at=? WHERE id=?`, m.Actions, stamp, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO monitor_run(id,monitor_id,started_at,status,result_hash,new_count,error) VALUES(?,?,?,'changed','',1,'')`, runID, m.ID, stamp); err != nil {
+		t.Fatal(err)
+	}
+	s := monitorRunResult{status: "changed", runID: runID, startedAt: stamp, newItems: []json.RawMessage{json.RawMessage(`{"id":"a"}`)}}
+	server.applyChangedMonitorActions(context.Background(), m, s)
+	var notifications, tickets int
+	if err := database.QueryRow(`SELECT count(*) FROM notification WHERE title='runner test: 1 new'`).Scan(&notifications); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM ticket WHERE board_id=? AND title='runner test (1)'`, board.ID).Scan(&tickets); err != nil {
+		t.Fatal(err)
+	}
+	if notifications != 1 || tickets != 1 {
+		t.Fatalf("notifications=%d tickets=%d", notifications, tickets)
+	}
+	select {
+	case line := <-fake.input:
+		if !strings.Contains(line, "runner test found 1: - {\\\"id\\\":\\\"a\\\"}") {
+			t.Fatalf("chat input=%s", line)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chat driver did not receive prompt")
+	}
+	var chatTitle string
+	if err := database.QueryRow(`SELECT title FROM chat WHERE title LIKE 'Monitor: runner test%'`).Scan(&chatTitle); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMonitorQuietRunDoesNotFireActions(t *testing.T) {
+	database, server, _, board, m := monitorActionFixture(t, false)
+	m.Actions = `{"notify":true,"ticket":{"board_id":"` + board.ID + `","title":"quiet"}}`
+	server.applyChangedMonitorActions(context.Background(), m, monitorRunResult{status: "ok"})
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM notification`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	var tickets int
+	if err := database.QueryRow(`SELECT count(*) FROM ticket`).Scan(&tickets); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 || tickets != 0 {
+		t.Fatalf("notifications=%d tickets=%d", count, tickets)
+	}
+}
+
+func TestMonitorMissingDefaultConnectorRecordsActionError(t *testing.T) {
+	database, server, _, board, m := monitorActionFixture(t, false)
+	m.Actions = `{"ticket":{"board_id":"` + board.ID + `","title":"{{name}}"},"chat":{"prompt":"start"}}`
+	stamp, runID := now(), uid()
+	if _, err := database.Exec(`UPDATE monitor SET actions=?,last_run_at=? WHERE id=?`, m.Actions, stamp, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO monitor_run(id,monitor_id,started_at,status,result_hash,new_count,error) VALUES(?,?,?,'changed','',0,'')`, runID, m.ID, stamp); err != nil {
+		t.Fatal(err)
+	}
+	server.applyChangedMonitorActions(context.Background(), m, monitorRunResult{status: "changed", runID: runID, startedAt: stamp, result: "result"})
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM ticket WHERE board_id=? AND title='runner test'`, board.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("tickets=%d", count)
+	}
+	var actionError string
+	if err := database.QueryRow(`SELECT error FROM monitor_run WHERE id=?`, runID).Scan(&actionError); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(actionError, "no default connector configured") {
+		t.Fatalf("run error=%q", actionError)
+	}
+}
+
+func monitorActionFixture(t *testing.T, withConnector bool) (*sql.DB, *Server, *pipeChatProcess, testBoard, monitor) {
+	t.Helper()
+	root := t.TempDir()
+	database, err := db.Open(filepath.Join(root, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	opts := Options{DBPath: filepath.Join(root, "test.db"), findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }}
+	server := New(database, "local", false, "test", root, opts)
+	t.Cleanup(func() { _ = server.Close(); _ = database.Close() })
+	if withConnector {
+		id := createTestConnector(t, database)
+		connector, err := json.Marshal(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		model, _ := json.Marshal("default-model")
+		if _, err := database.Exec(`INSERT INTO app_setting(key,value) VALUES('connector_id',?),('model',?)`, string(connector), string(model)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	board := createBoard(t, server.handler, "ACT", nil)
+	serverID := insertMCPCheckServer(t, database, "stdio", "test", "[]", "[]", "", "none", false)
+	m := insertRunnerMonitor(t, database, serverID, "tool", map[string]any{}, "new_items", "id")
+	return database, server, fake, board, m
 }
 
 func insertRunnerMCPServer(t *testing.T, database *sql.DB) string {

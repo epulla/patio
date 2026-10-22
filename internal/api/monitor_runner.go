@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,9 +20,11 @@ import (
 
 type monitorClaim struct{ monitor monitor }
 type monitorRunResult struct {
-	status   string
-	newItems []json.RawMessage
-	result   string
+	status    string
+	runID     string
+	startedAt string
+	newItems  []json.RawMessage
+	result    string
 }
 
 func (s *Server) StartMonitorRunner(ctx context.Context, every time.Duration) error {
@@ -51,9 +55,13 @@ func (s *Server) StartMonitorRunner(ctx context.Context, every time.Duration) er
 					return
 				}
 				defer func() { <-sem }()
-				_, err := s.runMonitor(ctx, c.monitor, time.Now())
+				result, err := s.runMonitor(ctx, c.monitor, time.Now())
 				if err != nil {
 					log.Printf("run monitor %s: %v", c.monitor.ID, err)
+					return
+				}
+				if result.status == "changed" {
+					s.applyChangedMonitorActions(ctx, c.monitor, result)
 				}
 			}(claim)
 		}
@@ -198,6 +206,7 @@ func (s *Server) runMonitor(ctx context.Context, m monitor, at time.Time) (monit
 		computed.status = "failed"
 	}
 	stamp := at.UTC().Format("2006-01-02T15:04:05.000Z")
+	computed.startedAt = stamp
 	hashBytes := sha256.Sum256([]byte(result))
 	hash := hex.EncodeToString(hashBytes[:])
 	errText := ""
@@ -205,6 +214,7 @@ func (s *Server) runMonitor(ctx context.Context, m monitor, at time.Time) (monit
 		errText = callErr.Error()
 	}
 	var firstFailure, recovered bool
+	computed.runID = uid()
 	err := txrun(s.db, func(tx *sql.Tx) error {
 		var streak int
 		if e := tx.QueryRowContext(ctx, `SELECT fail_streak FROM monitor WHERE id=?`, m.ID).Scan(&streak); e != nil {
@@ -218,7 +228,7 @@ func (s *Server) runMonitor(ctx context.Context, m monitor, at time.Time) (monit
 		} else {
 			nextStreak = 0
 		}
-		if _, e := tx.ExecContext(ctx, `INSERT INTO monitor_run(id,monitor_id,started_at,status,result_hash,new_count,error) VALUES(?,?,?,?,?,?,?)`, uid(), m.ID, stamp, computed.status, hash, len(computed.newItems), errText); e != nil {
+		if _, e := tx.ExecContext(ctx, `INSERT INTO monitor_run(id,monitor_id,started_at,status,result_hash,new_count,error) VALUES(?,?,?,?,?,?,?)`, computed.runID, m.ID, stamp, computed.status, hash, len(computed.newItems), errText); e != nil {
 			return e
 		}
 		if _, e := tx.ExecContext(ctx, `UPDATE monitor SET last_run_at=?,last_status=?,last_error=?,last_hash=CASE WHEN ? THEN last_hash ELSE ? END,fail_streak=? WHERE id=?`, stamp, computed.status, errText, callErr != nil, hash, nextStreak, m.ID); e != nil {
@@ -264,4 +274,131 @@ func monitorID(value any) string {
 	}
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
+}
+
+func (s *Server) fireMonitorActions(ctx context.Context, m monitor, run monitorRunResult) string {
+	var actions struct {
+		Notify bool `json:"notify"`
+		Ticket *struct {
+			BoardID string `json:"board_id"`
+			Title   string `json:"title"`
+		} `json:"ticket"`
+		Chat *struct {
+			Prompt string `json:"prompt"`
+		} `json:"chat"`
+	}
+	if err := json.Unmarshal([]byte(m.Actions), &actions); err != nil {
+		return "actions: " + err.Error()
+	}
+	count := len(run.newItems)
+	countText := fmt.Sprintf("%d", count)
+	suffix := countText + " new"
+	items := ""
+	if m.Condition == "new_items" {
+		limit := len(run.newItems)
+		if limit > 20 {
+			limit = 20
+		}
+		var lines []string
+		for _, item := range run.newItems[:limit] {
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, item); err != nil {
+				continue
+			}
+			lines = append(lines, "- "+truncateMonitor(compact.String(), 500))
+		}
+		if len(run.newItems) > limit {
+			lines = append(lines, fmt.Sprintf("…and %d more", len(run.newItems)-limit))
+		}
+		items = strings.Join(lines, "\n")
+	} else {
+		countText = "changed"
+		suffix = "changed"
+		items = "```\n" + truncateMonitor(run.result, 4000) + "\n```"
+	}
+	render := func(value string) string {
+		return strings.NewReplacer("{{name}}", m.Name, "{{count}}", countText, "{{items}}", items).Replace(value)
+	}
+	var errs []string
+	if actions.Notify {
+		title := m.Name + ": " + suffix
+		body := truncateMonitor(items, 500)
+		if err := s.Notify("monitor", title, body, "/monitors/"+m.ID, true); err != nil {
+			errs = append(errs, "notify: "+err.Error())
+		}
+	}
+	if actions.Ticket != nil {
+		_, err := s.insertTicket(actions.Ticket.BoardID, render(actions.Ticket.Title), items, "", false, "", false, "", false, "", false)
+		if err != nil {
+			errs = append(errs, "ticket: "+err.Error())
+		}
+	}
+	if actions.Chat != nil {
+		if err := s.startMonitorChat(m, render(actions.Chat.Prompt)); err != nil {
+			errs = append(errs, "chat: "+err.Error())
+		}
+	}
+	return strings.Join(errs, "; ")
+}
+
+func (s *Server) startMonitorChat(m monitor, prompt string) error {
+	defaults, err := s.chatDefaults()
+	if err != nil {
+		return err
+	}
+	if defaults.ConnectorID == nil {
+		return errors.New("no default connector configured")
+	}
+	kind, configDir, err := s.chats.connectorConfig(*defaults.ConnectorID)
+	if err != nil {
+		return err
+	}
+	created := now()
+	c := chat{ID: uid(), ConnectorID: defaults.ConnectorID, Title: "Monitor: " + m.Name + " · " + time.Now().Format("Jan 2, 15:04"), Model: defaults.Model, Folder: defaults.Folder, CreatedAt: created, UpdatedAt: created, Thinking: defaults.Thinking, AutoAllow: defaults.AutoAllow}
+	if c.Folder == nil {
+		dir := s.chatWorkdir(c)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		if err := os.Chmod(dir, 0700); err != nil {
+			return cleanupConnectorDir(dir, err)
+		}
+	}
+	if err := txrun(s.db, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow) VALUES(?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, defaults.ShowThinking, c.AutoAllow)
+		return err
+	}); err != nil {
+		return err
+	}
+	_, err = s.chats.Send(c, kind, configDir, ChatSendRequest{Text: prompt})
+	return err
+}
+
+func truncateMonitor(value string, limit int) string {
+	r := []rune(value)
+	if len(r) <= limit {
+		return value
+	}
+	return string(r[:limit]) + "…"
+}
+
+func (s *Server) applyChangedMonitorActions(ctx context.Context, m monitor, run monitorRunResult) {
+	if run.status != "changed" {
+		return
+	}
+	actionErr := s.fireMonitorActions(ctx, m, run)
+	if actionErr == "" {
+		return
+	}
+	log.Printf("monitor actions %s: %s", m.ID, actionErr)
+	if run.runID != "" {
+		if _, err := s.db.ExecContext(ctx, `UPDATE monitor_run SET error=CASE WHEN error='' THEN ? ELSE error||'; '||? END WHERE id=?`, actionErr, actionErr, run.runID); err != nil {
+			log.Printf("record monitor action error %s: %v", m.ID, err)
+		}
+	}
+	if run.startedAt != "" {
+		if _, err := s.db.ExecContext(ctx, `UPDATE monitor SET last_error=CASE WHEN last_run_at=? THEN ? ELSE last_error END WHERE id=?`, run.startedAt, actionErr, m.ID); err != nil {
+			log.Printf("record monitor action error %s: %v", m.ID, err)
+		}
+	}
 }

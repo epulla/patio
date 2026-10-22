@@ -68,6 +68,21 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ass, _, aset := ticketInput(m, "assignee_id")
+	out, e := s.insertTicket(bid, title, desc, sid, has, tt, ttset, due, dset, ass, aset)
+	if e != nil {
+		if strings.Contains(e.Error(), "does not belong") || strings.Contains(e.Error(), "no statuses") {
+			errw(w, 400, e.Error())
+		} else if e == sql.ErrNoRows {
+			errw(w, 404, "board not found")
+		} else {
+			errw(w, 500, e.Error())
+		}
+		return
+	}
+	write(w, 201, out)
+}
+
+func (s *Server) insertTicket(bid, title, desc, sid string, has bool, tt string, ttset bool, due string, dset bool, ass string, aset bool) (ticket, error) {
 	id, t := uid(), now()
 	var out ticket
 	e := txrun(s.db, func(tx *sql.Tx) error {
@@ -133,17 +148,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		out = ticket{ID: id, Title: title, Description: desc, Number: num, Code: code, Created: t, Updated: t, DueDate: nullable(due, dset), StatusUpdated: &t, StatusID: &sid, BoardID: &bid, TicketTypeID: nullable(tt, ttset), ReporterID: ptr(s.userID), AssigneeID: nullable(ass, aset)}
 		return nil
 	})
-	if e != nil {
-		if strings.Contains(e.Error(), "does not belong") || strings.Contains(e.Error(), "no statuses") {
-			errw(w, 400, e.Error())
-		} else if e == sql.ErrNoRows {
-			errw(w, 404, "board not found")
-		} else {
-			errw(w, 500, e.Error())
-		}
-		return
-	}
-	write(w, 201, out)
+	return out, e
 }
 func nullIf(s string, set bool) any {
 	if !set || s == "" {
