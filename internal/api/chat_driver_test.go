@@ -992,30 +992,44 @@ func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	if _, err := db.Exec(`UPDATE chat SET agent_hops=10 WHERE id=?`, target); err != nil {
 		t.Fatal(err)
 	}
+	for i := 0; i < 10; i++ {
+		if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at,from_chat_id) VALUES(?,?,?,?,'hop-sender')`, fmt.Sprintf("held-%02d", i), target, fmt.Sprintf("held %d", i), fmt.Sprintf("%02d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	fake := newPipeChatProcess()
-	notified := false
-	s := New(db, "local", false, "dev", root, Options{Notify: func(_, _, _ string) error { notified = true; return nil }, findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	notified := 0
+	s := New(db, "local", false, "dev", root, Options{Notify: func(_, _, _ string) error { notified++; return nil }, findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer s.Close()
 	var result map[string]string
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "held"}, &result); code != 200 || result["status"] != "held" || !notified {
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "held"}, &result); code != 200 || result["status"] != "held" || notified != 1 {
 		t.Fatalf("held delivery=%d %#v notified=%v", code, result, notified)
 	}
-	if err := s.DeliverAgentMessages(context.Background()); err != nil {
-		t.Fatal(err)
+	for i := 0; i < 3; i++ {
+		if err := s.DeliverAgentMessages(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err := s.chats.drainQueued(target, false); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("automatic drain err=%v", err)
+	var noticeCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM notification WHERE title='Chat paused: too many agent messages' AND link=?`, "/ai/chats/"+target).Scan(&noticeCount); err != nil || noticeCount != 1 {
+		t.Fatalf("hop notifications=%d err=%v", noticeCount, err)
 	}
 	var queued int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, target).Scan(&queued); err != nil || queued != 1 {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE chat_id=?`, target).Scan(&queued); err != nil || queued != 11 {
 		t.Fatalf("held queue=%d err=%v", queued, err)
 	}
 	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/messages", map[string]string{"text": "user"}, nil); code != http.StatusAccepted {
 		t.Fatalf("user send=%d", code)
 	}
-	var hops int
-	if err := db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, target).Scan(&hops); err != nil || hops != 0 {
-		t.Fatalf("agent_hops=%d err=%v", hops, err)
+	var hops, notifiedState int
+	if err := db.QueryRow(`SELECT agent_hops,agent_hops_notified FROM chat WHERE id=?`, target).Scan(&hops, &notifiedState); err != nil || hops != 0 || notifiedState != 0 {
+		t.Fatalf("agent_hops=%d notified=%d err=%v", hops, notifiedState, err)
+	}
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=10 WHERE id=?`, target); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "later held"}, &result); code != 200 || result["status"] != "held" || notified != 2 {
+		t.Fatalf("later cap result=%d %#v notifications=%d", code, result, notified)
 	}
 }
 

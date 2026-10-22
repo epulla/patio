@@ -1,0 +1,1 @@
+ALTER TABLE chat ADD COLUMN agent_hops_notified INTEGER NOT NULL DEFAULT 0;

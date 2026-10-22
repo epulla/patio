@@ -110,12 +110,12 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 		from, report             sql.NullString
 	}
 	var claimed []queuedRow
-	var oldHops int
+	var oldHops, oldNotified int
 	var sender, reportTo sql.NullString
 	var texts []string
 	var attachments []ChatAttachment
 	err := txrun(m.db, func(tx *sql.Tx) error {
-		if err := tx.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, chatID).Scan(&oldHops); err != nil {
+		if err := tx.QueryRow(`SELECT agent_hops,agent_hops_notified FROM chat WHERE id=?`, chatID).Scan(&oldHops, &oldNotified); err != nil {
 			return err
 		}
 		rows, err := tx.Query(`SELECT id,text,attachments,created_at,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
@@ -161,11 +161,11 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 				return err
 			}
 		}
-		nextHops := oldHops + 1
 		if manual || !sender.Valid {
-			nextHops = 0
+			_, err = tx.Exec(`UPDATE chat SET agent_hops=0,agent_hops_notified=0 WHERE id=?`, chatID)
+		} else {
+			_, err = tx.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, oldHops+1, chatID)
 		}
-		_, err = tx.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, nextHops, chatID)
 		return err
 	})
 	if err != nil {
@@ -183,7 +183,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 					return err
 				}
 			}
-			_, err := tx.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, oldHops, chatID)
+			_, err := tx.Exec(`UPDATE chat SET agent_hops=?,agent_hops_notified=? WHERE id=?`, oldHops, oldNotified, chatID)
 			return err
 		})
 		m.emit(chatID, map[string]any{"type": "queue"})

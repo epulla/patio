@@ -12,18 +12,22 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		return nil
 	}
 	defer s.agentDeliveryMu.Unlock()
-	rows, err := s.db.Query(`SELECT DISTINCT q.chat_id FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id IS NOT NULL AND c.agent_hops<10 ORDER BY q.chat_id`)
+	rows, err := s.db.Query(`SELECT DISTINCT q.chat_id,c.agent_hops FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id IS NOT NULL ORDER BY q.chat_id`)
 	if err != nil {
 		return err
 	}
-	var chatIDs []string
+	type pendingChat struct {
+		id   string
+		hops int
+	}
+	var chats []pendingChat
 	for rows.Next() {
-		var chatID string
-		if err := rows.Scan(&chatID); err != nil {
+		var item pendingChat
+		if err := rows.Scan(&item.id, &item.hops); err != nil {
 			rows.Close()
 			return err
 		}
-		chatIDs = append(chatIDs, chatID)
+		chats = append(chats, item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -33,10 +37,17 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		return err
 	}
 	var deliveryErrors []error
-	for _, chatID := range chatIDs {
+	for _, pending := range chats {
 		if err := ctx.Err(); err != nil {
 			return errors.Join(err, errors.Join(deliveryErrors...))
 		}
+		if pending.hops >= 10 {
+			if err := s.notifyAgentHopCap(pending.id); err != nil {
+				deliveryErrors = append(deliveryErrors, err)
+			}
+			continue
+		}
+		chatID := pending.id
 		if s.chats.Running(chatID) {
 			continue
 		}

@@ -252,7 +252,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
 	if !request.AgentHopsManaged {
-		if _, err := m.db.Exec(`UPDATE chat SET agent_hops=0 WHERE id=?`, c.ID); err != nil {
+		if _, err := m.db.Exec(`UPDATE chat SET agent_hops=0,agent_hops_notified=0 WHERE id=?`, c.ID); err != nil {
 			return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 		}
 	}
