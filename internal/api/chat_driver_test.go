@@ -752,7 +752,7 @@ func TestChatQueueDoesNotMergeAgentAndUserRows(t *testing.T) {
 				Content string `json:"content"`
 			} `json:"message"`
 		}
-		if err := json.Unmarshal([]byte(line), &in); err != nil || in.Message.Content != "[From chat \"Sender\" (chat_id sender). Reply with send_to_chat if needed.]\n\nagent text" {
+		if err := json.Unmarshal([]byte(line), &in); err != nil || in.Message.Content != "[Message from chat_id sender, title \"Sender\". Reply with send_to_chat if needed.]\n\nagent text" {
 			t.Fatalf("first drain=%s %v", line, err)
 		}
 	case <-time.After(2 * time.Second):
@@ -799,7 +799,7 @@ func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
 			Content string `json:"content"`
 		} `json:"message"`
 	}
-	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[From chat "Sender" (chat_id sender-chat). Reply with send_to_chat if needed.]`) {
+	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[Message from chat_id sender-chat, title "Sender". Reply with send_to_chat if needed.]`) {
 		t.Fatalf("driver content=%q err=%v", input.Message.Content, err)
 	}
 	var sender sql.NullString

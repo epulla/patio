@@ -1200,6 +1200,10 @@ func InsertChatMessage(database *sql.DB, chatID, role, content string) (ChatMess
 }
 
 func InsertChatMessageWithAttachments(database *sql.DB, chatID, role, content string, attachments []ChatAttachment) (ChatMessage, error) {
+	return insertChatMessage(database, chatID, role, content, attachments, nil, nil)
+}
+
+func insertChatMessage(database *sql.DB, chatID, role, content string, attachments []ChatAttachment, fromChatID, reportToChatID *string) (ChatMessage, error) {
 	if role != "user" && role != "assistant" && role != "tool" && role != "error" && role != "thinking" && role != "question" {
 		return ChatMessage{}, errors.New("invalid chat message role")
 	}
@@ -1213,14 +1217,14 @@ func InsertChatMessageWithAttachments(database *sql.DB, chatID, role, content st
 	if err != nil {
 		return ChatMessage{}, err
 	}
-	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now(), Attachments: attachments}
+	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now(), Attachments: attachments, FromChatID: fromChatID}
 	err = txrun(database, func(tx *sql.Tx) error {
 		if role == "user" {
 			if _, err := tx.Exec(`UPDATE chat_message SET answered=1 WHERE chat_id=? AND role='question' AND answered=0`, chatID); err != nil {
 				return err
 			}
 		}
-		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments) VALUES(?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, m.CreatedAt, string(encoded)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id,report_to_chat_id) VALUES(?,?,?,?,?,?,?,?)`, m.ID, m.ChatID, m.Role, m.Content, m.CreatedAt, string(encoded), fromChatID, reportToChatID); err != nil {
 			return err
 		}
 		res, err := tx.Exec(`UPDATE chat SET updated_at=? WHERE id=?`, m.CreatedAt, chatID)

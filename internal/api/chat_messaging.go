@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +27,9 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := idParam(r, "id")
+	lock := s.chats.queueLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	var title, senderTitle string
 	var hops int
 	if err := s.db.QueryRow(`SELECT title,agent_hops FROM chat WHERE id=?`, id).Scan(&title, &hops); err != nil {
@@ -34,7 +40,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "sender chat not found")
 		return
 	}
-	prefix := `[From chat "` + senderTitle + `" (chat_id ` + in.FromChatID + `). Reply with send_to_chat if needed.]` + "\n\n"
+	prefix := `[Message from chat_id ` + in.FromChatID + `, title ` + strconv.Quote(senderTitle) + `. Reply with send_to_chat if needed.]` + "\n\n"
 	if hops >= 10 {
 		if err := s.queueAgentMessage(id, in, prefix); err != nil {
 			errw(w, 500, err.Error())
@@ -59,7 +65,12 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, err.Error())
 		return
 	}
-	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text})
+	fromID := in.FromChatID
+	var reportTo *string
+	if in.ReportBack {
+		reportTo = &fromID
+	}
+	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
 	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
 		if err := s.queueAgentMessage(id, in, prefix); err != nil {
 			errw(w, 500, err.Error())
@@ -68,11 +79,6 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "queued"})
 		return
 	}
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	_, err = s.db.Exec(`UPDATE chat_message SET from_chat_id=?,report_to_chat_id=? WHERE id=?`, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID), message.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -109,7 +115,15 @@ func (s *Server) reportChatResult(target, from, text string) error {
 	rec := httptest.NewRecorder()
 	s.agentMessage(rec, req)
 	if rec.Code < 200 || rec.Code >= 300 {
-		return errors.New(strings.TrimSpace(rec.Body.String()))
+		deliveryErr := errors.New(strings.TrimSpace(rec.Body.String()))
+		title := target
+		if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, target).Scan(&title); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("lookup report target %s title: %v", target, err)
+		}
+		if err := s.Notify("chat", "Couldn't report back to "+title, deliveryErr.Error(), "/ai/chats/"+from, true); err != nil {
+			log.Printf("notify report-back failure to %s: %v", target, err)
+		}
+		return deliveryErr
 	}
 	return nil
 }
@@ -157,7 +171,24 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	id := uid()
 	folder := caller.Folder
 	created := now()
+	child := chat{ID: id, Folder: folder}
+	createdWorkdir := false
+	if folder == nil {
+		dir := s.chatWorkdir(child)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		createdWorkdir = true
+		if err := os.Chmod(dir, 0o700); err != nil {
+			errw(w, 500, cleanupConnectorDir(dir, err).Error())
+			return
+		}
+	}
 	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id) VALUES(?,?,?,?,?,?,?,0,0,0,?)`, id, in.ConnectorID, title, in.Model, folder, created, created, caller.ID); err != nil {
+		if createdWorkdir {
+			err = cleanupConnectorDir(s.chatWorkdir(child), err)
+		}
 		errw(w, 500, err.Error())
 		return
 	}
@@ -172,8 +203,15 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	rec := httptest.NewRecorder()
 	s.agentMessage(rec, req)
 	if rec.Code >= 400 {
-		w.WriteHeader(rec.Code)
-		_, _ = w.Write(rec.Body.Bytes())
+		cause := errors.New(strings.TrimSpace(rec.Body.String()))
+		_, deleteErr := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
+		if deleteErr != nil {
+			cause = errors.Join(cause, deleteErr)
+		}
+		if createdWorkdir {
+			cause = cleanupConnectorDir(s.chatWorkdir(child), cause)
+		}
+		errw(w, rec.Code, cause.Error())
 		return
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &outcome)
