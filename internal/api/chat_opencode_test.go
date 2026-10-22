@@ -1080,7 +1080,7 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 			} else if f.mcpMode == "recover" {
 				body = `{"location":{},"data":[{"name":"patio","status":{"status":"connected"}},{"name":"stdio-test","status":{"status":"connected"}},{"name":"http-test","status":{"status":"needs_auth"}}]}`
 			}
-			if !strings.Contains(body, `"pending"`) && !strings.Contains(body, `"data":[]`) {
+			if f.settledAt.IsZero() && !strings.Contains(body, `"pending"`) && !strings.Contains(body, `"data":[]`) {
 				f.settledAt = time.Now()
 			}
 			f.mu.Unlock()
