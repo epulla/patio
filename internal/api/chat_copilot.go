@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -304,6 +305,7 @@ func (d *copilotRuntime) handleMessage(message acpMessage) {
 		return
 	}
 	if message.Method != "" && message.ID != nil {
+		log.Printf("Copilot ACP unhandled inbound request method=%q id=%s", message.Method, message.ID)
 		_ = d.client.respondError(message.ID, -32601, "Method not found")
 	}
 }
@@ -691,8 +693,14 @@ func (c *acpClient) read(stdout io.Reader) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), chatLineLimit)
 	for scanner.Scan() {
+		line := scanner.Bytes()
 		var message acpMessage
-		if json.Unmarshal(scanner.Bytes(), &message) != nil || message.JSONRPC != "2.0" {
+		if err := json.Unmarshal(line, &message); err != nil {
+			log.Printf("Copilot ACP skipped invalid inbound JSON: %q", truncateACPLogLine(line))
+			continue
+		}
+		if message.JSONRPC != "2.0" {
+			log.Printf("Copilot ACP skipped inbound line with jsonrpc=%q: %q", message.JSONRPC, truncateACPLogLine(line))
 			continue
 		}
 		if message.Method != "" {
@@ -712,6 +720,8 @@ func (c *acpClient) read(stdout io.Reader) {
 				responseErr = message.Error
 			}
 			response <- acpResponse{result: message.Result, err: responseErr}
+		} else {
+			log.Printf("Copilot ACP skipped unmatched inbound response id=%s: %q", message.ID, truncateACPLogLine(line))
 		}
 	}
 	c.mu.Lock()
@@ -720,4 +730,13 @@ func (c *acpClient) read(stdout io.Reader) {
 		response <- acpResponse{err: errors.New("Copilot ACP process closed")}
 	}
 	c.mu.Unlock()
+}
+
+func truncateACPLogLine(line []byte) string {
+	text := string(line)
+	runes := []rune(text)
+	if len(runes) > 300 {
+		return string(runes[:300]) + "..."
+	}
+	return text
 }

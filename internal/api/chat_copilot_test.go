@@ -432,7 +432,11 @@ func serveCopilotFake(process *pipeChatProcess, method func(acpMessage), process
 					return
 				}
 				writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "session-copilot", "update": map[string]any{"sessionUpdate": "tool_call", "title": "Write file"}}})
-				writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": 100 + promptCount, "method": "session/request_permission", "params": map[string]any{"toolCall": map[string]any{"title": "Write file", "kind": "edit"}, "options": []any{map[string]any{"optionId": "allow-custom", "name": "Allow once", "kind": "allow_once"}, map[string]any{"optionId": "deny-custom", "name": "Deny once", "kind": "reject_once"}}}})
+				writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "id": 0, "method": "session/request_permission", "params": map[string]any{
+					"sessionId": "session-copilot",
+					"toolCall":  map[string]any{"toolCallId": "call_true", "title": "Run true exactly", "kind": "execute", "status": "pending", "rawInput": map[string]any{"command": "true", "commands": []string{"true"}}},
+					"options":   []any{map[string]any{"optionId": "allow_once", "kind": "allow_once", "name": "Allow once"}, map[string]any{"optionId": "allow_always", "kind": "allow_always", "name": "Always allow"}, map[string]any{"optionId": "reject_once", "kind": "reject_once", "name": "Deny"}},
+				}})
 				var answer acpMessage
 				if !readACPResponse(process, &answer) || answer.Error != nil {
 					return
@@ -475,9 +479,9 @@ func answerACPApproval(t *testing.T, server *Server, database *sql.DB, chatID st
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/approvals/"+id, map[string]bool{"allow": allow}, nil); code != http.StatusOK {
 		t.Fatalf("answer approval status = %d", code)
 	}
-	want := "deny-custom"
+	want := "reject_once"
 	if allow {
-		want = "allow-custom"
+		want = "allow_once"
 	}
 	select {
 	case got := <-permissions:
