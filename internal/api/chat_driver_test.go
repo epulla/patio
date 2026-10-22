@@ -758,6 +758,10 @@ func TestChatQueueDoesNotMergeAgentAndUserRows(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("agent queue did not drain")
 	}
+	var stored string
+	if err := db.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user' ORDER BY rowid DESC LIMIT 1`, target).Scan(&stored); err != nil || stored != "agent text" {
+		t.Fatalf("stored queued content=%q err=%v", stored, err)
+	}
 	_, _ = io.WriteString(fake.stdoutW, `{"type":"result","is_error":false,"result":"done"}`+"\n")
 	select {
 	case line := <-fake.input:
@@ -805,6 +809,10 @@ func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
 	var sender sql.NullString
 	if err := db.QueryRow(`SELECT from_chat_id FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&sender); err != nil || sender.String != "sender-chat" {
 		t.Fatalf("stored sender=%v err=%v", sender, err)
+	}
+	var stored string
+	if err := db.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user'`, target).Scan(&stored); err != nil || stored != "hello" {
+		t.Fatalf("stored direct content=%q err=%v", stored, err)
 	}
 }
 

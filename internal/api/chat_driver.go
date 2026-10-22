@@ -243,7 +243,11 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if err := m.claimTurn(c.ID); err != nil {
 		return ChatMessage{}, err
 	}
-	message, err := insertChatMessage(m.db, c.ID, "user", request.Text, request.Attachments, request.FromChatID, request.ReportToChatID)
+	storedText := request.StoredText
+	if storedText == "" {
+		storedText = request.Text
+	}
+	message, err := insertChatMessage(m.db, c.ID, "user", storedText, request.Attachments, request.FromChatID, request.ReportToChatID)
 	if err != nil {
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}

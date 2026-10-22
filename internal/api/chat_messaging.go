@@ -40,9 +40,9 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "sender chat not found")
 		return
 	}
-	prefix := `[Message from chat_id ` + in.FromChatID + `, title ` + strconv.Quote(senderTitle) + `. Reply with send_to_chat if needed.]` + "\n\n"
+	prefix := agentMessageLabel(in.FromChatID, senderTitle)
 	if hops >= 10 {
-		if err := s.queueAgentMessage(id, in, prefix); err != nil {
+		if err := s.queueAgentMessage(id, in); err != nil {
 			errw(w, 500, err.Error())
 			return
 		}
@@ -70,9 +70,9 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	if in.ReportBack {
 		reportTo = &fromID
 	}
-	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
+	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: prefix + in.Text, StoredText: in.Text, FromChatID: &fromID, ReportToChatID: reportTo})
 	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
-		if err := s.queueAgentMessage(id, in, prefix); err != nil {
+		if err := s.queueAgentMessage(id, in); err != nil {
 			errw(w, 500, err.Error())
 			return
 		}
@@ -97,8 +97,12 @@ func reportTarget(report bool, id string) any {
 	}
 	return nil
 }
-func (s *Server) queueAgentMessage(id string, in agentMessageRequest, prefix string) error {
-	if _, err := s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, prefix+in.Text, now(), in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
+func agentMessageLabel(fromID, title string) string {
+	return `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Reply with send_to_chat if needed.]` + "\n\n"
+}
+
+func (s *Server) queueAgentMessage(id string, in agentMessageRequest) error {
+	if _, err := s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, in.Text, now(), in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
 		return err
 	}
 	s.chats.emit(id, map[string]any{"type": "queue"})

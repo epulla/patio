@@ -166,14 +166,24 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 	if sessionID.Valid {
 		c.SessionID = &sessionID.String
 	}
-	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: strings.Join(texts, "\n\n"), Attachments: attachments})
+	text := strings.Join(texts, "\n\n")
+	var fromID, reportID *string
+	if sender.Valid {
+		var senderTitle string
+		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, sender.String).Scan(&senderTitle); err != nil {
+			return ChatMessage{}, err
+		}
+		text = agentMessageLabel(sender.String, senderTitle) + text
+		fromID = &sender.String
+		if reportTo.Valid {
+			reportID = &reportTo.String
+		}
+	}
+	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID})
 	if err != nil {
 		return ChatMessage{}, err
 	}
 	if sender.Valid {
-		if _, err := m.db.Exec(`UPDATE chat_message SET from_chat_id=?,report_to_chat_id=? WHERE id=?`, sender.String, nullableString(reportTo), message.ID); err != nil {
-			return ChatMessage{}, err
-		}
 		if !manual {
 			if _, err := m.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, chatID); err != nil {
 				return ChatMessage{}, err
