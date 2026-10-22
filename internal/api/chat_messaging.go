@@ -40,7 +40,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "sender chat not found")
 		return
 	}
-	prefix := agentMessageLabel(in.FromChatID, senderTitle)
+	prefix := agentMessageLabel(in.FromChatID, senderTitle, in.ReportBack)
 	if hops >= 10 {
 		if err := s.queueAgentMessage(id, in); err != nil {
 			errw(w, 500, err.Error())
@@ -97,8 +97,12 @@ func reportTarget(report bool, id string) any {
 	}
 	return nil
 }
-func agentMessageLabel(fromID, title string) string {
-	return `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Reply with send_to_chat if needed.]` + "\n\n"
+func agentMessageLabel(fromID, title string, reportBack bool) string {
+	label := `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Reply with send_to_chat if needed.]`
+	if reportBack {
+		label = `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Final reply will be sent back automatically; do not call send_to_chat to answer.]`
+	}
+	return label + "\n\n"
 }
 
 func (s *Server) queueAgentMessage(id string, in agentMessageRequest) error {

@@ -173,7 +173,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 		if err := m.db.QueryRow(`SELECT title FROM chat WHERE id=?`, sender.String).Scan(&senderTitle); err != nil {
 			return ChatMessage{}, err
 		}
-		text = agentMessageLabel(sender.String, senderTitle) + text
+		text = agentMessageLabel(sender.String, senderTitle, reportTo.Valid) + text
 		fromID = &sender.String
 		if reportTo.Valid {
 			reportID = &reportTo.String

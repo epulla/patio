@@ -816,6 +816,17 @@ func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
 	}
 }
 
+func TestAgentMessageLabelReportBackVariants(t *testing.T) {
+	plain := agentMessageLabel("id", "A\"chat", false)
+	reported := agentMessageLabel("id", "A\"chat", true)
+	if plain != `[Message from chat_id id, title "A\"chat". Reply with send_to_chat if needed.]`+"\n\n" {
+		t.Fatalf("plain label=%q", plain)
+	}
+	if reported != `[Message from chat_id id, title "A\"chat". Final reply will be sent back automatically; do not call send_to_chat to answer.]`+"\n\n" {
+		t.Fatalf("report label=%q", reported)
+	}
+}
+
 func TestCreateChatHandoffLinksParentAndRejectsDepthSix(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
