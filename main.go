@@ -109,9 +109,14 @@ func main() {
 		fallback: func(title, body string) error { return beeep.Notify(title, body, "") },
 	}
 	mux := http.NewServeMux()
+	patioToolNames, err := mcpserver.RegisteredToolNames()
+	if err != nil {
+		log.Printf("discover Patio MCP tool names for Copilot approvals: %v", err)
+	}
 	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
-		DBPath:     path,
-		ChatWindow: *chatWindow,
+		DBPath:        path,
+		PatioMCPTools: patioToolNames,
+		ChatWindow:    *chatWindow,
 		OpenPath: func() string {
 			if *chatWindow == "" {
 				return *openPath

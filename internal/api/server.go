@@ -56,6 +56,7 @@ type Options struct {
 	version         string
 	findCopilot     func() (string, error)
 	mcpExecutable   string
+	PatioMCPTools   []string
 	opencodeStarter opencodeProcessStarter
 	findOpencode    func() (string, error)
 	opencodeMajor   func(context.Context, string, []string) (int, error)

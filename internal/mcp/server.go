@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -374,6 +375,43 @@ func NewServer(h http.Handler, version string, database *sql.DB, inApp bool) (*s
 
 func NewServerWithApproval(h http.Handler, version string, options ApprovalOptions) (*sdk.Server, error) {
 	return newServer(h, version, options.DB, &options, options.InApp)
+}
+
+func RegisteredToolNames() ([]string, error) {
+	server, err := newServer(nil, "", nil, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- server.Run(ctx, serverTransport) }()
+	client := sdk.NewClient(&sdk.Implementation{Name: "patio-tool-name-reader"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		<-serverDone
+		return nil, err
+	}
+	tools, listErr := session.ListTools(ctx, nil)
+	closeErr := session.Close()
+	runErr := <-serverDone
+	if listErr != nil {
+		return nil, listErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if runErr != nil {
+		return nil, runErr
+	}
+	names := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		names = append(names, tool.Name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 func newServer(h http.Handler, version string, database *sql.DB, approval *ApprovalOptions, inApp bool) (*sdk.Server, error) {

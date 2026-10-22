@@ -306,7 +306,7 @@ func (d *copilotRuntime) handleMessage(message acpMessage) {
 		return
 	}
 	if message.Method != "" && message.ID != nil {
-		log.Printf("Copilot ACP unhandled inbound request method=%q id=%s", message.Method, message.ID)
+		log.Printf("Copilot ACP unhandled inbound request method=%q id=%s bytes=%d", message.Method, message.ID, message.InboundBytes)
 		_ = d.client.respondError(message.ID, -32601, "Method not found")
 	}
 }
@@ -416,13 +416,9 @@ func copilotToolText(raw json.RawMessage) string {
 func (d *copilotRuntime) handlePermission(message acpMessage) {
 	var params struct {
 		ToolCall struct {
-			Title      string          `json:"title"`
-			Kind       string          `json:"kind"`
-			ToolCallID string          `json:"toolCallId"`
-			Server     string          `json:"server"`
-			ServerName string          `json:"serverName"`
-			RawInput   json.RawMessage `json:"rawInput"`
-			Meta       json.RawMessage `json:"_meta"`
+			Title      string `json:"title"`
+			Kind       string `json:"kind"`
+			ToolCallID string `json:"toolCallId"`
 		} `json:"toolCall"`
 		Options []struct {
 			OptionID string `json:"optionId"`
@@ -441,7 +437,7 @@ func (d *copilotRuntime) handlePermission(message acpMessage) {
 	d.toolMu.Lock()
 	toolRowName := d.toolNames[params.ToolCall.ToolCallID]
 	d.toolMu.Unlock()
-	allowed := isTicketMCPPermission(params.ToolCall.Kind, params.ToolCall.Server, params.ToolCall.ServerName, params.ToolCall.RawInput, params.ToolCall.Meta, toolRowName)
+	allowed := isPatioMCPToolLabel(toolRowName, d.manager.options.PatioMCPTools)
 	var err error
 	if !allowed {
 		allowed, err = d.manager.requestApproval(d.ctx, d.chatID, toolName, message.Params)
@@ -462,33 +458,17 @@ func (d *copilotRuntime) handlePermission(message acpMessage) {
 	_ = d.client.respond(message.ID, map[string]any{"outcome": map[string]string{"outcome": "selected", "optionId": option}})
 }
 
-func isTicketMCPPermission(kind, server, serverName string, rawInput, meta json.RawMessage, toolLabel string) bool {
-	if strings.EqualFold(server, "patio") || strings.EqualFold(serverName, "patio") || strings.EqualFold(copilotMCPServerName(meta), "patio") {
-		return true
+func isPatioMCPToolLabel(label string, registeredTools []string) bool {
+	tool, ok := strings.CutPrefix(label, "patio-")
+	if !ok || tool == "" {
+		return false
 	}
-	if strings.EqualFold(kind, "mcp") && strings.EqualFold(copilotMCPServerName(rawInput), "patio") {
-		return true
-	}
-	return isTicketMCPToolLabel(toolLabel)
-}
-
-func copilotMCPServerName(raw json.RawMessage) string {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil {
-		return ""
-	}
-	for _, key := range []string{"serverName", "server_name", "mcpServerName", "mcp_server_name"} {
-		var name string
-		if json.Unmarshal(fields[key], &name) == nil && name != "" {
-			return name
+	for _, registered := range registeredTools {
+		if tool == registered {
+			return true
 		}
 	}
-	return ""
-}
-
-func isTicketMCPToolLabel(name string) bool {
-	name = strings.ToLower(name)
-	return strings.HasPrefix(name, "patio-") || strings.HasPrefix(name, "mcp__patio__") || strings.HasPrefix(name, "patio.")
+	return false
 }
 
 func findACPOption(options []struct {
@@ -621,12 +601,13 @@ type acpError struct {
 func (e *acpError) Error() string { return fmt.Sprintf("ACP error %d: %s", e.Code, e.Message) }
 
 type acpMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *acpError       `json:"error,omitempty"`
+	JSONRPC      string          `json:"jsonrpc"`
+	ID           json.RawMessage `json:"id,omitempty"`
+	Method       string          `json:"method,omitempty"`
+	Params       json.RawMessage `json:"params,omitempty"`
+	Result       json.RawMessage `json:"result,omitempty"`
+	Error        *acpError       `json:"error,omitempty"`
+	InboundBytes int             `json:"-"`
 }
 
 type acpResponse struct {
@@ -734,11 +715,12 @@ func (c *acpClient) read(stdout io.Reader) {
 		line := scanner.Bytes()
 		var message acpMessage
 		if err := json.Unmarshal(line, &message); err != nil {
-			log.Printf("Copilot ACP skipped invalid inbound JSON: %q", truncateACPLogLine(line))
+			log.Printf("Copilot ACP skipped invalid inbound JSON: method=%q id=%s bytes=%d", message.Method, message.ID, len(line))
 			continue
 		}
+		message.InboundBytes = len(line)
 		if message.JSONRPC != "2.0" {
-			log.Printf("Copilot ACP skipped inbound line with jsonrpc=%q: %q", message.JSONRPC, truncateACPLogLine(line))
+			log.Printf("Copilot ACP skipped inbound line: method=%q id=%s bytes=%d", message.Method, message.ID, len(line))
 			continue
 		}
 		if message.Method != "" {
@@ -759,7 +741,7 @@ func (c *acpClient) read(stdout io.Reader) {
 			}
 			response <- acpResponse{result: message.Result, err: responseErr}
 		} else {
-			log.Printf("Copilot ACP skipped unmatched inbound response id=%s: %q", message.ID, truncateACPLogLine(line))
+			log.Printf("Copilot ACP skipped unmatched inbound response: method=%q id=%s bytes=%d", message.Method, message.ID, len(line))
 		}
 	}
 	c.mu.Lock()
@@ -768,13 +750,4 @@ func (c *acpClient) read(stdout io.Reader) {
 		response <- acpResponse{err: errors.New("Copilot ACP process closed")}
 	}
 	c.mu.Unlock()
-}
-
-func truncateACPLogLine(line []byte) string {
-	text := string(line)
-	runes := []rune(text)
-	if len(runes) > 300 {
-		return string(runes[:300]) + "..."
-	}
-	return text
 }

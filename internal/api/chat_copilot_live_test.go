@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,6 +17,16 @@ func TestCopilotLivePermission(t *testing.T) {
 	if binary == "" {
 		t.Fatal("PATIO_BINARY is required for Patio MCP")
 	}
+	copilotPath := os.Getenv("PATIO_COPILOT_BINARY")
+	var err error
+	if copilotPath == "" {
+		copilotPath, err = exec.LookPath("copilot")
+		if err != nil {
+			t.Skip("Copilot CLI not found; set PATIO_COPILOT_BINARY")
+		}
+	} else if copilotPath, err = exec.LookPath(copilotPath); err != nil {
+		t.Skipf("Copilot CLI not found at PATIO_COPILOT_BINARY: %v", err)
+	}
 	database, _, root := chatAPI(t)
 	connectorID := createCopilotTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
@@ -23,7 +34,8 @@ func TestCopilotLivePermission(t *testing.T) {
 	server := New(database, "local", false, "live", root, Options{
 		DBPath:        filepath.Join(root, "test.db"),
 		mcpExecutable: binary,
-		findCopilot:   func() (string, error) { return "/Users/epulla/.local/bin/copilot", nil },
+		findCopilot:   func() (string, error) { return copilotPath, nil },
+		PatioMCPTools: []string{"list_boards"},
 		Emit:          func(_ string, event any) { events <- event },
 	})
 	server.chats.approvalPollInterval = 100 * time.Millisecond

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -167,9 +169,11 @@ func TestCopilotPermissionAllowsOnlyPatioMCP(t *testing.T) {
 		want      bool
 	}{
 		{"captured Patio MCP request", `{"sessionId":"6e391eff-802a-4348-afc1-67828d9b4b35","toolCall":{"toolCallId":"call_M7k0BA0y7VhvSu1JutXncGCW","title":"list_boards","kind":"other","status":"pending","rawInput":{}},"options":[{"optionId":"allow_once","kind":"allow_once","name":"Allow once"},{"optionId":"allow_always","kind":"allow_always","name":"Always allow"},{"optionId":"reject_once","kind":"reject_once","name":"Deny"}]}`, "patio-list_boards", true},
-		{"structured Patio server", `{"toolCall":{"title":"list_boards","kind":"mcp","rawInput":{"serverName":"patio"}}}`, "", true},
+		{"payload claims Patio without row label", `{"toolCall":{"title":"list_boards","kind":"mcp","serverName":"patio","rawInput":{"serverName":"patio"}}}`, "", false},
 		{"bash command mentions Patio", `{"toolCall":{"title":"Run shell command","kind":"execute","rawInput":{"command":"echo patio-list_boards"}}}`, "", false},
 		{"similarly named MCP server", `{"toolCall":{"title":"list_boards","kind":"other","rawInput":{}}}`, "my-patio-clone-list_boards", false},
+		{"spoofed unknown tool", `{"toolCall":{"title":"unknown","kind":"other"}}`, "patio-not_registered", false},
+		{"uppercase label", `{"toolCall":{"title":"list_boards","kind":"other"}}`, "PATIO-list_boards", false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -185,9 +189,68 @@ func TestCopilotPermissionAllowsOnlyPatioMCP(t *testing.T) {
 			if err := json.Unmarshal([]byte(test.params), &params); err != nil {
 				t.Fatal(err)
 			}
-			got := isTicketMCPPermission(params.ToolCall.Kind, params.ToolCall.Server, params.ToolCall.ServerName, params.ToolCall.RawInput, params.ToolCall.Meta, test.toolLabel)
+			got := isPatioMCPToolLabel(test.toolLabel, []string{"list_boards"})
 			if got != test.want {
-				t.Fatalf("isTicketMCPPermission = %t, want %t", got, test.want)
+				t.Fatalf("isPatioMCPToolLabel = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCopilotPermissionApprovalUsesKnownCorrelatedTool(t *testing.T) {
+	tests := []struct {
+		name         string
+		toolLabel    string
+		toolCall     map[string]any
+		wantApproval bool
+	}{
+		{"known Patio tool", "patio-list_boards", map[string]any{"toolCallId": "call", "title": "list_boards", "kind": "other"}, false},
+		{"spoofed unknown tool", "patio-not_registered", map[string]any{"toolCallId": "call", "title": "not_registered", "kind": "other"}, true},
+		{"uppercase label", "PATIO-list_boards", map[string]any{"toolCallId": "call", "title": "list_boards", "kind": "other"}, true},
+		{"payload claims Patio without correlated label", "", map[string]any{"toolCallId": "call", "title": "list_boards", "kind": "mcp", "serverName": "patio", "rawInput": map[string]any{"serverName": "patio"}}, true},
+		{"bash command mentions Patio", "Run shell command", map[string]any{"toolCallId": "call", "title": "Run shell command", "kind": "execute", "rawInput": map[string]any{"command": "echo patio-list_boards"}}, true},
+		{"other MCP server", "my-patio-clone-list_boards", map[string]any{"toolCallId": "call", "title": "list_boards", "kind": "other"}, true},
+	}
+	database, _, root := chatAPI(t)
+	connectorID := createCopilotTestConnector(t, database)
+	server := New(database, "local", false, "test", root, Options{PatioMCPTools: []string{"list_boards"}})
+	defer server.Close()
+	server.chats.approvalPollInterval = time.Millisecond
+	server.chats.approvalTimeout = 2 * time.Second
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			chatID := createDriverTestChat(t, database, connectorID, root)
+			var response bytes.Buffer
+			d := &copilotRuntime{manager: server.chats, chatID: chatID, ctx: context.Background(), client: &acpClient{stdin: &response}, toolNames: map[string]string{"call": test.toolLabel}}
+			params, err := json.Marshal(map[string]any{"toolCall": test.toolCall, "options": []any{map[string]string{"optionId": "allow_once", "kind": "allow_once"}, map[string]string{"optionId": "reject_once", "kind": "reject_once"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan struct{})
+			go func() {
+				d.handlePermission(acpMessage{JSONRPC: "2.0", ID: json.RawMessage("1"), Params: params})
+				close(done)
+			}()
+			var approvalID string
+			if test.wantApproval {
+				waitFor(t, func() bool {
+					return database.QueryRow(`SELECT id FROM chat_approval WHERE chat_id=? AND status='pending'`, chatID).Scan(&approvalID) == nil
+				})
+				if _, err := database.Exec(`UPDATE chat_approval SET status='allowed' WHERE id=?`, approvalID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("permission request did not complete")
+			}
+			var approvals int
+			if err := database.QueryRow(`SELECT COUNT(*) FROM chat_approval WHERE chat_id=?`, chatID).Scan(&approvals); err != nil {
+				t.Fatal(err)
+			}
+			if (approvals > 0) != test.wantApproval {
+				t.Fatalf("approval rows = %d, want approval=%t", approvals, test.wantApproval)
 			}
 		})
 	}

@@ -28,6 +28,25 @@ func TestValidateAskUser(t *testing.T) {
 	}
 }
 
+func TestRegisteredToolNames(t *testing.T) {
+	names, err := RegisteredToolNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"list_boards", "send_to_chat"} {
+		found := false
+		for _, name := range names {
+			if name == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("registered Patio tools missing %q", want)
+		}
+	}
+}
+
 func TestAskUserToolStoresQuestionAndNotifiesScheduledRun(t *testing.T) {
 	database, err := db.Open(filepath.Join(t.TempDir(), "ask-user.db"))
 	if err != nil {

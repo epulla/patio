@@ -81,6 +81,26 @@ func TestMCPServerValidation(t *testing.T) {
 	}
 }
 
+func TestMCPServerPatioNameReservedForCreateAndRename(t *testing.T) {
+	database, handler, root := chatAPI(t)
+	server := New(database, "local", false, "test", root)
+	defer server.Close()
+	wantError := "MCP server name patio is reserved for Patio's built-in tools"
+	if err := server.validateMCPName("pAtIo", ""); err == nil || err.Error() != wantError {
+		t.Fatalf("validateMCPName() error = %v, want %q", err, wantError)
+	}
+	if code, raw := requestRaw(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "PaTiO", "kind": "http", "url": "https://example.test/mcp", "auth": "none"}); code != http.StatusBadRequest || !strings.Contains(raw, wantError) {
+		t.Fatalf("create reserved Patio server = %d %s", code, raw)
+	}
+	var created mcpServer
+	if code := requestJSON(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "Remote", "kind": "http", "url": "https://example.test/mcp", "auth": "none"}, &created); code != http.StatusCreated {
+		t.Fatalf("create regular server = %d", code)
+	}
+	if code, raw := requestRaw(t, handler, http.MethodPut, "/api/mcp-servers/"+created.ID, map[string]any{"name": "PATIO"}); code != http.StatusBadRequest || !strings.Contains(raw, wantError) {
+		t.Fatalf("rename to reserved Patio server = %d %s", code, raw)
+	}
+}
+
 func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	keyring.MockInit()
 	database, handler, _ := chatAPI(t)

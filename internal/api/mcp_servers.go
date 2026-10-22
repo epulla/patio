@@ -239,7 +239,7 @@ func validateMCPServer(config mcpServerConfig) error {
 		return errors.New("name must produce a CLI identifier")
 	}
 	if strings.EqualFold(sanitized, "patio") {
-		return errors.New("name produces reserved identifier patio")
+		return errors.New("MCP server name patio is reserved for Patio's built-in tools")
 	}
 	if !validMCPEnv(config.Env) {
 		return errors.New("environment keys must match [A-Za-z_][A-Za-z0-9_]*")
@@ -269,6 +269,9 @@ func validateMCPServer(config mcpServerConfig) error {
 }
 
 func (s *Server) validateMCPName(name, excludeID string) error {
+	if strings.EqualFold(strings.TrimSpace(name), "patio") {
+		return errors.New("MCP server name patio is reserved for Patio's built-in tools")
+	}
 	rows, err := s.db.Query(`SELECT id,name FROM mcp_server`)
 	if err != nil {
 		return err
@@ -402,7 +405,7 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.validateMCPName(config.Name, ""); err != nil {
-		if strings.Contains(err.Error(), "identifier already used") {
+		if strings.Contains(err.Error(), "identifier already used") || strings.Contains(err.Error(), "reserved for Patio") {
 			errw(w, http.StatusBadRequest, err.Error())
 		} else {
 			errw(w, http.StatusInternalServerError, err.Error())
@@ -562,7 +565,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.validateMCPName(config.Name, id); err != nil {
-		if strings.Contains(err.Error(), "identifier already used") {
+		if strings.Contains(err.Error(), "identifier already used") || strings.Contains(err.Error(), "reserved for Patio") {
 			errw(w, http.StatusBadRequest, err.Error())
 		} else {
 			errw(w, http.StatusInternalServerError, err.Error())
