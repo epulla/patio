@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -25,6 +26,7 @@ func TestCopilotACPDriver(t *testing.T) {
 	chatID := createDriverTestChat(t, database, connectorID, root)
 	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
 	launch := 0
+	var configPaths []string
 	methods := make(chan string, 8)
 	permissions := make(chan string, 2)
 	events := make(chan any, 32)
@@ -38,6 +40,25 @@ func TestCopilotACPDriver(t *testing.T) {
 			if !hasEnv(env, "COPILOT_GITHUB_TOKEN", "copilot-test-secret") {
 				t.Error("Copilot credential was not passed through connector environment")
 			}
+			configPath := strings.TrimPrefix(args[3], "@")
+			info, err := os.Stat(configPath)
+			if err != nil || info.Mode().Perm() != 0600 {
+				t.Errorf("Copilot config mode/stat = %v, %v", info, err)
+			}
+			data, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var config struct {
+				Servers map[string]map[string]any `json:"mcpServers"`
+			}
+			if err := json.Unmarshal(data, &config); err != nil {
+				t.Fatal(err)
+			}
+			if config.Servers["patio"]["type"] != "stdio" || config.Servers["stdio-test"]["type"] != "stdio" || config.Servers["stdio-test"]["env"].(map[string]any)["TOKEN"] != "stdio-secret" {
+				t.Errorf("Copilot stdio config = %#v", config.Servers)
+			}
+			configPaths = append(configPaths, configPath)
 			launch++
 			return processes[launch-1], nil
 		},
@@ -63,6 +84,9 @@ func TestCopilotACPDriver(t *testing.T) {
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
 	if err := server.chats.CloseChat(chatID); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(configPaths[0]); !os.IsNotExist(err) {
+		t.Errorf("Copilot config still exists after close: %v", err)
 	}
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "allow"}, nil); code != http.StatusAccepted {
 		t.Fatalf("allow prompt status = %d", code)
@@ -183,11 +207,11 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 		DBPath:      filepath.Join(root, "test.db"),
 		findCopilot: func() (string, error) { return "copilot-test", nil },
 		processFactory: func(_ string, args, _ []string, _ string) (chatProcess, error) {
-			want := []string{"--acp", "--stdio", "--reasoning-effort", "low"}
+			want := []string{"--acp", "--stdio", "--additional-mcp-config"}
 			if launch == 1 {
-				want = []string{"--acp", "--stdio"}
+				want = []string{"--acp", "--stdio", "--additional-mcp-config"}
 			}
-			if !reflect.DeepEqual(args, want) {
+			if len(args) < 4 || !reflect.DeepEqual(args[:3], want) || !strings.HasPrefix(args[3], "@") || (launch == 0 && !reflect.DeepEqual(args[4:], []string{"--reasoning-effort", "low"})) || (launch == 1 && len(args) != 4) {
 				t.Errorf("Copilot args = %v, want %v", args, want)
 			}
 			process := processes[launch]
@@ -329,15 +353,10 @@ func serveCopilotFake(process *pipeChatProcess, method func(acpMessage), process
 			var params map[string]any
 			_ = json.Unmarshal(request.Params, &params)
 			servers, ok := params["mcpServers"].([]any)
-			if !ok || len(servers) != 3 || servers[0].(map[string]any)["name"] != "patio" || len(servers[0].(map[string]any)["env"].([]any)) != 0 {
+			if !ok || len(servers) != 1 {
 				return
 			}
-			stdio := servers[1].(map[string]any)
-			stdioEnv := stdio["env"].([]any)
-			if stdio["name"] != "stdio-test" || stdioEnv[0].(map[string]any)["name"] != "TOKEN" || stdioEnv[0].(map[string]any)["value"] != "stdio-secret" {
-				return
-			}
-			httpServer := servers[2].(map[string]any)
+			httpServer := servers[0].(map[string]any)
 			headers := httpServer["headers"].([]any)
 			if httpServer["type"] != "http" || httpServer["name"] != "http-test" || headers[0].(map[string]any)["name"] != "Authorization" || headers[0].(map[string]any)["value"] != "Bearer http-secret" {
 				return
