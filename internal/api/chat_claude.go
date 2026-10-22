@@ -39,6 +39,9 @@ type claudeRuntime struct {
 	thinkingDeltas bool
 	textDeltas     bool
 	toolMessages   map[string]string // tool_use ID -> tool chat message ID
+	steerMu        sync.Mutex
+	steering       bool
+	steerRequest   ChatSendRequest
 }
 
 func init() { runtimes["claude"] = startClaude }
@@ -161,6 +164,10 @@ func (d *claudeRuntime) removeConfig() {
 }
 
 func (d *claudeRuntime) send(request ChatSendRequest) error {
+	return d.writeUserMessage(request)
+}
+
+func (d *claudeRuntime) writeUserMessage(request ChatSendRequest) error {
 	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
 	if err != nil {
 		return err
@@ -174,6 +181,32 @@ func (d *claudeRuntime) send(request ChatSendRequest) error {
 		return err
 	}
 	_, err = d.process.Stdin().Write(append(payload, '\n'))
+	return err
+}
+
+func (d *claudeRuntime) canSteer() bool {
+	d.steerMu.Lock()
+	defer d.steerMu.Unlock()
+	return !d.steering
+}
+
+func (d *claudeRuntime) steer(request ChatSendRequest) error {
+	d.steerMu.Lock()
+	defer d.steerMu.Unlock()
+	if d.steering {
+		return errors.New("Claude turn is already being steered")
+	}
+	d.steering = true
+	d.steerRequest = request
+	payload, err := json.Marshal(map[string]any{"type": "control_request", "request_id": fmt.Sprintf("steer-%d", time.Now().UnixNano()), "request": map[string]string{"subtype": "interrupt"}})
+	if err != nil {
+		d.steering = false
+		return err
+	}
+	_, err = d.process.Stdin().Write(append(payload, '\n'))
+	if err != nil {
+		d.steering = false
+	}
 	return err
 }
 
@@ -430,6 +463,24 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			}
 		}
 	case "result":
+		d.steerMu.Lock()
+		if d.steering {
+			request := d.steerRequest
+			d.thinkingDeltas = false
+			d.textDeltas = false
+			if err := d.writeUserMessage(request); err != nil {
+				content := d.assistant.String()
+				d.assistant.Reset()
+				finishErr := d.manager.finishTurn(d.chatID, content, err)
+				d.steering = false
+				d.steerMu.Unlock()
+				return finishErr
+			}
+			d.steering = false
+			d.steerMu.Unlock()
+			return nil
+		}
+		d.steerMu.Unlock()
 		d.thinkingDeltas = false
 		d.textDeltas = false
 		var result struct {

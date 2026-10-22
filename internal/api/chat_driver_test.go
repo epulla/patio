@@ -621,7 +621,15 @@ func TestChatQueueSendNow(t *testing.T) {
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
 	fake := newPipeChatProcess()
-	server := New(database, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	var eventMu sync.Mutex
+	doneEvents := 0
+	server := New(database, "local", false, "dev", root, Options{Emit: func(_ string, event any) {
+		if event.(map[string]any)["type"] == "done" {
+			eventMu.Lock()
+			doneEvents++
+			eventMu.Unlock()
+		}
+	}, findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer server.Close()
 	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('queued',?,'from queue','now')`, chatID); err != nil {
 		t.Fatal(err)
@@ -648,7 +656,15 @@ func TestChatQueueSendNow(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
-	// Start another turn, then verify queue row survives a busy send-now.
+	// Start another turn, then steer it from the queued message.
+	waitFor(t, func() bool {
+		eventMu.Lock()
+		defer eventMu.Unlock()
+		return doneEvents == 1
+	})
+	eventMu.Lock()
+	doneBeforeSteer := doneEvents
+	eventMu.Unlock()
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "active"}, nil); code != http.StatusAccepted {
 		t.Fatalf("active send = %d", code)
 	}
@@ -660,12 +676,57 @@ func TestChatQueueSendNow(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('busy',?,'busy','now')`, chatID); err != nil {
 		t.Fatal(err)
 	}
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/send", nil, nil); code != http.StatusConflict {
+	if _, err := io.WriteString(fake.stdoutW, `{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"before "}}}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/queue/send", nil, nil); code != http.StatusAccepted {
 		t.Fatalf("busy send-now = %d", code)
 	}
-	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='busy'`).Scan(&queued); err != nil || queued != 1 {
+	select {
+	case line := <-fake.input:
+		var control map[string]any
+		if err := json.Unmarshal([]byte(line), &control); err != nil || control["type"] != "control_request" || control["request"].(map[string]any)["subtype"] != "interrupt" {
+			t.Fatalf("interrupt = %s, err=%v", line, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("interrupt control request not received")
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_queue WHERE id='busy'`).Scan(&queued); err != nil || queued != 0 {
 		t.Fatalf("busy queue row count=%d err=%v", queued, err)
 	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='user' AND content='busy'`, chatID).Scan(&messages); err != nil || messages != 1 {
+		t.Fatalf("busy user messages=%d err=%v", messages, err)
+	}
+	if _, err := io.WriteString(fake.stdoutW, `{"type":"result","result":"interrupted"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case line := <-fake.input:
+		var input struct {
+			Type    string                         `json:"type"`
+			Message struct{ Role, Content string } `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &input); err != nil || input.Type != "user" || input.Message.Role != "user" || input.Message.Content != "busy" {
+			t.Fatalf("steer input=%s err=%v", line, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("steer user input not received")
+	}
+	if !server.chats.Running(chatID) {
+		t.Fatal("interrupted result finished turn")
+	}
+	if _, err := io.WriteString(fake.stdoutW, `{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"after"}}}`+"\n"+`{"type":"result","result":"ignored fallback"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	if err := database.QueryRow(`SELECT COUNT(*) FROM chat_message WHERE chat_id=? AND role='assistant' AND content='before after'`, chatID).Scan(&messages); err != nil || messages != 1 {
+		t.Fatalf("combined assistant messages=%d err=%v", messages, err)
+	}
+	waitFor(t, func() bool {
+		eventMu.Lock()
+		defer eventMu.Unlock()
+		return doneEvents-doneBeforeSteer == 1
+	})
 }
 
 func TestChatQueueDrainsAllAsOneMessageAfterSuccessfulTurn(t *testing.T) {
