@@ -25,6 +25,17 @@ func TestMain(m *testing.M) {
 		server.AddTool(&mcp.Tool{Name: "apple", Description: "first", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{}, nil
 		})
+		server.AddTool(&mcp.Tool{Name: "read_file", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []string{"path"}}}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args map[string]string
+			if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+				return nil, err
+			}
+			data, err := os.ReadFile(args["path"])
+			if err != nil {
+				return nil, err
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}, nil
+		})
 		if os.Getenv("HEALTH_CHECK_TEST_ENV") != "from-keychain" {
 			_, _ = os.Stderr.WriteString("missing keychain environment")
 			os.Exit(1)
@@ -96,7 +107,7 @@ func TestMCPServerCheckStdio(t *testing.T) {
 	if code := requestJSON(t, server, http.MethodGet, "/api/mcp-servers/"+id+"/check", nil, &result); code != http.StatusOK {
 		t.Fatalf("check status = %d, result = %#v", code, result)
 	}
-	if !result.OK || result.Error != "" || len(result.Tools) != 2 || result.Tools[0].Name != "apple" || result.Tools[1].Name != "zebra" {
+	if !result.OK || result.Error != "" || len(result.Tools) != 3 || result.Tools[0].Name != "apple" || result.Tools[1].Name != "read_file" || result.Tools[2].Name != "zebra" {
 		t.Fatalf("stdio check = %#v", result)
 	}
 }

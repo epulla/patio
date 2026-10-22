@@ -245,11 +245,17 @@ func main() {
 				}
 			}()
 			if *chatWindow == "" {
-				background.Add(3)
+				background.Add(4)
 				go func() {
 					defer background.Done()
 					if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
 						log.Printf("run scheduled tasks: %v", err)
+					}
+				}()
+				go func() {
+					defer background.Done()
+					if err := apiServer.StartMonitorRunner(backgroundCtx, 30*time.Second); err != nil {
+						log.Printf("run monitors: %v", err)
 					}
 				}()
 				go func() {
