@@ -86,10 +86,12 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	if c.SessionID != nil && *c.SessionID != "" {
 		driver.threadID = *c.SessionID
 		var result json.RawMessage
-		err = client.Call(ctx, "thread/resume", map[string]any{
-			"threadId": driver.threadID, "approvalPolicy": "on-request", "sandbox": "read-only",
-			"config": codexConfig,
-		}, &result)
+		err = resumeCodexThread(ctx, func() error {
+			return client.Call(ctx, "thread/resume", map[string]any{
+				"threadId": driver.threadID, "approvalPolicy": "on-request", "sandbox": "read-only",
+				"config": codexConfig,
+			}, &result)
+		})
 	} else {
 		var result struct {
 			Thread struct {
@@ -147,6 +149,28 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	rt.driver = driver
 	go driver.watch()
 	return driver, nil
+}
+
+func resumeCodexThread(ctx context.Context, call func() error) error {
+	waits := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+	for attempt := 0; ; attempt++ {
+		err := call()
+		if err == nil || !strings.Contains(err.Error(), "active writer") || attempt == len(waits) {
+			return err
+		}
+		timer := time.NewTimer(waits[attempt])
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return errors.Join(err, ctx.Err())
+		}
+	}
 }
 
 func codexExternalMCPServers(external []mcpServerSpec) map[string]any {
