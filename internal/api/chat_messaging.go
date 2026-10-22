@@ -237,5 +237,17 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &outcome)
+	if outcome.Status == "queued" {
+		cause := errors.New("child chat could not start its first turn")
+		_, deleteErr := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
+		if deleteErr != nil {
+			cause = errors.Join(cause, deleteErr)
+		}
+		if createdWorkdir {
+			cause = cleanupConnectorDir(s.chatWorkdir(child), cause)
+		}
+		errw(w, 500, cause.Error())
+		return
+	}
 	write(w, 200, map[string]string{"chat_id": id, "status": outcome.Status})
 }
