@@ -9,11 +9,12 @@ import (
 )
 
 type chatQueueItem struct {
-	ID          string           `json:"id"`
-	Text        string           `json:"text"`
-	Attachments []ChatAttachment `json:"attachments"`
-	CreatedAt   string           `json:"created_at"`
-	FromChatID  *string          `json:"from_chat_id"`
+	ID            string           `json:"id"`
+	Text          string           `json:"text"`
+	Attachments   []ChatAttachment `json:"attachments"`
+	CreatedAt     string           `json:"created_at"`
+	FromChatID    *string          `json:"from_chat_id"`
+	FromChatTitle string           `json:"from_chat_title"`
 }
 
 func (s *Server) listChatQueue(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +35,7 @@ func (s *Server) chatQueue(chatID string) ([]chatQueueItem, error) {
 	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, chatID).Scan(&exists); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id,text,attachments,created_at,from_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
+	rows, err := s.db.Query(`SELECT q.id,q.text,q.attachments,q.created_at,q.from_chat_id,COALESCE(sender.title,'') FROM chat_queue q LEFT JOIN chat sender ON sender.id=q.from_chat_id WHERE q.chat_id=? ORDER BY q.created_at,q.rowid`, chatID)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +44,7 @@ func (s *Server) chatQueue(chatID string) ([]chatQueueItem, error) {
 	for rows.Next() {
 		var item chatQueueItem
 		var raw string
-		if err := rows.Scan(&item.ID, &item.Text, &raw, &item.CreatedAt, &item.FromChatID); err != nil {
+		if err := rows.Scan(&item.ID, &item.Text, &raw, &item.CreatedAt, &item.FromChatID, &item.FromChatTitle); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item.Attachments); err != nil {

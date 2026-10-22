@@ -71,6 +71,7 @@ type ChatMessage struct {
 	ToolResultSize int     `json:"tool_result_size,omitempty"`
 	ToolError      bool    `json:"tool_error,omitempty"`
 	FromChatID     *string `json:"from_chat_id"`
+	FromChatTitle  string  `json:"from_chat_title"`
 }
 
 type chatApproval struct {
@@ -435,7 +436,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	}
 	c.Running = s.chats.Running(c.ID)
 	messages := []ChatMessage{}
-	rows, err := s.db.Query(`SELECT id,chat_id,role,content,created_at,attachments,answered,tool_result_size,tool_error,from_chat_id FROM chat_message WHERE chat_id=? ORDER BY created_at,rowid`, c.ID)
+	rows, err := s.db.Query(`SELECT m.id,m.chat_id,m.role,m.content,m.created_at,m.attachments,m.answered,m.tool_result_size,m.tool_error,m.from_chat_id,COALESCE(sender.title,'') FROM chat_message m LEFT JOIN chat sender ON sender.id=m.from_chat_id WHERE m.chat_id=? ORDER BY m.created_at,m.rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -443,7 +444,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var m ChatMessage
 		var rawAttachments string
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError, &m.FromChatID); err == nil {
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError, &m.FromChatID, &m.FromChatTitle); err == nil {
 			if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
 				_ = rows.Close()
 				errw(w, 500, "invalid chat message attachments: "+err.Error())
@@ -513,6 +514,17 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	children := []map[string]string{}
+	var parent *map[string]string
+	if c.ParentChatID != nil {
+		var parentTitle string
+		if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, *c.ParentChatID).Scan(&parentTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			errw(w, 500, err.Error())
+			return
+		} else if err == nil {
+			linked := map[string]string{"id": *c.ParentChatID, "title": parentTitle}
+			parent = &linked
+		}
+	}
 	childRows, err := s.db.Query(`SELECT id,title FROM chat WHERE parent_chat_id=? ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
@@ -533,7 +545,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	response := map[string]any{"chat": c, "messages": messages, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals}
+	response := map[string]any{"chat": c, "messages": messages, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals}
 	data, err := json.Marshal(response)
 	if err != nil {
 		errw(w, 500, err.Error())
