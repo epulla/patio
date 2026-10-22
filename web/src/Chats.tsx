@@ -1245,6 +1245,51 @@ export function Conversation({
     </>
   );
 
+  const chatLinks = (detail.chat.scheduled_task_id || detail.parent || detail.children.length > 0) && (
+          <div className="conversation-meta">
+            {detail.chat.scheduled_task_id && (
+              <button
+                type="button"
+                className="folder-chip"
+                onClick={() => navigate(`/ai/scheduled/${detail.chat.scheduled_task_id}`)}
+              >
+                <Icon name="clock" /> {t.scheduledTask}
+              </button>
+            )}
+            {detail.parent && (
+              <button
+                type="button"
+                className="folder-chip chat-link-chip"
+                title={detail.parent.title}
+                onClick={() => openChat(detail.parent!.id)}
+              >
+                <Icon name="arrowLeft" /> <span>{t.continuedFrom} {detail.parent.title}</span>
+              </button>
+            )}
+            {detail.children.length > 0 && (
+              <div className="chat-links-menu">
+              <Menu
+                label={t.handedOffCount(detail.children.length)}
+                buttonClassName="folder-chip"
+                button={
+                  <>
+                    <Icon name="chevronRight" /> {t.handedOffCount(detail.children.length)} <Icon name="chevronDown" />
+                  </>
+                }
+              >
+                {(close) =>
+                  detail.children.map((child) => (
+                    <button key={child.id} role="menuitem" className="chat-link-item" title={child.title} onClick={() => (close(false), openChat(child.id))}>
+                      <Icon name="chat" /> <span>{child.title}</span>
+                    </button>
+                  ))
+                }
+              </Menu>
+              </div>
+            )}
+          </div>
+        );
+
   return (
     <section
       className={dragging ? "conversation dragging" : "conversation"}
@@ -1305,52 +1350,10 @@ export function Conversation({
           }
         />
         <IconButton className="danger-text" icon="trash" label={t.deleteChat} onClick={remove} />
-        {(detail.chat.scheduled_task_id || detail.parent || detail.children.length > 0) && (
-          <div className="conversation-meta">
-            {detail.chat.scheduled_task_id && (
-              <button
-                type="button"
-                className="folder-chip"
-                onClick={() => navigate(`/ai/scheduled/${detail.chat.scheduled_task_id}`)}
-              >
-                <Icon name="clock" /> {t.scheduledTask}
-              </button>
-            )}
-            {detail.parent && (
-              <button
-                type="button"
-                className="folder-chip chat-link-chip"
-                title={detail.parent.title}
-                onClick={() => openChat(detail.parent!.id)}
-              >
-                <Icon name="arrowLeft" /> <span>{t.continuedFrom} {detail.parent.title}</span>
-              </button>
-            )}
-            {detail.children.length > 0 && (
-              <div className="chat-links-menu">
-              <Menu
-                label={t.handedOffCount(detail.children.length)}
-                buttonClassName="folder-chip"
-                button={
-                  <>
-                    <Icon name="chevronRight" /> {t.handedOffCount(detail.children.length)} <Icon name="chevronDown" />
-                  </>
-                }
-              >
-                {(close) =>
-                  detail.children.map((child) => (
-                    <button key={child.id} role="menuitem" className="chat-link-item" title={child.title} onClick={() => (close(false), openChat(child.id))}>
-                      <Icon name="chat" /> <span>{child.title}</span>
-                    </button>
-                  ))
-                }
-              </Menu>
-              </div>
-            )}
-          </div>
-        )}
+        {!compact && chatLinks}
       </header>
       )}
+      {compact && chatLinks}
       {choosingFolder && (
         <FolderDialog
           current={detail.chat.folder}
