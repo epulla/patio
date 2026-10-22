@@ -1327,6 +1327,7 @@ export function Conversation({
               </button>
             )}
             {detail.children.length > 0 && (
+              <div className="chat-links-menu">
               <Menu
                 label={t.handedOffCount(detail.children.length)}
                 buttonClassName="folder-chip"
@@ -1344,6 +1345,7 @@ export function Conversation({
                   ))
                 }
               </Menu>
+              </div>
             )}
           </div>
         )}

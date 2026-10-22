@@ -2989,6 +2989,12 @@ main.chat-window {
 .chat-link-item {
   max-width: 360px;
 }
+.chat-links-menu .menu-list {
+  left: 0;
+  right: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
 .folder-trail {
   display: flex;
   flex-wrap: wrap;
