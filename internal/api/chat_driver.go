@@ -246,6 +246,9 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	if err != nil {
 		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
 	}
+	if _, err := m.db.Exec(`UPDATE chat SET agent_hops=0 WHERE id=?`, c.ID); err != nil {
+		return ChatMessage{}, errors.Join(err, m.releaseTurn(c.ID))
+	}
 	rt.connectorID = *c.ConnectorID
 	rt.streamMu.Lock()
 	rt.showThinking = c.ShowThinking

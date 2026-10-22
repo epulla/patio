@@ -652,6 +652,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	addSkillTools(s, h, database, skills)
+	addChatMessagingTools(s, h, database)
 	s.AddTool(&sdk.Tool{Name: "ask_user", Description: "Ask the user multiple-choice questions in an interactive chat only when you truly cannot decide yourself; set multiple true when more than one option can apply. Pass required chat_id from this chat's instructions. Free-text answers are always allowed.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"chat_id": map[string]any{"type": "string"}, "questions": map[string]any{"type": "array", "minItems": 1, "maxItems": 7, "items": map[string]any{"type": "object", "properties": map[string]any{"header": map[string]any{"type": "string"}, "question": map[string]any{"type": "string"}, "multiple": map[string]any{"type": "boolean", "description": "Allow selecting multiple options."}, "options": map[string]any{"type": "array", "minItems": 2, "maxItems": 6, "items": map[string]any{"type": "object", "properties": map[string]any{"label": map[string]any{"type": "string", "maxLength": 40}, "description": map[string]any{"type": "string"}}, "required": []string{"label"}}}}, "required": []string{"header", "question", "options"}}}}, "required": []string{"chat_id", "questions"}}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		var in askUserArgs
 		if req.Params.Arguments == nil {
@@ -1025,6 +1026,59 @@ func doJSON(h http.Handler, r request) ([]byte, error) {
 		}
 	}
 	return data, nil
+}
+
+func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
+	for _, name := range []string{"send_to_chat", "create_chat"} {
+		properties := map[string]any{"chat_id": map[string]any{"type": "string"}, "report_back": map[string]any{"type": "boolean"}}
+		required := []string{"chat_id"}
+		description := "Create child chat handoff."
+		if name == "send_to_chat" {
+			properties["target_chat_id"] = map[string]any{"type": "string"}
+			properties["text"] = map[string]any{"type": "string"}
+			required = append(required, "target_chat_id", "text")
+			description = "Send message to another chat."
+		} else {
+			properties["connector_id"] = map[string]any{"type": "string"}
+			properties["model"] = map[string]any{"type": "string"}
+			properties["prompt"] = map[string]any{"type": "string"}
+			required = append(required, "connector_id", "prompt")
+		}
+		n := name
+		s.AddTool(&sdk.Tool{Name: n, Description: description, InputSchema: map[string]any{"type": "object", "properties": properties, "required": required}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+			var a map[string]any
+			if err := json.Unmarshal(req.Params.Arguments, &a); err != nil {
+				return errorResult(err), nil
+			}
+			caller, _ := a["chat_id"].(string)
+			if strings.TrimSpace(caller) == "" || database == nil {
+				return errorResult(errors.New("chat_id is missing or unknown")), nil
+			}
+			ok, err := api.ChatExists(database, caller)
+			if err != nil {
+				return errorResult(err), nil
+			}
+			if !ok {
+				return errorResult(errors.New("chat_id is missing or unknown")), nil
+			}
+			delete(a, "chat_id")
+			path := "/api/chats/" + url.PathEscape(caller) + "/handoff"
+			if n == "send_to_chat" {
+				target, _ := a["target_chat_id"].(string)
+				if target == "" {
+					return errorResult(errors.New("target_chat_id required")), nil
+				}
+				delete(a, "target_chat_id")
+				a["from_chat_id"] = caller
+				path = "/api/chats/" + url.PathEscape(target) + "/agent-messages"
+			}
+			out, err := doJSON(h, request{http.MethodPost, path, a})
+			if err != nil {
+				return errorResult(err), nil
+			}
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(out)}}}, nil
+		})
+	}
 }
 
 func mcpSnapshotPath(path string) string {

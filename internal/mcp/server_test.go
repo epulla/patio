@@ -155,7 +155,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
-		"ask_user": true, "create_notification": true, "get_item_history": true,
+		"ask_user": true, "create_notification": true, "get_item_history": true, "send_to_chat": true, "create_chat": true,
 	}
 	count := 0
 	for tool, err := range session.Tools(ctx, nil) {
@@ -198,8 +198,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 55 {
-		t.Fatalf("tool count = %d, want 55", count)
+	if count != 57 {
+		t.Fatalf("tool count = %d, want 57", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)

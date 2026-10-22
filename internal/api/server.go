@@ -177,6 +177,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/{id}/window", s.openChatWindow)
 	m.HandleFunc("POST /api/windows/main", s.openMainWindow)
 	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
+	m.HandleFunc("POST /api/chats/{id}/agent-messages", s.agentMessage)
+	m.HandleFunc("POST /api/chats/{id}/handoff", s.createChatHandoff)
 	m.HandleFunc("GET /api/chats/{id}/queue", s.listChatQueue)
 	m.HandleFunc("DELETE /api/chats/{id}/queue/{qid}", s.deleteChatQueue)
 	m.HandleFunc("POST /api/chats/{id}/queue/send", s.sendQueuedChatMessages)

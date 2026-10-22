@@ -13,6 +13,7 @@ type chatQueueItem struct {
 	Text        string           `json:"text"`
 	Attachments []ChatAttachment `json:"attachments"`
 	CreatedAt   string           `json:"created_at"`
+	FromChatID  *string          `json:"from_chat_id"`
 }
 
 func (s *Server) listChatQueue(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +34,7 @@ func (s *Server) chatQueue(chatID string) ([]chatQueueItem, error) {
 	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, chatID).Scan(&exists); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id,text,attachments,created_at FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
+	rows, err := s.db.Query(`SELECT id,text,attachments,created_at,from_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func (s *Server) chatQueue(chatID string) ([]chatQueueItem, error) {
 	for rows.Next() {
 		var item chatQueueItem
 		var raw string
-		if err := rows.Scan(&item.ID, &item.Text, &raw, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Text, &raw, &item.CreatedAt, &item.FromChatID); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item.Attachments); err != nil {
@@ -102,16 +103,19 @@ func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
 	lock := m.queueLock(chatID)
 	lock.Lock()
 	defer lock.Unlock()
-	rows, err := m.db.Query(`SELECT id,text,attachments FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
+	rows, err := m.db.Query(`SELECT id,text,attachments,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
 	if err != nil {
 		return ChatMessage{}, err
 	}
 	var ids, texts []string
+	var sender sql.NullString
+	var reportTo sql.NullString
 	var attachments []ChatAttachment
 	for rows.Next() {
 		var id, text, raw string
+		var from, report sql.NullString
 		var items []ChatAttachment
-		if err := rows.Scan(&id, &text, &raw); err != nil {
+		if err := rows.Scan(&id, &text, &raw, &from, &report); err != nil {
 			rows.Close()
 			return ChatMessage{}, err
 		}
@@ -119,8 +123,12 @@ func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
 			rows.Close()
 			return ChatMessage{}, err
 		}
-		if len(ids) > 0 && len(attachments)+len(items) > maxChatAttachments {
+		if len(ids) > 0 && (from != sender || len(attachments)+len(items) > maxChatAttachments) {
 			break
+		}
+		if len(ids) == 0 {
+			sender = from
+			reportTo = report
 		}
 		ids = append(ids, id)
 		if text != "" {
@@ -154,6 +162,14 @@ func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
 	if err != nil {
 		return ChatMessage{}, err
 	}
+	if sender.Valid {
+		if _, err := m.db.Exec(`UPDATE chat_message SET from_chat_id=?,report_to_chat_id=? WHERE id=?`, sender.String, nullableString(reportTo), message.ID); err != nil {
+			return ChatMessage{}, err
+		}
+		if _, err := m.db.Exec(`UPDATE chat SET agent_hops=agent_hops+1 WHERE id=?`, chatID); err != nil {
+			return ChatMessage{}, err
+		}
+	}
 	if err := txrun(m.db, func(tx *sql.Tx) error {
 		for _, id := range ids {
 			if _, err := tx.Exec(`DELETE FROM chat_queue WHERE id=? AND chat_id=?`, id, chatID); err != nil {
@@ -166,4 +182,11 @@ func (m *chatManager) drainQueued(chatID string) (ChatMessage, error) {
 	}
 	m.emit(chatID, map[string]any{"type": "queue"})
 	return message, nil
+}
+
+func nullableString(v sql.NullString) any {
+	if v.Valid {
+		return v.String
+	}
+	return nil
 }

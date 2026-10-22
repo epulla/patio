@@ -11,16 +11,17 @@ import (
 const maxIndexedMemories = 30
 
 const (
-	chatLinkRules  = "In patio, reply in Markdown. Link tickets as [CODE: Title](/tickets/<ticket id>), boards as [Board name](/boards/<board id>), and chats as [Chat title](/ai/chats/<chat id>), using returned IDs only; never invent IDs."
-	martinPersona  = "You are Martin, playful, joyful AI companion for everyday/weekly tasks. Be supportive, concise, joke sometimes, recommend."
-	ticketComments = "When working on a ticket in this chat, record progress, findings, decisions, and manual-check results as ticket comments with add_comment instead of growing the description. Keep comments terse, precise, and to the point."
-	askUserPrompt  = "To ask the user multiple-choice questions, use the Patio ask_user tool with this chat's ID as chat_id; set multiple true when more than one option can apply, then end your turn."
+	chatLinkRules     = "In patio, reply in Markdown. Link tickets as [CODE: Title](/tickets/<ticket id>), boards as [Board name](/boards/<board id>), and chats as [Chat title](/ai/chats/<chat id>), using returned IDs only; never invent IDs."
+	martinPersona     = "You are Martin, playful, joyful AI companion for everyday/weekly tasks. Be supportive, concise, joke sometimes, recommend."
+	ticketComments    = "When working on a ticket in this chat, record progress, findings, decisions, and manual-check results as ticket comments with add_comment instead of growing the description. Keep comments terse, precise, and to the point."
+	askUserPrompt     = "To ask the user multiple-choice questions, use the Patio ask_user tool with this chat's ID as chat_id; set multiple true when more than one option can apply, then end your turn."
+	chatHandoffPrompt = "To message another chat use send_to_chat; to delegate into a new child chat use create_chat. Set report_back when you need a result returned to this chat; give short results inline, and long results as a ticket comment plus a pointer."
 )
 
 func ChatSystemPrompt(enabled bool, chatID string, skills []Skill) string {
-	prompt := "You are a neutral assistant. " + chatLinkRules + " " + askUserPrompt
+	prompt := "You are a neutral assistant. " + chatLinkRules + " " + askUserPrompt + " " + chatHandoffPrompt
 	if enabled {
-		prompt = martinPersona + " " + ticketComments + " " + chatLinkRules + " " + askUserPrompt
+		prompt = martinPersona + " " + ticketComments + " " + chatLinkRules + " " + askUserPrompt + " " + chatHandoffPrompt
 	}
 	prompt += skillIndex(skills)
 	// The chat ID goes last so the text before it is the same for every chat and stays cacheable.
