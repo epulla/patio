@@ -32,8 +32,10 @@ export default function Menu({
   useLayoutEffect(() => {
     const el = list.current;
     if (!open || !el) return;
-    const overflow = el.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+    const rect = el.getBoundingClientRect();
+    const overflow = rect.right - (document.documentElement.clientWidth - 8);
     if (overflow > 0) el.style.translate = `${-overflow}px 0`;
+    else if (rect.left < 8) el.style.translate = `${8 - rect.left}px 0`;
   }, [open]);
 
   function close(focusTrigger = true) {
