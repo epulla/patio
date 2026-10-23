@@ -1940,6 +1940,10 @@ main:has(> .chats) {
 .chat-list.collapsed {
   gap: 2px;
 }
+/* The rail is 56px; a narrower toggle keeps the split button inside it. */
+.chat-list.collapsed .split-toggle {
+  width: 20px;
+}
 .chat-list.collapsed .chat-list-head {
   margin-bottom: 14px;
 }
@@ -2120,6 +2124,26 @@ main:has(> .chats) {
   flex: 1;
   min-width: 0;
 }
+.chat-link.new-group {
+  color: var(--muted);
+  font-size: 12px;
+}
+.chat-link.new-group .svg-icon {
+  width: 12px;
+  height: 12px;
+}
+/* Matches the .chat-link row so renaming reads as editing in place. */
+.chat-row .group-name {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 11px;
+  font-weight: 500;
+  background: transparent;
+}
+.chat-row .group-name:focus-visible {
+  outline: none;
+}
 .chat-row:not(:hover, :focus-within) .icon:not(.pinned) {
   opacity: 0;
 }
@@ -2280,6 +2304,22 @@ main.chat-window {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+.dock-group {
+  height: 28px;
+  padding: 0 8px;
+  gap: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dock-group > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dock-empty {
+  flex: 1;
+  padding: 16px;
 }
 .dock-chips {
   flex: 1;
@@ -2757,6 +2797,10 @@ main.chat-window {
 .menu-list button:hover,
 .menu-list button:focus-visible {
   background: var(--base-200);
+}
+/* Menus focus their first item on open; the background marks focus, so the outline ring is noise. */
+.menu-list button:focus-visible {
+  outline: none;
 }
 .menu-list .danger-text {
   color: var(--error);

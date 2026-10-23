@@ -4,12 +4,13 @@ import { navigate } from "./App";
 import { Conversation, type PageContext } from "./Chats";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
-import { isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, unpin, unpinAriaShortcut, unpinShortcut } from "./pins";
+import Menu from "./Menu";
+import { groupAriaShortcuts, groupShortcuts, isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, setActiveGroup, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
-  en: { pinnedChats: "Pinned chats", resizePinned: "Resize pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, openChats: "Open in Chats", togglePinned: (shortcut: string) => `Toggle pinned chats with ${shortcut}`, closeDock: (shortcut: string) => `Close dock (${shortcut})` },
-  es: { pinnedChats: "Chats fijados", resizePinned: "Cambiar tamaño de chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, openChats: "Abrir en Chats", togglePinned: (shortcut: string) => `Alternar chats fijados con ${shortcut}`, closeDock: (shortcut: string) => `Cerrar panel (${shortcut})` },
+  en: { pinnedChats: "Pinned chats", resizePinned: "Resize pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, openChats: "Open in Chats", togglePinned: (shortcut: string) => `Toggle pinned chats with ${shortcut}`, closeDock: (shortcut: string) => `Close dock (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, emptyGroup: (name: string) => `${name} has no chats yet.` },
+  es: { pinnedChats: "Chats fijados", resizePinned: "Cambiar tamaño de chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, openChats: "Abrir en Chats", togglePinned: (shortcut: string) => `Alternar chats fijados con ${shortcut}`, closeDock: (shortcut: string) => `Cerrar panel (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, emptyGroup: (name: string) => `${name} aún no tiene chats.` },
 };
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
@@ -61,13 +62,17 @@ export default function ChatDock({
 }) {
   const t = useText(text);
   const statusText = useText(statusLabels);
+  const groups = usePinGroups();
+  const groupName = groups.groups.find((group) => group.id === groups.active)?.name ?? "";
   const [active, setActive] = useState(() => lastPinnedChat() ?? ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
   const [focusRequest, setFocusRequest] = useState<string>();
   const [loaded, setLoaded] = useState<{ key: string; context: PageContext }>();
   const current = ids.includes(active) ? active : ids[0];
-  useEffect(() => rememberPinnedChat(current), [current]);
+  useEffect(() => {
+    if (current) rememberPinnedChat(current);
+  }, [current]);
   const pageKey = page && `${page.kind}:${page.id}`;
   const context = loaded && loaded.key === pageKey ? loaded.context : undefined;
 
@@ -94,7 +99,7 @@ export default function ChatDock({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isUnpinKey(event)) {
+      if (isUnpinKey(event) && current) {
         event.preventDefault();
         return unpinChat(current);
       }
@@ -170,6 +175,31 @@ export default function ChatDock({
         }}
       />
       <div className="dock-head">
+        {groups.groups.length > 1 && (
+          <Menu
+            label={t.switchGroup(groupName, groupShortcuts)}
+            buttonClassName="ghost dock-group"
+            button={
+              <span title={t.switchGroup(groupName, groupShortcuts)} aria-keyshortcuts={groupAriaShortcuts}>
+                {groupName} <Icon name="chevronDown" />
+              </span>
+            }
+          >
+            {(close) =>
+              groups.groups.map((group) => (
+                <button
+                  key={group.id}
+                  role="menuitemradio"
+                  aria-checked={group.id === groups.active}
+                  onClick={() => (close(), setActiveGroup(group.id))}
+                >
+                  <span className="menu-check">{group.id === groups.active && <Icon name="check" />}</span>
+                  {group.name} ({group.ids.length})
+                </button>
+              ))
+            }
+          </Menu>
+        )}
         <div className="dock-chips">
           {ids.map((id, index) => {
             const title = chats.find((chat) => chat.id === id)?.title ?? t.chat;
@@ -204,12 +234,13 @@ export default function ChatDock({
             );
           })}
         </div>
-        <IconButton className="ghost" icon="externalLink" label={t.openChats} onClick={() => navigate(`/ai/chats/${current}`)} />
+        <IconButton className="ghost" icon="externalLink" label={t.openChats} onClick={() => navigate(current ? `/ai/chats/${current}` : "/ai/chats")} />
         <kbd className="dock-kbd" title={t.togglePinned(dockShortcut)}>
           {dockShortcut}
         </kbd>
         <IconButton className="ghost" icon="chevronsRight" label={t.closeDock(dockShortcut)} onClick={onClose} />
       </div>
+      {current ? (
       <Conversation
         key={current}
         id={current}
@@ -221,6 +252,9 @@ export default function ChatDock({
         otherWindow={chats.find((chat) => chat.id === current)?.other_window}
         onChanged={() => undefined}
       />
+      ) : (
+        <p className="muted dock-empty">{t.emptyGroup(groupName)}</p>
+      )}
     </aside>
   );
 }

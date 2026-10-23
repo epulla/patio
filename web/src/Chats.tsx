@@ -36,7 +36,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { isUnpinKey, maxPins, rememberPinnedChat, pinLayout, pinNumber, pinShortcut, setPins, unpin, unpinAriaShortcut, unpinShortcut, usePins } from "./pins";
+import { addGroup, allPinnedIds, deleteGroup, groupOf, isUnpinKey, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setPins, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
@@ -44,8 +44,8 @@ import { canSpeak, SpeakButton } from "./speech";
 import { lang, locale, useText } from "./i18n";
 
 const labels = {
-  en: { fromChat: "From", deletedChat: "a deleted chat", continuedFrom: "Continued from", handedOffCount: (n: number) => `Handed off to ${n} chat${n === 1 ? "" : "s"}`, defaultModel: "Default", queue: "Queue", queuedList: "Queued messages", queuedNote: "Sent together after the current reply.", queuedSteerNote: "Sent together after the current reply, or now to steer it.", queueHeld: "Queue paused.", sendQueued: "Send now", cancelQueued: (text: string) => `Cancel queued message: ${text}`, queuedAnnounce: "Message queued", lateTitle: "The app was closed at the scheduled time, so this ran when it opened again.", copied: "Copied", copy: "Copy", unpinFirst: (max: number) => `Unpin a chat first (max ${max}).`, chats: "Chats", newChat: "New chat", collapseList: "Collapse chat list", expandList: "Expand chat list", expandNoChats: "Expand chat list (no chats yet)", pinned: (n: number) => `Pinned (${n})`, scheduled: "scheduled", pinnedWord: "pinned", noChats: "No chats yet.", unpin: "Unpin chat", pin: "Pin chat", dragSwap: "Drag to swap", moveChat: "Move chat", moveEarlier: "Move earlier", moveLater: "Move later", resizeColumns: "Resize columns", resizeRows: "Resize rows", pickChat: "Pick a chat or start a new one.", startChat: "start a chat", attachLimit: (max: number) => `Attach at most ${max} files per message.`, imageLarge: (name: string) => `${name} is larger than 10 MB.`, textLarge: (name: string) => `${name} is larger than 1 MB. Text files can be up to 1 MB.`, stopThinking: "Stop the reply to change thinking", thinkingHint: "Let the model reason before answering. Slower but smarter.", thinkingLive: "Thinking…", resultLoadError: (reason: unknown) => `Could not load the result: ${reason}`, resultLoading: "Loading result…", toolResult: "Tool result", chars: (size: number) => `${size} chars`, charsK: (size: string) => `${size}k chars`, showFolder: "Show in folder", approvalRequest: (name: string) => `Approval request for ${name}`, deny: "Deny", chooseMany: "Choose one or more", selectedCount: (n: number) => `${n} selected`, otherAnswer: (header: string) => `Other answer for ${header}`, otherOptional: "Other answer (optional)", sendAnswers: "Send answers", next: "Next", chooseFolder: "Choose folder", close: "Close", folderPath: "Folder path", noFolders: "No folders inside.", connector: "Connector", noConnector: "No chat connector", model: "Model", loadingModels: "Loading models", folderLabel: "Folder", folders: "Folders", current: "current", wantFolders: "Want more folders?", addSettings: "Add them in Settings", cancel: "Cancel", useFolder: "Use this folder", startChatButton: "Start chat", scratchFolder: "Scratch folder (no files shared)", addFolders: "Add folders in Settings → Allowed folders.", focusChat: (shortcut: string) => `Focus this chat with ${shortcut}`, attachments: "Attachments", autoAllowed: "Auto-allowed", failed: "failed", allow: (name: string) => `Allow ${name}?`, allowOnce: "Allow once", askedOne: "Asked 1 question:", askedMany: (n: number) => `Asked ${n} questions:`, questionsFromAssistant: "Questions from the assistant", questionTabs: "Questions", back: "Back", chatTitle: "Chat title", closeSplit: "Close split", splitSide: "Split side by side", splitOptions: "Split options", sideBySide: "Side by side", stacked: "Stacked", openMain: "Open main window", openWindow: "Open in new window", deleteChat: "Delete chat", scheduledTask: "Scheduled task", assistantReplying: "Assistant is replying.", resizeSplit: "Resize split", otherWindow: "Replying in another window.", openItsWindow: "Open in its window", dropFiles: "Drop files to attach", filesToSend: "Files to send", remove: (name: string) => `Remove ${name}`, uploading: "Uploading…", message: "Message", placeholder: "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)", connectorRemovedPlaceholder: "This chat's connector was removed", attachFiles: "Attach files", folder: (name: string) => `Folder: ${name}`, changeFolder: "Change folder…", fileManager: "Open in file manager", fileManagerHelp: (folder: string) => `Open in file manager: ${folder}. Start a new chat to use another folder.`, chatSettings: "Chat settings", autoAllowOn: "Chat settings (auto-allow is on)", thinking: "Thinking", showThinking: "Show thinking", claudeThinking: "Claude Code doesn't share its reasoning, so no thinking appears in this chat", codexThinking: "Show Codex's reasoning summaries when it sends them; simple questions often have none", modelThinking: "Show the model's reasoning above its replies", autoAllow: "Auto-allow", autoAllowHint: "Every file change and command runs without asking", askEvery: "Ask before every file change and command", share: (label: string) => `Share ${label} with the agent`, sharing: (label: string) => `Sharing ${label} with the agent. Click to stop`, clickShare: (label: string) => `Click to share ${label} with the agent`, connectorRemoved: "Connector removed", stop: "Stop", send: "Send", missingChat: "This chat no longer exists.", loadingChat: "Loading chat…", loadingChatLabel: "Loading chat", folderNone: "Scratch folder (no files shared)", hint: "Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files and images with the paperclip, drag and drop, or paste.", working: "Working", allowChanges: "Allow every file change and command in this chat without asking? You can turn it off anytime.", turnOnAutoAllow: "Turn on auto-allow", deleteConfirm: (title: string) => `Delete chat \"${title}\"?`, replyReceived: "Reply received.", jumpLatest: "Jump to latest" },
-  es: { fromChat: "De", deletedChat: "un chat eliminado", continuedFrom: "Continúa de", handedOffCount: (n: number) => `Delegado a ${n} chat${n === 1 ? "" : "s"}`, defaultModel: "Predeterminado", queue: "Encolar", queuedList: "Mensajes en cola", queuedNote: "Se envían juntos después de la respuesta actual.", queuedSteerNote: "Se envían juntos después de la respuesta actual, o ahora para redirigirla.", queueHeld: "Cola en pausa.", sendQueued: "Enviar ahora", cancelQueued: (text: string) => `Cancelar mensaje en cola: ${text}`, queuedAnnounce: "Mensaje en cola", lateTitle: "La app estaba cerrada a la hora programada y se ejecutó al volver a abrirla.", copied: "Copiado", copy: "Copiar", unpinFirst: (max: number) => `Quita un chat de fijados primero (máx. ${max}).`, chats: "Chats", newChat: "Nuevo chat", collapseList: "Contraer lista de chats", expandList: "Expandir lista de chats", expandNoChats: "Expandir lista de chats (aún no hay chats)", pinned: (n: number) => `Fijados (${n})`, scheduled: "programado", pinnedWord: "fijado", noChats: "Aún no hay chats.", unpin: "Quitar chat de fijados", pin: "Fijar chat", dragSwap: "Arrastra para intercambiar", moveChat: "Mover chat", moveEarlier: "Mover antes", moveLater: "Mover después", resizeColumns: "Cambiar tamaño de columnas", resizeRows: "Cambiar tamaño de filas", pickChat: "Elige un chat o inicia uno nuevo.", startChat: "iniciar un chat", attachLimit: (max: number) => `Adjunta como máximo ${max} archivos por mensaje.`, imageLarge: (name: string) => `${name} supera los 10 MB.`, textLarge: (name: string) => `${name} supera 1 MB. Los archivos de texto pueden pesar hasta 1 MB.`, stopThinking: "Detén la respuesta para cambiar el razonamiento", thinkingHint: "Deja que el modelo razone antes de responder. Tardará más, pero será más inteligente.", thinkingLive: "Razonando…", resultLoadError: (reason: unknown) => `No se pudo cargar el resultado: ${reason}`, resultLoading: "Cargando resultado…", toolResult: "Resultado de la herramienta", chars: (size: number) => `${size} caracteres`, charsK: (size: string) => `${size} mil caracteres`, showFolder: "Mostrar en carpeta", approvalRequest: (name: string) => `Solicitud de aprobación para ${name}`, deny: "Rechazar", chooseMany: "Elige una o más", selectedCount: (n: number) => (n === 1 ? "1 seleccionada" : `${n} seleccionadas`), otherAnswer: (header: string) => `Otra respuesta para ${header}`, otherOptional: "Otra respuesta (opcional)", sendAnswers: "Enviar respuestas", next: "Siguiente", chooseFolder: "Elegir carpeta", close: "Cerrar", folderPath: "Ruta de la carpeta", noFolders: "No hay carpetas aquí.", connector: "Conector", noConnector: "No hay conector de chat", model: "Modelo", loadingModels: "Cargando modelos", folderLabel: "Carpeta", folders: "Carpetas", current: "actual", wantFolders: "¿Quieres más carpetas?", addSettings: "Agrégalas en Configuración", cancel: "Cancelar", useFolder: "Usar esta carpeta", startChatButton: "Iniciar chat", scratchFolder: "Carpeta temporal (sin archivos compartidos)", addFolders: "Agrega carpetas en Configuración → Carpetas permitidas.", focusChat: (shortcut: string) => `Enfocar este chat con ${shortcut}`, attachments: "Archivos adjuntos", autoAllowed: "Permitido automáticamente", failed: "falló", allow: (name: string) => `¿Permitir ${name}?`, allowOnce: "Permitir una vez", askedOne: "Hizo 1 pregunta:", askedMany: (n: number) => `Hizo ${n} preguntas:`, questionsFromAssistant: "Preguntas del asistente", questionTabs: "Preguntas", back: "Atrás", chatTitle: "Título del chat", closeSplit: "Cerrar división", splitSide: "Dividir en paralelo", splitOptions: "Opciones de división", sideBySide: "En paralelo", stacked: "Apilado", openMain: "Abrir ventana principal", openWindow: "Abrir en ventana nueva", deleteChat: "Eliminar chat", scheduledTask: "Tarea programada", assistantReplying: "El asistente está respondiendo.", resizeSplit: "Cambiar tamaño de división", otherWindow: "Respondiendo en otra ventana.", openItsWindow: "Abrir en su ventana", dropFiles: "Suelta archivos para adjuntarlos", filesToSend: "Archivos para enviar", remove: (name: string) => `Quitar ${name}`, uploading: "Subiendo…", message: "Mensaje", placeholder: "Mensaje… (Enter para enviar, Shift+Enter para salto de línea, @ bot, # ticket)", connectorRemovedPlaceholder: "Se quitó el conector de este chat", attachFiles: "Adjuntar archivos", folder: (name: string) => `Carpeta: ${name}`, changeFolder: "Cambiar carpeta…", fileManager: "Abrir en el administrador de archivos", fileManagerHelp: (folder: string) => `Abrir en el administrador de archivos: ${folder}. Inicia un chat nuevo para usar otra carpeta.`, chatSettings: "Ajustes del chat", autoAllowOn: "Ajustes del chat (permisos automáticos activos)", thinking: "Razonamiento", showThinking: "Mostrar razonamiento", claudeThinking: "Claude Code no comparte su razonamiento, así que no aparece en este chat", codexThinking: "Mostrar resúmenes de razonamiento de Codex cuando los envíe; las preguntas simples a menudo no tienen", modelThinking: "Mostrar el razonamiento del modelo sobre sus respuestas", autoAllow: "Permitir automáticamente", autoAllowHint: "Todos los cambios de archivos y comandos se ejecutan sin preguntar", askEvery: "Preguntar antes de cada cambio de archivo y comando", share: (label: string) => `Compartir ${label} con el agente`, sharing: (label: string) => `Compartiendo ${label} con el agente. Haz clic para dejar de compartir`, clickShare: (label: string) => `Haz clic para compartir ${label} con el agente`, connectorRemoved: "Se quitó el conector", stop: "Detener", send: "Enviar", missingChat: "Este chat ya no existe.", loadingChat: "Cargando chat…", loadingChatLabel: "Cargando chat", folderNone: "Carpeta temporal (sin archivos compartidos)", hint: "Pregunta lo que quieras. El asistente puede leer archivos de la carpeta del chat y usar tus tickets. Adjunta archivos de texto e imágenes con el clip, arrástralos o pégalos.", working: "Procesando", allowChanges: "¿Permitir todos los cambios de archivos y comandos en este chat sin preguntar? Puedes desactivarlo cuando quieras.", turnOnAutoAllow: "Activar permisos automáticos", deleteConfirm: (title: string) => `¿Eliminar el chat \"${title}\"?`, replyReceived: "Llegó una respuesta.", jumpLatest: "Ir al último mensaje" },
+  en: { fromChat: "From", deletedChat: "a deleted chat", continuedFrom: "Continued from", handedOffCount: (n: number) => `Handed off to ${n} chat${n === 1 ? "" : "s"}`, defaultModel: "Default", queue: "Queue", queuedList: "Queued messages", queuedNote: "Sent together after the current reply.", queuedSteerNote: "Sent together after the current reply, or now to steer it.", queueHeld: "Queue paused.", sendQueued: "Send now", cancelQueued: (text: string) => `Cancel queued message: ${text}`, queuedAnnounce: "Message queued", lateTitle: "The app was closed at the scheduled time, so this ran when it opened again.", copied: "Copied", copy: "Copy", unpinFirst: (max: number) => `Unpin a chat first (max ${max}).`, chats: "Chats", newChat: "New chat", collapseList: "Collapse chat list", expandList: "Expand chat list", expandNoChats: "Expand chat list (no chats yet)", pinned: (n: number) => `Pinned (${n})`, group: (name: string, n: number) => `${name} (${n})`, newGroup: "New group", groupOptions: "Pin groups", newGroupName: (n: number) => `Group ${n}`, groupName: "Group name", groupActions: (name: string) => `${name} options`, rename: "Rename", renameHint: "Double-click to rename", deleteGroup: () => "Delete group", deleteGroupHint: "Unpins its chats; the chats stay", moveToGroup: (name: string) => `Move to ${name}`, groupFull: (name: string) => `${name} is full (max ${maxPins}). Unpin a chat there first.`, emptyGroup: (name: string) => `${name} has no chats yet. Pin one from the list.`, scheduled: "scheduled", pinnedWord: "pinned", noChats: "No chats yet.", unpin: "Unpin chat", pin: "Pin chat", dragSwap: "Drag to swap", moveChat: "Move chat", moveEarlier: "Move earlier", moveLater: "Move later", resizeColumns: "Resize columns", resizeRows: "Resize rows", pickChat: "Pick a chat or start a new one.", startChat: "start a chat", attachLimit: (max: number) => `Attach at most ${max} files per message.`, imageLarge: (name: string) => `${name} is larger than 10 MB.`, textLarge: (name: string) => `${name} is larger than 1 MB. Text files can be up to 1 MB.`, stopThinking: "Stop the reply to change thinking", thinkingHint: "Let the model reason before answering. Slower but smarter.", thinkingLive: "Thinking…", resultLoadError: (reason: unknown) => `Could not load the result: ${reason}`, resultLoading: "Loading result…", toolResult: "Tool result", chars: (size: number) => `${size} chars`, charsK: (size: string) => `${size}k chars`, showFolder: "Show in folder", approvalRequest: (name: string) => `Approval request for ${name}`, deny: "Deny", chooseMany: "Choose one or more", selectedCount: (n: number) => `${n} selected`, otherAnswer: (header: string) => `Other answer for ${header}`, otherOptional: "Other answer (optional)", sendAnswers: "Send answers", next: "Next", chooseFolder: "Choose folder", close: "Close", folderPath: "Folder path", noFolders: "No folders inside.", connector: "Connector", noConnector: "No chat connector", model: "Model", loadingModels: "Loading models", folderLabel: "Folder", folders: "Folders", current: "current", wantFolders: "Want more folders?", addSettings: "Add them in Settings", cancel: "Cancel", useFolder: "Use this folder", startChatButton: "Start chat", scratchFolder: "Scratch folder (no files shared)", addFolders: "Add folders in Settings → Allowed folders.", focusChat: (shortcut: string) => `Focus this chat with ${shortcut}`, attachments: "Attachments", autoAllowed: "Auto-allowed", failed: "failed", allow: (name: string) => `Allow ${name}?`, allowOnce: "Allow once", askedOne: "Asked 1 question:", askedMany: (n: number) => `Asked ${n} questions:`, questionsFromAssistant: "Questions from the assistant", questionTabs: "Questions", back: "Back", chatTitle: "Chat title", closeSplit: "Close split", splitSide: "Split side by side", splitOptions: "Split options", sideBySide: "Side by side", stacked: "Stacked", openMain: "Open main window", openWindow: "Open in new window", deleteChat: "Delete chat", scheduledTask: "Scheduled task", assistantReplying: "Assistant is replying.", resizeSplit: "Resize split", otherWindow: "Replying in another window.", openItsWindow: "Open in its window", dropFiles: "Drop files to attach", filesToSend: "Files to send", remove: (name: string) => `Remove ${name}`, uploading: "Uploading…", message: "Message", placeholder: "Message… (Enter to send, Shift+Enter for a new line, @ bot, # ticket)", connectorRemovedPlaceholder: "This chat's connector was removed", attachFiles: "Attach files", folder: (name: string) => `Folder: ${name}`, changeFolder: "Change folder…", fileManager: "Open in file manager", fileManagerHelp: (folder: string) => `Open in file manager: ${folder}. Start a new chat to use another folder.`, chatSettings: "Chat settings", autoAllowOn: "Chat settings (auto-allow is on)", thinking: "Thinking", showThinking: "Show thinking", claudeThinking: "Claude Code doesn't share its reasoning, so no thinking appears in this chat", codexThinking: "Show Codex's reasoning summaries when it sends them; simple questions often have none", modelThinking: "Show the model's reasoning above its replies", autoAllow: "Auto-allow", autoAllowHint: "Every file change and command runs without asking", askEvery: "Ask before every file change and command", share: (label: string) => `Share ${label} with the agent`, sharing: (label: string) => `Sharing ${label} with the agent. Click to stop`, clickShare: (label: string) => `Click to share ${label} with the agent`, connectorRemoved: "Connector removed", stop: "Stop", send: "Send", missingChat: "This chat no longer exists.", loadingChat: "Loading chat…", loadingChatLabel: "Loading chat", folderNone: "Scratch folder (no files shared)", hint: "Ask anything. The assistant can read files in this chat's folder and use your tickets. Attach text files and images with the paperclip, drag and drop, or paste.", working: "Working", allowChanges: "Allow every file change and command in this chat without asking? You can turn it off anytime.", turnOnAutoAllow: "Turn on auto-allow", deleteConfirm: (title: string) => `Delete chat \"${title}\"?`, replyReceived: "Reply received.", jumpLatest: "Jump to latest" },
+  es: { fromChat: "De", deletedChat: "un chat eliminado", continuedFrom: "Continúa de", handedOffCount: (n: number) => `Delegado a ${n} chat${n === 1 ? "" : "s"}`, defaultModel: "Predeterminado", queue: "Encolar", queuedList: "Mensajes en cola", queuedNote: "Se envían juntos después de la respuesta actual.", queuedSteerNote: "Se envían juntos después de la respuesta actual, o ahora para redirigirla.", queueHeld: "Cola en pausa.", sendQueued: "Enviar ahora", cancelQueued: (text: string) => `Cancelar mensaje en cola: ${text}`, queuedAnnounce: "Mensaje en cola", lateTitle: "La app estaba cerrada a la hora programada y se ejecutó al volver a abrirla.", copied: "Copiado", copy: "Copiar", unpinFirst: (max: number) => `Quita un chat de fijados primero (máx. ${max}).`, chats: "Chats", newChat: "Nuevo chat", collapseList: "Contraer lista de chats", expandList: "Expandir lista de chats", expandNoChats: "Expandir lista de chats (aún no hay chats)", pinned: (n: number) => `Fijados (${n})`, group: (name: string, n: number) => `${name} (${n})`, newGroup: "Nuevo grupo", groupOptions: "Grupos fijados", newGroupName: (n: number) => `Grupo ${n}`, groupName: "Nombre del grupo", groupActions: (name: string) => `Opciones de ${name}`, rename: "Renombrar", renameHint: "Doble clic para renombrar", deleteGroup: () => "Eliminar grupo", deleteGroupHint: "Quita sus chats de fijados; los chats se conservan", moveToGroup: (name: string) => `Mover a ${name}`, groupFull: (name: string) => `${name} está lleno (máx. ${maxPins}). Quita un chat de ahí primero.`, emptyGroup: (name: string) => `${name} aún no tiene chats. Fija uno desde la lista.`, scheduled: "programado", pinnedWord: "fijado", noChats: "Aún no hay chats.", unpin: "Quitar chat de fijados", pin: "Fijar chat", dragSwap: "Arrastra para intercambiar", moveChat: "Mover chat", moveEarlier: "Mover antes", moveLater: "Mover después", resizeColumns: "Cambiar tamaño de columnas", resizeRows: "Cambiar tamaño de filas", pickChat: "Elige un chat o inicia uno nuevo.", startChat: "iniciar un chat", attachLimit: (max: number) => `Adjunta como máximo ${max} archivos por mensaje.`, imageLarge: (name: string) => `${name} supera los 10 MB.`, textLarge: (name: string) => `${name} supera 1 MB. Los archivos de texto pueden pesar hasta 1 MB.`, stopThinking: "Detén la respuesta para cambiar el razonamiento", thinkingHint: "Deja que el modelo razone antes de responder. Tardará más, pero será más inteligente.", thinkingLive: "Razonando…", resultLoadError: (reason: unknown) => `No se pudo cargar el resultado: ${reason}`, resultLoading: "Cargando resultado…", toolResult: "Resultado de la herramienta", chars: (size: number) => `${size} caracteres`, charsK: (size: string) => `${size} mil caracteres`, showFolder: "Mostrar en carpeta", approvalRequest: (name: string) => `Solicitud de aprobación para ${name}`, deny: "Rechazar", chooseMany: "Elige una o más", selectedCount: (n: number) => (n === 1 ? "1 seleccionada" : `${n} seleccionadas`), otherAnswer: (header: string) => `Otra respuesta para ${header}`, otherOptional: "Otra respuesta (opcional)", sendAnswers: "Enviar respuestas", next: "Siguiente", chooseFolder: "Elegir carpeta", close: "Cerrar", folderPath: "Ruta de la carpeta", noFolders: "No hay carpetas aquí.", connector: "Conector", noConnector: "No hay conector de chat", model: "Modelo", loadingModels: "Cargando modelos", folderLabel: "Carpeta", folders: "Carpetas", current: "actual", wantFolders: "¿Quieres más carpetas?", addSettings: "Agrégalas en Configuración", cancel: "Cancelar", useFolder: "Usar esta carpeta", startChatButton: "Iniciar chat", scratchFolder: "Carpeta temporal (sin archivos compartidos)", addFolders: "Agrega carpetas en Configuración → Carpetas permitidas.", focusChat: (shortcut: string) => `Enfocar este chat con ${shortcut}`, attachments: "Archivos adjuntos", autoAllowed: "Permitido automáticamente", failed: "falló", allow: (name: string) => `¿Permitir ${name}?`, allowOnce: "Permitir una vez", askedOne: "Hizo 1 pregunta:", askedMany: (n: number) => `Hizo ${n} preguntas:`, questionsFromAssistant: "Preguntas del asistente", questionTabs: "Preguntas", back: "Atrás", chatTitle: "Título del chat", closeSplit: "Cerrar división", splitSide: "Dividir en paralelo", splitOptions: "Opciones de división", sideBySide: "En paralelo", stacked: "Apilado", openMain: "Abrir ventana principal", openWindow: "Abrir en ventana nueva", deleteChat: "Eliminar chat", scheduledTask: "Tarea programada", assistantReplying: "El asistente está respondiendo.", resizeSplit: "Cambiar tamaño de división", otherWindow: "Respondiendo en otra ventana.", openItsWindow: "Abrir en su ventana", dropFiles: "Suelta archivos para adjuntarlos", filesToSend: "Archivos para enviar", remove: (name: string) => `Quitar ${name}`, uploading: "Subiendo…", message: "Mensaje", placeholder: "Mensaje… (Enter para enviar, Shift+Enter para salto de línea, @ bot, # ticket)", connectorRemovedPlaceholder: "Se quitó el conector de este chat", attachFiles: "Adjuntar archivos", folder: (name: string) => `Carpeta: ${name}`, changeFolder: "Cambiar carpeta…", fileManager: "Abrir en el administrador de archivos", fileManagerHelp: (folder: string) => `Abrir en el administrador de archivos: ${folder}. Inicia un chat nuevo para usar otra carpeta.`, chatSettings: "Ajustes del chat", autoAllowOn: "Ajustes del chat (permisos automáticos activos)", thinking: "Razonamiento", showThinking: "Mostrar razonamiento", claudeThinking: "Claude Code no comparte su razonamiento, así que no aparece en este chat", codexThinking: "Mostrar resúmenes de razonamiento de Codex cuando los envíe; las preguntas simples a menudo no tienen", modelThinking: "Mostrar el razonamiento del modelo sobre sus respuestas", autoAllow: "Permitir automáticamente", autoAllowHint: "Todos los cambios de archivos y comandos se ejecutan sin preguntar", askEvery: "Preguntar antes de cada cambio de archivo y comando", share: (label: string) => `Compartir ${label} con el agente`, sharing: (label: string) => `Compartiendo ${label} con el agente. Haz clic para dejar de compartir`, clickShare: (label: string) => `Haz clic para compartir ${label} con el agente`, connectorRemoved: "Se quitó el conector", stop: "Detener", send: "Enviar", missingChat: "Este chat ya no existe.", loadingChat: "Cargando chat…", loadingChatLabel: "Cargando chat", folderNone: "Carpeta temporal (sin archivos compartidos)", hint: "Pregunta lo que quieras. El asistente puede leer archivos de la carpeta del chat y usar tus tickets. Adjunta archivos de texto e imágenes con el clip, arrástralos o pégalos.", working: "Procesando", allowChanges: "¿Permitir todos los cambios de archivos y comandos en este chat sin preguntar? Puedes desactivarlo cuando quieras.", turnOnAutoAllow: "Activar permisos automáticos", deleteConfirm: (title: string) => `¿Eliminar el chat \"${title}\"?`, replyReceived: "Llegó una respuesta.", jumpLatest: "Ir al último mensaje" },
 };
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -175,12 +175,16 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   const [error, setError] = useState<unknown>();
   const [reload, setReload] = useState(0);
   const pins = usePins();
+  const groups = usePinGroups();
+  const activeGroup = groups.groups.find((group) => group.id === groups.active)!;
+  const pinnedIds = new Set(groups.groups.flatMap((group) => group.ids));
+  const showGroups = pinnedIds.size > 0 || groups.groups.length > 1;
+  const [renaming, setRenaming] = useState<string>();
   const [listOpen, setListOpen] = useState(() => localStorage.getItem("chat-list") !== "closed");
   const [cursor, setCursor] = useState<string | null>(null);
   const loadedCount = useRef(0);
   const generation = useRef(0);
   const loadingMore = useRef(false);
-  const pinsRef = useRef(pins);
   const existingPins = useRef(new Set<string>());
   // The rail scrolls, which would clip a CSS [data-tip] tooltip, so it is positioned fixed instead.
   const [tip, setTip] = useState<{ text: string; top: number; left: number; focus: boolean }>();
@@ -222,14 +226,14 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
         setLoaded(true);
         setError(undefined);
         const listed = new Set(page.chats.map((chat) => chat.id));
-        for (const pinned of pinsRef.current.ids) {
+        for (const pinned of allPinnedIds()) {
           if (listed.has(pinned) || existingPins.current.has(pinned)) continue;
           api
             .get(`/api/chats/${pinned}`)
             .then(() => existingPins.current.add(pinned))
             .catch((err: unknown) => {
               if (!(err instanceof Error) || err.message !== "chat not found") return;
-              setPins((pins) => (pins.ids.includes(pinned) ? pinLayout(pins.ids.filter((x) => x !== pinned)) : pins));
+              unpin(pinned);
             });
         }
       })
@@ -240,9 +244,11 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
     loadedCount.current = chats.length;
   }, [chats]);
 
+  // Opening a chat pinned in another group switches to that group, so its grid shows.
   useEffect(() => {
-    pinsRef.current = pins;
-  }, [pins]);
+    const group = id && groupOf(id);
+    if (group) setActiveGroup(group.id);
+  }, [id]);
 
   async function loadMore() {
     if (!cursor || loadingMore.current) return;
@@ -265,9 +271,27 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
   }
 
   function togglePin(chatID: string) {
-    if (pins.ids.includes(chatID)) return setPins(pinLayout(pins.ids.filter((pinned) => pinned !== chatID)));
-    if (pins.ids.length >= maxPins) return setError(new Error(t.unpinFirst(maxPins)));
-    setPins(pinLayout([...pins.ids, chatID]));
+    if (groupOf(chatID)) return unpin(chatID);
+    if (!pin(chatID)) setError(new Error(t.unpinFirst(maxPins)));
+  }
+
+  function moveChat(chatID: string, groupID: string, name: string) {
+    if (!moveToGroup(chatID, groupID)) setError(new Error(t.groupFull(name)));
+  }
+
+  // Naming needs the full list, so a group made from the collapsed rail expands it.
+  function createGroup() {
+    const groupID = addGroup(t.newGroupName(groups.groups.length + 1));
+    localStorage.setItem("chat-list", "open");
+    setListOpen(true);
+    setTip(undefined);
+    navigate("/ai/chats");
+    setRenaming(groupID);
+  }
+
+  function openGroup(groupID: string) {
+    setActiveGroup(groupID);
+    navigate("/ai/chats");
   }
 
   const grid = useRef<HTMLDivElement>(null);
@@ -399,19 +423,39 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
             onClick={newChat}
           />
         )}
-        {!listOpen && pins.ids.length > 0 && (
-          <IconButton
-            className="ghost"
+        {!listOpen && showGroups && (
+          <SplitButton
             icon="boards"
-            label={t.pinned(pins.ids.length)}
-            aria-current={showGrid ? "page" : undefined}
+            label={t.group(activeGroup.name, pins.ids.length)}
+            menuLabel={t.groupOptions}
+            current={showGrid || !id}
             onClick={() => navigate("/ai/chats")}
-          />
+          >
+            {(close) => (
+              <>
+                {groups.groups.map((group) => (
+                  <button
+                    key={group.id}
+                    role="menuitemradio"
+                    aria-checked={group.id === groups.active}
+                    onClick={() => (close(), openGroup(group.id))}
+                  >
+                    <span className="menu-check">{group.id === groups.active && <Icon name="check" />}</span>
+                    {t.group(group.name, group.ids.length)}
+                  </button>
+                ))}
+                <hr className="menu-divider" />
+                <button role="menuitem" onClick={() => (close(false), createGroup())}>
+                  <Icon name="plus" /> {t.newGroup}
+                </button>
+              </>
+            )}
+          </SplitButton>
         )}
         {!listOpen && chats.length > 0 && (
           <nav className="chat-rail" onScroll={() => setTip(undefined)}>
             {chats.map((chat) => {
-              const pinned = pins.ids.includes(chat.id);
+              const pinned = pinnedIds.has(chat.id);
               const scheduled = !!chat.scheduled_task_id;
               const state = status[chat.id];
               return (
@@ -461,19 +505,66 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
         {listOpen && chats.length === 0 && !error && <p className="muted">{t.noChats}</p>}
         {listOpen && (
         <nav>
-          {pins.ids.length > 0 && (
-            <button
-              className="chat-link"
-              aria-current={showGrid ? "page" : undefined}
-              onClick={() => navigate("/ai/chats")}
-            >
+          {showGroups &&
+            groups.groups.map((group) => (
+              <div key={group.id} className="chat-row">
+                {renaming === group.id ? (
+                  <input
+                    className="group-name"
+                    aria-label={t.groupName}
+                    autoFocus
+                    defaultValue={group.name}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onBlur={(event) => {
+                      const name = event.currentTarget.value.trim();
+                      if (name) renameGroup(group.id, name);
+                      setRenaming(undefined);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") event.currentTarget.value = group.name;
+                      if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="chat-link"
+                    title={t.renameHint}
+                    aria-current={(showGrid || !id) && group.id === groups.active ? "page" : undefined}
+                    onClick={() => openGroup(group.id)}
+                    onDoubleClick={() => setRenaming(group.id)}
+                  >
+                    <span className="chat-link-pinned">
+                      <Icon name="boards" /> {t.group(group.name, group.ids.length)}
+                    </span>
+                  </button>
+                )}
+                {renaming !== group.id && (
+                  <Menu label={t.groupActions(group.name)} buttonClassName="icon ghost" button={<Icon name="more" />}>
+                    {(close) => (
+                      <>
+                        <button role="menuitem" onClick={() => (close(false), setRenaming(group.id))}>
+                          <Icon name="pencil" /> {t.rename}
+                        </button>
+                        {groups.groups.length > 1 && (
+                          <button role="menuitem" className="danger-text" title={t.deleteGroupHint} onClick={() => (close(false), deleteGroup(group.id))}>
+                            <Icon name="trash" /> {t.deleteGroup()}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </Menu>
+                )}
+              </div>
+            ))}
+          {showGroups && (
+            <button className="chat-link new-group" onClick={createGroup}>
               <span className="chat-link-pinned">
-                <Icon name="boards" /> Pinned ({pins.ids.length})
+                <Icon name="plus" /> {t.newGroup}
               </span>
             </button>
           )}
           {chats.map((chat) => {
-            const pinned = pins.ids.includes(chat.id);
+            const pinned = pinnedIds.has(chat.id);
             const state = status[chat.id];
             return (
               <div key={chat.id} className="chat-row">
@@ -606,7 +697,7 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                     <kbd className="pin-kbd" data-tip={t.focusChat(pinShortcut(index + 1))}>
                       {pinShortcut(index + 1)}
                     </kbd>
-                    {pins.ids.length > 1 && (
+                    {(pins.ids.length > 1 || groups.groups.length > 1) && (
                       <Menu label={t.moveChat} buttonClassName="icon ghost" button={<Icon name="more" />}>
                         {(close) => (
                           <>
@@ -620,6 +711,13 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
                                 <Icon name="chevronRight" /> {t.moveLater}
                               </button>
                             )}
+                            {groups.groups
+                              .filter((group) => group.id !== groups.active)
+                              .map((group) => (
+                                <button key={group.id} role="menuitem" onClick={() => (close(), moveChat(chatID, group.id, group.name))}>
+                                  <Icon name="boards" /> {t.moveToGroup(group.name)}
+                                </button>
+                              ))}
                           </>
                         )}
                       </Menu>
@@ -670,14 +768,14 @@ export default function Chats({ id, refresh, windowed }: { id?: string; refresh:
           refresh={refresh}
           windowed={windowed}
           connectors={connectors}
-          pinned={pins.ids.includes(id)}
+          pinned={pinnedIds.has(id)}
           onPin={windowed ? undefined : () => togglePin(id)}
           onChanged={() => setReload((value) => value + 1)}
         />
       ) : connectors.length || !loaded ? (
         <section className="chat-empty">
           <h1>{t.chats}</h1>
-          <p className="muted">{t.pickChat}</p>
+          <p className="muted">{groups.groups.length > 1 ? t.emptyGroup(activeGroup.name) : t.pickChat}</p>
         </section>
       ) : (
         <ConnectorRequired then={t.startChat} />

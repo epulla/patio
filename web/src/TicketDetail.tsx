@@ -22,7 +22,7 @@ import { Icon, IconButton } from "./icons";
 import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
-import { getPins, maxPins, pinLayout, setPins } from "./pins";
+import { pin } from "./pins";
 import { lang, locale, useText } from "./i18n";
 
 const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by" }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por" } };
@@ -142,9 +142,7 @@ export default function TicketDetail({
       const description = addChatLink(current.description, chat.title, chat.id);
       if (description !== current.description) await api.put(`/api/tickets/${ticket.id}`, { description });
       // Open it pinned in the side panel; with every pin slot taken, open the chat view instead.
-      const pinned = getPins().ids;
-      if (pinned.length >= maxPins) return navigate(`/ai/chats/${chat.id}`);
-      setPins(pinLayout([...pinned, chat.id]));
+      if (!pin(chat.id)) return navigate(`/ai/chats/${chat.id}`);
       dispatchEvent(new CustomEvent("open-chat-link", { detail: chat.id }));
       await load();
     } catch (reason) {

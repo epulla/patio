@@ -8,7 +8,7 @@ import Connectors from "./Connectors";
 import Chats from "./Chats";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
-import { getPins, lastPinnedChat, rememberPinnedChat, usePins } from "./pins";
+import { cycleGroup, groupOf, groupStep, lastPinnedChat, rememberPinnedChat, setActiveGroup, usePinGroups, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
@@ -98,6 +98,8 @@ export default function App() {
     () => localStorage.getItem("sidebar") === "closed",
   );
   const pins = usePins();
+  const groups = usePinGroups();
+  const allPinned = groups.groups.flatMap((group) => group.ids);
   const pinned = usePinnedChats(pins.ids, refresh);
   const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("chat-dock") === "open");
   const [dockFocus, setDockFocus] = useState<{ id: string }>();
@@ -174,7 +176,7 @@ export default function App() {
     };
   }
 
-  const pinCount = useRef(pins.ids.length);
+  const pinCount = useRef({ group: groups.active, count: pins.ids.length });
   const returnFocus = useRef<HTMLElement | null>(null);
 
   function toggleDock(open: boolean) {
@@ -183,10 +185,24 @@ export default function App() {
     if (!open) setDockFocus(undefined);
   }
 
+  // Open the dock when a chat gets pinned, not when switching to a bigger group.
   useEffect(() => {
-    if (pins.ids.length > pinCount.current) toggleDock(true);
-    pinCount.current = pins.ids.length;
-  }, [pins.ids.length]);
+    const before = pinCount.current;
+    if (before.group === groups.active && pins.ids.length > before.count) toggleDock(true);
+    pinCount.current = { group: groups.active, count: pins.ids.length };
+  }, [groups.active, pins.ids.length]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const step = groupStep(event);
+      if (!step || config?.chat_window || groups.groups.length < 2) return;
+      event.preventDefault();
+      cycleGroup(step);
+      if (location.pathname.startsWith("/ai/chats")) navigate("/ai/chats");
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  }, [config, groups.groups.length]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -197,7 +213,7 @@ export default function App() {
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
-      if (!pins.ids.length || config?.chat_window || location.pathname.startsWith("/ai/chats")) return;
+      if (!allPinned.length || config?.chat_window || location.pathname.startsWith("/ai/chats")) return;
       event.preventDefault();
       if (!dockOpen) return toggleDock(true);
       if (document.activeElement?.closest(".chat-dock")) return toggleDock(false);
@@ -206,14 +222,15 @@ export default function App() {
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
-  }, [pins.ids.length, dockOpen, config]);
+  }, [allPinned.length, dockOpen, config]);
 
   useEffect(() => {
     const onChatLink = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
       // Read the store, not render state: a chat pinned just before this event isn't rendered yet.
-      if (!getPins().ids.includes(id) || config?.chat_window || location.pathname.startsWith("/ai/chats"))
-        return navigate(`/ai/chats/${id}`);
+      const group = groupOf(id);
+      if (!group || config?.chat_window || location.pathname.startsWith("/ai/chats")) return navigate(`/ai/chats/${id}`);
+      setActiveGroup(group.id);
       toggleDock(true);
       setDockFocus({ id });
     };
@@ -284,9 +301,9 @@ export default function App() {
       .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "", open_path: "" }));
   }, []);
 
-  // Pins live only in the UI, so the cleanup request carries them; the server skips it when cleanup is off.
-  const pinIds = useRef(pins.ids);
-  pinIds.current = pins.ids;
+  // Pins live only in the UI, so the cleanup request carries every group's; the server skips it when cleanup is off.
+  const pinIds = useRef(allPinned);
+  pinIds.current = allPinned;
   useEffect(() => {
     if (!config || config.chat_window) return;
     const run = () => api.post("/api/chats/cleanup", { keep: pinIds.current }).catch(() => undefined);
@@ -357,7 +374,7 @@ export default function App() {
   if (path === "/settings") page = <Settings />;
   if (path === "/notifications") page = <NotificationsPage refresh={refresh} />;
 
-  const showDock = pins.ids.length > 0 && !chatMatch;
+  const showDock = allPinned.length > 0 && !chatMatch;
   const onScreen = (link: string) => {
     if (link === path) return true;
     const id = link.match(/^\/ai\/chats\/([^/]+)$/)?.[1];

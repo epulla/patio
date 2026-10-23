@@ -7,17 +7,19 @@ export default function SplitButton({
   label,
   onClick,
   menuLabel,
+  current,
   children,
 }: {
   icon: IconName;
   label: string;
   onClick: () => void;
   menuLabel: string;
+  current?: boolean;
   children: (close: (focusTrigger?: boolean) => void) => ReactNode;
 }) {
   return (
     <div className="split-button" role="group" aria-label={label}>
-      <IconButton className="ghost" icon={icon} label={label} onClick={onClick} />
+      <IconButton className="ghost" icon={icon} label={label} aria-current={current ? "page" : undefined} onClick={onClick} />
       <Menu label={menuLabel} buttonClassName="icon ghost split-toggle" button={<Icon name="chevronDown" />}>
         {children}
       </Menu>
