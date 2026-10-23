@@ -2052,7 +2052,7 @@ main:has(> .chats) {
   color: var(--info);
 }
 .badge-pinned {
-  color: var(--primary);
+  color: var(--pin, var(--primary));
 }
 .chat-link .chat-link-pinned {
   display: flex;
@@ -2062,6 +2062,7 @@ main:has(> .chats) {
 .chat-link-pinned .svg-icon {
   width: 16px;
   height: 16px;
+  color: var(--pin, currentColor);
 }
 .chat-link small {
   display: flex;
@@ -2131,6 +2132,7 @@ main:has(> .chats) {
 .chat-link.new-group .svg-icon {
   width: 12px;
   height: 12px;
+  color: inherit;
 }
 /* Matches the .chat-link row so renaming reads as editing in place. */
 .chat-row .group-name {
@@ -2148,7 +2150,38 @@ main:has(> .chats) {
   opacity: 0;
 }
 .icon.pinned {
-  color: var(--primary);
+  color: var(--pin, var(--primary));
+}
+/* Group marks use the ⊞ icon, not a dot, so they don't read as the running-status dot. */
+.pin-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--pin, var(--primary));
+}
+.chat-list.collapsed .split-button > .icon .svg-icon {
+  color: var(--pin, var(--primary));
+}
+.pin-swatches {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+}
+.menu-list .pin-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--pin);
+}
+.menu-list .pin-swatch:hover,
+.menu-list .pin-swatch:focus-visible {
+  background: var(--pin);
+  outline: 2px solid color-mix(in oklch, var(--pin) 50%, transparent);
+  outline-offset: 2px;
+}
+.menu-list .pin-swatch[aria-checked="true"] {
+  outline: 2px solid var(--content);
+  outline-offset: 2px;
 }
 .split-button {
   display: flex;
@@ -2397,7 +2430,7 @@ main.chat-window {
   color: inherit;
 }
 .dock-chip[aria-pressed="true"] {
-  background: var(--primary);
+  background: var(--pin, var(--primary));
   color: var(--primary-content);
 }
 .pin-kbd {

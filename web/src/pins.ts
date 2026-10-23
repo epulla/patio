@@ -1,7 +1,23 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 
 export type Pins = { ids: string[]; cols: number[]; rows: number[] };
-export type PinGroup = Pins & { id: string; name: string };
+// Presets rather than a free picker, so every color reads in both themes.
+export const pinColors = {
+  pink: "var(--primary)",
+  red: "oklch(63% 0.2 25)",
+  orange: "oklch(70% 0.17 55)",
+  yellow: "oklch(76% 0.15 90)",
+  green: "oklch(66% 0.16 150)",
+  teal: "oklch(66% 0.11 195)",
+  blue: "oklch(62% 0.16 255)",
+  purple: "oklch(62% 0.18 300)",
+};
+export type PinColor = keyof typeof pinColors;
+const colorKeys = Object.keys(pinColors) as PinColor[];
+// Sets --pin, which pin icons, badges and dots read.
+export const pinStyle = (color: PinColor) => ({ "--pin": pinColors[color] }) as CSSProperties;
+
+export type PinGroup = Pins & { id: string; name: string; color: PinColor };
 export type PinGroups = { groups: PinGroup[]; active: string };
 
 export const maxPins = 9;
@@ -44,7 +60,12 @@ export function pinLayout(ids: string[]): Pins {
   return { ids, cols: Array(cols).fill(1 / cols), rows: Array(rows).fill(1 / rows) };
 }
 
-const newGroup = (name: string, ids: string[] = []): PinGroup => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2), name, ...pinLayout(ids) });
+const newGroup = (name: string, ids: string[] = [], color: PinColor = "pink"): PinGroup => ({
+  id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+  name,
+  color,
+  ...pinLayout(ids),
+});
 
 function loadGroup(saved: Partial<PinGroup> | null): PinGroup | undefined {
   const ids: unknown = saved?.ids;
@@ -53,6 +74,7 @@ function loadGroup(saved: Partial<PinGroup> | null): PinGroup | undefined {
   if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string")) return;
   const group = { ...newGroup(typeof saved?.name === "string" ? saved.name : "Pinned", ids.slice(0, maxPins)) };
   if (typeof saved?.id === "string") group.id = saved.id;
+  if (colorKeys.includes(saved?.color as PinColor)) group.color = saved!.color!;
   const fits = (sizes: unknown, fresh: number[]): sizes is number[] =>
     Array.isArray(sizes) && sizes.length === fresh.length && sizes.every((x) => typeof x === "number" && x > 0);
   return fits(cols, group.cols) && fits(rows, group.rows) ? { ...group, cols, rows } : group;
@@ -109,13 +131,18 @@ export function cycleGroup(step: number) {
 }
 
 export function addGroup(name: string) {
-  const group = newGroup(name);
+  const used = new Set(store.groups.map((group) => group.color));
+  const group = newGroup(name, [], colorKeys.find((color) => !used.has(color)) ?? colorKeys[store.groups.length % colorKeys.length]);
   update((store) => ({ groups: [...store.groups, group], active: group.id }));
   return group.id;
 }
 
 export function renameGroup(id: string, name: string) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, name } : group)) }));
+}
+
+export function setGroupColor(id: string, color: PinColor) {
+  update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, color } : group)) }));
 }
 
 // Deleting a group only unpins its chats; the last group can't be deleted.

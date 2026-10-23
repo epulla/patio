@@ -5,7 +5,7 @@ import { Conversation, type PageContext } from "./Chats";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
-import { groupAriaShortcuts, groupShortcuts, isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, setActiveGroup, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
+import { groupAriaShortcuts, groupShortcuts, isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, pinStyle, setActiveGroup, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
@@ -63,7 +63,8 @@ export default function ChatDock({
   const t = useText(text);
   const statusText = useText(statusLabels);
   const groups = usePinGroups();
-  const groupName = groups.groups.find((group) => group.id === groups.active)?.name ?? "";
+  const activeGroup = groups.groups.find((group) => group.id === groups.active);
+  const groupName = activeGroup?.name ?? "";
   const [active, setActive] = useState(() => lastPinnedChat() ?? ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
@@ -146,7 +147,7 @@ export default function ChatDock({
   }, [refresh]);
 
   return (
-    <aside className="chat-dock" aria-label={t.pinnedChats} style={{ width }}>
+    <aside className="chat-dock" aria-label={t.pinnedChats} style={{ width, ...(activeGroup && pinStyle(activeGroup.color)) }}>
       <div
         role="separator"
         tabIndex={0}
@@ -181,6 +182,7 @@ export default function ChatDock({
             buttonClassName="ghost dock-group"
             button={
               <span title={t.switchGroup(groupName, groupShortcuts)} aria-keyshortcuts={groupAriaShortcuts}>
+                <span className="pin-mark" aria-hidden="true"><Icon name="boards" /></span>
                 {groupName} <Icon name="chevronDown" />
               </span>
             }
@@ -194,6 +196,7 @@ export default function ChatDock({
                   onClick={() => (close(), setActiveGroup(group.id))}
                 >
                   <span className="menu-check">{group.id === groups.active && <Icon name="check" />}</span>
+                  <span className="pin-mark" style={pinStyle(group.color)} aria-hidden="true"><Icon name="boards" /></span>
                   {group.name} ({group.ids.length})
                 </button>
               ))
