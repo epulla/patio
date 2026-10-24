@@ -1,12 +1,8 @@
 <p align="center">
-  <img src="packaging/linux/patio.png" width="128" alt="Patio icon">
+  <img src="docs/assets/patio-crayon-readme.png" alt="Patio. Your agents. Your work. One place. A desktop workspace for AI chats, tasks, and automation.">
 </p>
 
-<h1 align="center">Patio</h1>
-
 <p align="center">
-  <b>Your agents. Your work. One place.</b><br>
-  An open-source desktop workspace for <b>AI chats</b>, <b>kanban boards</b>, and <b>automation</b>.<br>
   <a href="https://github.com/epulla/patio/actions/workflows/release.yml"><img src="https://github.com/epulla/patio/actions/workflows/release.yml/badge.svg" alt="Release"></a>
 </p>
 
