@@ -335,6 +335,20 @@ a {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+.app-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 30;
+  transform: translateX(-50%);
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: var(--radius-field);
+  background: var(--neutral);
+  color: var(--neutral-content);
+  font-size: 13px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+}
 .app-version {
   position: fixed;
   right: 8px;
@@ -2134,11 +2148,15 @@ main:has(> .chats) {
   height: 12px;
   color: inherit;
 }
-/* Matches the .chat-link row so renaming reads as editing in place. */
+/* Group rows match the 40px ⋯ button; the rename input matches the row so it reads as editing in place. */
+.group-row .chat-link {
+  min-height: 40px;
+  justify-content: center;
+}
 .chat-row .group-name {
   flex: 1;
   min-width: 0;
-  height: 36px;
+  height: 40px;
   padding: 0 11px;
   font-weight: 500;
   background: transparent;

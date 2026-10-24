@@ -5,12 +5,12 @@ import { Conversation, type PageContext } from "./Chats";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
-import { groupAriaShortcuts, groupShortcuts, isUnpinKey, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, pinStyle, setActiveGroup, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
+import { groupAriaShortcuts, groupShortcuts, isUnpinKey, maxPins, newPinnedAriaShortcut, newPinnedShortcut, requestNewPinnedChat, lastPinnedChat, pinAriaShortcut, rememberPinnedChat, pinNumber, pinShortcut, pinStyle, setActiveGroup, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
-  en: { pinnedChats: "Pinned chats", resizePinned: "Resize pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, openChats: "Open in Chats", togglePinned: (shortcut: string) => `Toggle pinned chats with ${shortcut}`, closeDock: (shortcut: string) => `Close dock (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, emptyGroup: (name: string) => `${name} has no chats yet.` },
-  es: { pinnedChats: "Chats fijados", resizePinned: "Cambiar tamaño de chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, openChats: "Abrir en Chats", togglePinned: (shortcut: string) => `Alternar chats fijados con ${shortcut}`, closeDock: (shortcut: string) => `Cerrar panel (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, emptyGroup: (name: string) => `${name} aún no tiene chats.` },
+  en: { pinnedChats: "Pinned chats", resizePinned: "Resize pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, openChats: "Open in Chats", togglePinned: (shortcut: string) => `Toggle pinned chats with ${shortcut}`, closeDock: (shortcut: string) => `Close dock (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, emptyGroup: (name: string) => `${name} has no chats yet.`, newPinned: (shortcut: string) => `New pinned chat (${shortcut})`, groupFull: (name: string) => `${name} is full (max ${maxPins})` },
+  es: { pinnedChats: "Chats fijados", resizePinned: "Cambiar tamaño de chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, openChats: "Abrir en Chats", togglePinned: (shortcut: string) => `Alternar chats fijados con ${shortcut}`, closeDock: (shortcut: string) => `Cerrar panel (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, emptyGroup: (name: string) => `${name} aún no tiene chats.`, newPinned: (shortcut: string) => `Nuevo chat fijado (${shortcut})`, groupFull: (name: string) => `${name} está lleno (máx. ${maxPins})` },
 };
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
@@ -237,6 +237,14 @@ export default function ChatDock({
             );
           })}
         </div>
+        <IconButton
+          className="ghost"
+          icon="plus"
+          label={ids.length >= maxPins ? t.groupFull(groupName) : t.newPinned(newPinnedShortcut)}
+          aria-keyshortcuts={newPinnedAriaShortcut}
+          disabled={ids.length >= maxPins}
+          onClick={requestNewPinnedChat}
+        />
         <IconButton className="ghost" icon="externalLink" label={t.openChats} onClick={() => navigate(current ? `/ai/chats/${current}` : "/ai/chats")} />
         <kbd className="dock-kbd" title={t.togglePinned(dockShortcut)}>
           {dockShortcut}

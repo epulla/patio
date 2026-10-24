@@ -5,10 +5,10 @@ import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
-import Chats from "./Chats";
+import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
-import { cycleGroup, groupOf, groupStep, lastPinnedChat, rememberPinnedChat, setActiveGroup, usePinGroups, usePins } from "./pins";
+import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, setActiveGroup, usePinGroups, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
@@ -16,7 +16,7 @@ import Monitors from "./Monitors";
 import Settings from "./Settings";
 import Tickets from "./Tickets";
 import Notifications, { NotificationsPage } from "./Notifications";
-import { api, type Board, type Config } from "./api";
+import { api, type Board, type Chat, type Config, type Connector } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
 import { Icon, IconButton } from "./icons";
@@ -30,6 +30,7 @@ const text = {
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
     pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
+    groupFull: (name: string) => `${name} is full (max ${maxPins}). Unpin a chat there first.`,
   },
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
@@ -38,6 +39,7 @@ const text = {
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
     pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
+    groupFull: (name: string) => `${name} está lleno (máx. ${maxPins}). Quita un chat de ahí primero.`,
   },
 };
 
@@ -100,6 +102,55 @@ export default function App() {
   const pins = usePins();
   const groups = usePinGroups();
   const allPinned = groups.groups.flatMap((group) => group.ids);
+  const [pinnedDialog, setPinnedDialog] = useState<Connector[]>();
+  const [notice, setNotice] = useState<string>();
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(undefined), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  // New chat pinned into the active group: the usual dialog, or straight in with a single connector like Cmd+N.
+  const startingPinned = useRef(false);
+  async function newPinnedChat() {
+    const group = groups.groups.find((item) => item.id === groups.active);
+    if (group && group.ids.length >= maxPins) return setNotice(t.groupFull(group.name));
+    if (startingPinned.current || pinnedDialog) return;
+    startingPinned.current = true;
+    try {
+      const connectors = await api.get<Connector[]>("/api/connectors");
+      if (!connectors.length) return navigate("/ai/connectors");
+      if (connectors.length > 1) return setPinnedDialog(connectors);
+      openPinned(await createChatWithDefaults(connectors[0]));
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      startingPinned.current = false;
+    }
+  }
+
+  function openPinned(chat: Chat) {
+    setPinnedDialog(undefined);
+    if (!pin(chat.id) || location.pathname.startsWith("/ai/chats")) return navigate(`/ai/chats/${chat.id}`);
+    dispatchEvent(new CustomEvent("open-chat-link", { detail: chat.id }));
+  }
+
+  useEffect(() => {
+    if (config?.chat_window) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isNewPinnedKey(event) || document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      newPinnedChat();
+    };
+    const onRequest = () => newPinnedChat();
+    addEventListener("keydown", onKeyDown);
+    addEventListener("new-pinned-chat", onRequest);
+    return () => {
+      removeEventListener("keydown", onKeyDown);
+      removeEventListener("new-pinned-chat", onRequest);
+    };
+  }, [config, groups]);
   const pinned = usePinnedChats(pins.ids, refresh);
   const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("chat-dock") === "open");
   const [dockFocus, setDockFocus] = useState<{ id: string }>();
@@ -521,6 +572,12 @@ export default function App() {
           onSeen={pinned.seen}
           onClose={() => toggleDock(false)}
         />
+      )}
+      {pinnedDialog && <NewChatDialog connectors={pinnedDialog} onClose={() => setPinnedDialog(undefined)} onCreated={openPinned} />}
+      {notice && (
+        <p className="app-notice" role="status">
+          {notice}
+        </p>
       )}
       {config.version && <span className="app-version">{config.version}</span>}
     </div>

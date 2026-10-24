@@ -31,6 +31,13 @@ export const unpinAriaShortcut = mac ? "Meta+Shift+U" : "Control+Shift+U";
 export const isUnpinKey = (event: KeyboardEvent) =>
   (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "u";
 
+export const newPinnedShortcut = mac ? "⌘⇧N" : "Ctrl+Shift+N";
+export const newPinnedAriaShortcut = mac ? "Meta+Shift+N" : "Control+Shift+N";
+export const isNewPinnedKey = (event: KeyboardEvent) =>
+  (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "n";
+// Asks App to start a chat pinned into the active group.
+export const requestNewPinnedChat = () => dispatchEvent(new Event("new-pinned-chat"));
+
 export const groupShortcuts = mac ? "⌘⇧[ / ⌘⇧]" : "Ctrl+Shift+[ / Ctrl+Shift+]";
 export const groupAriaShortcuts = mac ? "Meta+Shift+[ Meta+Shift+]" : "Control+Shift+[ Control+Shift+]";
 // Returns -1 or 1 for Cmd/Ctrl+Shift+[ or ], else 0. event.code, since Shift turns the key into { or }.
