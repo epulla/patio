@@ -4669,3 +4669,48 @@ button.notif-row:focus-visible,
 .notif-more {
   align-self: center;
 }
+.shortcuts-modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+.shortcut-list {
+  display: grid;
+  gap: 16px;
+}
+.shortcut-list h3 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.shortcut-list dl {
+  margin: 0;
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.shortcut-row:last-child {
+  border-bottom: 0;
+}
+.shortcut-row dd {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  margin: 0;
+}
+.shortcut-row kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--base-200);
+  font: 12px var(--mono);
+  white-space: nowrap;
+}

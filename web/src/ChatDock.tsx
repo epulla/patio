@@ -5,7 +5,7 @@ import { Conversation, type PageContext } from "./Chats";
 import { markSeen, syncChatStatus, useChatStatus, type ChatStatus } from "./chatStatus";
 import { IconButton } from "./icons";
 import PinTabs from "./PinTabs";
-import { isUnpinKey, lastPinnedChat, rememberPinnedChat, pinNumber, pinStyle, unpin, usePinGroups } from "./pins";
+import { isUnpinKey, stepIndex, tabStep, lastPinnedChat, rememberPinnedChat, pinNumber, pinStyle, unpin, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
@@ -103,7 +103,8 @@ export default function ChatDock({
         event.preventDefault();
         return unpinChat(current);
       }
-      const n = pinNumber(event, ids.length);
+      const step = tabStep(event);
+      const n = step ? (ids.length ? stepIndex(ids.indexOf(current), step, ids.length) + 1 : 0) : pinNumber(event, ids.length);
       if (!n) return;
       event.preventDefault();
       const target = ids[n - 1];

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { ShortcutList } from "./Shortcuts";
 import {
   api,
   type AllowedFolder,
@@ -26,6 +27,7 @@ const text = {
     folderPath: "Folder path",
     addFolder: "Add folder",
     general: "General",
+    keyboardShortcuts: "Keyboard shortcuts",
     version: "Version",
     database: "Database",
     logs: "Logs",
@@ -110,6 +112,7 @@ const text = {
     folderPath: "Ruta de la carpeta",
     addFolder: "Agregar carpeta",
     general: "General",
+    keyboardShortcuts: "Atajos de teclado",
     version: "Versión",
     database: "Base de datos",
     logs: "Registros",
@@ -739,6 +742,13 @@ export default function Settings() {
       <ChatCleanup />
 
       <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
+
+      <section className="stack">
+        <h2>{t.keyboardShortcuts}</h2>
+        <section className="panel">
+          <ShortcutList />
+        </section>
+      </section>
 
       <section className="stack">
         <h2>{t.mcpStatus}</h2>

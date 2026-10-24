@@ -6,6 +6,7 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Connectors from "./Connectors";
 import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
+import { isShortcutsKey, ShortcutsDialog } from "./Shortcuts";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
 import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, pruneSplit, setActiveGroup, shownPin, splitLeaves, usePinGroups, usePins } from "./pins";
@@ -104,6 +105,22 @@ export default function App() {
   const allPinned = groups.groups.flatMap((group) => group.ids);
   const [pinnedDialog, setPinnedDialog] = useState<Connector[]>();
   const [notice, setNotice] = useState<string>();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isShortcutsKey(event)) return;
+      event.preventDefault();
+      setShortcutsOpen((open) => !open);
+    };
+    const onRequest = () => setShortcutsOpen(true);
+    addEventListener("keydown", onKeyDown);
+    addEventListener("open-shortcuts", onRequest);
+    return () => {
+      removeEventListener("keydown", onKeyDown);
+      removeEventListener("open-shortcuts", onRequest);
+    };
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -578,6 +595,7 @@ export default function App() {
         />
       )}
       {pinnedDialog && <NewChatDialog connectors={pinnedDialog} onClose={() => setPinnedDialog(undefined)} onCreated={openPinned} />}
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
       {notice && (
         <p className="app-notice" role="status">
           {notice}

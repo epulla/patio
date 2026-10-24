@@ -33,10 +33,14 @@ const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 export const pinShortcut = (n: number) => (mac ? `⌘${n}` : `Ctrl+${n}`);
 export const pinAriaShortcut = (n: number) => (mac ? `Meta+${n}` : `Control+${n}`);
 
-export const unpinShortcut = mac ? "⌘⇧U" : "Ctrl+Shift+U";
-export const unpinAriaShortcut = mac ? "Meta+Shift+U" : "Control+Shift+U";
-export const isUnpinKey = (event: KeyboardEvent) =>
-  (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "u";
+// Cmd/Ctrl+W closes (unpins) a tab like a browser; Cmd/Ctrl+Shift+U still works. Patio's macOS menu has no Close Window item, so Cmd+W reaches the page.
+export const unpinShortcut = mac ? "⌘W" : "Ctrl+W";
+export const unpinAriaShortcut = mac ? "Meta+W" : "Control+W";
+export function isUnpinKey(event: KeyboardEvent) {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return false;
+  const key = event.key.toLowerCase();
+  return event.shiftKey ? key === "u" : key === "w";
+}
 
 export const newPinnedShortcut = mac ? "⌘⇧N" : "Ctrl+Shift+N";
 export const newPinnedAriaShortcut = mac ? "Meta+Shift+N" : "Control+Shift+N";
@@ -45,13 +49,23 @@ export const isNewPinnedKey = (event: KeyboardEvent) =>
 // Asks App to start a chat pinned into the active group.
 export const requestNewPinnedChat = () => dispatchEvent(new Event("new-pinned-chat"));
 
-export const groupShortcuts = mac ? "⌘⇧[ / ⌘⇧]" : "Ctrl+Shift+[ / Ctrl+Shift+]";
-export const groupAriaShortcuts = mac ? "Meta+Shift+[ Meta+Shift+]" : "Control+Shift+[ Control+Shift+]";
-// Returns -1 or 1 for Cmd/Ctrl+Shift+[ or ], else 0. event.code, since Shift turns the key into { or }.
+export const groupShortcuts = mac ? "⌘⌥↑ / ⌘⌥↓" : "Ctrl+Alt+↑ / Ctrl+Alt+↓";
+export const groupAriaShortcuts = mac ? "Meta+Alt+ArrowUp Meta+Alt+ArrowDown" : "Control+Alt+ArrowUp Control+Alt+ArrowDown";
+// Returns -1 or 1 for Cmd/Ctrl+Alt+Up or Down, else 0.
 export function groupStep(event: KeyboardEvent) {
+  if (!(event.metaKey || event.ctrlKey) || !event.altKey || event.shiftKey) return 0;
+  return event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+}
+
+// Returns -1 or 1 for Cmd/Ctrl+Shift+[ or ], else 0. event.code, since Shift turns the key into { or }.
+export function tabStep(event: KeyboardEvent) {
   if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return 0;
   return event.code === "BracketLeft" ? -1 : event.code === "BracketRight" ? 1 : 0;
 }
+
+// The tab step positions away from index, wrapping; from an unpinned chat (-1) it starts at either end.
+export const stepIndex = (index: number, step: number, count: number) =>
+  index < 0 ? (step > 0 ? 0 : count - 1) : (index + step + count) % count;
 
 // Removes the chat from whichever group holds it.
 export function unpin(id: string) {

@@ -36,7 +36,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
+import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, stepIndex, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
@@ -420,20 +420,24 @@ export default function Chats({
   useEffect(() => {
     if (!showTabs) return;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const chatID = document.activeElement?.closest<HTMLElement>("[data-pane]")?.dataset.pane ?? shown ?? id;
       if (isUnpinKey(event)) {
-        const chatID = document.activeElement?.closest<HTMLElement>("[data-pane]")?.dataset.pane ?? shown;
-        if (!chatID || !pins.ids.includes(chatID)) return;
+        if (!chatID) return;
         event.preventDefault();
-        return unpin(chatID);
+        // Closing an unpinned chat's preview tab leaves the chat itself alone.
+        return pins.ids.includes(chatID) ? unpin(chatID) : navigate("/ai/chats");
       }
-      const n = pinNumber(event, pins.ids.length);
+      const step = tabStep(event);
+      const n = step
+        ? pins.ids.length && stepIndex(chatID ? pins.ids.indexOf(chatID) : -1, step, pins.ids.length) + 1
+        : pinNumber(event, pins.ids.length);
       if (!n) return;
       event.preventDefault();
       openPin(pins.ids[n - 1]);
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
-  }, [showTabs, pins.ids, shown]);
+  }, [showTabs, pins.ids, shown, id]);
 
   useEffect(() => {
     if (windowed || (loaded && !connectors.length)) return;

@@ -3,12 +3,13 @@ import type { Chat } from "./api";
 import { statusIcons, statusLabels, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
+import { openShortcuts, shortcutsAriaShortcut, shortcutsShortcut } from "./Shortcuts";
 import { groupAriaShortcuts, groupShortcuts, maxPins, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
-  en: { pinnedChats: "Pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, newPinned: (shortcut: string) => `New pinned chat (${shortcut})`, groupFull: (name: string) => `${name} is full (max ${maxPins})`, closePreview: (title: string) => `Close ${title}`, preview: "not pinned" },
-  es: { pinnedChats: "Chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, newPinned: (shortcut: string) => `Nuevo chat fijado (${shortcut})`, groupFull: (name: string) => `${name} está lleno (máx. ${maxPins})`, closePreview: (title: string) => `Cerrar ${title}`, preview: "sin fijar" },
+  en: { pinnedChats: "Pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, newPinned: (shortcut: string) => `New pinned chat (${shortcut})`, groupFull: (name: string) => `${name} is full (max ${maxPins})`, closePreview: (title: string) => `Close ${title}`, preview: "not pinned", shortcuts: (shortcut: string) => `Keyboard shortcuts (${shortcut})` },
+  es: { pinnedChats: "Chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, newPinned: (shortcut: string) => `Nuevo chat fijado (${shortcut})`, groupFull: (name: string) => `${name} está lleno (máx. ${maxPins})`, closePreview: (title: string) => `Cerrar ${title}`, preview: "sin fijar", shortcuts: (shortcut: string) => `Atajos de teclado (${shortcut})` },
 };
 
 // Tabs of the active pin group: group switcher, one tab per pinned chat, then +. Extra buttons go in children.
@@ -137,6 +138,13 @@ export default function PinTabs({
         aria-keyshortcuts={newPinnedAriaShortcut}
         disabled={group.ids.length >= maxPins}
         onClick={requestNewPinnedChat}
+      />
+      <IconButton
+        className="ghost"
+        icon="keyboard"
+        label={t.shortcuts(shortcutsShortcut)}
+        aria-keyshortcuts={shortcutsAriaShortcut}
+        onClick={openShortcuts}
       />
       {children}
     </div>
