@@ -10,6 +10,8 @@ Built with **Go, Wails, React, and SQLite**, with application data stored on you
 
 [Download](https://github.com/epulla/patio/releases/latest) · [Get started](#get-started) · [Connectors](#connectors) · [Automation](#automate-routine-work) · [MCP](#connect-through-mcp) · [Build from source](#build-from-source)
 
+![A chat beside a kanban board: the agent adds pricing-page tickets to the board.](docs/assets/patio-chat-panel.png)
+
 ## What you can do
 
 | Bring the pieces together | Put them to work |
@@ -116,6 +118,8 @@ Its tool set is intentionally smaller than the CLI integrations: external MCP se
 - Attach text files and images through the paperclip, drag and drop, or paste.
 - Follow links from replies to tickets, boards, chats, and local files.
 
+![Two pinned chats side by side in a split view.](docs/assets/patio-chats.png)
+
 Attachments support up to 10 files per message: text files up to 1 MB each and PNG, JPEG, GIF, or WebP images up to 10 MB each. Images are sent to models that support them; other connectors receive the file path.
 
 ### Delegate focused work
@@ -135,6 +139,9 @@ A handoff carries an explicit task prompt. It inherits the selected work folder 
 - **Print:** produce a clean ticket view with history and transitions.
 
 Temporary columns can hide older tickets. New boards use To Do, In Progress, and a temporary Done column that hides tickets after one day.
+
+| ![A kanban board with To Do, In Progress, and Done columns.](docs/assets/patio-board.png) | ![A week calendar with due tickets, an event, and scheduled runs.](docs/assets/patio-calendar.png) |
+| --- | --- |
 
 ### Reuse skills and preferences
 
@@ -157,6 +164,8 @@ Each run starts a new chat with the task's folder, thinking settings, and approv
 Example prompt for a weekday review:
 
 > Review tickets due this week. Summarize what is overdue and suggest the next three priorities.
+
+![The scheduled tasks list with a weekday ticket review.](docs/assets/patio-scheduled-tasks.png)
 
 ### Monitors: start with a condition
 
