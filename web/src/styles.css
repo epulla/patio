@@ -2440,6 +2440,22 @@ main.chat-window {
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   color: var(--muted);
 }
+.pin-tab[data-drop]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -2px;
+  z-index: 1;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--pin, var(--primary));
+  pointer-events: none;
+}
+.pin-tab[data-drop="after"]::before {
+  left: auto;
+  right: -2px;
+}
 .pin-tab:hover {
   background: var(--base-200);
   color: var(--content);

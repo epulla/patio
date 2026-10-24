@@ -1,10 +1,10 @@
-import type { DragEvent, ReactNode } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import type { Chat } from "./api";
 import { statusIcons, statusLabels, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import { openShortcuts, shortcutsAriaShortcut, shortcutsShortcut } from "./Shortcuts";
-import { groupAriaShortcuts, groupShortcuts, maxPins, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
+import { groupAriaShortcuts, groupShortcuts, maxPins, moveTab, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
@@ -14,7 +14,20 @@ const text = {
 
 // Tabs of the active pin group: group switcher, one tab per pinned chat, then +. Extra buttons go in children.
 // preview is an unpinned open chat, shown as an italic tab until another chat replaces it.
-// placed marks tabs shown in a split pane; onTabDragStart makes tabs draggable onto panes.
+// placed marks tabs shown in a split pane; onTabDragStart also lets tabs be dropped onto panes.
+
+const reorderType = "application/x-pin-tab";
+
+// WebKit snapshots only painted pixels, so drag a solid card instead of the transparent tab or header.
+export function dragGhost(event: DragEvent, title: string) {
+  const ghost = document.createElement("div");
+  ghost.className = "pane-drag-ghost";
+  ghost.textContent = title;
+  document.body.append(ghost);
+  event.dataTransfer.setDragImage(ghost, 20, 20);
+  setTimeout(() => ghost.remove());
+}
+
 export default function PinTabs({
   chats,
   status,
@@ -45,6 +58,8 @@ export default function PinTabs({
   const groups = usePinGroups();
   const group = groups.groups.find((group) => group.id === groups.active)!;
   const titleOf = (id: string) => chats.find((chat) => chat.id === id)?.title ?? t.chat;
+  // Insertion point while a tab is dragged over the bar: before the tab at this index.
+  const [dropAt, setDropAt] = useState<number>();
 
   return (
     <div className="pin-tabs" style={pinStyle(group.color)}>
@@ -75,17 +90,50 @@ export default function PinTabs({
           }
         </Menu>
       )}
-      <div className="pin-tab-list" aria-label={t.pinnedChats}>
+      <div
+        className="pin-tab-list"
+        aria-label={t.pinnedChats}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropAt(undefined);
+        }}
+        onDrop={(event) => {
+          const id = event.dataTransfer.getData(reorderType);
+          if (!id || dropAt === undefined) return;
+          event.preventDefault();
+          moveTab(id, dropAt);
+          setDropAt(undefined);
+        }}
+      >
         {group.ids.map((id, index) => {
           const title = titleOf(id);
           const state = status[id];
           return (
-            <div key={id} className="pin-tab" data-active={id === current || undefined} data-placed={placed?.includes(id) || undefined}>
+            <div
+              key={id}
+              className="pin-tab"
+              data-active={id === current || undefined}
+              data-placed={placed?.includes(id) || undefined}
+              data-drop={dropAt === index ? "before" : dropAt === index + 1 && index === group.ids.length - 1 ? "after" : undefined}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(reorderType)) return;
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                setDropAt(event.clientX < rect.left + rect.width / 2 ? index : index + 1);
+              }}
+            >
               <button
                 className="pin-tab-button"
-                draggable={!!onTabDragStart}
-                onDragStart={onTabDragStart && ((event) => onTabDragStart(id, event, title))}
-                onDragEnd={onTabDragEnd}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(reorderType, id);
+                  event.dataTransfer.effectAllowed = "move";
+                  if (onTabDragStart) onTabDragStart(id, event, title);
+                  else dragGhost(event, title);
+                }}
+                onDragEnd={() => {
+                  setDropAt(undefined);
+                  onTabDragEnd?.();
+                }}
                 aria-pressed={id === current}
                 aria-label={state ? `${title}, ${statusText[state]}` : title}
                 aria-keyshortcuts={pinAriaShortcut(index + 1)}

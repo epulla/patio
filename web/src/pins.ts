@@ -195,6 +195,23 @@ export function setPins(next: Pins | ((pins: Pins) => Pins)) {
   }));
 }
 
+// Moves a tab of the active group to index (counted before the move, like a browser insertion point).
+export function moveTab(chatID: string, index: number) {
+  setPins((pins) => {
+    const from = pins.ids.indexOf(chatID);
+    if (from < 0) return pins;
+    const ids = pins.ids.filter((id) => id !== chatID);
+    ids.splice(Math.max(0, Math.min(ids.length, index > from ? index - 1 : index)), 0, chatID);
+    return { ...pins, ids };
+  });
+}
+
+// Returns -1 or 1 for Cmd/Ctrl+Alt+Left or Right, which move the current tab.
+export function tabMoveStep(event: KeyboardEvent) {
+  if (!(event.metaKey || event.ctrlKey) || !event.altKey || event.shiftKey) return 0;
+  return event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+}
+
 export const getPins = (): Pins => activeGroup();
 export const allPinnedIds = () => store.groups.flatMap((group) => group.ids);
 export const groupOf = (chatID: string) => store.groups.find((group) => group.ids.includes(chatID));

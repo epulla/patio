@@ -36,12 +36,12 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, stepIndex, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
+import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
-import PinTabs from "./PinTabs";
+import PinTabs, { dragGhost } from "./PinTabs";
 import type { usePinnedChats } from "./ChatDock";
 import { lang, locale, useText } from "./i18n";
 
@@ -376,13 +376,7 @@ export default function Chats({
     event.dataTransfer.setData(tabType, chatID);
     event.dataTransfer.effectAllowed = "move";
     dragged.current = chatID;
-    // WebKit snapshots only painted pixels, so drag a solid card instead of the transparent tab or header.
-    const ghost = document.createElement("div");
-    ghost.className = "pane-drag-ghost";
-    ghost.textContent = title;
-    document.body.append(ghost);
-    event.dataTransfer.setDragImage(ghost, 20, 20);
-    setTimeout(() => ghost.remove());
+    dragGhost(event, title);
   }
 
   function endDrag() {
@@ -426,6 +420,14 @@ export default function Chats({
         event.preventDefault();
         // Closing an unpinned chat's preview tab leaves the chat itself alone.
         return pins.ids.includes(chatID) ? unpin(chatID) : navigate("/ai/chats");
+      }
+      const move = tabMoveStep(event);
+      if (move) {
+        if (!chatID || !pins.ids.includes(chatID)) return;
+        event.preventDefault();
+        const index = pins.ids.indexOf(chatID);
+        // moveTab counts the insertion point before removing the tab, so moving right skips one more.
+        return moveTab(chatID, move > 0 ? index + 2 : index - 1);
       }
       const step = tabStep(event);
       const n = step
