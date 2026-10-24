@@ -12,7 +12,7 @@ Paths below are relative to the repository root.
 | `docs/assets/patio-crayon-readme.png` | README header | 1983 × 793 |
 | `docs/assets/patio-crayon-social.png` | Square social post | 1254 × 1254 |
 | `docs/assets/patio-crayon-appicon-master.png` | Original square app-icon artwork | 1254 × 1254 |
-| `build/appicon.png` | Canonical Wails app icon | 1024 × 1024 RGBA PNG |
+| `build/appicon.png` | Wails app icon (macOS squircle grid, no border) | 1024 × 1024 RGBA PNG |
 | `build/windows/icon.ico` | Windows executable icon | 16, 32, 48, 64, 128, 256 px |
 | `packaging/icons/patio.icns` | Standalone macOS export | Multiple resolutions, up to 1024 px |
 | `packaging/linux/patio.png` | Linux launcher icon | 512 × 512 |
@@ -42,7 +42,7 @@ For this repository's Wails v2.16.0 configuration, the primary source is `build/
 
 Wails preserves an existing Windows ICO. When updating the design in the future, replace or regenerate the matching ICO along with the PNG; changing only the PNG leaves an existing Windows ICO unchanged. A clean build does not remove that override.
 
-On macOS, Wails generates `iconfile.icns` inside the application bundle from `build/appicon.png`. The supplied `packaging/icons/patio.icns` is a convenient standalone export; it is not an input override for Wails and does not need to be copied to `build/darwin/`.
+On macOS, Wails generates `iconfile.icns` inside the application bundle from `build/appicon.png`. That PNG is the tile interior without the orange border, clipped to an 824 px rounded square centered on the 1024 px canvas (Apple's icon grid). macOS 26 otherwise shrinks the icon onto a dark "squircle jail" plate. Windows and Linux launcher icons keep the bordered tile. The supplied `packaging/icons/patio.icns` is a convenient standalone export; it is not an input override for Wails and does not need to be copied to `build/darwin/`.
 
 After integrating the assets, use the repository's normal build:
 
