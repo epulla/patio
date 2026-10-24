@@ -1,14 +1,23 @@
-![Patio — a playful courtyard for your agents and your work.](docs/assets/patio-crayon-readme.png)
+<p align="center">
+  <img src="packaging/linux/patio.png" width="128" alt="Patio icon">
+</p>
 
-# Patio
+<h1 align="center">Patio</h1>
 
-**Your agents. Your work. One place.**
+<p align="center">
+  <b>Your agents. Your work. One place.</b><br>
+  An open-source desktop workspace for <b>AI chats</b>, <b>kanban boards</b>, and <b>automation</b>.<br>
+  <a href="https://github.com/epulla/patio/actions/workflows/release.yml"><img src="https://github.com/epulla/patio/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+</p>
 
-Patio is an open-source desktop workspace for AI chats, tasks, and automation. Bring Claude Code, Codex, GitHub Copilot, opencode, or local AI into your workflow. Keep conversations alongside kanban boards, work with files, and delegate focused tasks between supported agents.
+<p align="center">
+  <a href="https://github.com/epulla/patio/releases/latest"><img src="https://img.shields.io/github/v/release/epulla/patio?style=for-the-badge&label=Download&color=2ea44f" height="48" alt="Download Patio"></a><br>
+  <sub>macOS (Apple Silicon and Intel) · Windows x64 · Linux x64 · <a href="#1-install-patio">install steps</a> · <a href="https://github.com/epulla/patio/releases">all releases</a></sub>
+</p>
 
-Built with **Go, Wails, React, and SQLite**, with application data stored on your computer.
+Bring Claude Code, Codex, GitHub Copilot, opencode, or local AI into your workflow. Keep conversations alongside kanban boards, work with files, and delegate focused tasks between supported agents. Built with **Go, Wails, React, and SQLite**, with application data stored on your computer.
 
-[Download](https://github.com/epulla/patio/releases/latest) · [Get started](#get-started) · [Connectors](#connectors) · [Automation](#automate-routine-work) · [MCP](#connect-through-mcp) · [Build from source](#build-from-source)
+[Get started](#get-started) · [Connectors](#connectors) · [Automation](#automate-routine-work) · [MCP](#connect-through-mcp) · [Build from source](#build-from-source)
 
 ![A chat beside a kanban board: the agent adds pricing-page tickets to the board.](docs/assets/patio-chat-panel.png)
 
