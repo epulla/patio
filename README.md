@@ -1,113 +1,304 @@
+![Patio — a playful courtyard for your agents and your work.](docs/assets/patio-crayon-readme.png)
+
 # Patio
 
-One window for your AI agents and your tasks. Chat with AI coding CLIs you already use (Claude Code, Codex, GitHub Copilot, opencode), connect any AI client through MCP, and run scheduled tasks alongside kanban tickets. Built with Go, Wails, React, and SQLite.
+**Your agents. Your work. One place.**
 
-Port of the prod-tickets schema, plus a `ticket_status_transition` table that records every status change for future reporting.
+Patio is an open-source desktop workspace for AI chats, tasks, and automation. Bring Claude Code, Codex, GitHub Copilot, opencode, or local AI into your workflow. Keep conversations alongside kanban boards, work with files, and delegate focused tasks between supported agents.
 
-## Features
+Built with **Go, Wails, React, and SQLite**, with application data stored on your computer.
 
-- Boards: new boards default to To Do, In Progress (classic), and Done (temporary; tickets hide after 1 day); create, rename, change short name (old ticket codes still resolve), delete.
-- Kanban: drag tickets within and between columns, reorder columns (drag or left/right buttons), add columns, temporary columns (tickets hide after 1 day), search by title or code.
-- Tickets: rich-text description, ticket types, due date, status, history ("Status changed from X to Y"), status transitions.
-- Export: board as Excel, CSV, or JSON backup; ticket as JSON or Markdown.
-- Import: a board JSON backup imports as a new board, e.g. on another computer. A colliding short name gets a suffix (`NB` -> `NB2`).
-- Print: clean printable page with history and transitions.
-- Ticket search: list tickets across all boards, newest first; filter by title or code, board, and created/updated dates; sort with the Most recent / Alphabetical menu or by clicking a column header.
-- Calendar: calendar items, tickets with due dates, and scheduled AI task runs (past and upcoming).
-- Hidden: assignee works in the API; the UI shows it only with `-show-hidden`.
+[Download](https://github.com/epulla/patio/releases/latest) · [Get started](#get-started) · [Connectors](#connectors) · [Automation](#automate-routine-work) · [MCP](#connect-through-mcp) · [Build from source](#build-from-source)
 
-## AI
+## What you can do
 
-The **AI** section in the sidebar has four pages. Settings (gear at the bottom of the sidebar) has General (version, database and data folder, counts, where secrets live), Appearance (System/Light/Dark mode, five color palettes, flat or gradient sidebar), Defaults for new chats, allowed folders, and MCP status.
+| Bring the pieces together | Put them to work |
+| --- | --- |
+| **Your AI tools** | Connect the coding CLIs and accounts you already use, or choose a local AI endpoint. |
+| **Coordinated conversations** | Pin chats, arrange them in grids or split views, and let supported agents hand work to another chat and receive the result. |
+| **Organized projects** | Track work with kanban boards, Markdown tickets, comments, due dates, and status history. |
+| **Repeatable routines** | Schedule a prompt and give each run its own chat and recorded outcome. |
+| **Changes that lead to action** | Monitor an MCP tool, then notify, create a ticket, or start a chat when a configured condition matches. |
+| **Reusable instructions** | Save skills and preferences so new conversations can pick up the way you work. |
 
-- **Connectors**: connect the official CLIs installed on your computer, signed in with your own account: Claude Code (`claude`), Codex (`codex`), GitHub Copilot (`copilot`), and opencode (v1 and v2). CLI cards show sign-in status, plan, and usage quota where the CLI or provider reports it, a **Log in** button, and an install command when the CLI is missing. Add more than one account per CLI through a separate config directory (not supported for opencode on Windows); extra Copilot accounts use a fine-grained GitHub token with the "Copilot Requests" permission. Their providers' terms apply. A Local AI connector points at any OpenAI-compatible server (Ollama, LM Studio, llama.cpp); its chats get file tools inside the chat folder (list, read, search, write, edit, move, copy, duplicate, delete to Trash) plus the ticket tools, and every file change asks first unless Auto-allow is on. Small models that fit 8 GB of RAM, such as `qwen2.5:3b`, work; Ollama is used through its native API.
-- **Chats**: streaming chats through any connector, with a model picker and saved history. Attach text files (up to 1 MB) and images (PNG, JPEG, GIF, WebP, up to 10 MB), at most 10 per message, with the paperclip, drag and drop, or paste; they're saved in the chat folder's `attachments/`. Images reach models that accept them; others get the file path. Replies render as Markdown; tickets and boards the AI touches are linked, and file links open in Finder/Explorer. Every write or command shows an approval card (Allow once / Deny) unless the chat's **Auto-allow** switch is on; auto-allowed actions are recorded and shown in the chat. Codex runs external MCP tools without asking. A **Thinking** switch turns extended reasoning on or off per chat (Claude, Codex, Copilot, Local AI; opencode picks reasoning through model variants). Settings → Defaults sets the connector, folder, Auto-allow (on) and Thinking (on) for new chats. A chat works inside an allowed folder you pick, or an empty scratch folder of its own. Idle chat processes close after 10 minutes. **Open in new window** in the chat header opens the chat in its own window, so several chats can stay open side by side; opening a chat that already has a window brings that window forward. A chat window has **Open main window**, which shows that chat in the main window and starts the main app if it's closed. Only one window at a time can send in a chat; another gets "A reply is already running in another window". Chat windows stay open when the main window closes, and scheduled tasks and reminders run only in the main window.
-- **MCP**: add external MCP servers, as a local command (stdio) or a remote URL (HTTP, with a token or OAuth sign-in). Each card shows health and tools; enabled servers are offered to every chat.
-- **Skills**: write or import `SKILL.md` skills (name, description, Markdown instructions). Enabled skills reach every chat through `list_skills` and `load_skill`; MCP also supports `create_skill`, `update_skill`, and `delete_skill` by name; `list_skills` can include disabled skills.
-- **Scheduled tasks**: send a prompt to a connector at set times. Pick a schedule (once, every few hours, every day, weekdays, weekly, monthly) or write a cron expression under Advanced; the form previews the next 3 runs. Each run starts a new chat linked to its task, with the task's connector, model, folder, Thinking, and mode (Auto-allow by default, or Ask, which waits for approval in the run's chat). You get a notification when a run finishes, fails, or needs approval. Tasks run only while the app is open: a run missed while it was closed happens once at the next start and is labeled **Ran late**; a run due while the previous one is still working is **Skipped**.
+## Get started
 
-Secrets (API keys, tokens, OAuth tokens, MCP env values) are stored in the OS keychain, never in the database.
+### 1. Install Patio
 
-## Install and run
+Download the build for your computer from [Releases](https://github.com/epulla/patio/releases/latest).
 
-Download app for your OS from [Releases](https://github.com/epulla/patio/releases) and open it. Linux requires GTK 3 and WebKit2GTK runtime libraries (for Ubuntu 22.04, `libgtk-3-0` and `libwebkit2gtk-4.0-37`).
+| Platform | Download |
+| --- | --- |
+| macOS — Apple Silicon | [patio-darwin-arm64.zip](https://github.com/epulla/patio/releases/latest/download/patio-darwin-arm64.zip) |
+| macOS — Intel | [patio-darwin-amd64.zip](https://github.com/epulla/patio/releases/latest/download/patio-darwin-amd64.zip) |
+| Windows — x64 | [patio-windows-amd64.exe](https://github.com/epulla/patio/releases/latest/download/patio-windows-amd64.exe) |
+| Linux — x64 | [patio-linux-amd64](https://github.com/epulla/patio/releases/latest/download/patio-linux-amd64) |
 
-On Linux, make downloaded binary executable with `chmod +x patio-linux-amd64` before running it.
+<details>
+<summary>macOS installation</summary>
 
-macOS release is unsigned. On first launch, right-click app and choose **Open**, or remove quarantine:
+Extract the archive and move `patio.app` to `/Applications`.
+
+The macOS build is unsigned. On first launch, right-click the app and choose **Open**. If macOS still blocks it, you can remove quarantine from this app:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/patio.app
 ```
 
-Optional flags: `-d path/to/file.db` selects database file; `-show-hidden` shows assignee.
+</details>
 
-## Data
+<details>
+<summary>Linux installation</summary>
 
-The database is `patio.db` in the OS data directory:
+Patio requires GTK 3 and WebKit2GTK runtime libraries. On Ubuntu 22.04:
 
-Override with `-d path/to/file.db`.
+```sh
+sudo apt install libgtk-3-0 libwebkit2gtk-4.0-37
+chmod +x patio-linux-amd64
+./patio-linux-amd64
+```
 
-- macOS: `~/Library/Application Support/patio/`
-- Linux: `$XDG_DATA_HOME/patio/` or `~/.local/share/patio/`
-- Windows: `%LOCALAPPDATA%\patio\`
+Package names can differ on other distributions.
 
-Chat scratch folders and extra connector accounts live in `chats/` and `connectors/` next to the database file.
+</details>
 
-Back up a board with its JSON export, or copy the `.db` file while the app is stopped. Secrets in the keychain are not part of the backup.
+On Windows, open the downloaded executable.
+
+### 2. Connect an agent
+
+Open **Connectors**, choose **Add connector**, and select an installed CLI or **Local AI**.
+
+Reuse the CLI's existing login or configure a separate account where supported. Connector cards show installation and sign-in status, with plan and usage information when the provider exposes it.
+
+### 3. Choose a workspace
+
+In **Settings → Allowed folders**, add a folder you want to work in. Start a chat with that folder, or use a scratch folder for a separate workspace.
+
+Choose your connector and model. In **Settings → Defaults**, set your preferred connector, folder, thinking options, and approval mode. **Auto-allow is enabled by default**; turn it off to review approval requests supported by your connector.
+
+### 4. Put it to work
+
+Open a chat and try:
+
+> Create a board called Website launch. Add tickets for the landing page, documentation, and release checklist. Give each ticket a short description.
+
+Then pin the chat alongside your work, add a skill for a repeatable task, or schedule a daily review.
+
+## Connectors
+
+| Connector | What Patio connects to |
+| --- | --- |
+| **Claude Code** | The installed `claude` CLI and its signed-in account. |
+| **Codex** | The installed `codex` CLI and its signed-in account. |
+| **GitHub Copilot** | The installed `copilot` CLI and its signed-in account. |
+| **opencode** | The installed `opencode` CLI, with support for v1 and v2. |
+| **Local AI** | Ollama, LM Studio, llama.cpp, or another compatible endpoint. |
+
+Patio uses your existing provider access. Available models, subscription requirements, and usage limits depend on the connected tool and account.
+
+Additional CLI accounts use separate configuration directories. Separate opencode accounts are not supported on Windows. An additional Copilot account uses a fine-grained GitHub token with the **Copilot Requests** permission.
+
+### Local AI
+
+Local AI provides file tools inside the selected chat folder and a focused set of Patio tools for boards, tickets, calendar items, and skills. Tool calling and image support depend on the selected model and server.
+
+Its tool set is intentionally smaller than the CLI integrations: external MCP servers, chat delegation, and schedule or monitor administration are not exposed to Local AI chats.
+
+## Work in Patio
+
+### Keep conversations in view
+
+- Stream replies with saved history and a model picker.
+- Pin chats, organize them into groups, reorder tabs, and arrange conversations in a grid or custom split.
+- Keep a chat dock beside a board or ticket, and share that item's context with the agent.
+- Open a chat in its own window when you want more space.
+- Queue messages while a reply is running.
+- Attach text files and images through the paperclip, drag and drop, or paste.
+- Follow links from replies to tickets, boards, chats, and local files.
+
+Attachments support up to 10 files per message: text files up to 1 MB each and PNG, JPEG, GIF, or WebP images up to 10 MB each. Images are sent to models that support them; other connectors receive the file path.
+
+### Delegate focused work
+
+Supported CLI agents can use `create_chat` to delegate to a new child chat or `send_to_chat` to message an existing chat. A child can use another connector or model, and `report_back` can return its final result automatically.
+
+A handoff carries an explicit task prompt. It inherits the selected work folder and relevant chat settings, rather than copying the full conversation transcript. A child of a scratch-folder chat receives its own scratch folder.
+
+### Turn conversations into organized work
+
+- **Boards:** create and reorder boards, customize columns, and move tickets by dragging.
+- **Tickets:** write Markdown descriptions, add comments and ticket links, set types and due dates, and inspect status history.
+- **Search:** find tickets across boards by title or code, with board and date filters.
+- **Calendar:** see calendar items, due tickets, and past or upcoming scheduled runs.
+- **Export:** save boards as Excel, CSV, or JSON; export individual tickets as JSON or Markdown.
+- **Import:** restore a board JSON export as a new board, including on another computer.
+- **Print:** produce a clean ticket view with history and transitions.
+
+Temporary columns can hide older tickets. New boards use To Do, In Progress, and a temporary Done column that hides tickets after one day.
+
+### Reuse skills and preferences
+
+Write a skill in Markdown or import a `SKILL.md` file. Use the **Memory** tab in Skills to keep preferences and facts you want to reuse.
+
+Enabled skills and memory summaries are made available to new CLI chats. Local AI can discover and load skills through its supported tools. Changes apply to new chats.
+
+### Make the workspace yours
+
+Choose English or Spanish, system/light/dark appearance, one of five color palettes, and a flat or gradient sidebar. Keyboard shortcuts and chat defaults are available in Settings.
+
+## Automate routine work
+
+### Scheduled tasks: start with a time
+
+Give Patio a prompt, connector, model, and schedule. Choose a one-time run, a recurring preset, or an advanced cron expression.
+
+Each run starts a new chat with the task's folder, thinking settings, and approval mode. Patio records the outcome and notifies you when a run finishes, fails, or needs attention.
+
+Example prompt for a weekday review:
+
+> Review tickets due this week. Summarize what is overdue and suggest the next three priorities.
+
+### Monitors: start with a condition
+
+A monitor calls a selected MCP tool on a schedule and checks whether:
+
+- The result changed.
+- The result is not empty.
+- New items appeared in a list.
+
+When the condition matches, it can send a notification, create a ticket, start a chat, or combine those actions. A chat started by a monitor uses your current chat defaults.
+
+For example, with a suitable MCP server configured, watch for newly reported issues and create a ticket when a new item appears. The check itself does not start an AI chat; the chat action does.
+
+**Scheduled tasks and monitors run while Patio's main application window is open.** A detached chat window does not keep them running. After reopening Patio, an overdue scheduled task runs once; missed intervals are not all replayed. An occurrence is skipped if the previous run is still working.
+
+## Connect through MCP
+
+Patio supports MCP in two directions.
+
+### Bring external tools into Patio
+
+Add a local command-based server over stdio or a remote HTTP server. Configure authentication where needed, inspect the tools and health status, and enable the server for supported CLI chats.
+
+Local AI uses its smaller built-in tool set.
+
+### Bring Patio into another AI client
+
+Run Patio as a stdio MCP server using the installed executable with the `mcp` argument. It accesses the same database as the desktop app.
+
+Open **Settings → MCP status** to copy a configuration with your actual executable path and inspect the available tools.
+
+Example configuration for macOS:
+
+```json
+{
+  "mcpServers": {
+    "patio": {
+      "command": "/Applications/patio.app/Contents/MacOS/patio",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+On Windows, use the full path to `patio-windows-amd64.exe`. On Linux, use the full path to `patio-linux-amd64`. Configuration formats can vary between clients.
+
+To select a different database, put the flag after `mcp`:
+
+```json
+{
+  "args": ["mcp", "-d", "/absolute/path/to/patio.db"]
+}
+```
+
+Patio's MCP tools cover work management, calendar items, scheduled tasks, monitors, skills, connectors, and settings. Read-only SQL reporting is available through `query_db`, with a schema resource at `patio://schema`.
+
+The built-in MCP tool set does not expose deletion of boards, tickets, ticket types, connectors, or MCP servers. It does allow removing empty columns, calendar items, scheduled tasks, monitors, skills, and ticket links. `update_settings_defaults` cannot change Auto-allow. These limits describe Patio's MCP tools; a connected CLI may have additional tools of its own.
+
+## Data and permissions
+
+### Your application data
+
+Patio stores its application data in a local SQLite database.
+
+| Platform | Default database |
+| --- | --- |
+| macOS | `~/Library/Application Support/patio/patio.db` |
+| Windows | `%LOCALAPPDATA%\patio\patio.db` |
+| Linux | `$XDG_DATA_HOME/patio/patio.db` when that variable is an absolute path; otherwise `~/.local/share/patio/patio.db` |
+
+Chat scratch folders, attachments, and separate CLI account directories live outside the database. **Settings → General** shows the database, data folder, and log locations.
+
+Use `-d /absolute/path/to/patio.db` to choose another database. The optional `-show-hidden` flag reveals the assignee field in the interface.
+
+### Credentials and approvals
+
+Secrets managed by Patio use the operating system credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service. Connected CLIs manage their own account credentials and may keep them in their configuration directories.
+
+Patio displays approval requests supported by each connector. Auto-allow runs those actions without prompting and records them in the conversation. Approval behavior depends on the connector and tool; choose your preferred mode in Settings or per chat.
+
+Local storage describes the workspace data. Hosted connectors and remote MCP servers communicate with their respective services.
+
+### Backups
+
+For a portable board backup, export it as JSON and import it on the destination computer.
+
+For a database backup, stop Patio and any Patio MCP processes before copying `patio.db`. A database-only backup does not include chat files, attachments, separate CLI account folders, or secrets in the OS credential store. Preserve the files you need and reconnect accounts after migration.
 
 ## Build from source
 
-Install Go and pnpm. Wails CLI version must match app version:
+The current build uses:
+
+- **Go 1.27**, as declared in [go.mod](go.mod).
+- **Node.js 22 (22.12+)** and **pnpm 11**.
+- **Wails CLI v2.16.0**, matching the Wails dependency.
+
+On macOS, install the Xcode command-line tools. On Ubuntu 22.04, install the native build dependencies:
 
 ```sh
+sudo apt update
+sudo apt install libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
+```
+
+Clone and build:
+
+```sh
+git clone https://github.com/epulla/patio.git
+cd patio
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-make build
+wails build
 ```
 
-On macOS, install Xcode command line tools. Linux also needs GTK 3 and WebKit2GTK development packages. Build output is under `build/bin/`.
+Build output is written to `build/bin/`. Wails runs the pnpm frontend install and build commands configured in [wails.json](wails.json).
 
-## AI access (MCP)
+## Development
 
-MCP runs as `patio mcp` over stdio and shares database with desktop app. It acts as Martin, the AI persona shown with an AI badge in app. Use `-d path` after `mcp` if database is not at default location.
+Read [AGENTS.md](AGENTS.md) for repository conventions. Use pnpm for frontend work.
 
-- Tools cover boards, tickets, comments, calendar items, scheduled tasks, skills, MCP servers, connectors, columns, ticket types, users, and settings defaults. MCP never deletes boards, tickets, ticket types, connectors, or MCP servers; it deletes only empty columns, calendar items, scheduled tasks, and skills. `update_settings_defaults` cannot change Auto-allow.
-- `create_board` accepts optional `statuses`: `[{"name":"...","type?":"classic"|"temporary","hide_after_days?":1}]`. Setting `hide_after_days` without `type` implies `temporary`; omitting both implies `classic`.
-
-Configure client with installed executable path:
-
-| OS | `command` | `args` |
-| --- | --- | --- |
-| macOS | `/Applications/patio.app/Contents/MacOS/patio` | `["mcp"]` |
-| Windows | `C:\\path\\to\\patio-windows-amd64.exe` | `["mcp"]` |
-| Linux | `/path/to/patio-linux-amd64` | `["mcp"]` |
-
-Example client config:
-
-```json
-{"mcpServers":{"patio":{"command":"/Applications/patio.app/Contents/MacOS/patio","args":["mcp"]}}}
-```
-
-For a separate database, append `"-d", "path/to/file.db"` to `args`.
-
-Settings page's MCP status section shows this config with running executable path and self-tests server every 30 seconds.
-
-## Development and tests
+Start the development app:
 
 ```sh
 wails dev
-make test
 ```
 
-## Manual smoke test
+Useful checks:
 
-1. Create a board and add a few tickets.
-2. Drag a ticket to another column and back; history reads "Status changed from X to Y".
-3. Reorder columns by dragging and with the left/right buttons.
-4. Open a ticket, click **Print**, check the print preview.
-5. Export the board as JSON, import it from the boards list, check the copy gets a new short name.
-6. Connectors: add a Claude Code (or other CLI) connector on the existing login; the card shows account and plan.
-7. Chats: start a chat, ask for a reply, then ask it to create a file; allow once, then deny on a second try.
-8. MCP: add a server, check it turns healthy; Skills: create a skill, start a new chat, check it is used.
+```sh
+go vet ./...
+go test ./... -count=1
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+wails build
+```
+
+`make test` runs the Go tests. `make release` performs a CGO-free Windows compilation check. Tagged releases are built and published by [GitHub Actions](.github/workflows/release.yml).
+
+Logos, README artwork, and native application icons are documented in [Brand assets and Wails icons](docs/branding/README.md).
+
+For bug reports, include the Patio version, operating system, connector, and steps to reproduce. You can find version and log information in **Settings → General**.
+
+## License
+
+Patio is available under the [MIT License](LICENSE).
 
 For Dolores, Domenica, Gary and José Martín.

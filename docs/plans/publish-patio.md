@@ -19,7 +19,7 @@ Tickets: PROJ-50 (publish it), PROJ-56 (Rework README for marketing).
 ## Tasks
 
 - [x] **1. Icons.** Copy kit `build/`, `packaging/`, `docs/branding/`; apply `wails-icons.patch`. Check: `go test ./...` passes, `wails build` succeeds, new icon visible on `build/bin/patio.app`.
-- [ ] **2. README + screenshots.** Copy kit `README.md` and `docs/assets/`; capture 2–3 screenshots from a temp demo DB into `docs/assets/`, add them to the README. Check: no personal data visible; every local link/image in README resolves.
+- [x] **2. README + screenshots.** Copy kit `README.md` and `docs/assets/`; capture 2–3 screenshots from a temp demo DB into `docs/assets/`, add them to the README. Check: no personal data visible; every local link/image in README resolves.
 - [ ] **3. Release v0.8.4.** Push main, tag `v0.8.4`. Check: release workflow green, 4 artifacts on the release page.
 - [ ] **4. Repo page.** `gh repo edit` description + topics. Check: `gh repo view --json description,repositoryTopics` shows them. User uploads `patio-crayon-social.png` as social preview manually.
 - [ ] **5. Launch posts.** LinkedIn + X drafts (EN) as a PROJ-50 comment; delete this plan file. Check: user approves drafts.
