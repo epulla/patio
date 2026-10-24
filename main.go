@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"patio/internal/api"
 	"patio/internal/db"
@@ -35,6 +37,9 @@ import (
 )
 
 var version = "dev"
+
+//go:embed build/appicon.png
+var appIcon []byte
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
@@ -181,6 +186,11 @@ func main() {
 		Title:  appTitle(chatTitle),
 		Width:  appWidth(*chatWindow),
 		Height: 800,
+		Linux: &linux.Options{
+			Icon:             appIcon,
+			ProgramName:      "patio",
+			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
+		},
 		OnStartup: func(ctx context.Context) {
 			appCtx = ctx
 			if *chatWindow == "" {

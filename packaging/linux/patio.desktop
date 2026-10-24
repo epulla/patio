@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Patio
+Comment=Your AI agents and tasks in one place
+Exec=patio
+Icon=patio
+Terminal=false
+Categories=Development;Office;
+StartupWMClass=patio

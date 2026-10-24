@@ -1,0 +1,790 @@
+{
+  "art_direction": "Restored warm textured rounded tile with orange border and transparent exterior; source alpha retained without flattening or opacity changes.",
+  "source_alpha_note": "The supplied artwork has a near-opaque central tile region (alpha 252-254 in the master and 253-254 in the canonical PNG); this is preserved, not forced to 255.",
+  "encoder_versions": {
+    "github.com/leaanthony/winicon": "v1.0.0",
+    "github.com/jackmordaunt/icns": "v1.0.0",
+    "github.com/tc-hib/winres": "v0.3.1"
+  },
+  "wails_source_commit": "457bf210d5eb976ff3726c8629f7725575163307",
+  "checks": {
+    "source_and_linux_transparent_corners": true,
+    "native_and_standalone_frames_transparent_corners": true,
+    "native_and_standalone_frames_preserve_partial_alpha": true,
+    "tile_interior_retains_near_opaque_alpha": true,
+    "all_native_frames_decode": true,
+    "largest_icns_matches_canonical_rgba_bytes": true,
+    "largest_icns_alpha_matches_canonical_bytes": true,
+    "pngs_match_corresponding_ico_rgba_bytes": true,
+    "ico_header_directory_and_png_payloads_valid": true,
+    "icns_header_and_block_lengths_valid": true,
+    "ico_accepted_by_wails_winres_packaging_path": true,
+    "repo_go_mod_sum_and_main_unchanged": true,
+    "readme_local_links_exist": true,
+    "appicon_master_matches_preferred_earlier_artwork": true,
+    "approved_icon_assets_unchanged": true,
+    "readme_banner_unchanged": true
+  },
+  "files": {
+    "docs/assets/patio-crayon-appicon-master.png": {
+      "sha256": "5d52071282fae42fa1df9a5e2af70283f3fc62112b7e2a31ff27050ccb5a6e5e",
+      "bytes": 2636676,
+      "format": "PNG",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    "build/appicon.png": {
+      "sha256": "22705581b2c6be7782e28953b9447fe8a757fce4def77e9da5db0b4f934672fd",
+      "bytes": 1816184,
+      "format": "PNG",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 223792,
+        "partial_alpha_pixels": 823636,
+        "opaque_pixels": 1148,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "packaging/linux/patio.png": {
+      "sha256": "e7d2ecb3f2d64fd180bb6c5aa546269ebf9c7892830386052984c018ec05e1e6",
+      "bytes": 509204,
+      "format": "PNG",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 55804,
+        "partial_alpha_pixels": 205179,
+        "opaque_pixels": 1161,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "build/windows/icon.ico": {
+      "sha256": "253fabbeeca127bc0a8791d846045a991ebd4dcd47e766e39b051d0a57d4c24d",
+      "bytes": 186197,
+      "format": "ICO",
+      "size": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 14256,
+        "partial_alpha_pixels": 50558,
+        "opaque_pixels": 722,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      },
+      "frames": [
+        {
+          "pixels": [
+            16,
+            16
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 14,
+            "partial_alpha_pixels": 222,
+            "opaque_pixels": 20,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              253
+            ]
+          }
+        },
+        {
+          "pixels": [
+            32,
+            32
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 162,
+            "partial_alpha_pixels": 764,
+            "opaque_pixels": 98,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "pixels": [
+            48,
+            48
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 437,
+            "partial_alpha_pixels": 1733,
+            "opaque_pixels": 134,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "pixels": [
+            64,
+            64
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 792,
+            "partial_alpha_pixels": 3108,
+            "opaque_pixels": 196,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "pixels": [
+            128,
+            128
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 3510,
+            "partial_alpha_pixels": 12482,
+            "opaque_pixels": 392,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "pixels": [
+            256,
+            256
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 14256,
+            "partial_alpha_pixels": 50558,
+            "opaque_pixels": 722,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        }
+      ],
+      "directory": [
+        {
+          "pixels": [
+            256,
+            256
+          ],
+          "planes": 0,
+          "bits_per_pixel": 32,
+          "bytes": 131257,
+          "offset": 102
+        },
+        {
+          "pixels": [
+            128,
+            128
+          ],
+          "planes": 0,
+          "bits_per_pixel": 32,
+          "bytes": 35219,
+          "offset": 131359
+        },
+        {
+          "pixels": [
+            64,
+            64
+          ],
+          "planes": 0,
+          "bits_per_pixel": 32,
+          "bytes": 9844,
+          "offset": 166578
+        },
+        {
+          "pixels": [
+            48,
+            48
+          ],
+          "planes": 0,
+          "bits_per_pixel": 32,
+          "bytes": 5867,
+          "offset": 176422
+        },
+        {
+          "pixels": [
+            32,
+            32
+          ],
+          "planes": 0,
+          "bits_per_pixel": 32,
+          "bytes": 2934,
+          "offset": 182289
+        },
+        {
+          "pixels": [
+            16,
+            16
+          ],
+          "planes": 0,
+          "bits_per_pixel": 32,
+          "bytes": 974,
+          "offset": 185223
+        }
+      ]
+    },
+    "packaging/icons/png/patio-16.png": {
+      "sha256": "59d55a4ebf527150906afa0e49166bdb27e38b6fca0783535a929b6dc841516d",
+      "bytes": 971,
+      "format": "PNG",
+      "size": [
+        16,
+        16
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 14,
+        "partial_alpha_pixels": 222,
+        "opaque_pixels": 20,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          253
+        ]
+      }
+    },
+    "packaging/icons/png/patio-32.png": {
+      "sha256": "0406bc7f34e2c59821a64e1ad06912fea9d87af0a7e6322d023a34dd279fd520",
+      "bytes": 2891,
+      "format": "PNG",
+      "size": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 162,
+        "partial_alpha_pixels": 764,
+        "opaque_pixels": 98,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "packaging/icons/png/patio-48.png": {
+      "sha256": "48b276655acf8a0d74d7cd5bb19cacc52bf2994a6838685775d5aa85f62cb6c8",
+      "bytes": 5732,
+      "format": "PNG",
+      "size": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 437,
+        "partial_alpha_pixels": 1733,
+        "opaque_pixels": 134,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "packaging/icons/png/patio-64.png": {
+      "sha256": "0be848ddf6d314bef6df3e503879a5e75b355684204183699a9b9a8d9f541c01",
+      "bytes": 9617,
+      "format": "PNG",
+      "size": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 792,
+        "partial_alpha_pixels": 3108,
+        "opaque_pixels": 196,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "packaging/icons/png/patio-128.png": {
+      "sha256": "c7107d8f16d4d83594dfec6d223548439275901f3e744562e931707eef2b5eeb",
+      "bytes": 34201,
+      "format": "PNG",
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 3510,
+        "partial_alpha_pixels": 12482,
+        "opaque_pixels": 392,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "packaging/icons/png/patio-256.png": {
+      "sha256": "d4ef5ab987de45f5cc21be7e4b02f89010865ec9d7195cafbd517f88edfc1f7e",
+      "bytes": 127428,
+      "format": "PNG",
+      "size": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 14256,
+        "partial_alpha_pixels": 50558,
+        "opaque_pixels": 722,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      }
+    },
+    "packaging/icons/patio.icns": {
+      "sha256": "60a1ee8bc985168222fa790ceaa1bc1ba671bee6ec42266a02ba8c0dd48f1b52",
+      "bytes": 2556428,
+      "format": "ICNS",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "alpha": {
+        "extrema": [
+          0,
+          255
+        ],
+        "transparent_pixels": 223792,
+        "partial_alpha_pixels": 823636,
+        "opaque_pixels": 1148,
+        "corner_alpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "central_patch_alpha": [
+          253,
+          254
+        ]
+      },
+      "frames": [
+        {
+          "logical_size_and_scale": [
+            512,
+            512,
+            2
+          ],
+          "pixels": [
+            1024,
+            1024
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              255
+            ],
+            "transparent_pixels": 223792,
+            "partial_alpha_pixels": 823636,
+            "opaque_pixels": 1148,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "logical_size_and_scale": [
+            256,
+            256,
+            2
+          ],
+          "pixels": [
+            512,
+            512
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              254
+            ],
+            "transparent_pixels": 55776,
+            "partial_alpha_pixels": 206368,
+            "opaque_pixels": 0,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "logical_size_and_scale": [
+            128,
+            128,
+            2
+          ],
+          "pixels": [
+            256,
+            256
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              254
+            ],
+            "transparent_pixels": 14044,
+            "partial_alpha_pixels": 51492,
+            "opaque_pixels": 0,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              254
+            ]
+          }
+        },
+        {
+          "logical_size_and_scale": [
+            32,
+            32,
+            2
+          ],
+          "pixels": [
+            64,
+            64
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              253
+            ],
+            "transparent_pixels": 840,
+            "partial_alpha_pixels": 3256,
+            "opaque_pixels": 0,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              253
+            ]
+          }
+        },
+        {
+          "logical_size_and_scale": [
+            16,
+            16,
+            2
+          ],
+          "pixels": [
+            32,
+            32
+          ],
+          "mode": "RGBA",
+          "alpha": {
+            "extrema": [
+              0,
+              253
+            ],
+            "transparent_pixels": 162,
+            "partial_alpha_pixels": 862,
+            "opaque_pixels": 0,
+            "corner_alpha": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "central_patch_alpha": [
+              253,
+              253
+            ]
+          }
+        }
+      ],
+      "blocks": [
+        {
+          "type": "ic10",
+          "bytes": 1896743
+        },
+        {
+          "type": "ic14",
+          "bytes": 511097
+        },
+        {
+          "type": "ic13",
+          "bytes": 135474
+        },
+        {
+          "type": "ic12",
+          "bytes": 10110
+        },
+        {
+          "type": "ic11",
+          "bytes": 2996
+        }
+      ]
+    },
+    "docs/assets/patio-crayon-logo.png": {
+      "sha256": "0253e6d9e006a87f32be91290c98fc3bc630f52962f17c3b702f6d0d66e0f21d",
+      "bytes": 1019980,
+      "format": "PNG",
+      "size": [
+        1774,
+        887
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    "docs/assets/patio-crayon-readme.png": {
+      "sha256": "39ac70285e2d24bbf948a9803502b1b36455df86291a782d7251290dbb8e93d9",
+      "bytes": 2891100,
+      "format": "PNG",
+      "size": [
+        1983,
+        793
+      ],
+      "mode": "RGB"
+    },
+    "docs/assets/patio-crayon-social.png": {
+      "sha256": "1accc8c1452ee197e39b8a2d2c56f463064e6fdce8ba7d0de8469725b8c98c44",
+      "bytes": 2726747,
+      "format": "PNG",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB"
+    }
+  },
+  "revision": 3,
+  "revision_changes": [
+    "Redrew hand, wrist and paper plane together using a photographic grip reference in the logo and social image.",
+    "Preserved all approved app icon assets and native exports byte-for-byte."
+  ],
+  "limitations": [
+    "No full Patio desktop build was run.",
+    "On-device appearance and Linux desktop grouping require a target-platform smoke test."
+  ],
+  "locked_asset_hashes": {
+    "build/appicon.png": "22705581b2c6be7782e28953b9447fe8a757fce4def77e9da5db0b4f934672fd",
+    "build/windows/icon.ico": "253fabbeeca127bc0a8791d846045a991ebd4dcd47e766e39b051d0a57d4c24d",
+    "packaging/icons/patio.icns": "60a1ee8bc985168222fa790ceaa1bc1ba671bee6ec42266a02ba8c0dd48f1b52",
+    "packaging/linux/patio.png": "e7d2ecb3f2d64fd180bb6c5aa546269ebf9c7892830386052984c018ec05e1e6",
+    "docs/assets/patio-crayon-appicon-master.png": "5d52071282fae42fa1df9a5e2af70283f3fc62112b7e2a31ff27050ccb5a6e5e",
+    "docs/assets/patio-crayon-readme.png": "39ac70285e2d24bbf948a9803502b1b36455df86291a782d7251290dbb8e93d9",
+    "packaging/icons/png/patio-16.png": "59d55a4ebf527150906afa0e49166bdb27e38b6fca0783535a929b6dc841516d",
+    "packaging/icons/png/patio-32.png": "0406bc7f34e2c59821a64e1ad06912fea9d87af0a7e6322d023a34dd279fd520",
+    "packaging/icons/png/patio-48.png": "48b276655acf8a0d74d7cd5bb19cacc52bf2994a6838685775d5aa85f62cb6c8",
+    "packaging/icons/png/patio-64.png": "0be848ddf6d314bef6df3e503879a5e75b355684204183699a9b9a8d9f541c01",
+    "packaging/icons/png/patio-128.png": "c7107d8f16d4d83594dfec6d223548439275901f3e744562e931707eef2b5eeb",
+    "packaging/icons/png/patio-256.png": "d4ef5ab987de45f5cc21be7e4b02f89010865ec9d7195cafbd517f88edfc1f7e"
+  }
+}

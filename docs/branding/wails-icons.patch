@@ -1,0 +1,58 @@
+diff --git a/.gitignore b/.gitignore
+index 2f606f0..34cc50c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -4,6 +4,10 @@ web/dist/*
+ !web/dist/.gitkeep
+ *.db
+ *.tsbuildinfo
+-build/
++/build/*
++!/build/appicon.png
++!/build/windows/
++/build/windows/*
++!/build/windows/icon.ico
+ web/wailsjs/
+ web/package.json.md5
+diff --git a/main.go b/main.go
+index d6745f9..cdd7eb4 100644
+--- a/main.go
++++ b/main.go
+@@ -2,6 +2,7 @@ package main
+ 
+ import (
+ 	"context"
++	_ "embed"
+ 	"encoding/json"
+ 	"flag"
+ 	"fmt"
+@@ -25,6 +26,7 @@ import (
+ 	"github.com/wailsapp/wails/v2"
+ 	"github.com/wailsapp/wails/v2/pkg/options"
+ 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
++	"github.com/wailsapp/wails/v2/pkg/options/linux"
+ 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+ 	"patio/internal/api"
+ 	"patio/internal/db"
+@@ -36,6 +38,9 @@ import (
+ 
+ var version = "dev"
+ 
++//go:embed build/appicon.png
++var appIcon []byte
++
+ func main() {
+ 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+ 		runMCP(os.Args[2:])
+@@ -181,6 +186,11 @@ func main() {
+ 		Title:  appTitle(chatTitle),
+ 		Width:  appWidth(*chatWindow),
+ 		Height: 800,
++		Linux: &linux.Options{
++			Icon:             appIcon,
++			ProgramName:      "patio",
++			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
++		},
+ 		OnStartup: func(ctx context.Context) {
+ 			appCtx = ctx
+ 			if *chatWindow == "" {

@@ -4,6 +4,10 @@ web/dist/*
 !web/dist/.gitkeep
 *.db
 *.tsbuildinfo
-build/
+/build/*
+!/build/appicon.png
+!/build/windows/
+/build/windows/*
+!/build/windows/icon.ico
 web/wailsjs/
 web/package.json.md5
