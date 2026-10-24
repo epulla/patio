@@ -17,7 +17,10 @@ const colorKeys = Object.keys(pinColors) as PinColor[];
 // Sets --pin, which pin icons, badges and dots read.
 export const pinStyle = (color: PinColor) => ({ "--pin": pinColors[color] }) as CSSProperties;
 
-export type PinGroup = Pins & { id: string; name: string; color: PinColor };
+// How the Chats page shows a group: the selected tab only, or every tab in a grid.
+export type PinView = "one" | "grid";
+const views: PinView[] = ["one", "grid"];
+export type PinGroup = Pins & { id: string; name: string; color: PinColor; view: PinView };
 export type PinGroups = { groups: PinGroup[]; active: string };
 
 export const maxPins = 9;
@@ -71,6 +74,7 @@ const newGroup = (name: string, ids: string[] = [], color: PinColor = "pink"): P
   id: Date.now().toString(36) + Math.random().toString(36).slice(2),
   name,
   color,
+  view: "grid",
   ...pinLayout(ids),
 });
 
@@ -82,6 +86,7 @@ function loadGroup(saved: Partial<PinGroup> | null): PinGroup | undefined {
   const group = { ...newGroup(typeof saved?.name === "string" ? saved.name : "Pinned", ids.slice(0, maxPins)) };
   if (typeof saved?.id === "string") group.id = saved.id;
   if (colorKeys.includes(saved?.color as PinColor)) group.color = saved!.color!;
+  if (views.includes(saved?.view as PinView)) group.view = saved!.view!;
   const fits = (sizes: unknown, fresh: number[]): sizes is number[] =>
     Array.isArray(sizes) && sizes.length === fresh.length && sizes.every((x) => typeof x === "number" && x > 0);
   return fits(cols, group.cols) && fits(rows, group.rows) ? { ...group, cols, rows } : group;
@@ -148,6 +153,10 @@ export function renameGroup(id: string, name: string) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, name } : group)) }));
 }
 
+export function setGroupView(id: string, view: PinView) {
+  update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, view } : group)) }));
+}
+
 export function setGroupColor(id: string, color: PinColor) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, color } : group)) }));
 }
@@ -189,6 +198,11 @@ function subscribe(listener: () => void) {
 // Last focused pinned chat, so the side panel reopens on it instead of the first pin.
 export const lastPinnedChat = () => localStorage.getItem("chat-dock-active") ?? undefined;
 export const rememberPinnedChat = (id: string) => localStorage.setItem("chat-dock-active", id);
+// The tab shown when nothing is selected: the last focused one if it is in ids, else the first.
+export const shownPin = (ids: string[]) => {
+  const last = lastPinnedChat();
+  return last && ids.includes(last) ? last : ids[0];
+};
 
 export const usePinGroups = () => useSyncExternalStore(subscribe, () => store);
 

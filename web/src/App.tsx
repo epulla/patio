@@ -8,7 +8,7 @@ import Connectors from "./Connectors";
 import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
-import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, setActiveGroup, usePinGroups, usePins } from "./pins";
+import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, setActiveGroup, shownPin, usePinGroups, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
@@ -412,7 +412,7 @@ export default function App() {
   const chatMatch = path.match(/^\/ai\/chats(?:\/([^/]+))?$/);
   if (chatMatch)
     page = (
-      <Chats id={chatMatch[1] && decodeURIComponent(chatMatch[1])} refresh={refresh} />
+      <Chats id={chatMatch[1] && decodeURIComponent(chatMatch[1])} refresh={refresh} pinned={pinned} />
     );
   const skillMatch = path.match(/^\/ai\/skills(?:\/([^/]+))?$/);
   if (skillMatch)
@@ -430,7 +430,9 @@ export default function App() {
     if (link === path) return true;
     const id = link.match(/^\/ai\/chats\/([^/]+)$/)?.[1];
     if (!id || !pins.ids.includes(id)) return false;
-    // Pinned chats are all on screen in the Chats grid (shown for a pinned or no chat); the dock shows only its active one.
+    // Pinned chats are all on screen in the Chats grid (shown for a pinned or no chat); one-tab view and the dock show only one.
+    const group = groups.groups.find((group) => group.id === groups.active);
+    if (chatMatch && group?.view === "one") return (chatMatch[1] ?? shownPin(pins.ids)) === id;
     return chatMatch ? !chatMatch[1] || pins.ids.includes(chatMatch[1]) : dockOpen && lastPinnedChat() === id;
   };
   const states = pins.ids.map((id) => pinned.status[id]);

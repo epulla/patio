@@ -1933,6 +1933,17 @@ label.days-field {
 .chats:has(> .chat-list.collapsed) {
   grid-template-columns: 56px minmax(0, 1fr);
 }
+/* Tabs sit above the content in the second column, touching it like a browser tab bar. */
+.chats:has(> .pin-tabs) {
+  grid-template-rows: auto minmax(0, 1fr);
+  row-gap: 0;
+}
+.chats:has(> .pin-tabs) > .chat-list {
+  grid-row: span 2;
+}
+.chats > .pin-tabs + * {
+  margin-top: 8px;
+}
 .chat-list-head {
   display: flex;
   gap: 8px;
@@ -2351,11 +2362,6 @@ main.chat-window {
 .chat-dock > .conversation {
   flex: 1;
 }
-.dock-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 .dock-group {
   height: 28px;
   padding: 0 8px;
@@ -2372,32 +2378,60 @@ main.chat-window {
   flex: 1;
   padding: 16px;
 }
-.dock-chips {
-  flex: 1;
+.pin-tabs {
   display: flex;
-  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 4px;
   min-width: 0;
+  border-bottom: 1px solid var(--border);
 }
-.dock-chip-wrap {
+.pin-tabs > :not(.pin-tab-list) {
+  margin-bottom: 4px;
+}
+.pin-tab-list {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pin-tab {
   position: relative;
   display: flex;
   flex: 1 1 0;
-  min-width: 72px;
-  max-width: 160px;
+  min-width: 64px;
+  max-width: 180px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--muted);
 }
-.dock-chip {
+.pin-tab:hover {
+  background: var(--base-200);
+  color: var(--content);
+}
+.pin-tab[data-active] {
+  border-color: var(--border);
+  box-shadow: inset 0 2px var(--pin, var(--primary));
+  background: var(--base-100);
+  color: var(--content);
+}
+.pin-tab-button {
   flex: 1;
   min-width: 0;
   justify-content: flex-start;
   gap: 4px;
-  height: 28px;
+  height: 32px;
   padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   font-size: 12px;
 }
-.dock-unpin.icon {
+.pin-tab-close.icon {
   position: absolute;
-  top: 2px;
+  top: 4px;
   right: 2px;
   width: 24px;
   height: 24px;
@@ -2406,20 +2440,26 @@ main.chat-window {
   color: inherit;
   opacity: 0;
 }
-.dock-unpin .svg-icon {
+.pin-tab-close .svg-icon {
   width: 14px;
   height: 14px;
 }
-.dock-chip-wrap:is(:hover, :focus-within) .dock-unpin,
-.dock-chip[aria-pressed="true"] + .dock-unpin {
+.pin-tab:is(:hover, :focus-within, [data-active]) .pin-tab-close {
   opacity: 1;
 }
-.dock-chip-wrap:is(:hover, :focus-within) .dock-chip,
-.dock-chip[aria-pressed="true"] {
+.pin-tab:is(:hover, :focus-within, [data-active]) .pin-tab-button {
   padding-right: 28px;
 }
-.dock-chip[aria-pressed="true"] + .dock-unpin {
-  color: var(--primary-content);
+.pin-tab .pin-kbd {
+  padding: 0 4px;
+  font-size: 10px;
+}
+.pin-tab.preview .dock-title {
+  font-style: italic;
+}
+.pin-tab[data-active] .pin-kbd {
+  border-color: var(--pin, var(--primary));
+  color: var(--pin, var(--primary));
 }
 .dock-title {
   min-width: 0;
@@ -2444,13 +2484,6 @@ main.chat-window {
 .dock-dot[data-state="approval"] {
   color: var(--warning);
 }
-.dock-chip[aria-pressed="true"] .dock-dot {
-  color: inherit;
-}
-.dock-chip[aria-pressed="true"] {
-  background: var(--pin, var(--primary));
-  color: var(--primary-content);
-}
 .pin-kbd {
   flex: none;
 }
@@ -2470,10 +2503,6 @@ main.chat-window {
 .context-label {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.dock-chip .pin-kbd {
-  padding: 0 4px;
-  font-size: 10px;
 }
 .dock-kbd,
 .pin-kbd {
@@ -3769,6 +3798,13 @@ main.chat-window {
   .chats {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
+  }
+  .chats:has(> .pin-tabs) {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .chats:has(> .pin-tabs) > .chat-list {
+    grid-row: auto;
+    margin-bottom: 12px;
   }
   .chat-list:not(.collapsed) nav {
     flex-direction: row;
