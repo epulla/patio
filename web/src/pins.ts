@@ -17,10 +17,14 @@ const colorKeys = Object.keys(pinColors) as PinColor[];
 // Sets --pin, which pin icons, badges and dots read.
 export const pinStyle = (color: PinColor) => ({ "--pin": pinColors[color] }) as CSSProperties;
 
-// How the Chats page shows a group: the selected tab only, or every tab in a grid.
-export type PinView = "one" | "grid";
-const views: PinView[] = ["one", "grid"];
-export type PinGroup = Pins & { id: string; name: string; color: PinColor; view: PinView };
+// How the Chats page shows a group: the selected tab only, every tab in a grid, or a custom split.
+export type PinView = "one" | "grid" | "split";
+const views: PinView[] = ["one", "grid", "split"];
+// A split is a binary tree: a leaf shows one chat; a node splits side by side (row) or stacked (column), ratio being a's share.
+export type SplitNode = { chat: string } | { dir: "row" | "column"; ratio: number; a: SplitNode; b: SplitNode };
+export type SplitEdge = "left" | "right" | "top" | "bottom";
+export const maxPanes = 4;
+export type PinGroup = Pins & { id: string; name: string; color: PinColor; view: PinView; split?: SplitNode };
 export type PinGroups = { groups: PinGroup[]; active: string };
 
 export const maxPins = 9;
@@ -53,8 +57,55 @@ export function groupStep(event: KeyboardEvent) {
 export function unpin(id: string) {
   update((store) => ({
     ...store,
-    groups: store.groups.map((group) => (group.ids.includes(id) ? { ...group, ...pinLayout(group.ids.filter((x) => x !== id)) } : group)),
+    groups: store.groups.map((group) => (group.ids.includes(id) ? withIds(group, group.ids.filter((x) => x !== id)) : group)),
   }));
+}
+
+// New pins reset the grid sizes; panes of unpinned chats collapse.
+const withIds = (group: PinGroup, ids: string[]): PinGroup => ({ ...group, ...pinLayout(ids), split: pruneSplit(group.split, ids) });
+
+export const splitLeaves = (node: SplitNode | undefined): string[] =>
+  !node ? [] : "chat" in node ? [node.chat] : [...splitLeaves(node.a), ...splitLeaves(node.b)];
+
+// Validates a saved split and drops leaves not in ids, so a pane's sibling takes its place. Undefined when nothing is left.
+export function pruneSplit(node: unknown, ids: string[], seen = new Set<string>()): SplitNode | undefined {
+  if (!node || typeof node !== "object") return;
+  const value = node as Record<string, unknown>;
+  if (typeof value.chat === "string") {
+    if (!ids.includes(value.chat) || seen.has(value.chat)) return;
+    seen.add(value.chat);
+    return { chat: value.chat };
+  }
+  if ((value.dir !== "row" && value.dir !== "column") || typeof value.ratio !== "number" || !(value.ratio > 0 && value.ratio < 1)) return;
+  const a = pruneSplit(value.a, ids, seen);
+  const b = pruneSplit(value.b, ids, seen);
+  const pruned = a && b ? { dir: value.dir as "row" | "column", ratio: value.ratio, a, b } : a ?? b;
+  return splitLeaves(pruned).length > maxPanes ? undefined : pruned;
+}
+
+const mapLeaves = (node: SplitNode, leaf: (chat: string) => SplitNode): SplitNode =>
+  "chat" in node ? leaf(node.chat) : { ...node, a: mapLeaves(node.a, leaf), b: mapLeaves(node.b, leaf) };
+
+// Shows chat in target's pane; if chat already has a pane, the two swap.
+export const replaceLeaf = (node: SplitNode, target: string, chat: string) =>
+  mapLeaves(node, (leaf) => ({ chat: leaf === target ? chat : leaf === chat ? target : leaf }));
+
+// Moves chat (placed or not) to an edge of target's pane.
+export function splitLeaf(node: SplitNode, target: string, edge: SplitEdge, chat: string) {
+  const rest = pruneSplit(node, splitLeaves(node).filter((leaf) => leaf !== chat))!;
+  const before = edge === "left" || edge === "top";
+  return mapLeaves(rest, (leaf) =>
+    leaf !== target
+      ? { chat: leaf }
+      : { dir: edge === "left" || edge === "right" ? "row" : "column", ratio: 0.5, a: { chat: before ? chat : leaf }, b: { chat: before ? leaf : chat } },
+  );
+}
+
+// path is the a/b steps from the root to the node.
+export function setSplitRatio(node: SplitNode, path: string, ratio: number): SplitNode {
+  if ("chat" in node) return node;
+  if (!path) return { ...node, ratio };
+  return path[0] === "a" ? { ...node, a: setSplitRatio(node.a, path.slice(1), ratio) } : { ...node, b: setSplitRatio(node.b, path.slice(1), ratio) };
 }
 
 // Returns N for Cmd/Ctrl+N when N is a pinned position, else 0.
@@ -87,6 +138,7 @@ function loadGroup(saved: Partial<PinGroup> | null): PinGroup | undefined {
   if (typeof saved?.id === "string") group.id = saved.id;
   if (colorKeys.includes(saved?.color as PinColor)) group.color = saved!.color!;
   if (views.includes(saved?.view as PinView)) group.view = saved!.view!;
+  group.split = pruneSplit(saved?.split, group.ids);
   const fits = (sizes: unknown, fresh: number[]): sizes is number[] =>
     Array.isArray(sizes) && sizes.length === fresh.length && sizes.every((x) => typeof x === "number" && x > 0);
   return fits(cols, group.cols) && fits(rows, group.rows) ? { ...group, cols, rows } : group;
@@ -157,6 +209,10 @@ export function setGroupView(id: string, view: PinView) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, view } : group)) }));
 }
 
+export function setGroupSplit(id: string, split: SplitNode) {
+  update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, split } : group)) }));
+}
+
 export function setGroupColor(id: string, color: PinColor) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, color } : group)) }));
 }
@@ -179,9 +235,9 @@ export function moveToGroup(chatID: string, id: string) {
     ...store,
     groups: store.groups.map((group) =>
       group.id === id
-        ? { ...group, ...pinLayout([...group.ids, chatID]) }
+        ? withIds(group, [...group.ids, chatID])
         : group.ids.includes(chatID)
-          ? { ...group, ...pinLayout(group.ids.filter((x) => x !== chatID)) }
+          ? withIds(group, group.ids.filter((x) => x !== chatID))
           : group,
     ),
   }));

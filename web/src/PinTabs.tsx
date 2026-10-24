@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
 import type { Chat } from "./api";
 import { statusIcons, statusLabels, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
@@ -13,23 +13,30 @@ const text = {
 
 // Tabs of the active pin group: group switcher, one tab per pinned chat, then +. Extra buttons go in children.
 // preview is an unpinned open chat, shown as an italic tab until another chat replaces it.
+// placed marks tabs shown in a split pane; onTabDragStart makes tabs draggable onto panes.
 export default function PinTabs({
   chats,
   status,
   current,
   preview,
+  placed,
   onSelect,
   onUnpin,
   onGroup = setActiveGroup,
+  onTabDragStart,
+  onTabDragEnd,
   children,
 }: {
   chats: Chat[];
   status: Record<string, ChatStatus | undefined>;
   current?: string;
   preview?: { title: string; status?: ChatStatus; onClose: () => void };
+  placed?: string[];
   onSelect: (id: string) => void;
   onUnpin: (id: string) => void;
   onGroup?: (id: string) => void;
+  onTabDragStart?: (id: string, event: DragEvent, title: string) => void;
+  onTabDragEnd?: () => void;
   children?: ReactNode;
 }) {
   const t = useText(text);
@@ -72,9 +79,12 @@ export default function PinTabs({
           const title = titleOf(id);
           const state = status[id];
           return (
-            <div key={id} className="pin-tab" data-active={id === current || undefined}>
+            <div key={id} className="pin-tab" data-active={id === current || undefined} data-placed={placed?.includes(id) || undefined}>
               <button
                 className="pin-tab-button"
+                draggable={!!onTabDragStart}
+                onDragStart={onTabDragStart && ((event) => onTabDragStart(id, event, title))}
+                onDragEnd={onTabDragEnd}
                 aria-pressed={id === current}
                 aria-label={state ? `${title}, ${statusText[state]}` : title}
                 aria-keyshortcuts={pinAriaShortcut(index + 1)}

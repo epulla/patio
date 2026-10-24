@@ -2294,6 +2294,39 @@ main:has(> .chats) {
   font-weight: 600;
   pointer-events: none;
 }
+.chat-split,
+.split-node {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+.chat-split {
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+}
+/* Where a dragged tab lands: an edge half splits the pane, the whole pane replaces its chat. */
+.grid-pane[data-drop]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  pointer-events: none;
+}
+.grid-pane[data-drop="left"]::after {
+  right: 50%;
+}
+.grid-pane[data-drop="right"]::after {
+  left: 50%;
+}
+.grid-pane[data-drop="top"]::after {
+  bottom: 50%;
+}
+.grid-pane[data-drop="bottom"]::after {
+  top: 50%;
+}
 .pane-grip:active {
   cursor: grabbing;
 }
@@ -2409,6 +2442,9 @@ main.chat-window {
 }
 .pin-tab:hover {
   background: var(--base-200);
+  color: var(--content);
+}
+.pin-tab[data-placed] {
   color: var(--content);
 }
 .pin-tab[data-active] {
