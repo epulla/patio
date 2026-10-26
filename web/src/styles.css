@@ -2438,8 +2438,16 @@ main.chat-window {
   min-width: 0;
   border-bottom: 1px solid var(--border);
 }
+/* Controls share the tabs' vertical center: same 32px height, centered in the row. */
 .pin-tabs > :not(.pin-tab-list) {
-  margin-bottom: 4px;
+  align-self: center;
+}
+.pin-tabs .icon,
+.pin-tabs .dock-group {
+  height: 32px;
+}
+.pin-tabs .icon {
+  width: 32px;
 }
 .pin-tab-list {
   flex: 1;
