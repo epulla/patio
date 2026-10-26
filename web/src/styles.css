@@ -4895,3 +4895,10 @@ button.notif-row:focus-visible,
   flex-direction: column;
   gap: 6px;
 }
+.tour-nudge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}

@@ -191,7 +191,7 @@ export default function TicketDetail({
             <a href={`/api/tickets/${ticket.id}/export?format=md`} download="">
               <Icon name="download" /> {t.exportMarkdown}
             </a>
-            <button type="button" onClick={newChat}>
+            <button type="button" data-tour="ticket-chat" onClick={newChat}>
               <Icon name="chat" /> {t.newChat}
             </button>
           </div>
@@ -245,7 +245,7 @@ export default function TicketDetail({
                   }}
                 />
               </div>
-              <label>
+              <label data-tour="due">
                 {t.dueDate}
                 <DueDateInput
                   value={form.dueDate}

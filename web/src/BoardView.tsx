@@ -115,7 +115,7 @@ export default function BoardView({
             value={query}
             onChange={(event) => search(event.target.value)}
           />
-          <button className="primary" onClick={() => navigate(`/boards/${id}/new`)}>
+          <button className="primary" data-tour="new-ticket" onClick={() => navigate(`/boards/${id}/new`)}>
             <Icon name="plus" /> {t.newTicket}
           </button>
           <ExportMenu boardId={id} />

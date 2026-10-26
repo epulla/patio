@@ -551,6 +551,7 @@ export default function Chats({
               className="primary"
               data-tip={`${t.newChat} (${newChatShortcut})`}
               aria-keyshortcuts={newChatAriaShortcut}
+              data-tour="new-chat"
               onClick={newChat}
             >
               <Icon name="plus" /> {t.newChat}
@@ -1647,6 +1648,7 @@ export function Conversation({
         {onPin && (
           <IconButton
             className={pinned ? "ghost pinned" : "ghost"}
+            data-tour="pin"
             icon="pin"
             label={pinned ? `${t.unpin} (${unpinShortcut})` : t.pin}
             aria-keyshortcuts={pinned ? unpinAriaShortcut : undefined}
