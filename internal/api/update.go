@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -61,7 +62,19 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	write(w, http.StatusOK, map[string]any{"current": s.version, "latest": release.Tag, "url": release.URL, "available": newerVersion(release.Tag, s.version)})
+	write(w, http.StatusOK, map[string]any{"current": s.version, "latest": release.Tag, "url": release.URL, "download": downloadURL(release), "available": newerVersion(release.Tag, s.version)})
+}
+
+// downloadURL is this platform's file in the release, named like the release workflow's artifacts.
+func downloadURL(release releaseInfo) string {
+	asset := "patio-" + runtime.GOOS + "-" + runtime.GOARCH
+	switch runtime.GOOS {
+	case "darwin":
+		asset += ".zip"
+	case "windows":
+		asset += ".exe"
+	}
+	return strings.Replace(release.URL, "/releases/tag/", "/releases/download/", 1) + "/" + asset
 }
 
 func parseVersion(v string) ([3]uint64, bool) {
