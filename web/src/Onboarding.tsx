@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, type Board } from "./api";
+import { api, type Board, type Connector } from "./api";
 import { ErrorText, navigate } from "./App";
-import { Appearance } from "./Settings";
+import Connectors from "./Connectors";
+import { AllowedFolders, Appearance, Defaults } from "./Settings";
 import { useText } from "./i18n";
 
 const text = {
@@ -9,12 +10,16 @@ const text = {
     welcome: "Welcome to Patio", welcomeHelp: "A few quick choices and you're ready to work.",
     boardTitle: "Your first board", boardHelp: "Boards hold your tickets in columns. Pick a starting point; you can change columns later.",
     personal: "Personal", work: "Work", blank: "Blank", name: "Name", code: "Code", codeHelp: "Prefix for ticket codes, like ABC-1",
+    connectorHelp: "Optional. Patio's AI chats run through a CLI you install and sign in to (Claude Code, Codex, Copilot, opencode) or a local model. You can add one later.",
+    defaultsTitle: "Chat defaults", defaultsHelp: "How new chats start. Add a project folder to let chats work in it.",
     next: "Next", create: "Create board", skip: "Skip", skipAll: "Skip setup", finish: "Finish", step: (n: number, total: number) => `Step ${n} of ${total}`,
   },
   es: {
     welcome: "Bienvenido a Patio", welcomeHelp: "Unas elecciones rápidas y listo para trabajar.",
     boardTitle: "Tu primer tablero", boardHelp: "Los tableros guardan tus tickets en columnas. Elige un punto de partida; puedes cambiar las columnas después.",
     personal: "Personal", work: "Trabajo", blank: "En blanco", name: "Nombre", code: "Código", codeHelp: "Prefijo de los códigos de ticket, como ABC-1",
+    connectorHelp: "Opcional. Los chats de IA de Patio funcionan con una CLI que instalas e inicias sesión (Claude Code, Codex, Copilot, opencode) o con un modelo local. Puedes agregarla después.",
+    defaultsTitle: "Valores de chat", defaultsHelp: "Cómo empiezan los chats nuevos. Agrega una carpeta de proyecto para que los chats trabajen en ella.",
     next: "Siguiente", create: "Crear tablero", skip: "Omitir", skipAll: "Omitir configuración", finish: "Terminar", step: (n: number, total: number) => `Paso ${n} de ${total}`,
   },
 };
@@ -37,7 +42,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [step, setStep] = useState(0);
   const [board, setBoard] = useState<Board>();
-  const steps = ["welcome", "board"] as const;
+  const [foldersVersion, setFoldersVersion] = useState(0);
+  const steps = ["welcome", "board", "connector", "defaults"] as const;
 
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
@@ -51,6 +57,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   }
 
   const next = () => (step + 1 < steps.length ? setStep(step + 1) : finish());
+
+  async function afterConnector() {
+    const connectors = await api.get<Connector[]>("/api/connectors").catch(() => []);
+    if (connectors.length) next();
+    else void finish();
+  }
 
   return (
     <dialog ref={dialog} className="create-dialog" aria-labelledby="onboarding-title" onCancel={(event) => event.preventDefault()}>
@@ -83,6 +95,35 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             }}
             onSkip={next}
           />
+        )}
+        {steps[step] === "connector" && (
+          <>
+            <p className="muted" id="onboarding-title">{t.connectorHelp}</p>
+            <Connectors refresh={0} />
+            <div className="modal-actions">
+              <button type="button" onClick={finish}>
+                {t.skip}
+              </button>
+              <button className="primary" onClick={afterConnector}>
+                {t.next}
+              </button>
+            </div>
+          </>
+        )}
+        {steps[step] === "defaults" && (
+          <>
+            <div>
+              <h1 id="onboarding-title">{t.defaultsTitle}</h1>
+              <p className="muted">{t.defaultsHelp}</p>
+            </div>
+            <Defaults foldersVersion={foldersVersion} />
+            <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
+            <div className="modal-actions">
+              <button className="primary" onClick={finish}>
+                {t.finish}
+              </button>
+            </div>
+          </>
         )}
       </section>
     </dialog>

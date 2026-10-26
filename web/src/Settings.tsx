@@ -192,7 +192,7 @@ const text = {
   },
 };
 
-function AllowedFolders({ onChange }: { onChange: () => void }) {
+export function AllowedFolders({ onChange }: { onChange: () => void }) {
   const t = useText(text);
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [path, setPath] = useState("");
@@ -484,7 +484,7 @@ export function Appearance() {
   );
 }
 
-function Defaults({ foldersVersion }: { foldersVersion: number }) {
+export function Defaults({ foldersVersion }: { foldersVersion: number }) {
   const t = useText(text);
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [connectors, setConnectors] = useState<Connector[]>([]);
