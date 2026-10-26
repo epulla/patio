@@ -4824,6 +4824,10 @@ button.notif-row:focus-visible,
   margin: 0;
   font-size: 15px;
 }
+.onboarding .stack > p,
+.onboarding .panel > p:first-child {
+  margin: 0;
+}
 .onboarding .modal-actions {
   margin-top: 4px;
 }

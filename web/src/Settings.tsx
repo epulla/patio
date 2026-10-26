@@ -595,7 +595,7 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
 
 type ChatCleanupSettings = { enabled: boolean; days: number };
 
-function ChatCleanup() {
+export function ChatCleanup() {
   const t = useText(text);
   const [settings, setSettings] = useState<ChatCleanupSettings>();
   const [days, setDays] = useState("");

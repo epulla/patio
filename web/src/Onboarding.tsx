@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type Board, type Connector } from "./api";
 import { ErrorText, navigate } from "./App";
 import Connectors from "./Connectors";
-import { AllowedFolders, Appearance, Defaults } from "./Settings";
+import { AllowedFolders, Appearance, ChatCleanup, Defaults } from "./Settings";
 import { useText } from "./i18n";
 
 const text = {
@@ -10,7 +10,7 @@ const text = {
     welcome: "Welcome to Patio", welcomeHelp: "A few quick choices and you're ready to work.",
     boardTitle: "Your first board", boardHelp: "Boards hold your tickets in columns. Pick a starting point; you can change columns later.",
     personal: "Personal", work: "Work", blank: "Blank", personalHelp: "Everyday to-dos", workHelp: "A fuller flow with review", blankHelp: "Start minimal", columns: "Columns", name: "Name", code: "Code", codeHelp: "Prefix for ticket codes, like ABC-1",
-    connectorTitle: "Connect an AI", connectorHelp: "Optional. Chats run through a CLI you install and sign in to, or a local model. You can add one later.",
+    connectorTitle: "Connect an AI", connectorHelp: "Pick the AI that Patio's chats use.", connectorTip: "Recommended: a connector unlocks most of Patio, with AI chats that read and update your boards and tickets, skills, and scheduled prompts. You can also add one later.",
     defaultsTitle: "Chat defaults", defaultsHelp: "How new chats start. Add a project folder to let chats work in it.",
     next: "Next", create: "Create board", skip: "Skip", skipAll: "Skip setup", finish: "Finish", step: (n: number, total: number) => `Step ${n} of ${total}`,
   },
@@ -18,7 +18,7 @@ const text = {
     welcome: "Bienvenido a Patio", welcomeHelp: "Unas elecciones rápidas y listo para trabajar.",
     boardTitle: "Tu primer tablero", boardHelp: "Los tableros guardan tus tickets en columnas. Elige un punto de partida; puedes cambiar las columnas después.",
     personal: "Personal", work: "Trabajo", blank: "En blanco", personalHelp: "Pendientes del día a día", workHelp: "Un flujo más completo con revisión", blankHelp: "Empieza con lo mínimo", columns: "Columnas", name: "Nombre", code: "Código", codeHelp: "Prefijo de los códigos de ticket, como ABC-1",
-    connectorTitle: "Conecta una IA", connectorHelp: "Opcional. Los chats funcionan con una CLI que instalas e inicias sesión, o con un modelo local. Puedes agregarla después.",
+    connectorTitle: "Conecta una IA", connectorHelp: "Elige la IA que usan los chats de Patio.", connectorTip: "Recomendado: un conector desbloquea casi todo Patio, con chats de IA que leen y actualizan tus tableros y tickets, habilidades y prompts programados. También puedes agregarlo después.",
     defaultsTitle: "Valores de chat", defaultsHelp: "Cómo empiezan los chats nuevos. Agrega una carpeta de proyecto para que los chats trabajen en ella.",
     next: "Siguiente", create: "Crear tablero", skip: "Omitir", skipAll: "Omitir configuración", finish: "Terminar", step: (n: number, total: number) => `Paso ${n} de ${total}`,
   },
@@ -110,6 +110,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         {steps[step] === "connector" && (
           <>
             <Intro title={t.connectorTitle} help={t.connectorHelp} />
+            <p className="callout">{t.connectorTip}</p>
             <Connectors refresh={0} embedded />
             <div className="modal-actions">
               <button className="primary" onClick={afterConnector}>
@@ -123,6 +124,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             <Intro title={t.defaultsTitle} help={t.defaultsHelp} />
             <Defaults foldersVersion={foldersVersion} />
             <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
+            <ChatCleanup />
             <div className="modal-actions">
               <button className="primary" onClick={finish}>
                 {t.finish}
