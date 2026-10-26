@@ -248,6 +248,17 @@ export function setGroupColor(id: string, color: PinColor) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, color } : group)) }));
 }
 
+// Moves a group to index (counted before the move, like moveTab).
+export function moveGroup(id: string, index: number) {
+  update((store) => {
+    const from = store.groups.findIndex((group) => group.id === id);
+    if (from < 0) return store;
+    const groups = store.groups.filter((group) => group.id !== id);
+    groups.splice(Math.max(0, Math.min(groups.length, index > from ? index - 1 : index)), 0, store.groups[from]);
+    return { ...store, groups };
+  });
+}
+
 // Deleting a group only unpins its chats; the last group can't be deleted.
 export function deleteGroup(id: string) {
   if (store.groups.length < 2) return;

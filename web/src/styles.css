@@ -2146,6 +2146,9 @@ main:has(> .chats) {
   align-items: center;
   gap: 2px;
 }
+.group-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--primary);
+}
 .chat-row .chat-link {
   flex: 1;
   min-width: 0;
