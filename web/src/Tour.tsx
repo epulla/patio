@@ -239,6 +239,10 @@ export default function Tour({ onClose }: { onClose: () => void }) {
 
   const pad = 4;
   const spot = ready && rect;
+  // While the next stop settles, the hidden card keeps its last position instead of jumping to the center.
+  const shown = useRef<DOMRect | undefined>(undefined);
+  if (ready || !stop) shown.current = rect;
+  const at = shown.current;
   const [title, body] = stop ? t.steps[stop.id] : [t.loading, ""];
 
   return (
@@ -254,16 +258,16 @@ export default function Tour({ onClose }: { onClose: () => void }) {
     >
       {spot ? (
         <div
+          key="spot"
           className="tour-spot"
           style={{ top: rect.top - pad, left: rect.left - pad, width: rect.width + pad * 2, height: rect.height + pad * 2 }}
         />
       ) : (
-        <div className="tour-backdrop" />
+        <div key="backdrop" className="tour-backdrop" />
       )}
-      {/* Hidden until the target settles, so the card appears in place instead of sliding from the center. */}
       <section
-        className={`panel tour-card${spot ? "" : " centered"}${stop && !ready ? " pending" : ""}`}
-        style={spot ? place(rect) : undefined}
+        className={`panel tour-card${at ? "" : " centered"}${stop && !ready ? " pending" : ""}`}
+        style={at ? place(at) : undefined}
         aria-live="polite"
       >
         {stop && (

@@ -4756,7 +4756,6 @@ button.notif-row:focus-visible,
   border-radius: var(--radius-field);
   box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.5);
   pointer-events: none;
-  transition: all 0.2s ease;
 }
 .tour-card {
   position: fixed;
@@ -4767,6 +4766,7 @@ button.notif-row:focus-visible,
 .tour-card.pending {
   opacity: 0;
   pointer-events: none;
+  transition: none;
 }
 .tour-card.centered {
   top: 50%;
@@ -4778,7 +4778,6 @@ button.notif-row:focus-visible,
   margin: 0 0 8px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .tour-spot,
   .tour-card {
     transition: none;
   }
