@@ -307,6 +307,17 @@ a {
 }
 .sidebar-foot .nav-item {
   flex: 1;
+  min-width: 0;
+}
+/* Longer labels (e.g. "Configuración") plus up to three icons must fit the 260px sidebar. */
+.sidebar-foot .nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar:not(.collapsed) .sidebar-foot .icon {
+  width: 34px;
 }
 .sidebar.collapsed .sidebar-foot {
   flex-direction: column-reverse;

@@ -45,7 +45,7 @@ const text = {
     steps: {
       intro: ["Bienvenido a Patio", "Patio organiza tu trabajo en tableros de tickets, con chats de IA que pueden leerlos y actualizarlos. Este recorrido te muestra las piezas principales en unos dos minutos."],
       boards: ["Tableros", "Aquí están todos tus tableros. Cada tablero tiene además un acceso más abajo en la barra lateral; arrástralos para reordenar."],
-      noBoard: ["Primero crea un tablero", "Los tickets viven en tableros. Ve a Tableros y presiona Crear tablero; luego repite este recorrido desde Configuración para ver los tickets de cerca."],
+      noBoard: ["Primero crea un tablero", "Los tickets viven en tableros. Ve a Tableros y presiona Crear tablero; luego repite este recorrido desde Ajustes para ver los tickets de cerca."],
       columns: ["Columnas", "Un tablero es un conjunto de columnas, una por estado. Cambia, agrega o reordena columnas en la configuración del tablero."],
       newTicket: ["Nuevo ticket", "Agrega trabajo aquí: un título, una descripción opcional en Markdown, un tipo y una fecha de vencimiento."],
       card: ["Tickets", "Agregamos un ticket de ejemplo. Arrastra las tarjetas entre columnas para cambiar su estado y haz clic en una para abrirla."],
@@ -63,7 +63,7 @@ const text = {
       monitors: ["Monitores", "Ejecuta una herramienta MCP según un horario y recibe un aviso cuando su resultado cambia."],
       scheduled: ["Tareas programadas", "Ejecuta un prompt según un horario, como un resumen diario de tus tableros."],
       patioMcp: ["Usa Patio desde otras apps de IA", "Patio también es un servidor MCP. Copia esta configuración en Claude Desktop, Claude Code u otro cliente para manejar tus tableros desde ahí."],
-      foot: ["Configuración y avisos", `Aquí están la configuración, el tema y las notificaciones. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Configuración.`],
+      foot: ["Ajustes y avisos", `Aquí están los ajustes, el tema y las notificaciones. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Ajustes.`],
     },
   },
 };

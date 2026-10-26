@@ -19,7 +19,7 @@ const text = {
     clientId: "OAuth client ID (optional)", clientSecret: "OAuth client secret", scopes: "Scopes (space-separated)", clientNote: "Only for providers without automatic client registration, like Google. Leave empty otherwise.",
   },
   es: {
-    addServer: "Agregar servidor", title: "Servidores MCP", settings: "Configuración", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
+    addServer: "Agregar servidor", title: "Servidores MCP", settings: "Ajustes", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
     introEnd: "). Claude Code, Copilot y opencode preguntan antes de usar sus herramientas; Codex las ejecuta sin preguntar.",
     empty: "Aún no hay servidores. Agrega una URL remota (HTTP) o un comando local (stdio).", finishLogin: "Termina de iniciar sesión en tu navegador.",
     deleteQuestion: (name: string) => `¿Eliminar el servidor MCP «${name}»?`, signInRequired: "Debes iniciar sesión", checking: "Comprobando…", healthy: (latency: number, n: number) => `Disponible · ${latency} ms · ${n} herramienta${n === 1 ? "" : "s"}`, unreachable: "No disponible",
