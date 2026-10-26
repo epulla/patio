@@ -30,6 +30,7 @@ const text = {
     general: "General",
     keyboardShortcuts: "Keyboard shortcuts",
     version: "Version",
+    checkUpdates: "Check for updates", upToDate: "You're up to date.", devBuild: "Development build; updates aren't checked.", updateAvailable: (v: string) => `${v} is available.`, download: "Download",
     database: "Database",
     logs: "Logs",
     showIn: (manager: string) => `Show in ${manager}`,
@@ -116,6 +117,7 @@ const text = {
     general: "General",
     keyboardShortcuts: "Atajos de teclado",
     version: "Versión",
+    checkUpdates: "Buscar actualizaciones", upToDate: "Tienes la última versión.", devBuild: "Versión de desarrollo; no se buscan actualizaciones.", updateAvailable: (v: string) => `${v} está disponible.`, download: "Descargar",
     database: "Base de datos",
     logs: "Registros",
     showIn: (manager: string) => `Mostrar en ${manager}`,
@@ -290,11 +292,32 @@ export function formatBytes(bytes: number) {
   return `${value.toFixed(unit === 0 || value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
+type UpdateInfo = { current: string; latest: string; url: string; available: boolean };
+
 function General() {
   const t = useText(text);
   const [about, setAbout] = useState<SettingsAbout>();
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<unknown>();
+  const [update, setUpdate] = useState<UpdateInfo | "checking">();
+  const [updateError, setUpdateError] = useState<unknown>();
+
+  async function checkUpdates() {
+    setUpdate("checking");
+    setUpdateError(undefined);
+    try {
+      setUpdate(await api.get<UpdateInfo>("/api/update"));
+    } catch (reason) {
+      setUpdate(undefined);
+      setUpdateError(reason);
+    }
+  }
+
+  function openUrl(event: MouseEvent<HTMLAnchorElement>, url: string) {
+    if (!window.runtime) return;
+    event.preventDefault();
+    window.runtime.BrowserOpenURL(url);
+  }
 
   useEffect(() => {
     api.get<SettingsAbout>("/api/settings/about").then(setAbout).catch(setError);
@@ -340,6 +363,28 @@ function General() {
             <dt>{t.version}</dt>
             <dd>
               <code>{about.version}</code> · {about.os}/{about.arch}
+              <span className="about-actions">
+                <button type="button" onClick={checkUpdates} disabled={update === "checking"}>
+                  {update === "checking" ? t.checking : t.checkUpdates}
+                </button>
+              </span>
+              {update && update !== "checking" && (
+                <span className="muted" role="status">
+                  {update.available ? (
+                    <>
+                      {t.updateAvailable(update.latest)}{" "}
+                      <a href={update.url} target="_blank" rel="noreferrer" onClick={(event) => openUrl(event, update.url)}>
+                        {t.download}
+                      </a>
+                    </>
+                  ) : about.version === "dev" ? (
+                    t.devBuild
+                  ) : (
+                    t.upToDate
+                  )}
+                </span>
+              )}
+              <ErrorText error={updateError} />
             </dd>
             <dt>{t.database}</dt>
             <dd>

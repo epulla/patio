@@ -275,7 +275,7 @@ func main() {
 				}
 			}()
 			if *chatWindow == "" {
-				background.Add(4)
+				background.Add(5)
 				go func() {
 					defer background.Done()
 					if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
@@ -292,6 +292,12 @@ func main() {
 					defer background.Done()
 					if err := apiServer.StartHealthMonitor(backgroundCtx, 5*time.Minute); err != nil {
 						log.Printf("monitor health: %v", err)
+					}
+				}()
+				go func() {
+					defer background.Done()
+					if err := apiServer.StartUpdateChecker(backgroundCtx, 24*time.Hour); err != nil {
+						log.Printf("check for update: %v", err)
 					}
 				}()
 				go func() {

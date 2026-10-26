@@ -20,6 +20,10 @@ type Server struct {
 	userID          string
 	showHidden      bool
 	version         string
+	updateURL       string
+	releaseMu       sync.Mutex
+	release         releaseInfo
+	releaseAt       time.Time
 	dbDir           string
 	dbPath          string
 	logPath         string
@@ -54,6 +58,7 @@ type Options struct {
 	findCodex       func() (string, error)
 	codexStart      func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error)
 	version         string
+	UpdateURL       string
 	findCopilot     func() (string, error)
 	mcpExecutable   string
 	PatioMCPTools   []string
@@ -97,7 +102,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
+	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -166,6 +171,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("PUT /api/settings/chat-cleanup", s.putChatCleanup)
 	m.HandleFunc("POST /api/chats/cleanup", s.runChatCleanup)
 	m.HandleFunc("GET /api/settings/about", s.settingsAbout)
+	m.HandleFunc("GET /api/update", s.update)
 	m.HandleFunc("POST /api/settings/reveal", s.revealSettingsTarget)
 	m.HandleFunc("GET /api/chats", s.listChats)
 	m.HandleFunc("POST /api/chats", s.createChat)

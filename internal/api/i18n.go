@@ -39,6 +39,7 @@ func notificationText(db *sql.DB, text string) string {
 		"Approval needed: ": "Se requiere aprobación: ", " has a question": " tiene una pregunta",
 		"MCP server down: ": "Servidor MCP desconectado: ", "Connector down: ": "Conector desconectado: ",
 		"Not installed": "No está instalado", "Not logged in": "No ha iniciado sesión",
+		" is available": " está disponible", "Open the release page to download it. You have ": "Abre la página de la versión para descargarla. Tienes ",
 	}
 	for english, spanish := range translations {
 		if strings.HasPrefix(text, english) {
