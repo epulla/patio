@@ -2484,6 +2484,15 @@ main.chat-window {
   color: inherit;
   font-size: 12px;
 }
+/* The tab paints hover and the active stripe; the generic button:hover fill would cover both. */
+.pin-tab-button:hover,
+.pin-tab-button[aria-pressed="true"],
+.pin-tab-close.icon:hover {
+  background: transparent;
+}
+.pin-tab-close.icon:hover {
+  color: var(--content);
+}
 .pin-tab-close.icon {
   position: absolute;
   top: 4px;
