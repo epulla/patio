@@ -4779,3 +4779,97 @@ button.notif-row:focus-visible,
     transition: none;
   }
 }
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.panel.onboarding {
+  padding: 28px 32px;
+}
+.onboarding-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.onboarding-progress {
+  display: flex;
+  gap: 6px;
+}
+.onboarding-progress span {
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--base-300);
+}
+.onboarding-progress span.on {
+  background: var(--primary);
+}
+.onboarding-intro h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+}
+.onboarding-intro p {
+  margin: 0;
+}
+.onboarding .panel {
+  box-shadow: none;
+  padding: 16px;
+}
+.onboarding .stack {
+  gap: 10px;
+}
+.onboarding .stack > h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.onboarding .modal-actions {
+  margin-top: 4px;
+}
+.onboarding .connector-add {
+  align-self: flex-start;
+}
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-box);
+  cursor: pointer;
+}
+.preset-card input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.preset-card:has(:checked) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.preset-card:has(:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.preset-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.preset-columns span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--base-200);
+  color: var(--muted);
+  font-size: 12px;
+}

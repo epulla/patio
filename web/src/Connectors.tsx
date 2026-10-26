@@ -65,7 +65,7 @@ const presets = [
   { label: "llama.cpp", url: "http://127.0.0.1:8080/v1" },
 ];
 
-export default function Connectors({ refresh }: { refresh: number }) {
+export default function Connectors({ refresh, embedded }: { refresh: number; embedded?: boolean }) {
   const t = useText(text);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [error, setError] = useState<unknown>();
@@ -84,20 +84,27 @@ export default function Connectors({ refresh }: { refresh: number }) {
 
   return (
     <div className="stack">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">AI</p>
-          <h1>{t.connectors}</h1>
+      {!embedded && (
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">AI</p>
+            <h1>{t.connectors}</h1>
+          </div>
+          <button className="primary" onClick={() => setEditing("new")}>
+            <Icon name="plus" /> {t.add}
+          </button>
         </div>
-        <button className="primary" onClick={() => setEditing("new")}>
-          <Icon name="plus" /> {t.add}
-        </button>
-      </div>
+      )}
       <p className="muted">
         {t.intro}
       </p>
       <ErrorText error={error} />
-      {connectors.length === 0 && !error && (
+      {embedded && (
+        <button className="connector-add" onClick={() => setEditing("new")}>
+          <Icon name="plus" /> {t.add}
+        </button>
+      )}
+      {connectors.length === 0 && !error && !embedded && (
         <p className="callout">{t.empty}</p>
       )}
       <div className="connector-grid">

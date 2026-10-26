@@ -10,7 +10,7 @@ const text = {
     welcome: "Welcome to Patio", welcomeHelp: "A few quick choices and you're ready to work.",
     boardTitle: "Your first board", boardHelp: "Boards hold your tickets in columns. Pick a starting point; you can change columns later.",
     personal: "Personal", work: "Work", blank: "Blank", name: "Name", code: "Code", codeHelp: "Prefix for ticket codes, like ABC-1",
-    connectorHelp: "Optional. Patio's AI chats run through a CLI you install and sign in to (Claude Code, Codex, Copilot, opencode) or a local model. You can add one later.",
+    connectorTitle: "Connect an AI", connectorHelp: "Optional. Chats run through a CLI you install and sign in to, or a local model. You can add one later.",
     defaultsTitle: "Chat defaults", defaultsHelp: "How new chats start. Add a project folder to let chats work in it.",
     next: "Next", create: "Create board", skip: "Skip", skipAll: "Skip setup", finish: "Finish", step: (n: number, total: number) => `Step ${n} of ${total}`,
   },
@@ -18,7 +18,7 @@ const text = {
     welcome: "Bienvenido a Patio", welcomeHelp: "Unas elecciones rápidas y listo para trabajar.",
     boardTitle: "Tu primer tablero", boardHelp: "Los tableros guardan tus tickets en columnas. Elige un punto de partida; puedes cambiar las columnas después.",
     personal: "Personal", work: "Trabajo", blank: "En blanco", name: "Nombre", code: "Código", codeHelp: "Prefijo de los códigos de ticket, como ABC-1",
-    connectorHelp: "Opcional. Los chats de IA de Patio funcionan con una CLI que instalas e inicias sesión (Claude Code, Codex, Copilot, opencode) o con un modelo local. Puedes agregarla después.",
+    connectorTitle: "Conecta una IA", connectorHelp: "Opcional. Los chats funcionan con una CLI que instalas e inicias sesión, o con un modelo local. Puedes agregarla después.",
     defaultsTitle: "Valores de chat", defaultsHelp: "Cómo empiezan los chats nuevos. Agrega una carpeta de proyecto para que los chats trabajen en ella.",
     next: "Siguiente", create: "Crear tablero", skip: "Omitir", skipAll: "Omitir configuración", finish: "Terminar", step: (n: number, total: number) => `Paso ${n} de ${total}`,
   },
@@ -37,13 +37,23 @@ const presets: Record<Preset, { code: string; columns: { name: string; type: str
   blank: { code: "BRD", columns: [{ name: "To Do", ...todo }, { name: "Done", ...done }] },
 };
 
+const steps = ["welcome", "board", "connector", "defaults"] as const;
+
+function Intro({ title, help }: { title: string; help: string }) {
+  return (
+    <div className="onboarding-intro">
+      <h1 id="onboarding-title">{title}</h1>
+      <p className="muted">{help}</p>
+    </div>
+  );
+}
+
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const t = useText(text);
   const dialog = useRef<HTMLDialogElement>(null);
   const [step, setStep] = useState(0);
   const [board, setBoard] = useState<Board>();
   const [foldersVersion, setFoldersVersion] = useState(0);
-  const steps = ["welcome", "board", "connector", "defaults"] as const;
 
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
@@ -66,19 +76,20 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
   return (
     <dialog ref={dialog} className="create-dialog" aria-labelledby="onboarding-title" onCancel={(event) => event.preventDefault()}>
-      <section className="panel create create-modal stack">
-        <div className="page-heading">
-          <p className="eyebrow">{t.step(step + 1, steps.length)}</p>
+      <section className="panel create-modal onboarding">
+        <header className="onboarding-head">
+          <div className="onboarding-progress" role="progressbar" aria-valuemin={1} aria-valuemax={steps.length} aria-valuenow={step + 1} aria-valuetext={t.step(step + 1, steps.length)}>
+            {steps.map((id, index) => (
+              <span key={id} className={index <= step ? "on" : undefined} />
+            ))}
+          </div>
           <button type="button" className="ghost" onClick={finish}>
             {t.skipAll}
           </button>
-        </div>
+        </header>
         {steps[step] === "welcome" && (
           <>
-            <div>
-              <h1 id="onboarding-title">{t.welcome}</h1>
-              <p className="muted">{t.welcomeHelp}</p>
-            </div>
+            <Intro title={t.welcome} help={t.welcomeHelp} />
             <Appearance />
             <div className="modal-actions">
               <button className="primary" onClick={next}>
@@ -98,12 +109,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         )}
         {steps[step] === "connector" && (
           <>
-            <p className="muted" id="onboarding-title">{t.connectorHelp}</p>
-            <Connectors refresh={0} />
+            <Intro title={t.connectorTitle} help={t.connectorHelp} />
+            <Connectors refresh={0} embedded />
             <div className="modal-actions">
-              <button type="button" onClick={finish}>
-                {t.skip}
-              </button>
               <button className="primary" onClick={afterConnector}>
                 {t.next}
               </button>
@@ -112,10 +120,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         )}
         {steps[step] === "defaults" && (
           <>
-            <div>
-              <h1 id="onboarding-title">{t.defaultsTitle}</h1>
-              <p className="muted">{t.defaultsHelp}</p>
-            </div>
+            <Intro title={t.defaultsTitle} help={t.defaultsHelp} />
             <Defaults foldersVersion={foldersVersion} />
             <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
             <div className="modal-actions">
@@ -160,16 +165,18 @@ function FirstBoard({ onCreated, onSkip }: { onCreated: (board: Board) => void; 
   }
 
   return (
-    <form className="stack" onSubmit={submit}>
-      <div>
-        <h1 id="onboarding-title">{t.boardTitle}</h1>
-        <p className="muted">{t.boardHelp}</p>
-      </div>
-      <fieldset className="palette-picker">
+    <form className="onboarding" onSubmit={submit}>
+      <Intro title={t.boardTitle} help={t.boardHelp} />
+      <fieldset className="preset-grid">
         {(Object.keys(presets) as Preset[]).map((id) => (
-          <label key={id} className="palette-option">
+          <label key={id} className="preset-card">
             <input type="radio" name="preset" value={id} checked={preset === id} onChange={() => pick(id)} />
-            {t[id]} <span className="muted">· {presets[id].columns.map((column) => column.name).join(" / ")}</span>
+            <strong>{t[id]}</strong>
+            <span className="preset-columns">
+              {presets[id].columns.map((column) => (
+                <span key={column.name}>{column.name}</span>
+              ))}
+            </span>
           </label>
         ))}
       </fieldset>
@@ -185,7 +192,7 @@ function FirstBoard({ onCreated, onSkip }: { onCreated: (board: Board) => void; 
       </div>
       <ErrorText error={error} />
       <div className="modal-actions">
-        <button type="button" onClick={onSkip}>
+        <button type="button" className="ghost" onClick={onSkip}>
           {t.skip}
         </button>
         <button className="primary">{t.create}</button>
