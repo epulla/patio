@@ -41,7 +41,7 @@ import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
-import PinTabs, { dragGhost } from "./PinTabs";
+import PinTabs, { dragGhost, reorderType as pinTabType } from "./PinTabs";
 import type { usePinnedChats } from "./ChatDock";
 import { lang, locale, useText } from "./i18n";
 
@@ -210,6 +210,7 @@ export default function Chats({
   const showGroups = pinnedIds.size > 0 || groups.groups.length > 1;
   const [renaming, setRenaming] = useState<string>();
   const [dropGroup, setDropGroup] = useState<number>();
+  const [dropInto, setDropInto] = useState<string>();
   const [listOpen, setListOpen] = useState(() => localStorage.getItem("chat-list") !== "closed");
   const [cursor, setCursor] = useState<string | null>(null);
   const loadedCount = useRef(0);
@@ -681,7 +682,7 @@ export default function Chats({
             groups.groups.map((group, index) => (
               <div
                 key={group.id}
-                className={dropGroup === index ? "chat-row group-row drop-before" : "chat-row group-row"}
+                className={`chat-row group-row${dropGroup === index ? " drop-before" : ""}${dropInto === group.id ? " drop-into" : ""}`}
                 style={pinStyle(group.color)}
                 draggable={renaming !== group.id}
                 title={t.dragGroup}
@@ -690,15 +691,31 @@ export default function Chats({
                   event.dataTransfer.effectAllowed = "move";
                 }}
                 onDragOver={(event) => {
+                  // A pinned tab dropped on a group moves the chat there; a group row reorders.
+                  if (event.dataTransfer.types.includes(pinTabType)) {
+                    event.preventDefault();
+                    return setDropInto(group.id);
+                  }
                   if (!event.dataTransfer.types.includes(groupDragType)) return;
                   event.preventDefault();
                   setDropGroup(dropIndex(event, index));
                 }}
-                onDragLeave={() => setDropGroup(undefined)}
+                onDragLeave={(event) => {
+                  // Moving onto the row's own button or menu isn't leaving the row.
+                  if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                  setDropGroup(undefined);
+                  setDropInto(undefined);
+                }}
                 onDrop={(event) => {
+                  const chatID = event.dataTransfer.getData(pinTabType);
+                  if (chatID) {
+                    event.preventDefault();
+                    moveChat(chatID, group.id, group.name);
+                  }
                   const dragged = event.dataTransfer.getData(groupDragType);
                   if (dragged) moveGroup(dragged, dropIndex(event, index));
                   setDropGroup(undefined);
+                  setDropInto(undefined);
                 }}
                 onDragEnd={() => setDropGroup(undefined)}
               >

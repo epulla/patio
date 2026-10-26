@@ -2149,6 +2149,11 @@ main:has(> .chats) {
 .group-row.drop-before {
   box-shadow: inset 0 2px 0 var(--primary);
 }
+.group-row.drop-into {
+  border-radius: var(--radius-field);
+  box-shadow: inset 0 0 0 2px var(--pin, var(--primary));
+  background: var(--base-200);
+}
 .chat-row .chat-link {
   flex: 1;
   min-width: 0;

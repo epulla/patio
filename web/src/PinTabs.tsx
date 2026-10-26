@@ -16,7 +16,8 @@ const text = {
 // preview is an unpinned open chat, shown as an italic tab until another chat replaces it.
 // placed marks tabs shown in a split pane; onTabDragStart also lets tabs be dropped onto panes.
 
-const reorderType = "application/x-pin-tab";
+// Exported so pin group rows in the chat list accept a dragged tab.
+export const reorderType = "application/x-pin-tab";
 
 // WebKit snapshots only painted pixels, so drag a solid card instead of the transparent tab or header.
 export function dragGhost(event: DragEvent, title: string) {
