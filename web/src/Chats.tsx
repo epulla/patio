@@ -36,7 +36,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
+import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, groupDropIndex as dropIndex, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
@@ -2024,12 +2024,6 @@ export function Conversation({
   );
 }
 
-const groupDragType = "application/x-pin-group";
-// Insertion index for a group dropped on a row: before it on the top half, after it on the bottom half.
-const dropIndex = (event: DragEvent, index: number) => {
-  const box = event.currentTarget.getBoundingClientRect();
-  return event.clientY > box.top + box.height / 2 ? index + 1 : index;
-};
 const maxAttachments = 10;
 const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 

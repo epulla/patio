@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type CSSProperties } from "react";
+import { useSyncExternalStore, type CSSProperties, type DragEvent } from "react";
 
 export type Pins = { ids: string[]; cols: number[]; rows: number[] };
 // Presets rather than a free picker, so every color reads in both themes.
@@ -247,6 +247,13 @@ export function setGroupSplit(id: string, split: SplitNode) {
 export function setGroupColor(id: string, color: PinColor) {
   update((store) => ({ ...store, groups: store.groups.map((group) => (group.id === id ? { ...group, color } : group)) }));
 }
+
+export const groupDragType = "application/x-pin-group";
+// Insertion index for a group dropped on a row: before it on the top half, after it on the bottom half.
+export const groupDropIndex = (event: DragEvent, index: number) => {
+  const box = event.currentTarget.getBoundingClientRect();
+  return event.clientY > box.top + box.height / 2 ? index + 1 : index;
+};
 
 // Moves a group to index (counted before the move, like moveTab).
 export function moveGroup(id: string, index: number) {

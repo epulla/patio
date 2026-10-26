@@ -1,10 +1,10 @@
-import { useState, type DragEvent, type ReactNode } from "react";
+import { useRef, useState, type DragEvent, type PointerEvent, type ReactNode } from "react";
 import type { Chat } from "./api";
 import { statusIcons, statusLabels, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import { openShortcuts, shortcutsAriaShortcut, shortcutsShortcut } from "./Shortcuts";
-import { groupAriaShortcuts, groupShortcuts, maxPins, moveTab, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
+import { groupAriaShortcuts, groupShortcuts, maxPins, moveGroup, moveTab, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
@@ -61,6 +61,9 @@ export default function PinTabs({
   const titleOf = (id: string) => chats.find((chat) => chat.id === id)?.title ?? t.chat;
   // Insertion point while a tab is dragged over the bar: before the tab at this index.
   const [dropAt, setDropAt] = useState<number>();
+  // Same for a group dragged inside the group menu.
+  const [groupDropAt, setGroupDropAt] = useState<number>();
+  const groupDrag = useMenuDrag(setGroupDropAt);
 
   return (
     <div className="pin-tabs" style={pinStyle(group.color)}>
@@ -76,12 +79,16 @@ export default function PinTabs({
           }
         >
           {(close) =>
-            groups.groups.map((item) => (
+            groups.groups.map((item, index) => (
               <button
                 key={item.id}
                 role="menuitemradio"
                 aria-checked={item.id === groups.active}
-                onClick={() => (close(), onGroup(item.id))}
+                className={groupDropAt === index ? "drop-before" : groupDropAt === index + 1 && index === groups.groups.length - 1 ? "drop-after" : undefined}
+                onPointerDown={(event) => groupDrag.start(event, item.id)}
+                onPointerMove={groupDrag.move}
+                onPointerUp={groupDrag.end}
+                onClick={() => (groupDrag.wasDrag() ? undefined : (close(), onGroup(item.id)))}
               >
                 <span className="menu-check">{item.id === groups.active && <Icon name="check" />}</span>
                 <span className="pin-mark" style={pinStyle(item.color)} aria-hidden="true"><Icon name="boards" /></span>
@@ -198,4 +205,41 @@ export default function PinTabs({
       {children}
     </div>
   );
+}
+
+// Pointer-based reordering for menu items: the menu cancels mousedown (so WebKit keeps it open), which blocks native drag.
+function useMenuDrag(setDropAt: (index: number | undefined) => void) {
+  const drag = useRef<{ id: string; y: number; moved: boolean; at?: number } | undefined>(undefined);
+  const dragged = useRef(false);
+  const indexAt = (event: PointerEvent<HTMLElement>) => {
+    const items = [...(event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])];
+    const after = items.findIndex((item) => event.clientY < item.getBoundingClientRect().top + item.offsetHeight / 2);
+    return after < 0 ? items.length : after;
+  };
+  return {
+    start(event: PointerEvent<HTMLElement>, id: string) {
+      if (event.button !== 0) return;
+      drag.current = { id, y: event.clientY, moved: false };
+      dragged.current = false;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    move(event: PointerEvent<HTMLElement>) {
+      const current = drag.current;
+      if (!current) return;
+      if (!current.moved && Math.abs(event.clientY - current.y) < 4) return;
+      current.moved = true;
+      current.at = indexAt(event);
+      setDropAt(current.at);
+    },
+    end() {
+      const current = drag.current;
+      drag.current = undefined;
+      if (current?.moved && current.at !== undefined) {
+        dragged.current = true;
+        moveGroup(current.id, current.at);
+      }
+      setDropAt(undefined);
+    },
+    wasDrag: () => dragged.current,
+  };
 }
