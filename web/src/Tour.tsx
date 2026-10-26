@@ -170,6 +170,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const nextButton = useRef<HTMLButtonElement>(null);
   const start = useRef(location.pathname + location.search);
+  const prepared = useRef(false);
   const stops = context ? plan(context) : [];
   const stop = stops[index];
   const last = index === stops.length - 1;
@@ -181,6 +182,9 @@ export default function Tour({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
+    // StrictMode runs effects twice; preparing twice could create two sample tickets.
+    if (prepared.current) return;
+    prepared.current = true;
     prepare()
       .then(setContext)
       .catch(() => setContext({ connector: false }));
@@ -240,6 +244,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
       ref={dialog}
       className="tour"
       aria-labelledby="tour-title"
+      aria-describedby="tour-body"
       onCancel={(event) => {
         event.preventDefault();
         close();
@@ -260,7 +265,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
           </p>
         )}
         <h2 id="tour-title">{title}</h2>
-        {body && <p>{body}</p>}
+        {body && <p id="tour-body">{body}</p>}
         {stop?.ai && context && !context.connector && (
           <div className="callout tour-nudge">
             {t.needsConnector}
