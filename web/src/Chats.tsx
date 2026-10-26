@@ -36,12 +36,12 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, groupDropIndex as dropIndex, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
+import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
-import PinTabs, { dragGhost, reorderType as pinTabType } from "./PinTabs";
+import PinTabs, { dragGhost, reorderType as pinTabType, useGroupReorder } from "./PinTabs";
 import type { usePinnedChats } from "./ChatDock";
 import { lang, locale, useText } from "./i18n";
 
@@ -209,7 +209,8 @@ export default function Chats({
   };
   const showGroups = pinnedIds.size > 0 || groups.groups.length > 1;
   const [renaming, setRenaming] = useState<string>();
-  const [dropGroup, setDropGroup] = useState<number>();
+  const reorder = useGroupReorder(groups.groups);
+  const groupDropped = useRef(false);
   const [dropInto, setDropInto] = useState<string>();
   const [listOpen, setListOpen] = useState(() => localStorage.getItem("chat-list") !== "closed");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -677,18 +678,28 @@ export default function Chats({
         <ErrorText error={error} />
         {listOpen && chats.length === 0 && !error && <p className="muted">{t.noChats}</p>}
         {listOpen && (
-        <nav>
+        <nav
+          ref={reorder.list}
+          onDragOver={(event) => event.dataTransfer.types.includes(groupDragType) && event.preventDefault()}
+          onDrop={(event) => {
+            if (event.dataTransfer.types.includes(groupDragType)) groupDropped.current = true;
+          }}
+        >
           {showGroups &&
-            groups.groups.map((group, index) => (
+            reorder.ordered.map((group, index) => (
               <div
                 key={group.id}
-                className={`chat-row group-row${dropGroup === index ? " drop-before" : ""}${dropInto === group.id ? " drop-into" : ""}`}
+                className={`chat-row group-row${dropInto === group.id ? " drop-into" : ""}`}
                 style={pinStyle(group.color)}
+                data-group={group.id}
+                data-dragging={reorder.dragging === group.id ? "" : undefined}
                 draggable={renaming !== group.id}
                 title={t.dragGroup}
                 onDragStart={(event) => {
                   event.dataTransfer.setData(groupDragType, group.id);
                   event.dataTransfer.effectAllowed = "move";
+                  groupDropped.current = false;
+                  reorder.start(group.id);
                 }}
                 onDragOver={(event) => {
                   // A pinned tab dropped on a group moves the chat there; a group row reorders.
@@ -698,12 +709,11 @@ export default function Chats({
                   }
                   if (!event.dataTransfer.types.includes(groupDragType)) return;
                   event.preventDefault();
-                  setDropGroup(dropIndex(event, index));
+                  reorder.over(group.id, event.currentTarget);
                 }}
                 onDragLeave={(event) => {
                   // Moving onto the row's own button or menu isn't leaving the row.
                   if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-                  setDropGroup(undefined);
                   setDropInto(undefined);
                 }}
                 onDrop={(event) => {
@@ -712,12 +722,9 @@ export default function Chats({
                     event.preventDefault();
                     moveChat(chatID, group.id, group.name);
                   }
-                  const dragged = event.dataTransfer.getData(groupDragType);
-                  if (dragged) moveGroup(dragged, dropIndex(event, index));
-                  setDropGroup(undefined);
                   setDropInto(undefined);
                 }}
-                onDragEnd={() => setDropGroup(undefined)}
+                onDragEnd={() => reorder.end(groupDropped.current)}
               >
                 {renaming === group.id ? (
                   <input

@@ -1,10 +1,10 @@
-import { useRef, useState, type DragEvent, type PointerEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type DragEvent, type PointerEvent, type ReactNode } from "react";
 import type { Chat } from "./api";
 import { statusIcons, statusLabels, type ChatStatus } from "./chatStatus";
 import { Icon, IconButton } from "./icons";
 import Menu from "./Menu";
 import { openShortcuts, shortcutsAriaShortcut, shortcutsShortcut } from "./Shortcuts";
-import { groupAriaShortcuts, groupShortcuts, maxPins, moveGroup, moveTab, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
+import { groupAriaShortcuts, groupShortcuts, maxPins, setGroupOrder, type PinGroup, moveTab, newPinnedAriaShortcut, newPinnedShortcut, pinAriaShortcut, pinShortcut, pinStyle, requestNewPinnedChat, setActiveGroup, unpinAriaShortcut, unpinShortcut, usePinGroups } from "./pins";
 import { useText } from "./i18n";
 
 const text = {
@@ -61,9 +61,8 @@ export default function PinTabs({
   const titleOf = (id: string) => chats.find((chat) => chat.id === id)?.title ?? t.chat;
   // Insertion point while a tab is dragged over the bar: before the tab at this index.
   const [dropAt, setDropAt] = useState<number>();
-  // Same for a group dragged inside the group menu.
-  const [groupDropAt, setGroupDropAt] = useState<number>();
-  const groupDrag = useMenuDrag(setGroupDropAt);
+  const reorder = useGroupReorder(groups.groups);
+  const groupDrag = useMenuDrag(reorder);
 
   return (
     <div className="pin-tabs" style={pinStyle(group.color)}>
@@ -79,12 +78,16 @@ export default function PinTabs({
           }
         >
           {(close) =>
-            groups.groups.map((item, index) => (
+            reorder.ordered.map((item) => (
               <button
                 key={item.id}
+                ref={(element) => {
+                  reorder.list.current = element?.parentElement ?? reorder.list.current;
+                }}
                 role="menuitemradio"
                 aria-checked={item.id === groups.active}
-                className={groupDropAt === index ? "drop-before" : groupDropAt === index + 1 && index === groups.groups.length - 1 ? "drop-after" : undefined}
+                data-group={item.id}
+                data-dragging={reorder.dragging === item.id ? "" : undefined}
                 onPointerDown={(event) => groupDrag.start(event, item.id)}
                 onPointerMove={groupDrag.move}
                 onPointerUp={groupDrag.end}
@@ -207,38 +210,83 @@ export default function PinTabs({
   );
 }
 
-// Pointer-based reordering for menu items: the menu cancels mousedown (so WebKit keeps it open), which blocks native drag.
-function useMenuDrag(setDropAt: (index: number | undefined) => void) {
-  const drag = useRef<{ id: string; y: number; moved: boolean; at?: number } | undefined>(undefined);
-  const dragged = useRef(false);
-  const indexAt = (event: PointerEvent<HTMLElement>) => {
-    const items = [...(event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])];
-    const after = items.findIndex((item) => event.clientY < item.getBoundingClientRect().top + item.offsetHeight / 2);
-    return after < 0 ? items.length : after;
+// Live reordering of pin groups, like the sidebar boards: rows move into place while dragging and slide (FLIP).
+export function useGroupReorder(groups: PinGroup[]) {
+  const list = useRef<HTMLElement | null>(null);
+  const [preview, setPreview] = useState<string[]>();
+  const flip = useRef<Map<string, number> | undefined>(undefined);
+  const rows = () => [...(list.current?.querySelectorAll<HTMLElement>("[data-group]") ?? [])];
+
+  useLayoutEffect(() => {
+    const before = flip.current;
+    flip.current = undefined;
+    if (!before || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    rows().forEach((row) => {
+      const old = before.get(row.dataset.group!);
+      const top = row.getBoundingClientRect().top;
+      if (old !== undefined && old !== top) row.animate([{ transform: `translateY(${old - top}px)` }, { transform: "none" }], { duration: 200, easing: "ease-out" });
+    });
+  }, [preview]);
+
+  function show(next: string[] | undefined) {
+    flip.current = new Map(rows().map((row) => [row.dataset.group!, row.getBoundingClientRect().top]));
+    setPreview(next);
+  }
+  const dragging = useRef<string | undefined>(undefined);
+  const ids = preview ?? groups.map((group) => group.id);
+  return {
+    list,
+    dragging: preview && dragging.current,
+    ordered: ids.map((id) => groups.find((group) => group.id === id)).filter((group): group is PinGroup => !!group),
+    start(id: string) {
+      dragging.current = id;
+      setPreview(groups.map((group) => group.id));
+    },
+    // Skip rows still sliding, or the moved row bounces back under the cursor.
+    over(target: string, row: HTMLElement) {
+      const id = dragging.current;
+      if (!id || !preview || id === target || row.getAnimations().length) return;
+      const next = preview.filter((item) => item !== id);
+      next.splice(preview.indexOf(target), 0, id);
+      show(next);
+    },
+    end(keep: boolean) {
+      if (keep && preview) setGroupOrder(preview);
+      dragging.current = undefined;
+      if (keep) setPreview(undefined);
+      else show(undefined);
+    },
   };
+}
+
+// The group menu cancels mousedown so WebKit keeps it open, which blocks native drag; drag with the pointer instead.
+function useMenuDrag(reorder: ReturnType<typeof useGroupReorder>) {
+  const press = useRef<{ id: string; y: number; moved: boolean } | undefined>(undefined);
+  const dragged = useRef(false);
   return {
     start(event: PointerEvent<HTMLElement>, id: string) {
       if (event.button !== 0) return;
-      drag.current = { id, y: event.clientY, moved: false };
+      press.current = { id, y: event.clientY, moved: false };
       dragged.current = false;
       event.currentTarget.setPointerCapture(event.pointerId);
     },
     move(event: PointerEvent<HTMLElement>) {
-      const current = drag.current;
+      const current = press.current;
       if (!current) return;
-      if (!current.moved && Math.abs(event.clientY - current.y) < 4) return;
-      current.moved = true;
-      current.at = indexAt(event);
-      setDropAt(current.at);
+      if (!current.moved) {
+        if (Math.abs(event.clientY - current.y) < 4) return;
+        current.moved = true;
+        reorder.start(current.id);
+      }
+      const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-group]");
+      if (row) reorder.over(row.dataset.group!, row);
     },
     end() {
-      const current = drag.current;
-      drag.current = undefined;
-      if (current?.moved && current.at !== undefined) {
-        dragged.current = true;
-        moveGroup(current.id, current.at);
-      }
-      setDropAt(undefined);
+      const current = press.current;
+      press.current = undefined;
+      if (!current?.moved) return;
+      dragged.current = true;
+      reorder.end(true);
     },
     wasDrag: () => dragged.current,
   };
