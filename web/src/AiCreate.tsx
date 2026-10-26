@@ -137,7 +137,22 @@ export function AskAI({
           ))}
         </ul>
       )}
-      {ai.chat ? (
+      {choosing ? (
+        <NewChatDialog
+          inline
+          connectors={connectors}
+          title={title}
+          onClose={() => {
+            setChoosing(false);
+            starting.current = false;
+            onBack();
+          }}
+          onCreated={(chat) => {
+            setChoosing(false);
+            start(chat);
+          }}
+        />
+      ) : ai.chat ? (
         <div className="ai-create-chat">
           <Conversation key={ai.chat.id} id={ai.chat.id} refresh={0} connectors={connectors} compact focused context={context} onChanged={() => undefined} />
         </div>
@@ -145,27 +160,12 @@ export function AskAI({
         !error && <p className="muted" role="status">{t.starting}</p>
       )}
       <ErrorText error={error} />
-      <div className="modal-actions">
-        <button type="button" className="primary" onClick={onDone}>
-          {t.done}
-        </button>
-      </div>
-      {choosing && (
-        <NewChatDialog
-          connectors={connectors}
-          title={title}
-          onClose={() => {
-            setChoosing(false);
-            if (!ai.chat) {
-              starting.current = false;
-              onBack();
-            }
-          }}
-          onCreated={(chat) => {
-            setChoosing(false);
-            start(chat);
-          }}
-        />
+      {!choosing && (
+        <div className="modal-actions">
+          <button type="button" className="primary" onClick={onDone}>
+            {t.done}
+          </button>
+        </div>
       )}
     </div>
   );

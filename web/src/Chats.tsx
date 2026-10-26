@@ -2616,11 +2616,14 @@ export const startModel = (connectors: Connector[], defaults: ChatDefaults | und
 export function NewChatDialog({
   connectors,
   title,
+  inline,
   onClose,
   onCreated,
 }: {
   connectors: Connector[];
   title?: string;
+  // Render just the form, inside another dialog (Ask AI tab), instead of a modal of its own.
+  inline?: boolean;
   onClose: () => void;
   onCreated: (chat: Chat) => void;
 }) {
@@ -2671,13 +2674,9 @@ export function NewChatDialog({
     }
   }
 
-  return (
-    <dialog ref={dialog} className="create-dialog" aria-labelledby="new-chat-title" onClose={onClose}>
-      <section className="panel create create-modal">
-        <div className="page-heading">
-          <h2 id="new-chat-title">{t.newChat}</h2>
-          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
-        </div>
+  const cancel = () => (inline ? onClose() : dialog.current?.close());
+  const form = (
+    <>
         <form onSubmit={submit}>
           <label>
             {t.connector}
@@ -2716,7 +2715,7 @@ export function NewChatDialog({
             {folders.length === 0 && <small>{t.addFolders}</small>}
           </label>
           <div className="modal-actions">
-            <button type="button" onClick={() => dialog.current?.close()}>
+            <button type="button" onClick={cancel}>
               {t.cancel}
             </button>
             <button className="primary" disabled={!connectorID || starting}>
@@ -2725,6 +2724,17 @@ export function NewChatDialog({
           </div>
         </form>
         <ErrorText error={error} />
+    </>
+  );
+  if (inline) return <div className="create">{form}</div>;
+  return (
+    <dialog ref={dialog} className="create-dialog" aria-labelledby="new-chat-title" onClose={onClose}>
+      <section className="panel create create-modal">
+        <div className="page-heading">
+          <h2 id="new-chat-title">{t.newChat}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={cancel} />
+        </div>
+        {form}
       </section>
     </dialog>
   );
