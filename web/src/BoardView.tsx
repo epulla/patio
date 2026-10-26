@@ -12,13 +12,16 @@ import Picker from "./Picker";
 import {
   api,
   type BoardData,
+  type SearchTicket,
   type Status,
   type Ticket,
   type TicketType,
 } from "./api";
+import { AskAI, CreateTabs, useAiCreate, useCreated } from "./AiCreate";
 import { ErrorText, navigate } from "./App";
+import { linkText } from "./ChatDock";
 import { Icon, IconButton } from "./icons";
-import { useText } from "./i18n";
+import { lang, useText } from "./i18n";
 
 const text = {
   en: {
@@ -857,19 +860,68 @@ function NewTicket({
   onDone: () => void;
   onError: (error: unknown) => void;
 }) {
+  const t = useText(text);
+  const ai = useAiCreate();
+  const { board } = data;
+  const created = useCreated(ai, async (since) =>
+    (await api.get<SearchTicket[]>(`/api/tickets/search?board_id=${encodeURIComponent(board.id)}`))
+      .filter((ticket) => ticket.created_at > since)
+      .map((ticket) => ({ id: ticket.id, label: ticket.code, href: `/tickets/${ticket.code || ticket.id}` })),
+  );
+  const close = () => {
+    void ai.cleanup();
+    onDone();
+  };
+  const tabbed = !!ai.connectors?.length;
+  const form = <TicketForm data={data} statusId={statusId} embedded={tabbed} onCreated={close} onClose={close} onError={onError} />;
+  const status = data.statuses.find((item) => item.id === statusId)?.name ?? "";
   return (
     <div
       className="modal"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-ticket-title"
-      onKeyDown={(event) => event.key === "Escape" && onDone()}
-      onPointerDown={(event) => event.target === event.currentTarget && onDone()}
+      // Esc inside a nested dialog (the connector picker) only closes that dialog.
+      onKeyDown={(event) => event.key === "Escape" && !(event.target as Element).closest("dialog") && close()}
+      onPointerDown={(event) => event.target === event.currentTarget && close()}
     >
-      <TicketForm data={data} statusId={statusId} onCreated={onDone} onClose={onDone} onError={onError} />
+      {tabbed ? (
+        <section className="panel ticket-form">
+          <div className="page-heading">
+            <h2 id="new-ticket-title">{t.newTicket}</h2>
+            <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={close} />
+          </div>
+          <CreateTabs kind="ticket" ai={ai} form={form}>
+            {(back) => (
+              <AskAI
+                ai={ai}
+                title={`${t.newTicket} · ${board.name}`}
+                draft={ticketDraft[lang()](board.name, status)}
+                context={{ icon: "boards", label: board.name, line: `Viewing board [${linkText(board.name)}](/boards/${board.id})` }}
+                created={created}
+                onBack={back}
+                onOpen={(href) => {
+                  close();
+                  navigate(href);
+                }}
+                onDone={close}
+              />
+            )}
+          </CreateTabs>
+        </section>
+      ) : (
+        form
+      )}
     </div>
   );
 }
+
+const ticketDraft = {
+  en: (board: string, status: string) =>
+    `Create a ticket on the ${board} board${status ? ` in ${status}` : ""}.\nTitle: <what needs doing>\nDetails: <context, steps, links>\nDue: <date or none>`,
+  es: (board: string, status: string) =>
+    `Crea un ticket en el tablero ${board}${status ? ` en ${status}` : ""}.\nTítulo: <qué hay que hacer>\nDetalles: <contexto, pasos, enlaces>\nVence: <fecha o ninguna>`,
+};
 
 export function NewTicketPage({ boardId }: { boardId: string }) {
   const t = useText(text);
@@ -905,12 +957,14 @@ export function NewTicketPage({ boardId }: { boardId: string }) {
 function TicketForm({
   data,
   statusId,
+  embedded,
   onCreated,
   onClose,
   onError,
 }: {
   data: BoardData;
   statusId?: string;
+  embedded?: boolean;
   onCreated: (ticket: Ticket) => void;
   onClose: () => void;
   onError: (error: unknown) => void;
@@ -937,17 +991,19 @@ function TicketForm({
     }
   }
   return (
-    <form className="panel ticket-form" onSubmit={submit}>
-      <div className="page-heading">
-        <h2 id="new-ticket-title">{t.newTicket}</h2>
-        <IconButton
-          type="button"
-          className="ghost"
-          icon="x"
-          label={t.close}
-          onClick={onClose}
-        />
-      </div>
+    <form className={embedded ? "ticket-form" : "panel ticket-form"} onSubmit={submit}>
+      {!embedded && (
+        <div className="page-heading">
+          <h2 id="new-ticket-title">{t.newTicket}</h2>
+          <IconButton
+            type="button"
+            className="ghost"
+            icon="x"
+            label={t.close}
+            onClick={onClose}
+          />
+        </div>
+      )}
       <label>
         {t.title}
         <input

@@ -6,16 +6,17 @@ import {
   type FormEvent,
 } from "react";
 import { api, type Board } from "./api";
+import { AskAI, CreateTabs, useAiCreate, useCreated } from "./AiCreate";
 import { ErrorText, navigate } from "./App";
 import { DaysField } from "./BoardView";
 import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
-import { useText } from "./i18n";
+import { lang, useText } from "./i18n";
 
 const text = {
   en: {
     workspace: "Workspace", boards: "Boards", importBackup: "Import a JSON backup", importing: "Importing...",
-    import: "Import", createBoard: "Create board", empty: "No boards yet. Create one to get started.",
+    import: "Import", createBoard: "Create board", newBoard: "New board", boardLabel: (name: string) => `board ${name}`, empty: "No boards yet. Create one to get started.",
     close: "Close", name: "Name", shortName: "Short name", columns: "Columns",
     temporaryHelp: "Temporary columns hide their tickets from the board N days after they enter the column. Tickets are not deleted. Good for Done.",
     columnName: (n: number) => `Column ${n} name`, columnType: (n: number) => `Column ${n} type`,
@@ -24,7 +25,7 @@ const text = {
   },
   es: {
     workspace: "Espacio de trabajo", boards: "Tableros", importBackup: "Importar respaldo JSON", importing: "Importando...",
-    import: "Importar", createBoard: "Crear tablero", empty: "Aún no hay tableros. Crea uno para comenzar.",
+    import: "Importar", createBoard: "Crear tablero", newBoard: "Nuevo tablero", boardLabel: (name: string) => `el tablero ${name}`, empty: "Aún no hay tableros. Crea uno para comenzar.",
     close: "Cerrar", name: "Nombre", shortName: "Nombre corto", columns: "Columnas",
     temporaryHelp: "Las columnas temporales ocultan sus tickets del tablero N días después de que entran. Los tickets no se eliminan. Útil para Completado.",
     columnName: (n: number) => `Nombre de columna ${n}`, columnType: (n: number) => `Tipo de columna ${n}`,
@@ -37,6 +38,11 @@ type NewColumn = {
   name: string;
   type: "classic" | "temporary";
   hide_after_days: string;
+};
+
+const boardDraft = {
+  en: "Create a board called <name> for <what it's for>.\nColumns: <e.g. To Do, Doing, Done>.",
+  es: "Crea un tablero llamado <nombre> para <para qué es>.\nColumnas: <p. ej. Por hacer, En curso, Hecho>.",
 };
 
 export default function BoardList({ refresh }: { refresh: number }) {
@@ -93,7 +99,7 @@ export default function BoardList({ refresh }: { refresh: number }) {
             className="primary"
             onClick={() => setCreating(true)}
           >
-            <Icon name="plus" /> {t.createBoard}
+            <Icon name="plus" /> {t.newBoard}
           </button>
         </div>
       </div>
@@ -147,6 +153,12 @@ function CreateBoard({
     { name: "Done", type: "temporary", hide_after_days: "1" },
   ]);
   const [error, setError] = useState<unknown>();
+  const ai = useAiCreate();
+  const created = useCreated(ai, async (since) =>
+    (await api.get<Board[]>("/api/boards"))
+      .filter((board) => board.created_at > since)
+      .map((board) => ({ id: board.id, label: t.boardLabel(board.name), href: `/boards/${board.id}` })),
+  );
 
   function updateColumn(index: number, patch: Partial<NewColumn>) {
     setColumns((current) => current.map((column, i) => i === index ? { ...column, ...patch } : column));
@@ -183,11 +195,15 @@ function CreateBoard({
       ref={dialog}
       className="create-dialog"
       aria-labelledby="create-board-title"
-      onClose={onClose}
+      onClose={() => {
+        void ai.cleanup();
+        onClose();
+      }}
+      onClick={(event) => event.target === dialog.current && dialog.current.close()}
     >
       <section className="panel create create-modal">
         <div className="page-heading">
-          <h2 id="create-board-title">{t.createBoard}</h2>
+          <h2 id="create-board-title">{t.newBoard}</h2>
           <IconButton
             type="button"
             className="ghost"
@@ -196,6 +212,11 @@ function CreateBoard({
             onClick={() => dialog.current?.close()}
           />
         </div>
+        <CreateTabs
+          kind="board"
+          ai={ai}
+          form={
+        <>
         <form onSubmit={submit}>
           <label>
             {t.name}
@@ -276,6 +297,24 @@ function CreateBoard({
           </div>
         </form>
         <ErrorText error={error} />
+        </>
+          }
+        >
+          {(back) => (
+            <AskAI
+              ai={ai}
+              title={t.newBoard}
+              draft={boardDraft[lang()]}
+              created={created}
+              onBack={back}
+              onOpen={(href) => {
+                dialog.current?.close();
+                navigate(href);
+              }}
+              onDone={() => dialog.current?.close()}
+            />
+          )}
+        </CreateTabs>
       </section>
     </dialog>
   );

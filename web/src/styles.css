@@ -4931,3 +4931,53 @@ button.notif-row:focus-visible,
   gap: 8px;
   margin-bottom: 8px;
 }
+.ai-create {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(640px, calc(100vw - 80px));
+}
+.ai-create-chat {
+  display: flex;
+  flex-direction: column;
+  height: min(480px, 60vh);
+}
+.ai-create-chat > .conversation {
+  flex: 1;
+}
+.ai-created {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--base-200);
+  font-size: 13px;
+}
+.ai-created li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-created .link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+/* The board dialog's .create form grid must not reach the chat composer. */
+.ai-create form.composer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.ai-create .composer textarea {
+  min-height: 88px;
+}
