@@ -160,6 +160,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/scheduled-tasks/preview", s.previewScheduledTask)
 	m.HandleFunc("GET /api/settings/defaults", s.getSettingsDefaults)
 	m.HandleFunc("PUT /api/settings/defaults", s.putSettingsDefaults)
+	m.HandleFunc("GET /api/onboarding", s.getOnboarding)
+	m.HandleFunc("PUT /api/onboarding", s.putOnboarding)
 	m.HandleFunc("GET /api/settings/chat-cleanup", s.getChatCleanup)
 	m.HandleFunc("PUT /api/settings/chat-cleanup", s.putChatCleanup)
 	m.HandleFunc("POST /api/chats/cleanup", s.runChatCleanup)

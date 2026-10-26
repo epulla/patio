@@ -117,6 +117,31 @@ func (s *Server) getSettingsDefaults(w http.ResponseWriter, _ *http.Request) {
 	write(w, http.StatusOK, defaults)
 }
 
+func (s *Server) getOnboarding(w http.ResponseWriter, _ *http.Request) {
+	var boards, connectors, done int
+	if err := s.db.QueryRow(`SELECT count(*) FROM board`).Scan(&boards); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.db.QueryRow(`SELECT count(*) FROM connector`).Scan(&connectors); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.db.QueryRow(`SELECT count(*) FROM app_setting WHERE key='onboarding_done'`).Scan(&done); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string]bool{"show": boards == 0 && connectors == 0 && done == 0})
+}
+
+func (s *Server) putOnboarding(w http.ResponseWriter, _ *http.Request) {
+	if _, err := s.db.Exec(`INSERT INTO app_setting(key,value) VALUES('onboarding_done','true') ON CONFLICT(key) DO UPDATE SET value=excluded.value`); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	noContent(w)
+}
+
 func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ConnectorID   json.RawMessage `json:"connector_id"`

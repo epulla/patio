@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,6 +47,41 @@ func TestSettingsDefaultsRoundTripAndValidation(t *testing.T) {
 	defaults = settingsDefaults{}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/settings/defaults", nil, &defaults); code != http.StatusOK || !reflect.DeepEqual(defaults, want) {
 		t.Fatalf("read defaults = %d, %#v, want %#v", code, defaults, want)
+	}
+}
+
+func TestOnboarding(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*testing.T, *sql.DB)
+		put   bool
+		want  bool
+	}{
+		{name: "fresh", want: true},
+		{name: "board exists", setup: func(t *testing.T, db *sql.DB) {
+			if _, err := db.Exec(`INSERT INTO board(id,name,short_name) VALUES('b','Board','B')`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "connector exists", setup: func(t *testing.T, db *sql.DB) { createTestConnector(t, db) }},
+		{name: "marked done", put: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, handler, _ := chatAPI(t)
+			if tt.setup != nil {
+				tt.setup(t, db)
+			}
+			if tt.put && requestJSON(t, handler, http.MethodPut, "/api/onboarding", nil, nil) != http.StatusNoContent {
+				t.Fatal("mark onboarding done failed")
+			}
+			var got struct {
+				Show bool `json:"show"`
+			}
+			if code := requestJSON(t, handler, http.MethodGet, "/api/onboarding", nil, &got); code != http.StatusOK || got.Show != tt.want {
+				t.Fatalf("onboarding = %d, %v; want %v", code, got.Show, tt.want)
+			}
+		})
 	}
 }
 
