@@ -9,7 +9,7 @@ const text = {
   en: {
     welcome: "Welcome to Patio", welcomeHelp: "A few quick choices and you're ready to work.",
     boardTitle: "Your first board", boardHelp: "Boards hold your tickets in columns. Pick a starting point; you can change columns later.",
-    personal: "Personal", work: "Work", blank: "Blank", name: "Name", code: "Code", codeHelp: "Prefix for ticket codes, like ABC-1",
+    personal: "Personal", work: "Work", blank: "Blank", personalHelp: "Everyday to-dos", workHelp: "A fuller flow with review", blankHelp: "Start minimal", columns: "Columns", name: "Name", code: "Code", codeHelp: "Prefix for ticket codes, like ABC-1",
     connectorTitle: "Connect an AI", connectorHelp: "Optional. Chats run through a CLI you install and sign in to, or a local model. You can add one later.",
     defaultsTitle: "Chat defaults", defaultsHelp: "How new chats start. Add a project folder to let chats work in it.",
     next: "Next", create: "Create board", skip: "Skip", skipAll: "Skip setup", finish: "Finish", step: (n: number, total: number) => `Step ${n} of ${total}`,
@@ -17,7 +17,7 @@ const text = {
   es: {
     welcome: "Bienvenido a Patio", welcomeHelp: "Unas elecciones rápidas y listo para trabajar.",
     boardTitle: "Tu primer tablero", boardHelp: "Los tableros guardan tus tickets en columnas. Elige un punto de partida; puedes cambiar las columnas después.",
-    personal: "Personal", work: "Trabajo", blank: "En blanco", name: "Nombre", code: "Código", codeHelp: "Prefijo de los códigos de ticket, como ABC-1",
+    personal: "Personal", work: "Trabajo", blank: "En blanco", personalHelp: "Pendientes del día a día", workHelp: "Un flujo más completo con revisión", blankHelp: "Empieza con lo mínimo", columns: "Columnas", name: "Nombre", code: "Código", codeHelp: "Prefijo de los códigos de ticket, como ABC-1",
     connectorTitle: "Conecta una IA", connectorHelp: "Opcional. Los chats funcionan con una CLI que instalas e inicias sesión, o con un modelo local. Puedes agregarla después.",
     defaultsTitle: "Valores de chat", defaultsHelp: "Cómo empiezan los chats nuevos. Agrega una carpeta de proyecto para que los chats trabajen en ella.",
     next: "Siguiente", create: "Crear tablero", skip: "Omitir", skipAll: "Omitir configuración", finish: "Terminar", step: (n: number, total: number) => `Paso ${n} de ${total}`,
@@ -92,7 +92,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             <Intro title={t.welcome} help={t.welcomeHelp} />
             <Appearance />
             <div className="modal-actions">
-              <button className="primary" onClick={next}>
+              <button className="primary" autoFocus onClick={next}>
                 {t.next}
               </button>
             </div>
@@ -172,15 +172,19 @@ function FirstBoard({ onCreated, onSkip }: { onCreated: (board: Board) => void; 
           <label key={id} className="preset-card">
             <input type="radio" name="preset" value={id} checked={preset === id} onChange={() => pick(id)} />
             <strong>{t[id]}</strong>
-            <span className="preset-columns">
-              {presets[id].columns.map((column) => (
-                <span key={column.name}>{column.name}</span>
-              ))}
-            </span>
+            <span className="muted">{t[`${id}Help`]}</span>
           </label>
         ))}
       </fieldset>
-      <div className="defaults-fields">
+      <div className="preset-columns">
+        <span className="label">{t.columns}</span>
+        {presets[preset].columns.map((column) => (
+          <span key={column.name} className="chip">
+            {column.name}
+          </span>
+        ))}
+      </div>
+      <div className="board-fields">
         <label>
           {t.name}
           <input required value={name} onChange={(event) => setName(event.target.value)} />

@@ -4841,8 +4841,8 @@ button.notif-row:focus-visible,
 .preset-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 4px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-box);
   cursor: pointer;
@@ -4861,15 +4861,33 @@ button.notif-row:focus-visible,
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+.preset-card .muted {
+  font-size: 13px;
+}
 .preset-columns {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
 }
-.preset-columns span {
-  padding: 2px 8px;
+.preset-columns .label {
+  margin-right: 4px;
+  color: var(--muted);
+}
+.preset-columns .chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--base-200);
-  color: var(--muted);
-  font-size: 12px;
+}
+.board-fields {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 12px;
+}
+.board-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
