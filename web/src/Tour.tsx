@@ -92,7 +92,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
       )}
       <section
         className={rect ? "panel tour-card" : "panel tour-card centered"}
-        style={rect ? { top: cardTop, left: rect.right + 16 } : undefined}
+        style={rect ? { top: cardTop, left: Math.max(12, Math.min(rect.right + 16, innerWidth - 356)) } : undefined}
       >
         <p className="eyebrow">
           {t.tour} · {t.step(index + 1, stops.length)}
