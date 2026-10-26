@@ -1,3 +1,4 @@
+import { startTour } from "./Tour";
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { ShortcutList } from "./Shortcuts";
 import {
@@ -80,6 +81,7 @@ const text = {
     thinking: "Thinking",
     showThinking: "Show thinking",
     martinPersona: "Martin persona (playful tone in all chats)",
+    showTour: "Show tour again",
     chatCleanup: "Chat cleanup",
     chatCleanupHelp:
       "Deletes chats whose last message is older than the set number of days, at startup and once a day. Pinned and running chats are kept. Ticket links to deleted chats stop working.",
@@ -165,6 +167,7 @@ const text = {
     thinking: "Razonamiento",
     showThinking: "Mostrar razonamiento",
     martinPersona: "Personalidad de Martin (tono divertido en todos los chats)",
+    showTour: "Ver el recorrido otra vez",
     chatCleanup: "Limpieza de chats",
     chatCleanupHelp:
       "Elimina los chats cuyo último mensaje es más antiguo que la cantidad de días indicada, al iniciar y una vez al día. Los chats fijados y en ejecución se conservan. Los enlaces de tickets a chats eliminados dejan de funcionar.",
@@ -747,6 +750,9 @@ export default function Settings() {
         <h2>{t.keyboardShortcuts}</h2>
         <section className="panel">
           <ShortcutList />
+          <button type="button" onClick={startTour}>
+            {t.showTour}
+          </button>
         </section>
       </section>
 

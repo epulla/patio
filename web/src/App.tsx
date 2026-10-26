@@ -16,6 +16,8 @@ import ScheduledTasks from "./ScheduledTasks";
 import Monitors from "./Monitors";
 import Settings from "./Settings";
 import Onboarding from "./Onboarding";
+import Tour from "./Tour";
+import { confirmDialog } from "./confirm";
 import Tickets from "./Tickets";
 import Notifications, { NotificationsPage } from "./Notifications";
 import { api, type Board, type Chat, type Config, type Connector } from "./api";
@@ -33,6 +35,7 @@ const text = {
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
     pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
     groupFull: (name: string) => `${name} is full (max ${maxPins}). Unpin a chat there first.`,
+    tourOffer: "All set. Take a 1-minute tour of where everything is?", takeTour: "Take the tour",
   },
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
@@ -42,6 +45,7 @@ const text = {
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
     pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
     groupFull: (name: string) => `${name} está lleno (máx. ${maxPins}). Quita un chat de ahí primero.`,
+    tourOffer: "Todo listo. ¿Quieres un recorrido de 1 minuto para ver dónde está cada cosa?", takeTour: "Hacer el recorrido",
   },
 };
 
@@ -98,6 +102,7 @@ export default function App() {
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
   const [onboarding, setOnboarding] = useState(false);
+  const [touring, setTouring] = useState(false);
   const [monitorChanges, setMonitorChanges] = useState(0);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar") === "closed",
@@ -348,6 +353,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const onStart = () => setTouring(true);
+    addEventListener("start-tour", onStart);
+    return () => removeEventListener("start-tour", onStart);
+  }, []);
+
+  useEffect(() => {
     const blockFileDrop = (event: DragEvent) => {
       if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
     };
@@ -516,9 +527,9 @@ export default function App() {
             boardDrag.current.dropped = true;
           }}
         >
-          {navItem("/", t.boards, <Icon name="boards" />, path === "/")}
-          {navItem("/tickets", t.tickets, <Icon name="ticket" />, isTickets)}
-          {navItem("/calendar", t.calendar, <Icon name="calendar" />, isCalendar)}
+          {navItem("/", t.boards, <Icon name="boards" />, path === "/", { "data-tour": "boards" })}
+          {navItem("/tickets", t.tickets, <Icon name="ticket" />, isTickets, { "data-tour": "tickets" })}
+          {navItem("/calendar", t.calendar, <Icon name="calendar" />, isCalendar, { "data-tour": "calendar" })}
           {navItem(
             "/monitors",
             t.monitors,
@@ -531,7 +542,7 @@ export default function App() {
               )}
             </>,
             !!monitorMatch,
-            { "aria-label": t.monitors + (monitorChanges ? t.monitorChanges(monitorChanges) : "") },
+            { "aria-label": t.monitors + (monitorChanges ? t.monitorChanges(monitorChanges) : ""), "data-tour": "monitors" },
           )}
           <div className="ai-nav-group">
             <p className="sidebar-label nav-label">AI</p>
@@ -540,12 +551,13 @@ export default function App() {
               t.connectors,
               <Icon name="connector" />,
               path === "/ai/connectors",
+              { "data-tour": "connectors" },
             )}
-            {navItem("/ai/chats", t.chats, <Icon name="chat" />, !!chatMatch)}
-            {navItem("/ai/skills", t.skills, <Icon name="sparkles" />, !!skillMatch)}
-            {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp")}
+            {navItem("/ai/chats", t.chats, <Icon name="chat" />, !!chatMatch, { "data-tour": "chats" })}
+            {navItem("/ai/skills", t.skills, <Icon name="sparkles" />, !!skillMatch, { "data-tour": "skills" })}
+            {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp", { "data-tour": "mcp" })}
           </div>
-          {navItem("/ai/scheduled", t.scheduled, <Icon name="clock" />, !!scheduledMatch)}
+          {navItem("/ai/scheduled", t.scheduled, <Icon name="clock" />, !!scheduledMatch, { "data-tour": "scheduled" })}
           {boards.length > 0 && <p className="sidebar-label nav-label">{t.yourBoards}</p>}
           {boards.map((board) =>
             navItem(
@@ -557,7 +569,7 @@ export default function App() {
             ),
           )}
         </nav>
-        <div className="sidebar-foot">
+        <div className="sidebar-foot" data-tour="foot">
           {navItem("/settings", t.settings, <Icon name="gear" />, path === "/settings")}
           <ThemeToggle />
           <Notifications refresh={refresh} onScreen={onScreen} />
@@ -605,7 +617,15 @@ export default function App() {
       )}
       {pinnedDialog && <NewChatDialog connectors={pinnedDialog} onClose={() => setPinnedDialog(undefined)} onCreated={openPinned} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-      {onboarding && <Onboarding onDone={() => setOnboarding(false)} />}
+      {onboarding && (
+        <Onboarding
+          onDone={async () => {
+            setOnboarding(false);
+            setTouring(await confirmDialog(t.tourOffer, t.takeTour, false));
+          }}
+        />
+      )}
+      {touring && <Tour onClose={() => setTouring(false)} />}
       {notice && (
         <p className="app-notice" role="status">
           {notice}

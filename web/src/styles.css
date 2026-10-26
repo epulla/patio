@@ -4730,3 +4730,52 @@ button.notif-row:focus-visible,
   font: 12px var(--mono);
   white-space: nowrap;
 }
+.tour {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.tour::backdrop {
+  background: transparent;
+}
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.5);
+}
+.tour-spot {
+  position: fixed;
+  border-radius: var(--radius-field);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.5);
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+.tour-card {
+  position: fixed;
+  width: min(340px, calc(100vw - 40px));
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
+  transition: top 0.2s ease;
+}
+.tour-card.centered {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.tour-card h2,
+.tour-card p {
+  margin: 0 0 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-card {
+    transition: none;
+  }
+}
