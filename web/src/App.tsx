@@ -15,6 +15,7 @@ import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
 import Monitors from "./Monitors";
 import Settings from "./Settings";
+import Onboarding from "./Onboarding";
 import Tickets from "./Tickets";
 import Notifications, { NotificationsPage } from "./Notifications";
 import { api, type Board, type Chat, type Config, type Connector } from "./api";
@@ -96,6 +97,7 @@ export default function App() {
   const [config, setConfig] = useState<Config>();
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
+  const [onboarding, setOnboarding] = useState(false);
   const [monitorChanges, setMonitorChanges] = useState(0);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar") === "closed",
@@ -337,6 +339,13 @@ export default function App() {
   }, []);
 
   useEffect(() => window.runtime?.EventsOn("navigate", (to) => openLink(String(to))), []);
+
+  useEffect(() => {
+    api
+      .get<{ show: boolean }>("/api/onboarding")
+      .then((state) => setOnboarding(state.show))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const blockFileDrop = (event: DragEvent) => {
@@ -596,6 +605,7 @@ export default function App() {
       )}
       {pinnedDialog && <NewChatDialog connectors={pinnedDialog} onClose={() => setPinnedDialog(undefined)} onCreated={openPinned} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {onboarding && <Onboarding onDone={() => setOnboarding(false)} />}
       {notice && (
         <p className="app-notice" role="status">
           {notice}

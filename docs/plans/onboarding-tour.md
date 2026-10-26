@@ -25,7 +25,7 @@ Tickets: PROJ-97 (onboarding), PROJ-155 (tour, split from PROJ-97).
 ## Tasks
 
 - [x] **1. Onboarding state.** `GET /api/onboarding` returns `{show}` per decision 2; `PUT /api/onboarding` sets `onboarding_done`. Check: Go test covers fresh DB → show, existing board or connector → hidden, after PUT → hidden.
-- [ ] **2. Onboarding shell + Welcome + First board.** Full-screen flow opened from `App.tsx` when `show`; language/theme step; board presets step creates the board and columns. Check: `pnpm build`; fresh DB shows the flow once and the board exists afterwards.
+- [x] **2. Onboarding shell + Welcome + First board.** Full-screen flow opened from `App.tsx` when `show`; language/theme step; board presets step creates the board and columns. Check: `pnpm build`; fresh DB shows the flow once and the board exists afterwards.
 - [ ] **3. Connector + Chat defaults steps.** Reuse the install/status block from `Connectors.tsx`; defaults step writes `/api/settings/defaults`; Connectors empty state says a CLI is required. Check: `pnpm build`; fresh DB with no CLI can skip, with a CLI ends at a working chat.
 - [ ] **4. Tour.** Spotlight component + `data-tour` anchors on the sidebar; offered on the last onboarding screen; "Show tour again" in Settings. Check: `pnpm build`; tour runs, Skip/Esc closes, restart from Settings works.
 - [ ] **5. Ship check.** `go test ./...`, `wails build`, manual run on a fresh data dir (macOS; Windows if available); delete this plan file. Check: user confirms in the app.

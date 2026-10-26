@@ -402,7 +402,7 @@ function General() {
   );
 }
 
-function Appearance() {
+export function Appearance() {
   const t = useText(text);
   const prefs = useThemePrefs();
   const language = useLanguage();
