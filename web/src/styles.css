@@ -4762,7 +4762,11 @@ button.notif-row:focus-visible,
   position: fixed;
   width: min(340px, calc(100vw - 40px));
   box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
-  transition: top 0.2s ease;
+  transition: opacity 0.15s ease;
+}
+.tour-card.pending {
+  opacity: 0;
+  pointer-events: none;
 }
 .tour-card.centered {
   top: 50%;

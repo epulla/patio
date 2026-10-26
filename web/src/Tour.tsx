@@ -193,9 +193,10 @@ export default function Tour({ onClose }: { onClose: () => void }) {
   useLayoutEffect(() => {
     if (!stop) return;
     let cancelled = false;
+    let settled = false;
     const selectors = stop.target ? [stop.target].flat() : [];
     // Re-query each time: pages can re-render and replace the target node.
-    const measure = () => !cancelled && setRect(find(selectors)?.getBoundingClientRect());
+    const measure = () => settled && !cancelled && setRect(find(selectors)?.getBoundingClientRect());
     setReady(false);
     if (stop.path && location.pathname !== stop.path) navigate(stop.path);
     (selectors.length ? waitFor(selectors) : Promise.resolve(null)).then(() => {
@@ -211,6 +212,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
           return setTimeout(settle, 150);
         }
         find(selectors)?.scrollIntoView({ block: "center" });
+        settled = true;
         measure();
         setReady(true);
         nextButton.current?.focus();
@@ -258,7 +260,12 @@ export default function Tour({ onClose }: { onClose: () => void }) {
       ) : (
         <div className="tour-backdrop" />
       )}
-      <section className={spot ? "panel tour-card" : "panel tour-card centered"} style={spot ? place(rect) : undefined} aria-live="polite">
+      {/* Hidden until the target settles, so the card appears in place instead of sliding from the center. */}
+      <section
+        className={`panel tour-card${spot ? "" : " centered"}${stop && !ready ? " pending" : ""}`}
+        style={spot ? place(rect) : undefined}
+        aria-live="polite"
+      >
         {stop && (
           <p className="eyebrow">
             {t.chapters[stop.chapter]} · {t.step(index + 1, stops.length)}
