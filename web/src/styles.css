@@ -3607,6 +3607,7 @@ main.chat-window {
 }
 .composer {
   position: relative;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3659,6 +3660,26 @@ main.chat-window {
   height: 32px;
   max-width: 220px;
   font-size: 13px;
+}
+/* Narrow composers (side dock): keep one row by showing the page chip as an icon and dropping the
+   model picker while a reply runs (it is disabled then anyway); wrap only as a last resort. */
+@container (max-width: 640px) {
+  .composer-actions:has(.composer-send .spinner) .composer-model {
+    display: none;
+  }
+}
+@container (max-width: 520px) {
+  .composer-actions .context-label {
+    display: none;
+  }
+  .composer-model .model-trigger {
+    max-width: 150px;
+  }
+}
+@container (max-width: 440px) {
+  .composer-model .model-trigger {
+    max-width: 110px;
+  }
 }
 .model-picker {
   position: relative;
