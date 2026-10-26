@@ -3629,6 +3629,7 @@ main.chat-window {
 }
 .composer-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
@@ -3642,6 +3643,7 @@ main.chat-window {
 }
 .composer-send {
   gap: 8px;
+  margin-left: auto;
 }
 .composer-model {
   display: flex;
