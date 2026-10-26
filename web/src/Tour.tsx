@@ -111,7 +111,7 @@ function plan({ board, ticket }: Context): Stop[] {
     { id: "calendar", chapter: "basics", target: nav("calendar") },
     { id: "connectors", chapter: "ai", target: nav("connectors") },
     { id: "chats", chapter: "ai", path: "/ai/chats", target: ["form.composer", nav("new-chat"), ".skill-empty"], ai: true },
-    { id: "pins", chapter: "ai", path: "/ai/chats", target: nav("pin"), ai: true },
+    { id: "pins", chapter: "ai", path: "/ai/chats", target: [nav("pin"), nav("chats")], ai: true },
     { id: "skills", chapter: "ai", path: "/ai/skills", target: '.tabs[role="tablist"]' },
     { id: "mcp", chapter: "ai", target: nav("mcp") },
     { id: "monitors", chapter: "power", target: nav("monitors") },
@@ -134,7 +134,7 @@ async function prepare(): Promise<Context> {
 // The first selector that matches, in order of preference.
 const find = (selectors: string[]) => selectors.map((selector) => document.querySelector(selector)).find(Boolean) ?? null;
 
-function waitFor(selectors: string[], timeout = 1500): Promise<Element | null> {
+function waitFor(selectors: string[], timeout = 1000): Promise<Element | null> {
   return new Promise((resolve) => {
     const started = Date.now();
     const poll = () => {
