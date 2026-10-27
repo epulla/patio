@@ -4399,8 +4399,10 @@ main.chat-window {
   margin: 0;
   font-size: 13px;
 }
+/* A wrapping column sizes each line to its widest item, so long messages would overflow the pane. */
 .queued-list {
   flex-direction: column;
+  flex-wrap: nowrap;
 }
 .queued-list .attachment {
   max-width: none;
