@@ -358,11 +358,12 @@ export const api = {
   patch: <T>(path: string, value: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(value) }),
   delete: (path: string) => request<void>(path, { method: "DELETE" }),
-  upload: <T>(path: string, file: File) =>
+  // WebKit drops File and Blob bodies sent to the app's custom scheme; an ArrayBuffer arrives intact.
+  upload: async <T>(path: string, file: File) =>
     request<T>(`${path}?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
-      body: file,
+      body: await file.arrayBuffer(),
     }),
 };
 import { lang } from "./i18n";

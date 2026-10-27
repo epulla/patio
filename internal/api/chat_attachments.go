@@ -119,6 +119,11 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		writeAttachmentError(w, err)
 		return
 	}
+	// WebKit drops File and Blob bodies sent to the app's custom scheme, so an empty body is a failed upload.
+	if len(prefix) == 0 {
+		errw(w, http.StatusBadRequest, "attachment is empty")
+		return
+	}
 	detected := http.DetectContentType(prefix)
 	image := detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || isWebP(prefix)
 	kind, contentType := "text", detected
