@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -765,6 +767,46 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		selected = append(selected, attachment)
+	}
+	rows, err := s.db.Query(`SELECT name FROM "user" WHERE is_ai=1 AND deleted_at IS NULL`)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	var bots []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			errw(w, 500, err.Error())
+			return
+		}
+		bots = append(bots, name)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	mentions := parseMentions(in.Text, bots)
+	if len(mentions) > 0 {
+		opened := make([]string, 0, len(mentions))
+		for _, m := range mentions {
+			body, _ := json.Marshal(map[string]any{"bot": m.Bot, "prompt": m.Text, "report_back": true})
+			req := httptest.NewRequest(http.MethodPost, "/api/chats/"+id+"/handoff", bytes.NewReader(body))
+			req.SetPathValue("id", id)
+			rec := httptest.NewRecorder()
+			s.createChatHandoff(rec, req)
+			if rec.Code < 200 || rec.Code >= 300 {
+				opened = append(opened, "@"+m.Bot+" → failed: "+strings.TrimSpace(rec.Body.String()))
+				continue
+			}
+			var result struct {
+				ChatID string `json:"chat_id"`
+			}
+			_ = json.Unmarshal(rec.Body.Bytes(), &result)
+			opened = append(opened, "@"+m.Bot+" → [@"+m.Bot+"](/ai/chats/"+result.ChatID+")")
+		}
+		in.Text += "\n\n[Opened chats: " + strings.Join(opened, "; ") + "; include these links in your reply.]"
 	}
 	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: in.Text, Attachments: selected})
 	if message.ID != "" {
