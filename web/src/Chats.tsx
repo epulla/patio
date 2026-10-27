@@ -1336,16 +1336,14 @@ export function Conversation({
     if (focused && ready) input.current?.focus();
   }, [focused, ready]);
 
-  async function attach(files: File[]) {
-    if (!files.length || uploading) return;
-    const problem = attachmentProblem(files, pending.length);
-    if (problem) {
-      setError(new Error(problem));
-      return;
-    }
+  async function attach(picked: File[]) {
+    if (!picked.length || uploading) return;
     setError(undefined);
     setUploading(true);
     try {
+      const files = await Promise.all(picked.map(shrinkImage));
+      const problem = attachmentProblem(files, pending.length);
+      if (problem) throw new Error(problem);
       for (const file of files) {
         const added = await api.upload<ChatAttachment[]>(`/api/chats/${id}/attachments`, file);
         setPending((current) => [...current, ...added]);
@@ -2046,6 +2044,41 @@ function attachmentProblem(files: File[], alreadyAttached: number) {
     if (!image && file.size > 1 << 30) return t.textLarge(file.name);
   }
   return "";
+}
+
+const maxImageEdge = 2000;
+const maxImageBytes = 5 << 20;
+const imageExtensions: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+
+// Models shrink large images anyway (Claude caps them at 5 MB and ~1568 px), so shrink before upload.
+// GIFs stay as they are to keep their animation.
+async function shrinkImage(file: File) {
+  if (!imageTypes.includes(file.type) || file.type === "image/gif") return file;
+  const bitmap = await createImageBitmap(file).catch(() => undefined);
+  if (!bitmap) return file;
+  const scale = Math.min(1, maxImageEdge / Math.max(bitmap.width, bitmap.height));
+  if (scale === 1 && file.size <= maxImageBytes) {
+    bitmap.close();
+    return file;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext("2d")!;
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const encode = (type: string, quality?: number) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+  let blob = file.type === "image/jpeg" ? null : await encode(file.type);
+  if (!blob || blob.size > maxImageBytes) {
+    // JPEG has no transparency, so paint white behind it.
+    context.globalCompositeOperation = "destination-over";
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    blob = await encode("image/jpeg", 0.85);
+  }
+  if (!blob) return file;
+  const extension = imageExtensions[blob.type] ?? "png";
+  return new File([blob], `${file.name.replace(/\.[^.]*$/, "")}.${extension}`, { type: blob.type });
 }
 
 function pastedFile(file: File) {

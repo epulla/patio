@@ -129,7 +129,7 @@ Its tool set is intentionally smaller than the CLI integrations: external MCP se
 
 ![Two pinned chats side by side in a split view.](docs/assets/patio-chats.png)
 
-Attachments support up to 10 files per message: text files up to 1 GB each and PNG, JPEG, GIF, or WebP images up to 10 MB each. Images are sent to models that support them; other connectors receive the file path.
+Attachments support up to 10 files per message: text files up to 1 GB each and PNG, JPEG, GIF, or WebP images. PNG, JPEG, and WebP images larger than 2000 px or 5 MB are shrunk before upload; GIFs can be up to 10 MB. Images are sent to models that support them; other connectors receive the file path.
 
 ### Delegate focused work
 
