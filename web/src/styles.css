@@ -2314,14 +2314,17 @@ main:has(> .chats) {
   font-weight: 600;
   pointer-events: none;
 }
-.chat-split,
-.split-node {
-  display: grid;
+.chat-split {
+  position: relative;
   min-width: 0;
   min-height: 0;
 }
-.chat-split {
-  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+.split-divider {
+  pointer-events: none;
+}
+.split-divider > .splitter {
+  position: absolute;
+  pointer-events: auto;
 }
 /* Where a dragged tab lands: an edge half splits the pane, the whole pane replaces its chat. */
 .grid-pane[data-drop]::after {

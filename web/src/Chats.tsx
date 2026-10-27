@@ -168,6 +168,38 @@ function dropZone(event: DragEvent, element: HTMLElement): SplitEdge | "center" 
   return edge === x ? "left" : edge === 1 - x ? "right" : edge === y ? "top" : "bottom";
 }
 
+type SplitBox = { x: number; y: number; w: number; h: number };
+
+// Pane and divider boxes of a split tree, as fractions of the split area; path is the a/b steps to each divider's node.
+function splitLayout(node: SplitNode, box: SplitBox = { x: 0, y: 0, w: 1, h: 1 }, path = "") {
+  const out = { panes: [] as (SplitBox & { chat: string })[], dividers: [] as { path: string; box: SplitBox; dir: "row" | "column"; ratio: number }[] };
+  if ("chat" in node) {
+    out.panes.push({ ...box, chat: node.chat });
+    return out;
+  }
+  const row = node.dir === "row";
+  const a = row ? { ...box, w: box.w * node.ratio } : { ...box, h: box.h * node.ratio };
+  const b = row ? { ...box, x: box.x + a.w, w: box.w - a.w } : { ...box, y: box.y + a.h, h: box.h - a.h };
+  const first = splitLayout(node.a, a, path + "a");
+  const second = splitLayout(node.b, b, path + "b");
+  out.panes.push(...first.panes, ...second.panes);
+  out.dividers.push({ path, box, dir: node.dir, ratio: node.ratio }, ...first.dividers, ...second.dividers);
+  return out;
+}
+
+// Absolute position for box; inner edges give up gap px each so neighbors sit 2 * gap apart.
+function placeBox(box: SplitBox, gap: number): CSSProperties {
+  const before = (start: number) => (start > 1e-6 ? gap : 0);
+  const after = (end: number) => (end < 1 - 1e-6 ? gap : 0);
+  return {
+    position: "absolute",
+    left: `calc(${box.x * 100}% + ${before(box.x)}px)`,
+    top: `calc(${box.y * 100}% + ${before(box.y)}px)`,
+    width: `calc(${box.w * 100}% - ${before(box.x) + after(box.x + box.w)}px)`,
+    height: `calc(${box.h * 100}% - ${before(box.y) + after(box.y + box.h)}px)`,
+  };
+}
+
 // Remounted per page (key) so a still-visible sentinel fires again.
 function LoadMore({ onVisible }: { onVisible: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -373,7 +405,6 @@ export default function Chats({
   useEffect(() => {
     if (showGroup && shown) rememberPinnedChat(shown);
   }, [showGroup, shown]);
-  const [drop, setDrop] = useState<{ pane: string; zone: SplitEdge | "center" }>();
   const dragged = useRef<string>(undefined);
 
   function startDrag(chatID: string, event: DragEvent, title: string) {
@@ -385,7 +416,7 @@ export default function Chats({
 
   function endDrag() {
     dragged.current = undefined;
-    setDrop(undefined);
+    grid.current?.querySelectorAll<HTMLElement>("[data-drop]").forEach((pane) => delete pane.dataset.drop);
   }
   useLayoutEffect(() => {
     const element = grid.current;
@@ -456,91 +487,97 @@ export default function Chats({
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [windowed, loaded, connectors]);
-  function renderSplit(node: SplitNode, path: string): ReactNode {
-    if (!("chat" in node)) {
-      const row = node.dir === "row";
-      const sizes = [node.ratio, 1 - node.ratio];
-      return (
-        <div
-          key={path}
-          className="split-node"
-          style={{ [row ? "gridTemplateColumns" : "gridTemplateRows"]: `minmax(0, ${sizes[0]}fr) 6px minmax(0, ${sizes[1]}fr)` }}
-        >
-          {renderSplit(node.a, path + "a")}
-          <Splitter
-            vertical={row}
-            label={t.resizeSplit}
-            sizes={sizes}
-            index={0}
-            min={240}
-            onChange={([a, b]) => setGroupSplit(activeGroup.id, setSplitRatio(split!, path, a / (a + b)))}
-          />
-          {renderSplit(node.b, path + "b")}
-        </div>
-      );
-    }
-    const chatID = node.chat;
-    const index = pins.ids.indexOf(chatID);
+  // Where a tab dragged over pane would land, or undefined when it can't drop there.
+  function splitDrop(event: DragEvent<HTMLElement>, chatID: string) {
+    const chat = dragged.current;
+    if (!chat || chat === chatID || !event.dataTransfer.types.includes(tabType)) return;
+    const zone = dropZone(event, event.currentTarget);
+    if (zone !== "center" && !placed.includes(chat) && placed.length >= maxPanes) return;
+    return { chat, zone };
+  }
+
+  // Panes stay siblings keyed by chat, so changing the split moves them instead of remounting them.
+  // The drop highlight is a DOM attribute: drag events fire constantly, and state would re-render every pane.
+  function renderSplit(node: SplitNode) {
+    const { panes, dividers } = splitLayout(node);
     return (
-      <div
-        key={chatID}
-        className="grid-pane"
-        data-pane={chatID}
-        data-drop={drop?.pane === chatID ? drop.zone : undefined}
-        onFocus={() => rememberPinnedChat(chatID)}
-        onPointerDown={() => rememberPinnedChat(chatID)}
-        onDragOver={(event) => {
-          const chat = dragged.current;
-          if (!chat || !event.dataTransfer.types.includes(tabType)) return;
-          const zone = dropZone(event, event.currentTarget);
-          if (chat === chatID || (zone !== "center" && !placed.includes(chat) && placed.length >= maxPanes)) {
-            if (drop) setDrop(undefined);
-            return;
-          }
-          event.preventDefault();
-          if (drop?.pane !== chatID || drop.zone !== zone) setDrop({ pane: chatID, zone });
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDrop(undefined);
-        }}
-        onDrop={(event) => {
-          const chat = dragged.current;
-          if (!chat || drop?.pane !== chatID) return;
-          event.preventDefault();
-          endDrag();
-          setGroupSplit(activeGroup.id, drop.zone === "center" ? replaceLeaf(split!, chatID, chat) : splitLeaf(split!, chatID, drop.zone, chat));
-          navigate(`/ai/chats/${chat}`);
-        }}
-      >
-        <Conversation
-          id={chatID}
-          refresh={refresh}
-          connectors={connectors}
-          pinned
-          focused={chatID === id}
-          onPin={() => togglePin(chatID)}
-          onChanged={() => setReload((value) => value + 1)}
-          pane={
-            <>
-              <span
-                className="pane-grip"
-                draggable
-                aria-hidden="true"
-                data-tip={t.splitHint}
-                onDragStart={(event) =>
-                  startDrag(chatID, event, event.currentTarget.closest(".conversation-head")?.querySelector("input")?.value || t.chats)
+      <>
+        {panes.map((box) => {
+          const chatID = box.chat;
+          const index = pins.ids.indexOf(chatID);
+          return (
+            <div
+              key={chatID}
+              className="grid-pane"
+              data-pane={chatID}
+              style={placeBox(box, 3)}
+              onFocus={() => rememberPinnedChat(chatID)}
+              onPointerDown={() => rememberPinnedChat(chatID)}
+              onDragOver={(event) => {
+                const target = splitDrop(event, chatID);
+                if (!target) return void delete event.currentTarget.dataset.drop;
+                event.preventDefault();
+                event.currentTarget.dataset.drop = target.zone;
+              }}
+              onDragLeave={(event) => {
+                const box = event.currentTarget.getBoundingClientRect();
+                const inside = event.clientX > box.left && event.clientX < box.right && event.clientY > box.top && event.clientY < box.bottom;
+                if (!inside) delete event.currentTarget.dataset.drop;
+              }}
+              onDrop={(event) => {
+                const target = splitDrop(event, chatID);
+                if (!target) return;
+                event.preventDefault();
+                endDrag();
+                setGroupSplit(activeGroup.id, target.zone === "center" ? replaceLeaf(node, chatID, target.chat) : splitLeaf(node, chatID, target.zone, target.chat));
+                navigate(`/ai/chats/${target.chat}`);
+              }}
+            >
+              <Conversation
+                id={chatID}
+                refresh={refresh}
+                connectors={connectors}
+                pinned
+                focused={chatID === id}
+                onPin={() => togglePin(chatID)}
+                onChanged={() => setReload((value) => value + 1)}
+                pane={
+                  <>
+                    <span
+                      className="pane-grip"
+                      draggable
+                      aria-hidden="true"
+                      data-tip={t.splitHint}
+                      onDragStart={(event) =>
+                        startDrag(chatID, event, event.currentTarget.closest(".conversation-head")?.querySelector("input")?.value || t.chats)
+                      }
+                      onDragEnd={endDrag}
+                    >
+                      <Icon name="grip" />
+                    </span>
+                    <kbd className="pin-kbd" data-tip={t.focusChat(pinShortcut(index + 1))}>
+                      {pinShortcut(index + 1)}
+                    </kbd>
+                  </>
                 }
-                onDragEnd={endDrag}
-              >
-                <Icon name="grip" />
-              </span>
-              <kbd className="pin-kbd" data-tip={t.focusChat(pinShortcut(index + 1))}>
-                {pinShortcut(index + 1)}
-              </kbd>
-            </>
-          }
-        />
-      </div>
+              />
+            </div>
+          );
+        })}
+        {dividers.map(({ path, box, dir, ratio }) => (
+          <div key={`split-${path}`} className="split-divider" style={placeBox(box, 0)}>
+            <Splitter
+              vertical={dir === "row"}
+              label={t.resizeSplit}
+              sizes={[ratio, 1 - ratio]}
+              index={0}
+              min={240}
+              style={dir === "row" ? { left: `calc(${ratio * 100}% - 3px)`, width: 6, top: 0, bottom: 0 } : { top: `calc(${ratio * 100}% - 3px)`, height: 6, left: 0, right: 0 }}
+              onChange={([a, b]) => setGroupSplit(activeGroup.id, setSplitRatio(node, path, a / (a + b)))}
+            />
+          </div>
+        ))}
+      </>
     );
   }
   const tracks = (sizes: number[]) => sizes.map((size) => `minmax(360px, ${size}fr)`).join(" 6px ");
@@ -1051,7 +1088,7 @@ export default function Chats({
           ))}
         </div>
       ) : split ? (
-        <div className="chat-split">{renderSplit(split, "")}</div>
+        <div ref={grid} className="chat-split">{renderSplit(split)}</div>
       ) : shown ? (
         <Conversation
           key={shown}
