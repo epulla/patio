@@ -101,8 +101,9 @@ func (s *Server) saveBot(w http.ResponseWriter, r *http.Request, create bool) {
 			in.ConnectorID = &id
 		}
 	}
-	if !required(in.Name) || strings.IndexFunc(in.Name, unicode.IsSpace) >= 0 {
-		errw(w, 400, "name required and cannot contain whitespace")
+	// Same characters parseMentions matches, so every bot can be @mentioned.
+	if !required(in.Name) || strings.IndexFunc(in.Name, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' }) >= 0 {
+		errw(w, 400, "name required; use only letters, digits and _")
 		return
 	}
 	if in.ConnectorID == nil && create {

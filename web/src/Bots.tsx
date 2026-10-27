@@ -15,7 +15,7 @@ const text = {
   en: {
     bots: "Bots", new: "New bot", help: "Bots are AI personas with their own name, instructions, connector and model. Mention one with @ in a chat; new chats start with the default bot from Settings.",
     empty: "No bots yet", count: (n: number) => `${n} bot${n === 1 ? "" : "s"}`, back: "Bots", gone: "This bot no longer exists.", create: "create a bot",
-    name: "Name", nameTitle: "One word, no spaces: it's how you @mention the bot", description: "Role", descriptionPlaceholder: "Developer: writes and tests code",
+    name: "Name", nameTitle: "Letters, digits and _ only: it's how you @mention the bot", description: "Role", descriptionPlaceholder: "Developer: writes and tests code",
     persona: "Persona prompt", personaPlaceholder: "You are Billy, a careful developer. Keep changes small and always run the tests.",
     color: "Color", connector: "Connector", model: "Model", loadingModels: "Loading models", noConnector: "No connector",
     save: "Save", saved: "Saved", createBot: "Create bot", delete: (name: string) => `Delete ${name}`, confirmDelete: (name: string) => `Delete bot "${name}"?`, protected: "Martin is the built-in bot; you can edit him but not delete him.",
@@ -23,7 +23,7 @@ const text = {
   es: {
     bots: "Bots", new: "Nuevo bot", help: "Los bots son personalidades de IA con su propio nombre, instrucciones, conector y modelo. Menciona uno con @ en un chat; los chats nuevos empiezan con el bot predeterminado de Ajustes.",
     empty: "Aún no hay bots", count: (n: number) => `${n} bot${n === 1 ? "" : "s"}`, back: "Bots", gone: "Este bot ya no existe.", create: "crear un bot",
-    name: "Nombre", nameTitle: "Una palabra, sin espacios: así lo mencionas con @", description: "Rol", descriptionPlaceholder: "Desarrollador: escribe y prueba código",
+    name: "Nombre", nameTitle: "Solo letras, números y _: así lo mencionas con @", description: "Rol", descriptionPlaceholder: "Desarrollador: escribe y prueba código",
     persona: "Instrucciones de personalidad", personaPlaceholder: "Eres Billy, un desarrollador cuidadoso. Haz cambios pequeños y siempre ejecuta las pruebas.",
     color: "Color", connector: "Conector", model: "Modelo", loadingModels: "Cargando modelos", noConnector: "Sin conector",
     save: "Guardar", saved: "Guardado", createBot: "Crear bot", delete: (name: string) => `Eliminar ${name}`, confirmDelete: (name: string) => `¿Eliminar el bot "${name}"?`, protected: "Martin es el bot incluido; puedes editarlo, pero no eliminarlo.",
@@ -210,7 +210,7 @@ function BotEditor({
         <div className="skill-fields">
           <label>
             {t.name}
-            <input autoFocus={!bot} required pattern="\S+" title={t.nameTitle} placeholder="Billy" value={name} onChange={(event) => setName(event.target.value)} />
+            <input autoFocus={!bot} required pattern="[\p{L}\p{N}_]+" title={t.nameTitle} placeholder="Billy" value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <label className="grow">
             {t.description}

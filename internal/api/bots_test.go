@@ -20,6 +20,11 @@ func TestBotCRUDHistoryAndProtection(t *testing.T) {
 	if code := requestJSON(t, h, http.MethodPost, "/api/bots", map[string]any{"name": "bIlLy", "connector_id": connector}, nil); code != http.StatusBadRequest {
 		t.Fatalf("duplicate status=%d", code)
 	}
+	for _, name := range []string{"Code-Bot", "Billy.2", "Billy Two"} {
+		if code := requestJSON(t, h, http.MethodPost, "/api/bots", map[string]any{"name": name, "connector_id": connector}, nil); code != http.StatusBadRequest {
+			t.Fatalf("name %q status=%d", name, code)
+		}
+	}
 	input["name"] = "William"
 	if code := requestJSON(t, h, http.MethodPatch, "/api/bots/"+created.ID, input, nil); code != http.StatusOK {
 		t.Fatalf("update bot=%d", code)
