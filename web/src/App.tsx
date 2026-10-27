@@ -84,6 +84,30 @@ function currentPath() {
   return location.pathname;
 }
 
+const lastPageKey = "last-page";
+
+// API lookups for pages that show one item, so a page whose item was deleted isn't restored.
+const pageItems: [RegExp, (id: string) => Promise<unknown>][] = [
+  [/^\/boards\/([^/]+)(?:\/new)?$/, (id) => api.get(`/api/boards/${id}`)],
+  [/^\/tickets\/([^/]+)$/, (id) => api.get(`/api/tickets/${id}`)],
+  [/^\/ai\/chats\/([^/]+)$/, (id) => api.get(`/api/chats/${id}`)],
+  [/^\/monitors\/([^/]+)$/, (id) => api.get(`/api/monitors/${id}`)],
+  [/^\/ai\/skills\/([^/]+)$/, (id) => api.get(`/api/skills/${id}`)],
+  [/^\/ai\/scheduled\/([^/]+)$/, (id) => api.get(`/api/scheduled-tasks/${id}`)],
+  [/^\/ai\/bots\/([^/]+)$/, (id) => api.get<{ id: string }[]>("/api/bots").then((bots) => bots.some((bot) => bot.id === id) || Promise.reject())],
+];
+
+// The page open when the app last quit, if it still exists.
+async function lastPage() {
+  const saved = localStorage.getItem(lastPageKey);
+  if (!saved || saved === "/" || !saved.startsWith("/")) return;
+  for (const [pattern, lookup] of pageItems) {
+    const id = saved.match(pattern)?.[1];
+    if (id && !(await lookup(id).then(() => true, () => false))) return;
+  }
+  return saved;
+}
+
 function ComingSoon({ title }: { title: string }) {
   const t = useText(text);
   return (
@@ -385,6 +409,9 @@ export default function App() {
       .get<Config>("/api/config")
       .then((loaded) => {
         if (loaded.open_path) navigate(loaded.open_path);
+        // Restore only when the app opened at its start page and the user hasn't moved on yet.
+        else if (!loaded.chat_window && location.pathname === "/")
+          lastPage().then((page) => page && location.pathname === "/" && navigate(page));
         setConfig(loaded);
       })
       .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "", open_path: "" }));
@@ -400,6 +427,11 @@ export default function App() {
     const timer = setInterval(run, 24 * 60 * 60 * 1000);
     return () => clearInterval(timer);
   }, [config]);
+
+  // Chat windows share localStorage and the tour visits pages on its own, so neither records the last page.
+  useEffect(() => {
+    if (config && !config.chat_window && !touring && !path.startsWith("/print/")) localStorage.setItem(lastPageKey, path);
+  }, [path, config, touring]);
 
   // The side panel is hidden on chat routes; remember the pinned chat viewed there for when it comes back.
   useEffect(() => {
