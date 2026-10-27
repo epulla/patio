@@ -4,6 +4,7 @@ import { ShortcutList } from "./Shortcuts";
 import {
   api,
   type AllowedFolder,
+  type Bot,
   type ChatDefaults,
   type Connector,
   type McpStatus,
@@ -81,7 +82,8 @@ const text = {
     autoAllow: "Auto-allow file changes and commands",
     thinking: "Thinking",
     showThinking: "Show thinking",
-    martinPersona: "Martin persona (playful tone in all chats)",
+    defaultBot: "Bot",
+    noBot: "None (plain assistant)",
     showTour: "Show tour again",
     chatCleanup: "Chat cleanup",
     chatCleanupHelp:
@@ -168,7 +170,8 @@ const text = {
     autoAllow: "Permitir cambios de archivos y comandos automáticamente",
     thinking: "Razonamiento",
     showThinking: "Mostrar razonamiento",
-    martinPersona: "Personalidad de Martin (tono divertido en todos los chats)",
+    defaultBot: "Bot",
+    noBot: "Ninguno (asistente simple)",
     showTour: "Ver el recorrido otra vez",
     chatCleanup: "Limpieza de chats",
     chatCleanupHelp:
@@ -540,6 +543,7 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
+  const [bots, setBots] = useState<Bot[]>([]);
   const [error, setError] = useState<unknown>();
 
   useEffect(() => {
@@ -547,11 +551,13 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
       api.get<ChatDefaults>("/api/settings/defaults"),
       api.get<Connector[]>("/api/connectors"),
       api.get<AllowedFolder[]>("/api/settings/folders"),
+      api.get<Bot[]>("/api/bots"),
     ])
-      .then(([nextDefaults, nextConnectors, nextFolders]) => {
+      .then(([nextDefaults, nextConnectors, nextFolders, nextBots]) => {
         setDefaults(nextDefaults);
         setConnectors(nextConnectors);
         setFolders(nextFolders);
+        setBots(nextBots);
       })
       .catch(setError);
   }, [foldersVersion]);
@@ -575,6 +581,15 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
         {defaults ? (
           <>
             <div className="defaults-fields">
+              <label>
+                {t.defaultBot}
+                <Picker
+                  label={t.defaultBot}
+                  options={[{ id: "none", name: t.noBot }, ...bots]}
+                  value={defaults.default_bot_id}
+                  onChange={(default_bot_id) => save({ default_bot_id })}
+                />
+              </label>
               <label>
                 {t.connector}
                 <Picker
@@ -625,11 +640,6 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
               label={t.showThinking}
               checked={defaults.show_thinking}
               onChange={(show_thinking) => save({ show_thinking })}
-            />
-            <Switch
-              label={t.martinPersona}
-              checked={defaults.martin_persona}
-              onChange={(martin_persona) => save({ martin_persona })}
             />
           </>
         ) : (

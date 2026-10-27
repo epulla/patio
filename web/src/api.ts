@@ -13,7 +13,7 @@ export type ChatDefaults = {
   folder: string | null;
   auto_allow: boolean;
   thinking: boolean;
-  martin_persona: boolean;
+  default_bot_id: string;
   show_thinking: boolean;
   language: "system" | "en" | "es";
 };
@@ -206,12 +206,23 @@ export type Chat = {
   capabilities: { thinking: { supported: boolean; reason: string }; steer: boolean };
   scheduled_task_id: string | null;
   scheduled_late: boolean;
+  bot_id: string | null;
+};
+export type Bot = {
+  id: string;
+  name: string;
+  description: string;
+  persona_prompt: string;
+  color: string;
+  connector_id: string | null;
+  model: string;
 };
 export type ScheduledTask = {
   id: string;
   title: string;
   prompt: string;
   connector_id: string | null;
+  bot_id: string | null;
   model: string;
   folder: string | null;
   thinking: boolean;
@@ -344,17 +355,14 @@ export const api = {
   post: <T>(path: string, value: unknown) => request<T>(path, body(value)),
   put: <T>(path: string, value: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(value) }),
+  patch: <T>(path: string, value: unknown) =>
+    request<T>(path, { method: "PATCH", body: JSON.stringify(value) }),
   delete: (path: string) => request<void>(path, { method: "DELETE" }),
-  upload: async <T>(path: string, file: File) =>
-    request<T>(path, body({ name: file.name, data: await base64(file) })),
+  upload: <T>(path: string, file: File) =>
+    request<T>(`${path}?name=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file,
+    }),
 };
-
-function base64(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
-    reader.onerror = () => reject(reader.error ?? new Error(lang() === "es" ? `No se pudo leer ${file.name}` : `Could not read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
-}
 import { lang } from "./i18n";

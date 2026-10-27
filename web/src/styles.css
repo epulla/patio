@@ -2733,6 +2733,17 @@ main.chat-window {
 .skill-name {
   font: 600 15px var(--mono);
 }
+.bot-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.bot-tag {
+  gap: 6px;
+  white-space: nowrap;
+}
 .skill-description {
   color: var(--muted);
   font-weight: 400;

@@ -13,6 +13,8 @@ function findTrigger(value: string, caret: number): Trigger | null {
 }
 
 let users: Promise<User[]> | null = null;
+// Called after bots change so @ suggestions pick up new names.
+export const forgetMentionUsers = () => (users = null);
 
 async function suggest({ char, query }: Trigger): Promise<Suggestion[]> {
   const q = query.toLowerCase();

@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
   type AllowedFolder,
+  type Bot,
   type ChatDefaults,
   type Connector,
   type ScheduledTask,
@@ -31,7 +32,7 @@ const text = {
     running: "Running", waiting: "Waiting for your answer", done: "Finished", failed: "Failed", skippedStatus: "Skipped",
     onceOn: "Once on", everyHour: "Every hour", everyHours: (n: number) => `Every ${n} hours`, dailyAt: "Every day at", weekdaysAt: "Weekdays at", everyDaysAt: (days: string) => `Every ${days} at`, monthlyOn: (n: number) => `Monthly on day ${n} at`, custom: (cron: string) => `Custom: ${cron}`,
     taskGone: "This scheduled task no longer exists.", new: "New scheduled task", description: "A scheduled task sends a prompt to an AI connector at the times you pick. Each run starts a new chat. Tasks run only while Patio is open.", create: "create a scheduled task", empty: "No scheduled tasks yet", example: 'For example, every weekday at 9:00 AM: "Summarize the tickets due this week and list anything overdue."', taskCount: (n: number) => `${n} scheduled task${n === 1 ? "" : "s"}`, ariaTasks: "Scheduled tasks", enable: (title: string) => `Enable ${title}`, more: (title: string) => `More actions for ${title}`, disable: "Disable task", enableTask: "Enable task", edit: "Edit", remove: "Remove", recent: "Most recent", alphabetical: "Alphabetical", sortLabel: "Sort scheduled tasks", sort: "Sort:", back: "Scheduled tasks",
-    editNew: "New scheduled task", editAria: (title: string) => `Edit ${title}`, title: "Title", connector: "Connector", noConnector: "No connector", connectorRemoved: "Connector removed", loadingModels: "Loading models", model: "Model", folder: "Folder", scratch: "Scratch folder (no files shared)", mode: "Mode", ask: "Ask before changes", auto: "Auto-allow everything", autoDesc: "Every file change and command runs without asking.", askDesc: "File changes and commands wait for your approval in the run's chat. You get a notification.", thinking: "Thinking", schedule: "Schedule", repeat: "Repeat", at: "At", on: "On", everyHoursLabel: "Every (hours)", daysWeek: "Days of the week", dayMonth: "Day of month", cronLabel: "Cron expression (minute hour day month weekday)", nextRuns: "Next runs:", ranOnce: (when: string) => `Already ran on ${when}. Pick a new date to run it again.`, openOnly: "Runs only while Patio is open.", enabled: "Enabled", saved: "Saved", save: "Save", createTask: "Create task", deleteTitle: (title: string) => `Delete ${title}`, recentRuns: "Recent runs", noRuns: "No runs yet.", runsAria: "Recent runs", late: "Ran late", openChat: "Open chat",
+    editNew: "New scheduled task", editAria: (title: string) => `Edit ${title}`, title: "Title", bot: "Bot", defaultBot: "Default bot", connector: "Connector", noConnector: "No connector", connectorRemoved: "Connector removed", loadingModels: "Loading models", model: "Model", folder: "Folder", scratch: "Scratch folder (no files shared)", mode: "Mode", ask: "Ask before changes", auto: "Auto-allow everything", autoDesc: "Every file change and command runs without asking.", askDesc: "File changes and commands wait for your approval in the run's chat. You get a notification.", thinking: "Thinking", schedule: "Schedule", repeat: "Repeat", at: "At", on: "On", everyHoursLabel: "Every (hours)", daysWeek: "Days of the week", dayMonth: "Day of month", cronLabel: "Cron expression (minute hour day month weekday)", nextRuns: "Next runs:", ranOnce: (when: string) => `Already ran on ${when}. Pick a new date to run it again.`, openOnly: "Runs only while Patio is open.", enabled: "Enabled", saved: "Saved", save: "Save", createTask: "Create task", deleteTitle: (title: string) => `Delete ${title}`, recentRuns: "Recent runs", noRuns: "No runs yet.", runsAria: "Recent runs", late: "Ran late", openChat: "Open chat",
   },
   es: {
     once: "Una vez", hours: "Cada pocas horas", daily: "Todos los días", weekdays: "Cada día laborable (lun–vie)", weekly: "Cada semana", monthly: "Cada mes", cron: "Avanzado (cron)",
@@ -39,7 +40,7 @@ const text = {
     running: "En curso", waiting: "Esperando tu respuesta", done: "Terminada", failed: "Fallida", skippedStatus: "Omitida",
     onceOn: "Una vez el", everyHour: "Cada hora", everyHours: (n: number) => `Cada ${n} horas`, dailyAt: "Todos los días a las", weekdaysAt: "Los días laborables a las", everyDaysAt: (days: string) => `Cada ${days} a las`, monthlyOn: (n: number) => `Cada mes, el día ${n} a las`, custom: (cron: string) => `Personalizado: ${cron}`,
     taskGone: "Esta tarea programada ya no existe.", new: "Nueva tarea programada", description: "Una tarea programada envía una instrucción a un conector de IA en los horarios que elijas. Cada ejecución inicia un chat nuevo. Las tareas se ejecutan solo mientras Patio esté abierto.", create: "crear una tarea programada", empty: "Aún no hay tareas programadas", example: 'Por ejemplo, cada día laborable a las 9:00: "Resume los tickets que vencen esta semana y enumera los atrasados."', taskCount: (n: number) => `${n} tarea${n === 1 ? "" : "s"} programada${n === 1 ? "" : "s"}`, ariaTasks: "Tareas programadas", enable: (title: string) => `Activar ${title}`, more: (title: string) => `Más acciones para ${title}`, disable: "Desactivar tarea", enableTask: "Activar tarea", edit: "Editar", remove: "Eliminar", recent: "Más recientes", alphabetical: "Alfabético", sortLabel: "Ordenar tareas programadas", sort: "Orden:", back: "Tareas programadas",
-    editNew: "Nueva tarea programada", editAria: (title: string) => `Editar ${title}`, title: "Título", connector: "Conector", noConnector: "Sin conector", connectorRemoved: "Conector eliminado", loadingModels: "Cargando modelos", model: "Modelo", folder: "Carpeta", scratch: "Carpeta temporal (no se comparten archivos)", mode: "Modo", ask: "Preguntar antes de hacer cambios", auto: "Permitir todo automáticamente", autoDesc: "Cada cambio de archivo y comando se ejecuta sin preguntar.", askDesc: "Los cambios y comandos esperan tu aprobación en el chat de la ejecución. Recibirás una notificación.", thinking: "Razonamiento", schedule: "Programación", repeat: "Repetir", at: "A las", on: "El", everyHoursLabel: "Cada (horas)", daysWeek: "Días de la semana", dayMonth: "Día del mes", cronLabel: "Expresión cron (minuto hora día mes día-semana)", nextRuns: "Próximas ejecuciones:", ranOnce: (when: string) => `Ya se ejecutó el ${when}. Elige otra fecha para volver a ejecutarla.`, openOnly: "Se ejecuta solo mientras Patio esté abierto.", enabled: "Activada", saved: "Guardada", save: "Guardar", createTask: "Crear tarea", deleteTitle: (title: string) => `Eliminar ${title}`, recentRuns: "Ejecuciones recientes", noRuns: "Aún no hay ejecuciones.", runsAria: "Ejecuciones recientes", late: "Se ejecutó tarde", openChat: "Abrir chat",
+    editNew: "Nueva tarea programada", editAria: (title: string) => `Editar ${title}`, title: "Título", bot: "Bot", defaultBot: "Bot predeterminado", connector: "Conector", noConnector: "Sin conector", connectorRemoved: "Conector eliminado", loadingModels: "Cargando modelos", model: "Modelo", folder: "Carpeta", scratch: "Carpeta temporal (no se comparten archivos)", mode: "Modo", ask: "Preguntar antes de hacer cambios", auto: "Permitir todo automáticamente", autoDesc: "Cada cambio de archivo y comando se ejecuta sin preguntar.", askDesc: "Los cambios y comandos esperan tu aprobación en el chat de la ejecución. Recibirás una notificación.", thinking: "Razonamiento", schedule: "Programación", repeat: "Repetir", at: "A las", on: "El", everyHoursLabel: "Cada (horas)", daysWeek: "Días de la semana", dayMonth: "Día del mes", cronLabel: "Expresión cron (minuto hora día mes día-semana)", nextRuns: "Próximas ejecuciones:", ranOnce: (when: string) => `Ya se ejecutó el ${when}. Elige otra fecha para volver a ejecutarla.`, openOnly: "Se ejecuta solo mientras Patio esté abierto.", enabled: "Activada", saved: "Guardada", save: "Guardar", createTask: "Crear tarea", deleteTitle: (title: string) => `Eliminar ${title}`, recentRuns: "Ejecuciones recientes", noRuns: "Aún no hay ejecuciones.", runsAria: "Ejecuciones recientes", late: "Se ejecutó tarde", openChat: "Abrir chat",
   },
 };
 
@@ -341,6 +342,8 @@ function TaskEditor({
   const [title, setTitle] = useState(task?.title ?? "");
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
   const [connectorID, setConnectorID] = useState(task?.connector_id ?? "");
+  const [botID, setBotID] = useState(task?.bot_id ?? "");
+  const [bots, setBots] = useState<Bot[]>([]);
   const [model, setModel] = useState(task?.model ?? "");
   const [folder, setFolder] = useState(task?.folder ?? "");
   const [thinking, setThinking] = useState(task?.thinking ?? true);
@@ -367,6 +370,7 @@ function TaskEditor({
     title: title.trim(),
     prompt,
     connector_id: connectorID || null,
+    bot_id: botID || null,
     model,
     folder: folder || null,
     thinking,
@@ -386,10 +390,12 @@ function TaskEditor({
       api.get<Connector[]>("/api/connectors"),
       api.get<AllowedFolder[]>("/api/settings/folders"),
       task ? undefined : api.get<ChatDefaults>("/api/settings/defaults"),
+      api.get<Bot[]>("/api/bots"),
     ])
-      .then(([connectorList, folderList, defaults]) => {
+      .then(([connectorList, folderList, defaults, botList]) => {
         setConnectors(connectorList);
         setFolders(folderList);
+        setBots(botList);
         if (!defaults) return;
         setDefaults(defaults);
         const id = defaults.connector_id && connectorList.some((c) => c.id === defaults.connector_id)
@@ -493,6 +499,20 @@ function TaskEditor({
           />
         </label>
         <div className="skill-fields">
+          <label>
+            {t.bot}
+            <Picker label={t.bot} empty={t.defaultBot} options={bots}
+              value={botID}
+              onChange={(id) => {
+                setBotID(id);
+                const bot = bots.find((b) => b.id === id);
+                if (bot?.connector_id) {
+                  setConnectorID(bot.connector_id);
+                  setModel(bot.model);
+                }
+              }}
+            />
+          </label>
           <label>
             {t.connector}
             <Picker

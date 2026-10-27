@@ -21,6 +21,7 @@ import ModelPicker, { type ModelOption } from "./ModelPicker";
 import {
   api,
   type AllowedFolder,
+  type Bot,
   type Chat,
   type ChatApproval,
   type ChatAnswer,
@@ -1701,6 +1702,7 @@ export function Conversation({
             onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
           />
         </div>
+        {detail.chat.bot_id && <BotTag id={detail.chat.bot_id} />}
         {pane}
         {onPin && (
           <IconButton
@@ -2061,6 +2063,23 @@ function AttachmentLabel({ attachment }: { attachment: ChatAttachment }) {
       <span className="attachment-name">{attachment.name}</span>
       <span className="muted">{formatBytes(attachment.size)}</span>
     </span>
+  );
+}
+
+function BotTag({ id }: { id: string }) {
+  const [bot, setBot] = useState<Bot>();
+  useEffect(() => {
+    api
+      .get<Bot[]>("/api/bots")
+      .then((bots) => setBot(bots.find((b) => b.id === id)))
+      .catch(() => setBot(undefined));
+  }, [id]);
+  if (!bot) return null;
+  return (
+    <button type="button" className="ghost bot-tag" onClick={() => navigate(`/ai/bots/${bot.id}`)}>
+      <span className="bot-dot" style={{ background: bot.color || "var(--muted)" }} aria-hidden="true" />
+      {bot.name}
+    </button>
   );
 }
 

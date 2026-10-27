@@ -11,6 +11,7 @@ import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
 import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, pruneSplit, setActiveGroup, shownPin, splitLeaves, usePinGroups, usePins } from "./pins";
 import McpServers from "./McpServers";
+import Bots from "./Bots";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
 import Monitors from "./Monitors";
@@ -30,7 +31,7 @@ const text = {
   en: {
     never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
     boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
-    skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings",
+    bots: "Bots", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings",
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
     pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
@@ -40,7 +41,7 @@ const text = {
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
     boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
-    skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes",
+    bots: "Bots", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes",
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
     pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
@@ -451,6 +452,8 @@ export default function App() {
     page = (
       <Chats id={chatMatch[1] && decodeURIComponent(chatMatch[1])} refresh={refresh} pinned={pinned} />
     );
+  const botMatch = path.match(/^\/ai\/bots(?:\/([^/]+))?$/);
+  if (botMatch) page = <Bots id={botMatch[1] && decodeURIComponent(botMatch[1])} refresh={refresh} />;
   const skillMatch = path.match(/^\/ai\/skills(?:\/([^/]+))?$/);
   if (skillMatch)
     page = <Skills id={skillMatch[1] && decodeURIComponent(skillMatch[1])} refresh={refresh} />;
@@ -554,6 +557,7 @@ export default function App() {
               { "data-tour": "connectors" },
             )}
             {navItem("/ai/chats", t.chats, <Icon name="chat" />, !!chatMatch, { "data-tour": "chats" })}
+            {navItem("/ai/bots", t.bots, <Icon name="bot" />, !!botMatch, { "data-tour": "bots" })}
             {navItem("/ai/skills", t.skills, <Icon name="sparkles" />, !!skillMatch, { "data-tour": "skills" })}
             {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp", { "data-tour": "mcp" })}
           </div>

@@ -5,7 +5,7 @@ import { ErrorText, formatDate } from "./App";
 import { confirmDialog } from "./confirm";
 import { useText } from "./i18n";
 
-export type HistoryItemType = "skill" | "connector" | "mcp_server" | "scheduled_task";
+export type HistoryItemType = "skill" | "connector" | "mcp_server" | "scheduled_task" | "bot";
 
 type Change = { field: string; old?: unknown; new?: unknown; hidden?: boolean };
 
