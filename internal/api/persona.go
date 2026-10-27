@@ -55,6 +55,33 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 	if persona != "" {
 		prompt = persona + " " + ticketComments + " " + chatLinkRules + " " + askUserPrompt + " " + chatHandoffPrompt
 	}
+	if db != nil {
+		rows, err := db.Query(`SELECT name,COALESCE(description,'') FROM "user" WHERE is_ai=1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE,rowid`)
+		if err != nil {
+			return "", err
+		}
+		var bots strings.Builder
+		for rows.Next() {
+			var name, description string
+			if err := rows.Scan(&name, &description); err != nil {
+				rows.Close()
+				return "", err
+			}
+			if bots.Len() == 0 {
+				bots.WriteString(" Available bots (to hand off, call create_chat with bot set to the bot's name, then write \"@Name <task> → [chat](/ai/chats/<id>)\" in your reply; @Name text is display only and never opens a chat):")
+			}
+			fmt.Fprintf(&bots, "\n- %s", name)
+			if description != "" {
+				bots.WriteString(": " + description)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return "", err
+		}
+		rows.Close()
+		prompt += bots.String()
+	}
 	prompt += skillIndex(skills)
 	if chatID != "" {
 		prompt += " This chat's ID is " + chatID + "."

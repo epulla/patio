@@ -45,3 +45,24 @@ func TestChatSystemPromptMemoryIndex(t *testing.T) {
 		t.Errorf("memory cap did not drop only the oldest memory:\n%s", prompt)
 	}
 }
+
+func TestChatPromptPersonaListsBots(t *testing.T) {
+	db, _, _ := chatAPI(t)
+	if _, err := db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,description,persona_prompt) VALUES
+		('billy','Billy','billy@test',1,1,'A precise helper.','You are Billy, precise and kind.'),
+		('sammy','Sammy','sammy@test',1,1,'A cheerful planner.','')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at,bot_id) VALUES('billy-chat','Chat','now','now','billy')`); err != nil {
+		t.Fatal(err)
+	}
+	prompt, err := ChatPrompt(db, "billy-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"You are Billy. You are Billy, precise and kind.", "- Sammy: A cheerful planner.", "call create_chat with bot set to the bot's name", "@Name text is display only and never opens a chat"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
