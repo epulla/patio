@@ -19,7 +19,7 @@ import (
 
 const (
 	maxChatAttachments       = 10
-	maxChatTextAttachment    = 1 << 20
+	maxChatTextAttachment    = 10 << 20
 	maxChatImageAttachment   = 10 << 20
 	maxChatAttachmentName    = 120
 	maxChatAttachmentRequest = 14 << 20
