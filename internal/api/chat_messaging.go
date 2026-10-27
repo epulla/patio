@@ -135,6 +135,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ConnectorID string `json:"connector_id"`
 		Model       string `json:"model"`
+		Bot         string `json:"bot"`
 		Prompt      string `json:"prompt"`
 		ReportBack  bool   `json:"report_back"`
 	}
@@ -152,7 +153,40 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
+	var selectedBot bot
+	if in.Bot != "" {
+		selectedBot, err = scanBot(s.db.QueryRow(`SELECT `+botColumns+` FROM "user" WHERE name=? COLLATE NOCASE AND is_ai=1 AND deleted_at IS NULL`, in.Bot))
+		if errors.Is(err, sql.ErrNoRows) {
+			rows, queryErr := s.db.Query(`SELECT name FROM "user" WHERE is_ai=1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE,rowid`)
+			if queryErr != nil {
+				errw(w, 500, queryErr.Error())
+				return
+			}
+			var names []string
+			for rows.Next() {
+				var name string
+				if queryErr = rows.Scan(&name); queryErr != nil {
+					break
+				}
+				names = append(names, name)
+			}
+			queryErr = errors.Join(queryErr, rows.Err(), rows.Close())
+			if queryErr != nil {
+				errw(w, 500, queryErr.Error())
+				return
+			}
+			errw(w, 400, `unknown bot `+strconv.Quote(in.Bot)+`; available bots: `+strings.Join(names, ", "))
+			return
+		}
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+	}
 	connectorID := in.ConnectorID
+	if connectorID == "" && selectedBot.ConnectorID != nil {
+		connectorID = *selectedBot.ConnectorID
+	}
 	if connectorID == "" && caller.ConnectorID != nil {
 		connectorID = *caller.ConnectorID
 	}
@@ -164,6 +198,9 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := in.Model
+	if model == "" && selectedBot.ConnectorID != nil && connectorID == *selectedBot.ConnectorID {
+		model = selectedBot.Model
+	}
 	if model == "" && caller.ConnectorID != nil && connectorID == *caller.ConnectorID {
 		model = caller.Model
 	}
@@ -196,6 +233,9 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uid()
 	botID := caller.BotID
+	if in.Bot != "" {
+		botID = &selectedBot.ID
+	}
 	if botID == nil && defaults.DefaultBotID != "none" {
 		botID = &defaults.DefaultBotID
 	}

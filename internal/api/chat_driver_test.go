@@ -1082,6 +1082,67 @@ func TestCreateChatHandoffInheritsChatSettings(t *testing.T) {
 	}
 }
 
+func TestCreateChatHandoffWithBot(t *testing.T) {
+	for _, tc := range []struct {
+		name                              string
+		input                             map[string]any
+		wantConnector, wantModel, wantBot string
+		status                            int
+	}{
+		{name: "bot defaults", input: map[string]any{"bot": "Billy", "prompt": "work"}, wantModel: "bot-model", wantBot: "billy", status: 200},
+		{name: "explicit override", input: map[string]any{"bot": "Billy", "model": "override-model", "prompt": "work"}, wantModel: "override-model", wantBot: "billy", status: 200},
+		{name: "unknown", input: map[string]any{"bot": "Missing", "prompt": "work"}, status: 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, _, root := chatAPI(t)
+			connector := createTestConnector(t, db)
+			tc.wantConnector = connector
+			caller := createDriverTestChat(t, db, connector, root)
+			if _, err := db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,connector_id,model) VALUES('billy','Billy','billy@bot',1,1,?,'bot-model')`, connector); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai) VALUES('sammy','Sammy','sammy@bot',1,1)`); err != nil {
+				t.Fatal(err)
+			}
+			if tc.name == "explicit override" {
+				other := uid()
+				if _, err := db.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'codex','Other',?)`, other, now()); err != nil {
+					t.Fatal(err)
+				}
+				tc.input["connector_id"] = other
+				tc.wantConnector = tc.input["connector_id"].(string)
+			}
+			s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return newPipeChatProcess(), nil }})
+			defer s.Close()
+			var out struct {
+				ChatID string `json:"chat_id"`
+			}
+			path := "/api/chats/" + caller + "/handoff"
+			code := requestJSON(t, s, http.MethodPost, path, tc.input, &out)
+			body := ""
+			if tc.status == 400 {
+				code, body = requestRaw(t, s, http.MethodPost, path, tc.input)
+			}
+			if code != tc.status {
+				t.Fatalf("status=%d body unexpected", code)
+			}
+			if tc.status == 400 {
+				if !strings.Contains(body, `unknown bot \"Missing\"; available bots: Billy, Martin, Sammy`) {
+					t.Fatalf("unknown bot body=%s", body)
+				}
+				return
+			}
+			var gotConnector, gotModel, gotBot string
+			if err := db.QueryRow(`SELECT connector_id,model,bot_id FROM chat WHERE id=?`, out.ChatID).Scan(&gotConnector, &gotModel, &gotBot); err != nil {
+				t.Fatal(err)
+			}
+			if gotConnector != tc.wantConnector || gotModel != tc.wantModel || gotBot != tc.wantBot {
+				t.Fatalf("child=%q %q %q", gotConnector, gotModel, gotBot)
+			}
+		})
+	}
+}
+
 func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
