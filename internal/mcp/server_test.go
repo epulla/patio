@@ -33,7 +33,7 @@ func TestRegisteredToolNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"list_boards", "send_to_chat"} {
+	for _, want := range []string{"list_boards", "send_to_chat", "list_bots", "create_bot", "update_bot"} {
 		found := false
 		for _, name := range names {
 			if name == want {
@@ -160,6 +160,28 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Error(err)
 		}
 	}()
+	connectorID := "bot-connector"
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'claude','Bot connector',?)`, connectorID, "now"); err != nil {
+		t.Fatal(err)
+	}
+	createdBot := callTool(t, session, "create_bot", map[string]any{"name": "BotTest", "connector_id": connectorID, "persona_prompt": "Be helpful"})
+	if createdBot.IsError {
+		t.Fatalf("create bot failed: %#v", createdBot.Content)
+	}
+	var botResult struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(createdBot.Content[0].(*sdk.TextContent).Text), &botResult); err != nil {
+		t.Fatal(err)
+	}
+	updatedBot := callTool(t, session, "update_bot", map[string]any{"id": botResult.ID, "name": "BotUpdated", "connector_id": connectorID, "description": "Updated description"})
+	if updatedBot.IsError {
+		t.Fatalf("update bot failed: %#v", updatedBot.Content)
+	}
+	listedBots := callTool(t, session, "list_bots", map[string]any{})
+	if listedBots.IsError || !strings.Contains(listedBots.Content[0].(*sdk.TextContent).Text, "BotUpdated") {
+		t.Fatalf("list bots failed: %#v", listedBots.Content)
+	}
 
 	expectedTools := map[string]bool{
 		"list_boards": true, "get_board": true, "create_board": true, "create_ticket": true,
@@ -173,6 +195,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
 		"query_db": true, "list_connectors": true, "create_connector": true,
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
+		"list_bots": true, "create_bot": true, "update_bot": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
 		"ask_user": true, "create_notification": true, "get_item_history": true, "send_to_chat": true, "create_chat": true,
@@ -218,8 +241,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 57 {
-		t.Fatalf("tool count = %d, want 57", count)
+	if count != 60 {
+		t.Fatalf("tool count = %d, want 60", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)

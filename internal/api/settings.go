@@ -13,18 +13,18 @@ import (
 )
 
 type settingsDefaults struct {
-	ConnectorID   *string `json:"connector_id"`
-	Model         string  `json:"model"`
-	Language      string  `json:"language"`
-	Folder        *string `json:"folder"`
-	AutoAllow     bool    `json:"auto_allow"`
-	Thinking      bool    `json:"thinking"`
-	ShowThinking  bool    `json:"show_thinking"`
-	MartinPersona bool    `json:"martin_persona"`
+	ConnectorID  *string `json:"connector_id"`
+	Model        string  `json:"model"`
+	Language     string  `json:"language"`
+	Folder       *string `json:"folder"`
+	AutoAllow    bool    `json:"auto_allow"`
+	Thinking     bool    `json:"thinking"`
+	ShowThinking bool    `json:"show_thinking"`
+	DefaultBotID string  `json:"default_bot_id"`
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Thinking: true, MartinPersona: true, Language: "system"}
+	defaults := settingsDefaults{AutoAllow: true, Thinking: true, DefaultBotID: "ai", Language: "system"}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -100,8 +100,8 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 			return defaults, err
 		}
 	}
-	if raw, ok := values["martin_persona"]; ok {
-		if err := json.Unmarshal([]byte(raw), &defaults.MartinPersona); err != nil {
+	if raw, ok := values["default_bot_id"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.DefaultBotID); err != nil {
 			return defaults, err
 		}
 	}
@@ -144,14 +144,14 @@ func (s *Server) putOnboarding(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ConnectorID   json.RawMessage `json:"connector_id"`
-		Model         *string         `json:"model"`
-		Language      *string         `json:"language"`
-		Folder        json.RawMessage `json:"folder"`
-		AutoAllow     *bool           `json:"auto_allow"`
-		Thinking      *bool           `json:"thinking"`
-		ShowThinking  *bool           `json:"show_thinking"`
-		MartinPersona *bool           `json:"martin_persona"`
+		ConnectorID  json.RawMessage `json:"connector_id"`
+		Model        *string         `json:"model"`
+		Language     *string         `json:"language"`
+		Folder       json.RawMessage `json:"folder"`
+		AutoAllow    *bool           `json:"auto_allow"`
+		Thinking     *bool           `json:"thinking"`
+		ShowThinking *bool           `json:"show_thinking"`
+		DefaultBotID *string         `json:"default_bot_id"`
 	}
 	if decode(r, &in) != nil {
 		errw(w, http.StatusBadRequest, "invalid settings defaults JSON")
@@ -175,7 +175,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, "language must be system, en, or es")
 		return
 	}
-	autoAllow, thinking, showThinking, martinPersona := defaults.AutoAllow, defaults.Thinking, defaults.ShowThinking, defaults.MartinPersona
+	autoAllow, thinking, showThinking, defaultBotID := defaults.AutoAllow, defaults.Thinking, defaults.ShowThinking, defaults.DefaultBotID
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
 	}
@@ -185,8 +185,18 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	if in.ShowThinking != nil {
 		showThinking = *in.ShowThinking
 	}
-	if in.MartinPersona != nil {
-		martinPersona = *in.MartinPersona
+	if in.DefaultBotID != nil {
+		defaultBotID = *in.DefaultBotID
+		if defaultBotID != "none" {
+			var exists int
+			if err := s.db.QueryRow(`SELECT 1 FROM "user" WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, defaultBotID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+				errw(w, 400, "bot not found")
+				return
+			} else if err != nil {
+				errw(w, 500, err.Error())
+				return
+			}
+		}
 	}
 	if len(in.ConnectorID) > 0 && string(in.ConnectorID) != "null" {
 		var value string
@@ -236,7 +246,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		"auto_allow":     autoAllow,
 		"thinking":       thinking,
 		"show_thinking":  showThinking,
-		"martin_persona": martinPersona,
+		"default_bot_id": defaultBotID,
 	}
 	encoded := make(map[string]string, len(values))
 	for key, value := range values {
@@ -258,7 +268,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, MartinPersona: martinPersona})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, DefaultBotID: defaultBotID})
 }
 
 func sameConnectorID(a, b *string) bool {

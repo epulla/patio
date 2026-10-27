@@ -195,6 +195,10 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		title = "Handoff from " + caller.Title
 	}
 	id := uid()
+	botID := caller.BotID
+	if botID == nil && defaults.DefaultBotID != "none" {
+		botID = &defaults.DefaultBotID
+	}
 	folder := caller.Folder
 	created := now()
 	child := chat{ID: id, Folder: folder}
@@ -211,7 +215,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, caller.Thinking, caller.ShowThinking, caller.AutoAllow, caller.ID); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, caller.Thinking, caller.ShowThinking, caller.AutoAllow, caller.ID, botID); err != nil {
 		if createdWorkdir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}

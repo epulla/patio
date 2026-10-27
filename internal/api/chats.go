@@ -48,6 +48,7 @@ type chat struct {
 	ScheduledTaskID *string          `json:"scheduled_task_id"`
 	ScheduledLate   bool             `json:"scheduled_late"`
 	ParentChatID    *string          `json:"parent_chat_id"`
+	BotID           *string          `json:"bot_id"`
 }
 
 type chatCapabilities struct {
@@ -195,7 +196,7 @@ func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 
 func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string, string, string, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID, &c.BotID); err != nil {
 		return c, "", "", "", err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -228,7 +229,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id`
+const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id,bot_id`
 
 func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	limit := 50
@@ -307,6 +308,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		AutoAllow    *bool           `json:"auto_allow"`
 		Thinking     *bool           `json:"thinking"`
 		ShowThinking *bool           `json:"show_thinking"`
+		BotID        *string         `json:"bot_id"`
 	}
 	if decode(r, &in) != nil {
 		errw(w, 400, "valid chat required")
@@ -316,6 +318,24 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
+	}
+	botID := in.BotID
+	if botID == nil && defaults.DefaultBotID != "none" {
+		botID = &defaults.DefaultBotID
+	}
+	var botConnector *string
+	botModel := ""
+	if botID != nil {
+		if err := s.db.QueryRow(`SELECT connector_id,model FROM "user" WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, *botID).Scan(&botConnector, &botModel); err != nil {
+			errw(w, 400, "bot not found")
+			return
+		}
+	}
+	if len(in.ConnectorID) == 0 && botConnector != nil {
+		in.ConnectorID, _ = json.Marshal(*botConnector)
+		if in.Model == "" {
+			in.Model = botModel
+		}
 	}
 	var connectorID string
 	if len(in.ConnectorID) > 0 {
@@ -400,7 +420,8 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow) VALUES(?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow); err != nil {
+	c.BotID = botID
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
 		if folder == nil {
 			err = cleanupConnectorDir(s.chatWorkdir(c), err)
 		}

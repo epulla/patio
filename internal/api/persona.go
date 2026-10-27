@@ -33,17 +33,53 @@ func ChatSystemPrompt(enabled bool, chatID string, skills []Skill) string {
 
 // ChatPrompt builds ChatSystemPrompt from the stored persona setting and enabled skills.
 func ChatPrompt(db *sql.DB, chatID string) (string, error) {
-	enabled, err := MartinPersonaEnabled(db)
-	if err != nil {
-		return "", err
+	persona := ""
+	if db != nil && chatID != "" {
+		var name, prompt string
+		err := db.QueryRow(`SELECT u.name,u.persona_prompt FROM chat c JOIN "user" u ON u.id=c.bot_id WHERE c.id=? AND u.is_ai=1 AND u.deleted_at IS NULL`, chatID).Scan(&name, &prompt)
+		if err != nil && err != sql.ErrNoRows {
+			return "", err
+		}
+		if err == nil {
+			persona = "You are " + name + ". " + prompt
+		}
 	}
 	var skills []Skill
+	var err error
 	if db != nil {
 		if skills, err = EnabledSkills(db); err != nil {
 			return "", err
 		}
 	}
-	return ChatSystemPrompt(enabled, chatID, skills), nil
+	prompt := "You are a neutral assistant. " + chatLinkRules + " " + askUserPrompt + " " + chatHandoffPrompt
+	if persona != "" {
+		prompt = persona + " " + ticketComments + " " + chatLinkRules + " " + askUserPrompt + " " + chatHandoffPrompt
+	}
+	prompt += skillIndex(skills)
+	if chatID != "" {
+		prompt += " This chat's ID is " + chatID + "."
+	}
+	return prompt, nil
+}
+
+// MartinPersonaEnabled remains for the local connector's legacy prompt builder.
+func MartinPersonaEnabled(db *sql.DB) (bool, error) {
+	if db == nil {
+		return true, nil
+	}
+	var raw string
+	err := db.QueryRow(`SELECT value FROM app_setting WHERE key='default_bot_id'`).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var id string
+	if err = json.Unmarshal([]byte(raw), &id); err != nil {
+		return false, err
+	}
+	return id != "none", nil
 }
 
 // skillIndex lists each skill and memory with a short trigger; full text stays behind load_skill.
@@ -83,23 +119,4 @@ func skillTrigger(description string) string {
 		return strings.Join(words[:20], " ") + "…"
 	}
 	return strings.TrimSuffix(strings.Join(words, " "), ".")
-}
-
-func MartinPersonaEnabled(db *sql.DB) (bool, error) {
-	if db == nil {
-		return true, nil
-	}
-	var raw string
-	err := db.QueryRow(`SELECT value FROM app_setting WHERE key='martin_persona'`).Scan(&raw)
-	if err == sql.ErrNoRows {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var enabled bool
-	if err := json.Unmarshal([]byte(raw), &enabled); err != nil {
-		return false, err
-	}
-	return enabled, nil
 }

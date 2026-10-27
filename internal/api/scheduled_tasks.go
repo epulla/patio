@@ -12,6 +12,7 @@ import (
 
 type scheduledTask struct {
 	ID          string  `json:"id"`
+	BotID       *string `json:"bot_id"`
 	Title       string  `json:"title"`
 	Prompt      string  `json:"prompt"`
 	ConnectorID *string `json:"connector_id"`
@@ -31,6 +32,7 @@ type scheduledTaskInput struct {
 	Title       string  `json:"title"`
 	Prompt      string  `json:"prompt"`
 	ConnectorID *string `json:"connector_id"`
+	BotID       *string `json:"bot_id"`
 	Model       string  `json:"model"`
 	Folder      *string `json:"folder"`
 	Thinking    bool    `json:"thinking"`
@@ -40,12 +42,12 @@ type scheduledTaskInput struct {
 	Enabled     *bool   `json:"enabled"`
 }
 
-const scheduledTaskColumns = `id,title,prompt,connector_id,model,folder,thinking,auto_allow,schedule,run_at,enabled,next_run_at,created_at,updated_at`
+const scheduledTaskColumns = `id,title,prompt,connector_id,bot_id,model,folder,thinking,auto_allow,schedule,run_at,enabled,next_run_at,created_at,updated_at`
 
 func scanScheduledTask(row interface{ Scan(...any) error }) (scheduledTask, error) {
 	var t scheduledTask
 	var thinking, autoAllow, enabled int
-	err := row.Scan(&t.ID, &t.Title, &t.Prompt, &t.ConnectorID, &t.Model, &t.Folder, &thinking, &autoAllow, &t.Schedule, &t.RunAt, &enabled, &t.NextRunAt, &t.CreatedAt, &t.UpdatedAt)
+	err := row.Scan(&t.ID, &t.Title, &t.Prompt, &t.ConnectorID, &t.BotID, &t.Model, &t.Folder, &thinking, &autoAllow, &t.Schedule, &t.RunAt, &enabled, &t.NextRunAt, &t.CreatedAt, &t.UpdatedAt)
 	t.Thinking, t.AutoAllow, t.Enabled = thinking != 0, autoAllow != 0, enabled != 0
 	return t, err
 }
@@ -83,6 +85,14 @@ func taskSchedule(schedule string, runAt *string, enabled bool, now time.Time) (
 func (s *Server) validateScheduledTask(in *scheduledTaskInput) (*string, error) {
 	if !required(in.Title) || !required(in.Prompt) {
 		return nil, errors.New("title and prompt required")
+	}
+	if in.BotID != nil {
+		var exists int
+		if err := s.db.QueryRow(`SELECT 1 FROM "user" WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, *in.BotID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("bot not found")
+		} else if err != nil {
+			return nil, err
+		}
 	}
 	if in.ConnectorID != nil {
 		var exists int
@@ -183,9 +193,9 @@ func (s *Server) saveScheduledTask(w http.ResponseWriter, r *http.Request, creat
 	id, created := idParam(r, "id"), now()
 	if create {
 		id = uid()
-		_, err = s.db.Exec(`INSERT INTO scheduled_task(`+scheduledTaskColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, in.Title, in.Prompt, in.ConnectorID, in.Model, in.Folder, in.Thinking, in.AutoAllow, in.Schedule, in.RunAt, in.Enabled, next, created, created)
+		_, err = s.db.Exec(`INSERT INTO scheduled_task(`+scheduledTaskColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, in.Title, in.Prompt, in.ConnectorID, in.BotID, in.Model, in.Folder, in.Thinking, in.AutoAllow, in.Schedule, in.RunAt, in.Enabled, next, created, created)
 	} else {
-		_, err = s.db.Exec(`UPDATE scheduled_task SET title=?,prompt=?,connector_id=?,model=?,folder=?,thinking=?,auto_allow=?,schedule=?,run_at=?,enabled=?,next_run_at=?,updated_at=? WHERE id=?`, in.Title, in.Prompt, in.ConnectorID, in.Model, in.Folder, in.Thinking, in.AutoAllow, in.Schedule, in.RunAt, in.Enabled, next, created, id)
+		_, err = s.db.Exec(`UPDATE scheduled_task SET title=?,prompt=?,connector_id=?,bot_id=?,model=?,folder=?,thinking=?,auto_allow=?,schedule=?,run_at=?,enabled=?,next_run_at=?,updated_at=? WHERE id=?`, in.Title, in.Prompt, in.ConnectorID, in.BotID, in.Model, in.Folder, in.Thinking, in.AutoAllow, in.Schedule, in.RunAt, in.Enabled, next, created, id)
 	}
 	if err != nil {
 		errw(w, 500, err.Error())

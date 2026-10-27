@@ -167,6 +167,7 @@ var localMCPTools = map[string]bool{
 	"link_tickets": true, "unlink_tickets": true, "add_comment": true, "list_comments": true, "get_ticket_history": true,
 	"list_calendar": true, "create_calendar_item": true, "update_calendar_item": true, "delete_calendar_item": true,
 	"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true,
+	"list_bots": false, "create_bot": false, "update_bot": false,
 	"ask_user": true, "create_notification": true,
 
 	"update_board": false, "reorder_boards": false, "create_column": false, "update_column": false, "delete_column": false,
@@ -565,11 +566,15 @@ func (d *localRuntime) historyForToolsWithAttachments(currentImagesIncluded bool
 	if folderPath.Valid {
 		folder = filepath.Base(filepath.Clean(folderPath.String))
 	}
-	persona, err := MartinPersonaEnabled(d.manager.db)
-	if err != nil {
+	var persona, botName string
+	err = d.manager.db.QueryRow(`SELECT u.name,u.persona_prompt FROM chat c JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, d.chatID).Scan(&botName, &persona)
+	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	systemPrompt := localSystemPrompt(folder, !d.toolsOff, persona)
+	if err == nil {
+		persona = "You are " + botName + ". " + persona
+	}
+	systemPrompt := localSystemPromptTone(folder, !d.toolsOff, persona)
 	messages := []map[string]any{{"role": "system", "content": systemPrompt}}
 	if len(saved) == 0 {
 		return messages, nil
@@ -614,6 +619,18 @@ func localSystemPrompt(folder string, toolsEnabled bool, persona ...bool) string
 	tone := martinPersona + " "
 	if !enabled {
 		tone = "You are a neutral assistant. "
+	}
+	today := time.Now().In(time.Local).Format("2006-01-02")
+	if !toolsEnabled {
+		return fmt.Sprintf("%s%s Tools unavailable; do not claim file or ticket access. Date: %s.", tone, chatLinkRules, today)
+	}
+	return fmt.Sprintf("%s%s Requested files, folder %s, tickets. No narration. \"Hi\" → \"Hi!\" (no tool); \"list my files\" → call file__list_dir; \"what boards do I have?\" → call ticket__list_boards. Date %s", tone, chatLinkRules, folder, today)
+}
+
+func localSystemPromptTone(folder string, toolsEnabled bool, persona string) string {
+	tone := "You are a neutral assistant. "
+	if persona != "" {
+		tone = persona + " "
 	}
 	today := time.Now().In(time.Local).Format("2006-01-02")
 	if !toolsEnabled {

@@ -37,6 +37,10 @@ var historyItems = map[string]historyItem{
 		task, err := scanScheduledTask(s.db.QueryRow(`SELECT `+scheduledTaskColumns+` FROM scheduled_task WHERE id=?`, id))
 		return task, task.Title, err
 	}},
+	"bot": {load: func(s *Server, id string) (any, string, error) {
+		b, err := scanBot(s.db.QueryRow(`SELECT `+botColumns+` FROM "user" WHERE id=? AND is_ai=1`, id))
+		return b, b.Name, err
+	}},
 }
 
 // Bookkeeping fields that change without a user edit.
@@ -107,7 +111,7 @@ func (s *Server) tracked(itemType string, next http.HandlerFunc) http.HandlerFun
 		if rec.status < 200 || rec.status >= 300 {
 			return
 		}
-		action := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodDelete: "deleted"}[r.Method]
+		action := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodPatch: "updated", http.MethodDelete: "deleted"}[r.Method]
 		if override, ok := r.Context().Value(historyActionKey{}).(string); ok {
 			action = override
 		}
@@ -210,7 +214,7 @@ func historyDiff(before, after map[string]any) []historyChange {
 func (s *Server) listItemHistory(w http.ResponseWriter, r *http.Request) {
 	itemType, itemID := r.URL.Query().Get("item_type"), r.URL.Query().Get("item_id")
 	if _, ok := historyItems[itemType]; !ok || itemID == "" {
-		errw(w, http.StatusBadRequest, "item_type must be skill, connector, mcp_server or scheduled_task, and item_id is required")
+		errw(w, http.StatusBadRequest, "item_type must be skill, connector, mcp_server, scheduled_task or bot, and item_id is required")
 		return
 	}
 	rows, err := s.db.Query(`SELECT h.id,h.item_type,h.item_id,h.item_name,h.action,h.changes_json,h.snapshot_json,h.user_id,u.name,u.is_ai,h.created_at FROM item_history h JOIN "user" u ON u.id=h.user_id WHERE h.item_type=? AND h.item_id=? ORDER BY h.created_at DESC,h.rowid DESC LIMIT 200`, itemType, itemID)

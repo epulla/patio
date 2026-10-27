@@ -2,7 +2,7 @@
 
 ```mermaid
 erDiagram
-  user { TEXT id; TEXT name; TEXT last_name; TEXT email; INTEGER email_verified; TEXT id_card; TEXT phone; TEXT image; TEXT role; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER is_ai }
+  user { TEXT id; TEXT name; TEXT last_name; TEXT email; INTEGER email_verified; TEXT id_card; TEXT phone; TEXT image; TEXT role; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER is_ai; TEXT description; TEXT persona_prompt; TEXT color; TEXT connector_id; TEXT model }
   board { TEXT id; TEXT name; TEXT short_name; TEXT template; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER position }
   status { TEXT id; TEXT name; TEXT type; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket_type { TEXT id; TEXT name; TEXT color; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
@@ -19,14 +19,14 @@ erDiagram
   calendar_item { TEXT id; TEXT kind; TEXT title; TEXT description; TEXT starts_at; TEXT ends_at; INTEGER all_day; TEXT board_id; TEXT ticket_id; TEXT created_by; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT notified_at }
   connector { TEXT id; TEXT kind; TEXT name; TEXT config_dir; TEXT base_url; TEXT model; TEXT quota_json; TEXT created_at }
   allowed_folder { TEXT id; TEXT path; TEXT created_at }
-  chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held }
+  chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held; TEXT bot_id }
   chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments; INTEGER answered; INTEGER tool_result_size; INTEGER tool_error; TEXT from_chat_id; TEXT report_to_chat_id }
   chat_queue { TEXT id; TEXT chat_id; TEXT text; TEXT attachments; TEXT created_at; TEXT from_chat_id; TEXT report_to_chat_id }
   chat_approval { TEXT id; TEXT chat_id; TEXT tool_name; TEXT input_json; TEXT status; TEXT created_at; TEXT answered_at; INTEGER auto }
   mcp_server { TEXT id; TEXT name; TEXT kind; TEXT command; TEXT args_json; TEXT env_keys_json; TEXT url; TEXT auth; INTEGER enabled; TEXT created_at; TEXT oauth_client_id; TEXT oauth_scopes }
   skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at; TEXT kind }
   app_setting { TEXT key; TEXT value }
-  scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT model; TEXT folder; INTEGER thinking; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
+  scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT bot_id; TEXT model; TEXT folder; INTEGER thinking; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
   scheduled_task_run { TEXT id; TEXT task_id; TEXT chat_id; TEXT scheduled_for; TEXT status; INTEGER late; TEXT error; TEXT created_at }
   monitor { TEXT id; TEXT name; TEXT mcp_server_id; TEXT tool; TEXT args; TEXT schedule; TEXT next_run_at; TEXT condition; TEXT result_path; TEXT id_path; TEXT actions; INTEGER enabled; TEXT last_run_at; TEXT last_status; TEXT last_error; TEXT last_hash; INTEGER fail_streak; TEXT created_at; TEXT updated_at }
   monitor_run { TEXT id; TEXT monitor_id; TEXT started_at; TEXT status; TEXT result_hash; INTEGER new_count; TEXT error }
@@ -40,4 +40,4 @@ erDiagram
 Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.
 Links use `blocks`, `relates`, or `duplicates`; each link has one direction and appears inversely from the other ticket. Links cascade-delete with either ticket.
 Scheduled run statuses are `running`, `waiting`, `done`, `failed`, or `skipped`.
-Item history covers `skill`, `connector`, `mcp_server`, and `scheduled_task` (`created`, `updated`, `deleted`, `restored`); secret fields appear by name only and entries are kept 90 days.
+Item history covers `skill`, `connector`, `mcp_server`, `scheduled_task`, and `bot` (`created`, `updated`, `deleted`, `restored`); secret fields appear by name only and entries are kept 90 days.

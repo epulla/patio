@@ -94,7 +94,7 @@ type createTicketArgs struct {
 	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional due date in YYYY-MM-DD format"`
 }
 type itemHistoryArgs struct {
-	ItemType string `json:"item_type" jsonschema:"skill, connector, mcp_server or scheduled_task"`
+	ItemType string `json:"item_type" jsonschema:"skill, connector, mcp_server, scheduled_task or bot"`
 	ItemID   string `json:"item_id"`
 }
 type ticketIDArgs struct {
@@ -155,13 +155,25 @@ type commentArgs struct {
 	Content  string `json:"content" jsonschema:"Comment text"`
 }
 type settingsDefaultsArgs struct {
-	ConnectorID   json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
-	Model         *string         `json:"model,omitempty" jsonschema:"Optional default model"`
-	Language      *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
-	Folder        json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
-	Thinking      *bool           `json:"thinking,omitempty"`
-	ShowThinking  *bool           `json:"show_thinking,omitempty"`
-	MartinPersona *bool           `json:"martin_persona,omitempty"`
+	ConnectorID  json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
+	Model        *string         `json:"model,omitempty" jsonschema:"Optional default model"`
+	Language     *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
+	Folder       json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
+	Thinking     *bool           `json:"thinking,omitempty"`
+	ShowThinking *bool           `json:"show_thinking,omitempty"`
+	DefaultBotID *string         `json:"default_bot_id,omitempty"`
+}
+type apiBotArgs struct {
+	Name          string  `json:"name" jsonschema:"Unique bot name without whitespace"`
+	Description   string  `json:"description,omitempty"`
+	PersonaPrompt string  `json:"persona_prompt,omitempty"`
+	Color         string  `json:"color,omitempty"`
+	ConnectorID   *string `json:"connector_id,omitempty"`
+	Model         string  `json:"model,omitempty"`
+}
+type apiBotUpdateArgs struct {
+	ID string `json:"id"`
+	apiBotArgs
 }
 type listSkillsArgs struct {
 	IncludeDisabled bool `json:"include_disabled,omitempty"`
@@ -213,6 +225,7 @@ type scheduledTaskArgs struct {
 	Title       string  `json:"title" jsonschema:"Task title"`
 	Prompt      string  `json:"prompt" jsonschema:"Prompt to run"`
 	ConnectorID *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
+	BotID       *string `json:"bot_id,omitempty" jsonschema:"Optional bot UUID"`
 	Model       string  `json:"model"`
 	Folder      *string `json:"folder,omitempty"`
 	Thinking    bool    `json:"thinking"`
@@ -425,11 +438,18 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	}
 	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory; the description states the fact itself in under 20 words, since chats see only that line; the body says why and how to apply it) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
 	if !inApp {
-		persona, err := api.MartinPersonaEnabled(database)
-		if err != nil {
-			return nil, fmt.Errorf("load Martin persona setting: %w", err)
+		usePersona := true
+		if database != nil {
+			var raw string
+			err := database.QueryRow(`SELECT value FROM app_setting WHERE key='default_bot_id'`).Scan(&raw)
+			if err == nil {
+				var id string
+				if json.Unmarshal([]byte(raw), &id) == nil {
+					usePersona = id != "none"
+				}
+			}
 		}
-		instructions = api.ChatSystemPrompt(persona, "", skills) + " " + instructions
+		instructions = api.ChatSystemPrompt(usePersona, "", skills) + " " + instructions
 	}
 	if len(skills) > 0 {
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
@@ -464,6 +484,11 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return request{http.MethodGet, "/api/mcp-servers/" + url.PathEscape(a.ID) + "/check", nil}
 	})
 	addGeneric(s, "list_connectors", "List AI connectors; secrets are write-only", h, func(struct{}) request { return request{http.MethodGet, "/api/connectors", nil} })
+	addGeneric(s, "list_bots", "List AI bots", h, func(struct{}) request { return request{http.MethodGet, "/api/bots", nil} })
+	addGeneric(s, "create_bot", "Create an AI bot", h, func(a apiBotArgs) request { return request{http.MethodPost, "/api/bots", a} })
+	addGeneric(s, "update_bot", "Update an AI bot", h, func(a apiBotUpdateArgs) request {
+		return request{http.MethodPatch, "/api/bots/" + url.PathEscape(a.ID), a.apiBotArgs}
+	})
 	addGeneric(s, "create_connector", "Create an AI connector; secret is a write-only API key", h, func(a createConnectorArgs) request { return request{http.MethodPost, "/api/connectors", a} })
 	addGeneric(s, "update_connector", "Update provided connector fields; secret is write-only", h, func(a updateConnectorArgs) request {
 		return request{http.MethodPut, "/api/connectors/" + url.PathEscape(a.ID), struct {
@@ -616,10 +641,13 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 				body[key] = value
 			}
 		}
-		for key, value := range map[string]*bool{"thinking": a.Thinking, "show_thinking": a.ShowThinking, "martin_persona": a.MartinPersona} {
+		for key, value := range map[string]*bool{"thinking": a.Thinking, "show_thinking": a.ShowThinking} {
 			if value != nil {
 				body[key] = *value
 			}
+		}
+		if a.DefaultBotID != nil {
+			body["default_bot_id"] = *a.DefaultBotID
 		}
 		return request{http.MethodPut, "/api/settings/defaults", body}
 	})

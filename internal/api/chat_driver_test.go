@@ -1475,7 +1475,7 @@ func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 func createDriverTestChat(t *testing.T, database *sql.DB, connectorID, root string) string {
 	t.Helper()
 	id := uid()
-	if _, err := database.Exec(`INSERT INTO chat(id,connector_id,title,model,created_at,updated_at) VALUES(?,?, 'New chat','',?,?)`, id, connectorID, now(), now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO chat(id,connector_id,title,model,created_at,updated_at,bot_id) VALUES(?,?, 'New chat','',?,?,'ai')`, id, connectorID, now(), now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "chats", id), 0o700); err != nil {

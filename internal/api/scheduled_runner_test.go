@@ -70,6 +70,9 @@ func TestScheduledRunCompletesChatTurn(t *testing.T) {
 	defer database.Close()
 	root := t.TempDir()
 	connectorID := createTestConnector(t, database)
+	if _, err := database.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,persona_prompt) VALUES('billy','Billy','billy@scheduled',1,1,'Billy prompt')`); err != nil {
+		t.Fatal(err)
+	}
 	fake := newPipeChatProcess()
 	s := New(database, "local", false, "dev", root, Options{
 		DBPath:         filepath.Join(root, "test.db"),
@@ -78,7 +81,7 @@ func TestScheduledRunCompletesChatTurn(t *testing.T) {
 		processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil },
 	})
 	id, due := uid(), time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	if _, err := database.Exec(`INSERT INTO scheduled_task(id,title,prompt,connector_id,schedule,run_at,enabled,next_run_at,created_at,updated_at) VALUES(?,?,?,?,'',?,1,?,?,?)`, id, "task", "do this", connectorID, due, due, now(), now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO scheduled_task(id,title,prompt,connector_id,bot_id,schedule,run_at,enabled,next_run_at,created_at,updated_at) VALUES(?,?,?,?,'billy','',?,1,?,?,?)`, id, "task", "do this", connectorID, due, due, now(), now()); err != nil {
 		t.Fatal(err)
 	}
 	claims, err := s.claimScheduled(context.Background(), time.Now())
@@ -97,7 +100,7 @@ func TestScheduledRunCompletesChatTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.ScheduledTaskID == nil || *c.ScheduledTaskID != id || c.ScheduledLate || status != "running" || late {
+	if c.ScheduledTaskID == nil || *c.ScheduledTaskID != id || c.BotID == nil || *c.BotID != "billy" || c.ScheduledLate || status != "running" || late {
 		t.Fatalf("chat=%#v status=%q late=%v", c, status, late)
 	}
 	select {

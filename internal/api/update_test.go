@@ -32,7 +32,7 @@ func TestUpdateAndNotification(t *testing.T) {
 			s := New(db, "local", false, tt.current, root, Options{UpdateURL: releases.URL})
 			var got struct {
 				Current, Latest, URL, Download string
-				Available            bool
+				Available                      bool
 			}
 			if code := requestJSON(t, s, http.MethodGet, "/api/update", nil, &got); code != http.StatusOK || got.Available != tt.want {
 				t.Fatalf("update = %d, %+v", code, got)

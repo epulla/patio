@@ -23,7 +23,7 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 			t.Errorf("close first database: %v", err)
 		}
 	})
-	tables := []string{"user", "board", "status", "ticket_type", "ticket", "ticket_history", "ticket_comment", "status_order", "ticket_order", "ticket_type_order", "board_counter", "old_ticket_code", "ticket_status_transition", "calendar_item", "connector", "allowed_folder", "chat", "chat_message", "chat_approval", "mcp_server", "skill", "ticket_link"}
+	tables := []string{"user", "board", "status", "ticket_type", "ticket", "ticket_history", "ticket_comment", "status_order", "ticket_order", "ticket_type_order", "board_counter", "old_ticket_code", "ticket_status_transition", "calendar_item", "connector", "allowed_folder", "chat", "chat_message", "chat_approval", "mcp_server", "skill", "ticket_link", "item_history", "scheduled_task"}
 	for _, table := range tables {
 		t.Run(table, func(t *testing.T) {
 			var count int
@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 36 {
-		t.Fatalf("migration count = %d, want 36", migrations)
+	if migrations != 37 {
+		t.Fatalf("migration count = %d, want 37", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -93,6 +93,53 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if _, err := second.Exec(`INSERT INTO scheduled_task_run(id,task_id,scheduled_for,status,created_at) VALUES('migration-waiting','migration-task','now','waiting','now')`); err != nil {
 		t.Fatalf("insert waiting run: %v", err)
+	}
+}
+
+func TestBotMigrationMapsDisabledMartinPersonaToNone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-bot-setting.db")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for version, entry := range entries[:36] {
+		script, e := migrations.ReadFile("migrations/" + entry.Name())
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = legacy.Exec(string(script)); e != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), e)
+		}
+		if _, e = legacy.Exec(fmt.Sprintf("PRAGMA user_version=%d", version+1)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, err := legacy.Exec(`INSERT INTO app_setting(key,value) VALUES('martin_persona','false')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var got string
+	if err := database.QueryRow(`SELECT value FROM app_setting WHERE key='default_bot_id'`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "\"none\"" {
+		t.Fatalf("default_bot_id=%q, want JSON string none", got)
+	}
+	var old int
+	if err := database.QueryRow(`SELECT count(*) FROM app_setting WHERE key='martin_persona'`).Scan(&old); err != nil || old != 0 {
+		t.Fatalf("martin_persona rows=%d, %v", old, err)
 	}
 }
 
