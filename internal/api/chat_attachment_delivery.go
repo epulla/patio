@@ -88,7 +88,7 @@ func chatAttachmentAbsolutePath(workdir, name string) (string, error) {
 func promptWithAttachmentPaths(text string, files []chatAttachmentFile, includeImages bool) string {
 	var lines []string
 	for _, file := range files {
-		if file.Kind == "text" || !includeImages {
+		if file.Kind != "image" || !includeImages {
 			lines = append(lines, attachmentPathLine(file.Path))
 		}
 	}

@@ -66,7 +66,14 @@ func TestChatAttachmentUploadLimitsTypesAndCount(t *testing.T) {
 		{name: "image over limit", files: []attachmentUpload{{"picture.png", append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, maxChatImageAttachment-7)...)}}, want: http.StatusRequestEntityTooLarge},
 		{name: "invalid UTF-8 across chunk", files: []attachmentUpload{{"bad.txt", append(append(bytes.Repeat([]byte("a"), 512+32*1024-1), 0xc2), 0x20)}}, want: http.StatusBadRequest},
 		{name: "empty rejected", files: []attachmentUpload{{"empty.png", nil}}, want: http.StatusBadRequest},
-		{name: "pdf rejected", files: []attachmentUpload{{"document.pdf", []byte("%PDF-1.7\ntext")}}, want: http.StatusBadRequest},
+		{name: "pdf accepted", files: []attachmentUpload{{"document.pdf", []byte("%PDF-1.7\ntext")}}, want: http.StatusCreated},
+		{name: "docx accepted", files: []attachmentUpload{{"document.docx", []byte("PK\x03\x04contents")}}, want: http.StatusCreated},
+		{name: "xlsx accepted", files: []attachmentUpload{{"sheet.xlsx", []byte("PK\x03\x04contents")}}, want: http.StatusCreated},
+		{name: "legacy xls accepted", files: []attachmentUpload{{"sheet.xls", []byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1contents")}}, want: http.StatusCreated},
+		{name: "zip accepted", files: []attachmentUpload{{"archive.zip", []byte("PK\x03\x04contents")}}, want: http.StatusCreated},
+		{name: "CSV Windows-1252 accepted", files: []attachmentUpload{{"export.csv", []byte{'n', 'o', 'm', 'b', 'r', 'e', ';', 'a', '\xF1', 'o', '\n'}}}, want: http.StatusCreated},
+		{name: "zip magic jar rejected", files: []attachmentUpload{{"archive.jar", []byte("PK\x03\x04contents")}}, want: http.StatusBadRequest},
+		{name: "random binary rejected", files: []attachmentUpload{{"app.exe", []byte("MZ\x90\x00contents")}}, want: http.StatusBadRequest},
 		{name: "invalid UTF-8", files: []attachmentUpload{{"bad.txt", []byte{0xff}}}, want: http.StatusBadRequest},
 		{name: "NUL rejected", files: []attachmentUpload{{"bad.bin", []byte{'a', 0, 'b'}}}, want: http.StatusBadRequest},
 		{name: "more than ten", files: manyAttachmentFiles(11), want: http.StatusBadRequest},
@@ -81,7 +88,13 @@ func TestChatAttachmentUploadLimitsTypesAndCount(t *testing.T) {
 		})
 	}
 	server, c := attachmentTestChat(t)
-	response := postAttachmentFiles(t, server, c.ID, []attachmentUpload{{"fake.txt", []byte("\x89PNG\r\n\x1a\nrest")}})
+	response := postAttachmentFiles(t, server, c.ID, []attachmentUpload{{"document.pdf", []byte("%PDF-1.7\ntext")}})
+	var pdf []ChatAttachment
+	if response.Code != http.StatusCreated || json.Unmarshal(response.Body.Bytes(), &pdf) != nil || len(pdf) != 1 || pdf[0].Kind != "file" || pdf[0].MIME != "application/pdf" {
+		t.Fatalf("PDF upload = status %d, body %s", response.Code, response.Body.String())
+	}
+	server, c = attachmentTestChat(t)
+	response = postAttachmentFiles(t, server, c.ID, []attachmentUpload{{"fake.txt", []byte("\x89PNG\r\n\x1a\nrest")}})
 	var attachments []ChatAttachment
 	if response.Code != http.StatusCreated || json.Unmarshal(response.Body.Bytes(), &attachments) != nil || len(attachments) != 1 || attachments[0].Kind != "image" || attachments[0].MIME != "image/png" {
 		t.Fatalf("fake extension upload = status %d, body %s", response.Code, response.Body.String())

@@ -68,6 +68,10 @@ func TestChatAttachmentRuntimePayloadShapes(t *testing.T) {
 	if got := promptWithAttachmentPaths("look", files, true); got != "look\nAttached file: "+textPath {
 		t.Fatalf("prompt path lines = %q", got)
 	}
+	file := chatAttachmentFile{ChatAttachment: ChatAttachment{Kind: "file"}, Path: filepath.Join(workdir, "attachments", "report.pdf")}
+	if got := promptWithAttachmentPaths("look", []chatAttachmentFile{file}, true); got != "look\nAttached file: "+file.Path {
+		t.Fatalf("file path line = %q", got)
+	}
 	if got := attachmentPathLine(filepath.Join(`C:\Users\test`, "attachments", "notes.md")); !strings.HasPrefix(got, "Attached file: ") {
 		t.Fatalf("native path line = %q", got)
 	}

@@ -51,7 +51,7 @@ func decodeChatAttachments(raw string) ([]ChatAttachment, error) {
 		return nil, errors.New("attachments must be a JSON array")
 	}
 	for _, attachment := range attachments {
-		if !validChatAttachmentName(attachment.Name) || attachment.Size < 0 || attachment.Kind != "text" && attachment.Kind != "image" || attachment.MIME == "" {
+		if !validChatAttachmentName(attachment.Name) || attachment.Size < 0 || attachment.Kind != "text" && attachment.Kind != "image" && attachment.Kind != "file" || attachment.MIME == "" {
 			return nil, errors.New("invalid attachment descriptor")
 		}
 	}
@@ -126,13 +126,20 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 	}
 	detected := http.DetectContentType(prefix)
 	image := detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || isWebP(prefix)
+	ext := strings.ToLower(filepath.Ext(name))
 	kind, contentType := "text", detected
 	if image {
 		kind = "image"
 		if isWebP(prefix) {
 			contentType = "image/webp"
 		}
-	} else if detected == "application/pdf" || detected == "application/zip" || detected == "application/x-ole-storage" || !strings.HasPrefix(detected, "text/") && detected != "application/octet-stream" {
+	} else if detected == "application/pdf" {
+		kind, contentType = "file", "application/pdf"
+	} else if ext == ".csv" {
+		kind, contentType = "file", "text/csv"
+	} else if fileType, ok := officeAttachmentTypes[ext]; ok && (detected == fileType.magic || fileType.magic == "application/x-ole-storage" && bytes.HasPrefix(prefix, []byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"))) {
+		kind, contentType = "file", fileType.mime
+	} else if detected == "application/zip" || detected == "application/x-ole-storage" || !strings.HasPrefix(detected, "text/") && detected != "application/octet-stream" {
 		writeAttachmentError(w, errChatAttachmentType)
 		return
 	}
@@ -174,12 +181,22 @@ func isWebP(data []byte) bool {
 }
 
 var (
-	errChatAttachmentType     = errors.New("unsupported file type; upload UTF-8 text or PNG, JPEG, GIF, or WebP images")
+	errChatAttachmentType     = errors.New("unsupported file type; upload UTF-8 text, CSV, PDF, Office documents, zip, or PNG, JPEG, GIF, or WebP images")
 	errChatAttachmentTooLarge = errors.New("attachment exceeds size limit")
 	errChatAttachmentName     = errors.New("invalid attachment name")
 	errChatAttachmentNotFound = errors.New("attachment not found")
 	errChatAttachmentUnsafe   = errors.New("attachment path is unsafe")
 )
+
+var officeAttachmentTypes = map[string]struct{ magic, mime string }{
+	".zip":  {"application/zip", "application/zip"},
+	".docx": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+	".xlsx": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+	".pptx": {"application/zip", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+	".doc":  {"application/x-ole-storage", "application/msword"},
+	".xls":  {"application/x-ole-storage", "application/vnd.ms-excel"},
+	".ppt":  {"application/x-ole-storage", "application/vnd.ms-powerpoint"},
+}
 
 func writeAttachmentError(w http.ResponseWriter, err error) {
 	var maxBytes *http.MaxBytesError

@@ -272,7 +272,7 @@ export type MonitorRun = {
   new_count: number;
   error: string;
 };
-export type ChatAttachment = { name: string; kind: "text" | "image"; mime: string; size: number };
+export type ChatAttachment = { name: string; kind: "text" | "image" | "file"; mime: string; size: number };
 export type ChatMessage = {
   id: string;
   chat_id: string;
