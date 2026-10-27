@@ -13,22 +13,48 @@ func TestParseMentions(t *testing.T) {
 		text string
 		want []mention
 	}{
-		{"@Billy implement X, @Sammy watch for Y", []mention{{"Billy", "implement X"}, {"Sammy", "watch for Y"}}},
-		{"@billy do it", []mention{{"Billy", "do it"}}},
-		{"@Billy do @Bob later", []mention{{"Billy", "do @Bob later"}}},
+		{"@Billy implement X, @Sammy watch for Y", []mention{{Bot: "Billy", Text: "implement X"}, {Bot: "Sammy", Text: "watch for Y"}}},
+		{"@billy do it", []mention{{Bot: "Billy", Text: "do it"}}},
+		{"@Billy do @Bob later", []mention{{Bot: "Billy", Text: "do @Bob later"}}},
 		{"a@Billy.com ignored", nil},
-		{"@Billy do\n\nnext", []mention{{"Billy", "do"}}},
-		{"@Billy, @Sammy work", []mention{{"Sammy", "work"}}},
+		{"@Billy do\n\nnext", []mention{{Bot: "Billy", Text: "do"}}},
+		{"@Billy, @Sammy work", []mention{{Bot: "Sammy", Text: "work"}}},
 		{"see `@Billy` and ``a ` @Sammy``\n```\n@Billy review\n```", nil},
-		{"```\ncode\n```\n`x` @Billy go", []mention{{"Billy", "go"}}},
+		{"```\ncode\n```\n`x` @Billy go", []mention{{Bot: "Billy", Text: "go"}}},
 	} {
 		got := parseMentions(tc.text, []string{"Billy", "Sammy"})
 		if len(got) != len(tc.want) {
 			t.Fatalf("parseMentions(%q)=%#v want %#v", tc.text, got, tc.want)
 		}
 		for i := range got {
-			if got[i] != tc.want[i] {
+			if got[i].Bot != tc.want[i].Bot || got[i].Text != tc.want[i].Text {
 				t.Fatalf("parseMentions(%q)=%#v want %#v", tc.text, got, tc.want)
+			}
+		}
+	}
+}
+
+func TestBotMentionDiff(t *testing.T) {
+	for _, tc := range []struct {
+		old, new string
+		want     []mention
+	}{
+		{"", "@Billy do, @Sammy watch", []mention{{Bot: "Billy", Text: "do", name: 6, group: 6}, {Bot: "Sammy", Text: "watch", name: 17, group: 17}}},
+		{"", "@Billy do", []mention{{Bot: "Billy", Text: "do", name: 6, group: 6}}},
+		{"", "@Unknown do", nil},
+		{"@Billy do", "@Billy do", nil},
+		{"@Billy ([chat](/ai/chats/a)) do", "@Billy do", nil},
+		{"@Billy do", "@Billy ([chat 1](/ai/chats/a), [chat 2](/ai/chats/b)) do", nil},
+		{"@Billy do", "@Billy do, @Billy do", []mention{{Bot: "Billy", Text: "do", name: 17, group: 17}}},
+		{"", "@Billy ([chat](/ai/chats/a)) do", []mention{{Bot: "Billy", Text: "do", name: 6, group: 28}}},
+	} {
+		got := newMentions(tc.old, tc.new, []string{"Billy", "Sammy"})
+		if len(got) != len(tc.want) {
+			t.Fatalf("newMentions(%q,%q)=%#v want %#v", tc.old, tc.new, got, tc.want)
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Fatalf("got %#v want %#v", got, tc.want)
 			}
 		}
 	}

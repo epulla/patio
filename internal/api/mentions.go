@@ -1,11 +1,18 @@
 package api
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
 
-type mention struct{ Bot, Text string }
+// chatLinkGroup matches the chat links Patio puts right after a mention: ` ([chat](/ai/chats/<id>))` or ` ([chat 1](…), [chat 2](…))`.
+var chatLinkGroup = regexp.MustCompile(`^ \(\[chat(?: \d+)?\]\(/ai/chats/[^)\s]+\)(?:, \[chat(?: \d+)?\]\(/ai/chats/[^)\s]+\))*\)`)
+
+type mention struct {
+	Bot, Text   string
+	name, group int
+}
 
 func parseMentions(text string, bots []string) []mention {
 	known := make(map[string]string, len(bots))
@@ -81,6 +88,7 @@ func parseMentions(text string, bots []string) []mention {
 	}
 	var out []mention
 	for i, m := range found {
+		group := m.end + len([]rune(chatLinkGroup.FindString(string(runes[m.end:]))))
 		end := len(runes)
 		for k := m.end; k+1 < end; k++ {
 			if runes[k] == '\n' {
@@ -97,10 +105,27 @@ func parseMentions(text string, bots []string) []mention {
 		if i+1 < len(found) && found[i+1].start < end {
 			end = found[i+1].start
 		}
-		instruction := strings.Trim(string(runes[m.end:end]), " \t\r\n,;:")
+		instruction := strings.Trim(string(runes[group:end]), " \t\r\n,;:")
 		if instruction != "" {
-			out = append(out, mention{m.bot, instruction})
+			out = append(out, mention{m.bot, instruction, m.end, group})
 		}
+	}
+	return out
+}
+
+func newMentions(old, new string, bots []string) []mention {
+	remaining := make(map[mention]int)
+	for _, m := range parseMentions(old, bots) {
+		remaining[mention{Bot: m.Bot, Text: m.Text}]++
+	}
+	var out []mention
+	for _, m := range parseMentions(new, bots) {
+		key := mention{Bot: m.Bot, Text: m.Text}
+		if remaining[key] > 0 {
+			remaining[key]--
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }
