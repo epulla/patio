@@ -8,8 +8,8 @@ import { groupAriaShortcuts, groupShortcuts, maxPins, setGroupOrder, type PinGro
 import { useText } from "./i18n";
 
 const text = {
-  en: { pinnedChats: "Pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, newPinned: (shortcut: string) => `New pinned chat (${shortcut})`, groupFull: (name: string) => `${name} is full (max ${maxPins})`, closePreview: (title: string) => `Close ${title}`, preview: "not pinned", shortcuts: (shortcut: string) => `Keyboard shortcuts (${shortcut})` },
-  es: { pinnedChats: "Chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, newPinned: (shortcut: string) => `Nuevo chat fijado (${shortcut})`, groupFull: (name: string) => `${name} está lleno (máx. ${maxPins})`, closePreview: (title: string) => `Cerrar ${title}`, preview: "sin fijar", shortcuts: (shortcut: string) => `Atajos de teclado (${shortcut})` },
+  en: { pinnedChats: "Pinned chats", chat: "Chat", unpin: (title: string, shortcut: string) => `Unpin ${title} (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Pin group: ${name} (${shortcut})`, newPinned: (shortcut: string) => `New pinned chat (${shortcut})`, groupFull: (name: string) => `${name} is full (max ${maxPins})`, closePreview: (title: string) => `Close ${title}`, preview: "not pinned", pinHint: (title: string) => `${title} (double-click to pin)`, shortcuts: (shortcut: string) => `Keyboard shortcuts (${shortcut})` },
+  es: { pinnedChats: "Chats fijados", chat: "Chat", unpin: (title: string, shortcut: string) => `Quitar ${title} de fijados (${shortcut})`, switchGroup: (name: string, shortcut: string) => `Grupo fijado: ${name} (${shortcut})`, newPinned: (shortcut: string) => `Nuevo chat fijado (${shortcut})`, groupFull: (name: string) => `${name} está lleno (máx. ${maxPins})`, closePreview: (title: string) => `Cerrar ${title}`, preview: "sin fijar", pinHint: (title: string) => `${title} (doble clic para fijar)`, shortcuts: (shortcut: string) => `Atajos de teclado (${shortcut})` },
 };
 
 // Tabs of the active pin group: group switcher, one tab per pinned chat, then +. Extra buttons go in children.
@@ -45,7 +45,7 @@ export default function PinTabs({
   chats: Chat[];
   status: Record<string, ChatStatus | undefined>;
   current?: string;
-  preview?: { title: string; status?: ChatStatus; onClose: () => void };
+  preview?: { title: string; status?: ChatStatus; onClose: () => void; onPin: () => void };
   placed?: string[];
   onSelect: (id: string) => void;
   onUnpin: (id: string) => void;
@@ -177,7 +177,8 @@ export default function PinTabs({
               className="pin-tab-button"
               aria-pressed
               aria-label={`${preview.title}, ${t.preview}${preview.status ? `, ${statusText[preview.status]}` : ""}`}
-              title={preview.title}
+              title={t.pinHint(preview.title)}
+              onDoubleClick={preview.onPin}
             >
               {preview.status && (
                 <span className="dock-dot" data-state={preview.status} aria-hidden="true">

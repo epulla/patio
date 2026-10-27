@@ -868,6 +868,7 @@ export default function Chats({
                   title: chats.find((chat) => chat.id === id)?.title ?? t.chats,
                   status: status[id],
                   onClose: () => navigate("/ai/chats"),
+                  onPin: () => togglePin(id),
                 }
               : undefined
           }
