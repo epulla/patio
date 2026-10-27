@@ -58,8 +58,8 @@ func TestChatAttachmentUploadLimitsTypesAndCount(t *testing.T) {
 		files []attachmentUpload
 		want  int
 	}{
-		{name: "text at limit", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), maxChatTextAttachment)}}, want: http.StatusCreated},
-		{name: "text over limit", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), maxChatTextAttachment+1)}}, want: http.StatusRequestEntityTooLarge},
+		{name: "text at 10 MB", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), 10<<20)}}, want: http.StatusCreated},
+		{name: "text over 10 MB", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), 10<<20+1)}}, want: http.StatusRequestEntityTooLarge},
 		{name: "image at limit", files: []attachmentUpload{{"picture.png", append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, maxChatImageAttachment-8)...)}}, want: http.StatusCreated},
 		{name: "image over limit", files: []attachmentUpload{{"picture.png", append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, maxChatImageAttachment-7)...)}}, want: http.StatusRequestEntityTooLarge},
 		{name: "pdf rejected", files: []attachmentUpload{{"document.pdf", []byte("%PDF-1.7\ntext")}}, want: http.StatusBadRequest},
