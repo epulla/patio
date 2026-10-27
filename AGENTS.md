@@ -11,6 +11,7 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 - UI: no colored accent stripes on box edges (e.g. a primary `border-left` on callouts or a state-colored top border on cards). Use a plain `var(--border)` border.
 - UI: never use `window.alert`, `confirm`, or `prompt`; the macOS Wails WebView ignores them (`confirm` returns false). Use `confirmDialog` from `web/src/confirm.tsx`.
 - New migration → update `internal/mcp/schema.md`.
+- New or changed user-facing feature → add or update its stop in the feature tour (`web/src/Tour.tsx`): EN + ES text in `text.*.steps`, a stop in `plan()` targeting a `data-tour` attribute, `ai: true` if it needs a connector. Every feature plan or ticket includes this as a task.
 
 ## Layout
 
