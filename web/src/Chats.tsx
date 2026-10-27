@@ -1237,7 +1237,7 @@ export function Conversation({
     if (value) localStorage.setItem(draftKey, value);
     else localStorage.removeItem(draftKey);
   }
-  const mentions = useMentions(input, changeText, "above");
+  const mentions = useMentions(input, changeText, "above", detail?.chat.bot_id ?? undefined);
   // Context a chat was started with (e.g. from a ticket) wins over the page until the first send.
   const startKey = startContextKey(id);
   const [startContext, setStartContext] = useState<PageContext | undefined>(() => {

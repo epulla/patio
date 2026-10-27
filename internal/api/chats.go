@@ -768,7 +768,7 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		selected = append(selected, attachment)
 	}
-	rows, err := s.db.Query(`SELECT name FROM "user" WHERE is_ai=1 AND deleted_at IS NULL`)
+	rows, err := s.db.Query(`SELECT name FROM "user" WHERE is_ai=1 AND deleted_at IS NULL AND id IS NOT ?`, c.BotID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return

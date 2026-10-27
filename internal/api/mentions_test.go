@@ -36,15 +36,18 @@ func TestChatMentionOpensBotChats(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
 	parent := createDriverTestChat(t, db, connector, root)
-	for _, bot := range []string{"Billy", "Sammy"} {
+	for _, bot := range []string{"Billy", "Sammy", "Owner"} {
 		if _, err := db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,connector_id) VALUES(?,?,?,1,1,?)`, strings.ToLower(bot), bot, strings.ToLower(bot)+"@bot", connector); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if _, err := db.Exec(`UPDATE chat SET bot_id='owner' WHERE id=?`, parent); err != nil {
+		t.Fatal(err)
+	}
 	fake := newPipeChatProcess()
 	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer s.Close()
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+parent+"/messages", map[string]string{"text": "@Billy implement X, @Sammy watch for Y"}, nil); code != http.StatusAccepted {
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+parent+"/messages", map[string]string{"text": "@Owner plan it\n\n@Billy implement X, @Sammy watch for Y"}, nil); code != http.StatusAccepted {
 		t.Fatalf("send status=%d", code)
 	}
 	var delivered string

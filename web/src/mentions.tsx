@@ -16,7 +16,7 @@ let users: Promise<User[]> | null = null;
 // Called after bots change so @ suggestions pick up new names.
 export const forgetMentionUsers = () => (users = null);
 
-async function suggest({ char, query }: Trigger): Promise<Suggestion[]> {
+async function suggest({ char, query }: Trigger, hiddenBotId?: string): Promise<Suggestion[]> {
   const q = query.toLowerCase();
   if (char === "@") {
     users ??= api.get<User[]>("/api/users").catch((error) => {
@@ -24,7 +24,7 @@ async function suggest({ char, query }: Trigger): Promise<Suggestion[]> {
       throw error;
     });
     return (await users)
-      .filter((user) => user.is_ai && user.name.toLowerCase().startsWith(q))
+      .filter((user) => user.is_ai && user.id !== hiddenBotId && user.name.toLowerCase().startsWith(q))
       .map((user) => ({ key: user.id, label: user.name, insert: `@${user.name}` }));
   }
   // Debounce: callers drop results that arrive after a newer request.
@@ -81,10 +81,12 @@ type State = { trigger: Trigger; items: Suggestion[]; active: number; top?: numb
 
 // `@` bot and `#` ticket suggestions for a textarea. "caret" opens below the caret
 // (the textarea's offset parent must be positioned); "above" leaves placement to CSS.
+// hiddenBotId hides a chat's own bot, since mentioning it never opens a chat.
 export function useMentions(
   ref: RefObject<HTMLTextAreaElement | null>,
   onChange: (value: string) => void,
   placement: "caret" | "above" = "caret",
+  hiddenBotId?: string,
 ) {
   const t = useText({ en: { suggestions: "Suggestions" }, es: { suggestions: "Sugerencias" } });
   const [state, setState] = useState<State | null>(null);
@@ -95,7 +97,7 @@ export function useMentions(
     const id = ++request.current;
     const trigger = el && findTrigger(el.value, el.selectionStart);
     if (!trigger) return setState(null);
-    const items = await suggest(trigger).catch(() => []);
+    const items = await suggest(trigger, hiddenBotId).catch(() => []);
     if (id !== request.current || !ref.current) return;
     if (!items.length) return setState(null);
     setState({ trigger, items, active: 0, ...(placement === "caret" ? caretPosition(ref.current, trigger.start) : {}) });
