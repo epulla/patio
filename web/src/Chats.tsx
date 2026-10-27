@@ -405,6 +405,15 @@ export default function Chats({
   useEffect(() => {
     if (showGroup && shown) rememberPinnedChat(shown);
   }, [showGroup, shown]);
+  // The pane last focused or clicked, while the route stays the same; its tab shows as active.
+  const [focusedPane, setFocusedPane] = useState<{ chat: string; route?: string }>();
+  function focusPane(chatID: string) {
+    rememberPinnedChat(chatID);
+    setFocusedPane((prev) => (prev?.chat === chatID && prev.route === id ? prev : { chat: chatID, route: id }));
+  }
+  const routeTab = split ? id : shown;
+  const activeTab =
+    focusedPane && focusedPane.route === id && (showGrid ? pins.ids : placed).includes(focusedPane.chat) ? focusedPane.chat : routeTab;
   const dragged = useRef<string>(undefined);
 
   function startDrag(chatID: string, event: DragEvent, title: string) {
@@ -511,8 +520,8 @@ export default function Chats({
               className="grid-pane"
               data-pane={chatID}
               style={placeBox(box, 3)}
-              onFocus={() => rememberPinnedChat(chatID)}
-              onPointerDown={() => rememberPinnedChat(chatID)}
+              onFocus={() => focusPane(chatID)}
+              onPointerDown={() => focusPane(chatID)}
               onDragOver={(event) => {
                 const target = splitDrop(event, chatID);
                 if (!target) return void delete event.currentTarget.dataset.drop;
@@ -895,7 +904,7 @@ export default function Chats({
         <PinTabs
           chats={pinned?.chats ?? chats}
           status={{ ...status, ...pinned?.status }}
-          current={split ? id : shown}
+          current={activeTab}
           placed={split && placed}
           onTabDragStart={split && startDrag}
           onTabDragEnd={endDrag}
@@ -962,8 +971,8 @@ export default function Chats({
               className="grid-pane"
               data-pane={chatID}
               // WebKit doesn't focus links on click, so pointerdown covers clicking a link in the pane.
-              onFocus={() => rememberPinnedChat(chatID)}
-              onPointerDown={() => rememberPinnedChat(chatID)}
+              onFocus={() => focusPane(chatID)}
+              onPointerDown={() => focusPane(chatID)}
               data-dragging={drag?.from === index || undefined}
               data-drop-target={(drag && drag.from !== index && drag.over === index) || undefined}
               style={{
