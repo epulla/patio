@@ -79,6 +79,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.openTicketMentionChats(out.ID, "description", parseMentions(desc, s.ticketBotNames()))
 	write(w, 201, out)
 }
 
@@ -307,12 +308,14 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	id := idParam(r, "id")
 	var out ticket
+	var oldDescription string
 	e := txrun(s.db, func(tx *sql.Tx) error {
 		out, e := scanTicket(tx.QueryRow(`SELECT id,title,description,number,code,created_at,updated_at,due_date,status_updated_at,status_id,board_id,ticket_type_id,reporter_id,assignee_id FROM ticket WHERE id=?`, id))
 		if e != nil {
 			return e
 		}
 		bid := out.BoardID
+		oldDescription = out.Description
 		updates := []string{}
 		args := []any{}
 		for _, k := range []string{"title", "description"} {
@@ -400,6 +403,10 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 			errw(w, 500, e.Error())
 		}
 		return
+	}
+	var description string
+	if json.Unmarshal(m["description"], &description) == nil {
+		s.openTicketMentionChats(id, "description", newMentions(oldDescription, description, s.ticketBotNames()))
 	}
 	write(w, 200, out)
 }
@@ -655,6 +662,7 @@ func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
 func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Content string `json:"content"`
+		AsBot   string `json:"as_bot,omitempty"`
 	}
 	if decode(r, &in) != nil || !required(in.Content) {
 		errw(w, 400, "content required")
@@ -667,17 +675,32 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 		if e := tx.QueryRow(`SELECT id FROM ticket WHERE id=?`, tid).Scan(&x); e != nil {
 			return e
 		}
-		if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, id, in.Content, t, t, tid, s.userID); e != nil {
+		author := s.userID
+		if in.AsBot != "" {
+			var isAI bool
+			if tx.QueryRow(`SELECT is_ai FROM "user" WHERE id=?`, s.userID).Scan(&isAI) != nil || !isAI {
+				return errors.New("as_bot requires AI user")
+			}
+			if tx.QueryRow(`SELECT id FROM "user" WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, in.AsBot).Scan(&author) != nil {
+				return errors.New("invalid as_bot")
+			}
+		}
+		if _, e := tx.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, id, in.Content, t, t, tid, author); e != nil {
 			return e
 		}
-		c = comment{ID: id, Content: in.Content, Created: t, Updated: t, UserID: s.userID}
-		return tx.QueryRow(`SELECT name,is_ai FROM "user" WHERE id=?`, s.userID).Scan(&c.UserName, &c.UserIsAI)
+		c = comment{ID: id, Content: in.Content, Created: t, Updated: t, UserID: author}
+		return tx.QueryRow(`SELECT name,is_ai FROM "user" WHERE id=?`, author).Scan(&c.UserName, &c.UserIsAI)
 	})
 	if e == sql.ErrNoRows {
 		errw(w, 404, "ticket not found")
 	} else if e != nil {
-		errw(w, 500, e.Error())
+		if strings.Contains(e.Error(), "as_bot") {
+			errw(w, 400, e.Error())
+		} else {
+			errw(w, 500, e.Error())
+		}
 	} else {
+		s.openTicketMentionChats(tid, "comment "+id, parseMentions(in.Content, s.ticketBotNames()))
 		write(w, 201, c)
 	}
 }

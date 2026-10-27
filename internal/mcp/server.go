@@ -153,6 +153,7 @@ type notificationArgs struct {
 type commentArgs struct {
 	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID"`
 	Content  string `json:"content" jsonschema:"Comment text"`
+	ChatID   string `json:"chat_id,omitempty" jsonschema:"Optional chat ID; post as this chat's bot"`
 }
 type settingsDefaultsArgs struct {
 	ConnectorID  json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
@@ -614,8 +615,19 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return jsonResult(tickets[:min(len(tickets), limit)])
 	})
-	addGeneric(s, "add_comment", "Add a ticket comment", h, func(a commentArgs) request {
-		return request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", map[string]string{"content": a.Content}}
+	addGenericHandler(s, "add_comment", "Add a ticket comment; optionally post as this chat's bot", func(a commentArgs) (*sdk.CallToolResult, error) {
+		body := map[string]string{"content": a.Content}
+		if a.ChatID != "" {
+			if database == nil {
+				return errorResult(errors.New("chat database unavailable")), nil
+			}
+			var botID sql.NullString
+			if err := database.QueryRow(`SELECT bot_id FROM chat WHERE id=?`, a.ChatID).Scan(&botID); err != nil || !botID.Valid {
+				return errorResult(errors.New("chat bot unavailable")), nil
+			}
+			body["as_bot"] = botID.String
+		}
+		return do(h, request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", body})
 	})
 	addGeneric(s, "list_comments", "List ticket comments", h, func(a ticketIDArgs) request {
 		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID) + "/comments", nil}
