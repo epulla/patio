@@ -19,6 +19,8 @@ func TestParseMentions(t *testing.T) {
 		{"a@Billy.com ignored", nil},
 		{"@Billy do\n\nnext", []mention{{"Billy", "do"}}},
 		{"@Billy, @Sammy work", []mention{{"Sammy", "work"}}},
+		{"see `@Billy` and ``a ` @Sammy``\n```\n@Billy review\n```", nil},
+		{"```\ncode\n```\n`x` @Billy go", []mention{{"Billy", "go"}}},
 	} {
 		got := parseMentions(tc.text, []string{"Billy", "Sammy"})
 		if len(got) != len(tc.want) {

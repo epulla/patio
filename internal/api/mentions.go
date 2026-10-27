@@ -17,9 +17,51 @@ func parseMentions(text string, bots []string) []mention {
 		start, end int
 		bot        string
 	}
+	// Mentions inside fenced code blocks or inline code (a backtick run closed by one of the same length) never fire.
+	code := make([]bool, len(runes))
+	fenced := false
+	for start, end := 0, 0; start < len(runes); start = end + 1 {
+		for end = start; end < len(runes) && runes[end] != '\n'; end++ {
+		}
+		fence := strings.HasPrefix(strings.TrimLeft(string(runes[start:end]), " \t"), "```")
+		if fence || fenced {
+			for k := start; k < end; k++ {
+				code[k] = true
+			}
+			fenced = fenced != fence
+			continue
+		}
+		for k := start; k < end; {
+			if runes[k] != '`' {
+				k++
+				continue
+			}
+			open := k
+			for k < end && runes[k] == '`' {
+				k++
+			}
+			for m := k; m < end; {
+				if runes[m] != '`' {
+					m++
+					continue
+				}
+				run := m
+				for m < end && runes[m] == '`' {
+					m++
+				}
+				if m-run == k-open {
+					for x := open; x < m; x++ {
+						code[x] = true
+					}
+					k = m
+					break
+				}
+			}
+		}
+	}
 	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
 	for i := 0; i < len(runes); i++ {
-		if runes[i] != '@' || (i > 0 && word(runes[i-1])) {
+		if runes[i] != '@' || code[i] || (i > 0 && word(runes[i-1])) {
 			continue
 		}
 		j := i + 1
