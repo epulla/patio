@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,11 +17,10 @@ import (
 )
 
 const (
-	maxChatAttachments       = 10
-	maxChatTextAttachment    = 10 << 20
-	maxChatImageAttachment   = 10 << 20
-	maxChatAttachmentName    = 120
-	maxChatAttachmentRequest = 14 << 20
+	maxChatAttachments     = 10
+	maxChatTextAttachment  = 1 << 30
+	maxChatImageAttachment = 10 << 20
+	maxChatAttachmentName  = 120
 )
 
 type ChatAttachment struct {
@@ -111,33 +109,30 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxChatAttachmentRequest)
-	var request struct {
-		Name string `json:"name"`
-		Data string `json:"data"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeAttachmentError(w, err)
-		return
-	}
-	var extra any
-	if err := json.NewDecoder(r.Body).Decode(&extra); !errors.Is(err, io.EOF) {
-		writeAttachmentError(w, errors.New("invalid JSON request"))
-		return
-	}
-	if request.Name == "" {
+	name := r.URL.Query().Get("name")
+	if name == "" {
 		errw(w, http.StatusBadRequest, "attachment name is required")
 		return
 	}
-	data, err := base64.StdEncoding.DecodeString(request.Data)
-	if err != nil {
-		errw(w, http.StatusBadRequest, "invalid base64 attachment data")
-		return
-	}
-	kind, contentType, err := classifyChatAttachment(data)
+	prefix, err := io.ReadAll(io.LimitReader(r.Body, 512))
 	if err != nil {
 		writeAttachmentError(w, err)
 		return
+	}
+	detected := http.DetectContentType(prefix)
+	image := detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || isWebP(prefix)
+	kind, contentType := "text", detected
+	if image {
+		kind = "image"
+		if isWebP(prefix) {
+			contentType = "image/webp"
+		}
+	} else if detected == "application/pdf" || detected == "application/zip" || detected == "application/x-ole-storage" || !strings.HasPrefix(detected, "text/") && detected != "application/octet-stream" {
+		writeAttachmentError(w, errChatAttachmentType)
+		return
+	}
+	if kind == "text" && contentType == "application/octet-stream" {
+		contentType = "text/plain; charset=utf-8"
 	}
 	pending := s.attachments[c.ID]
 	if len(pending)+1 > maxChatAttachments {
@@ -149,47 +144,24 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	name := sanitizeChatAttachmentName(request.Name)
-	storedName, err := writeChatAttachment(dir, name, data)
+	name = sanitizeChatAttachmentName(name)
+	temp, err := os.CreateTemp(dir, ".upload-*")
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	attachment := ChatAttachment{Name: storedName, Kind: kind, MIME: contentType, Size: int64(len(data))}
+	storedName, size, err := streamChatAttachment(temp, dir, name, prefix, r.Body, kind)
+	if err != nil {
+		writeAttachmentError(w, err)
+		return
+	}
+	attachment := ChatAttachment{Name: storedName, Kind: kind, MIME: contentType, Size: size}
 	if pending == nil {
 		pending = make(map[string]ChatAttachment)
 		s.attachments[c.ID] = pending
 	}
 	pending[storedName] = attachment
 	write(w, http.StatusCreated, []ChatAttachment{attachment})
-}
-
-func classifyChatAttachment(data []byte) (string, string, error) {
-	detected := http.DetectContentType(data[:min(len(data), 512)])
-	if len(data) > maxChatImageAttachment {
-		return "", "", errChatAttachmentTooLarge
-	}
-	if detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || isWebP(data) {
-		contentType := detected
-		if isWebP(data) {
-			contentType = "image/webp"
-		}
-		return "image", contentType, nil
-	}
-	if len(data) > maxChatTextAttachment {
-		return "", "", errChatAttachmentTooLarge
-	}
-	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-		return "", "", errChatAttachmentType
-	}
-	if detected == "application/pdf" || detected == "application/zip" || detected == "application/x-ole-storage" || !strings.HasPrefix(detected, "text/") && detected != "application/octet-stream" {
-		return "", "", errChatAttachmentType
-	}
-	contentType := detected
-	if contentType == "application/octet-stream" {
-		contentType = "text/plain; charset=utf-8"
-	}
-	return "text", contentType, nil
 }
 
 func isWebP(data []byte) bool {
@@ -257,24 +229,82 @@ func pathWithin(root, path string) (bool, error) {
 	return rel != ".." && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, ".."+string(filepath.Separator)), nil
 }
 
-func writeChatAttachment(dir, name string, data []byte) (string, error) {
-	temp, err := os.CreateTemp(dir, ".upload-*")
-	if err != nil {
-		return "", err
+func streamChatAttachment(temp *os.File, dir, name string, prefix []byte, body io.Reader, kind string) (string, int64, error) {
+	path := temp.Name()
+	defer os.Remove(path)
+	defer temp.Close()
+	limit := int64(maxChatTextAttachment)
+	if kind == "image" {
+		limit = maxChatImageAttachment
 	}
-	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	if _, err := temp.Write(data); err != nil {
-		_ = temp.Close()
-		return "", err
+	if _, err := temp.Write(prefix); err != nil {
+		return "", 0, err
+	}
+	if int64(len(prefix)) > limit {
+		return "", 0, errChatAttachmentTooLarge
+	}
+	remaining := limit - int64(len(prefix))
+	reader := io.LimitReader(body, remaining+1)
+	var size int64 = int64(len(prefix))
+	buf := make([]byte, 32*1024)
+	var tail []byte
+	if kind == "text" {
+		if bytes.IndexByte(prefix, 0) >= 0 {
+			return "", 0, errChatAttachmentType
+		}
+		tail = append(tail, prefix...)
+	}
+	for {
+		n, readErr := reader.Read(buf)
+		chunk := buf[:n]
+		size += int64(n)
+		if size > limit {
+			return "", 0, errChatAttachmentTooLarge
+		}
+		if kind == "text" {
+			if bytes.IndexByte(chunk, 0) >= 0 {
+				return "", 0, errChatAttachmentType
+			}
+			valid := append(tail, chunk...)
+			for len(valid) > 0 {
+				if !utf8.FullRune(valid) {
+					tail = append(tail[:0], valid...)
+					break
+				}
+				r, width := utf8.DecodeRune(valid)
+				if r == utf8.RuneError && width == 1 {
+					return "", 0, errChatAttachmentType
+				}
+				valid = valid[width:]
+				tail = tail[:0]
+			}
+		}
+		if n > 0 {
+			if _, err := temp.Write(chunk); err != nil {
+				return "", 0, err
+			}
+		}
+		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				return "", 0, readErr
+			}
+			break
+		}
+	}
+	if len(tail) != 0 {
+		return "", 0, errChatAttachmentType
 	}
 	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
-		return "", err
+		return "", 0, err
 	}
 	if err := temp.Close(); err != nil {
-		return "", err
+		return "", 0, err
 	}
+	stored, err := linkChatAttachment(dir, path, name)
+	return stored, size, err
+}
+
+func linkChatAttachment(dir, tempPath, name string) (string, error) {
 	base, ext := strings.TrimSuffix(name, filepath.Ext(name)), filepath.Ext(name)
 	for index := 1; ; index++ {
 		candidate := name

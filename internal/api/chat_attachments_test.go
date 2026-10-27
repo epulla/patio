@@ -2,11 +2,11 @@ package api
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +35,10 @@ func postAttachmentFiles(t *testing.T, handler http.Handler, chatID string, file
 	t.Helper()
 	var all []ChatAttachment
 	for _, file := range files {
-		response := requestRecorderJSON(handler, http.MethodPost, "/api/chats/"+chatID+"/attachments", map[string]string{"name": file.name, "data": base64.StdEncoding.EncodeToString(file.data)})
+		request := httptest.NewRequest(http.MethodPost, "/api/chats/"+chatID+"/attachments?name="+url.QueryEscape(file.name), bytes.NewReader(file.data))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		response := recorder
 		if response.Code != http.StatusCreated {
 			return response
 		}
@@ -58,10 +61,10 @@ func TestChatAttachmentUploadLimitsTypesAndCount(t *testing.T) {
 		files []attachmentUpload
 		want  int
 	}{
-		{name: "text at 10 MB", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), 10<<20)}}, want: http.StatusCreated},
-		{name: "text over 10 MB", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), 10<<20+1)}}, want: http.StatusRequestEntityTooLarge},
+		{name: "text 11 MB", files: []attachmentUpload{{"note.txt", bytes.Repeat([]byte("a"), 11<<20)}}, want: http.StatusCreated},
 		{name: "image at limit", files: []attachmentUpload{{"picture.png", append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, maxChatImageAttachment-8)...)}}, want: http.StatusCreated},
 		{name: "image over limit", files: []attachmentUpload{{"picture.png", append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, maxChatImageAttachment-7)...)}}, want: http.StatusRequestEntityTooLarge},
+		{name: "invalid UTF-8 across chunk", files: []attachmentUpload{{"bad.txt", append(append(bytes.Repeat([]byte("a"), 512+32*1024-1), 0xc2), 0x20)}}, want: http.StatusBadRequest},
 		{name: "pdf rejected", files: []attachmentUpload{{"document.pdf", []byte("%PDF-1.7\ntext")}}, want: http.StatusBadRequest},
 		{name: "invalid UTF-8", files: []attachmentUpload{{"bad.txt", []byte{0xff}}}, want: http.StatusBadRequest},
 		{name: "NUL rejected", files: []attachmentUpload{{"bad.bin", []byte{'a', 0, 'b'}}}, want: http.StatusBadRequest},
@@ -95,24 +98,13 @@ func TestChatAttachmentUploadLimitsTypesAndCount(t *testing.T) {
 	}
 }
 
-func TestChatAttachmentJSONValidation(t *testing.T) {
+func TestChatAttachmentRawValidation(t *testing.T) {
 	server, c := attachmentTestChat(t)
-	for _, test := range []struct {
-		name string
-		body map[string]string
-	}{
-		{"invalid base64", map[string]string{"name": "bad.txt", "data": "%%%"}},
-		{"missing name", map[string]string{"data": base64.StdEncoding.EncodeToString([]byte("text"))}},
-	} {
-		response := requestRecorderJSON(server, http.MethodPost, "/api/chats/"+c.ID+"/attachments", test.body)
-		if response.Code != http.StatusBadRequest {
-			t.Errorf("%s status = %d: %s", test.name, response.Code, response.Body.String())
-		}
-	}
-	tooLarge := map[string]string{"name": "large.png", "data": strings.Repeat("A", maxChatAttachmentRequest+1)}
-	response := requestRecorderJSON(server, http.MethodPost, "/api/chats/"+c.ID+"/attachments", tooLarge)
-	if response.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized request status = %d: %s", response.Code, response.Body.String())
+	request := httptest.NewRequest(http.MethodPost, "/api/chats/"+c.ID+"/attachments", strings.NewReader("text"))
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "attachment name is required") {
+		t.Fatalf("missing name status = %d: %s", response.Code, response.Body.String())
 	}
 }
 
