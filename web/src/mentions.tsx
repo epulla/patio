@@ -12,6 +12,17 @@ function findTrigger(value: string, caret: number): Trigger | null {
   return { char: match[1] as Trigger["char"], start: caret - match[2].length - 1, query: match[2] };
 }
 
+// Same rules as parseMentions in internal/api/mentions.go: case-insensitive, word boundaries, code ignored.
+export function mentionsBot(text: string, name: string) {
+  const mention = new RegExp(`(?<![\\p{L}\\p{N}_])@${name}(?![\\p{L}\\p{N}_])`, "iu");
+  let fenced = false;
+  return text.split("\n").some((line) => {
+    if (/^[ \t]*```/.test(line)) fenced = !fenced;
+    else if (!fenced) return mention.test(line.replace(/(?<!`)(`+)(?!`)[^]*?(?<!`)\1(?!`)/g, " "));
+    return false;
+  });
+}
+
 let users: Promise<User[]> | null = null;
 // Called after bots change so @ suggestions pick up new names.
 export const forgetMentionUsers = () => (users = null);
