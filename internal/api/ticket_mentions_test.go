@@ -26,17 +26,46 @@ func TestTicketMentionOpensBotChats(t *testing.T) {
 		return p, nil
 	}})
 	defer s.Close()
-	var ticket testTicket
+	var ticket struct{ ID, Code, Title, Description string }
 	if code := requestJSON(t, s, http.MethodPost, "/api/boards/"+board.ID+"/tickets", map[string]any{"title": "Mention test", "description": "@Billy do X, @Sammy do Y"}, &ticket); code != http.StatusCreated {
 		t.Fatalf("create status=%d", code)
 	}
 	assertMentionChats(t, db, processes, ticket.ID, ticket.Code, ticket.Title, 2, []string{"Task: do X", "Task: do Y"})
-	if code := requestJSON(t, s, http.MethodPut, "/api/tickets/"+ticket.ID, map[string]string{"description": "@Billy do X, @Sammy do Y, @Billy new task"}, nil); code != http.StatusOK {
+	var billy, sammy string
+	if err := db.QueryRow(`SELECT id FROM chat WHERE bot_id='billy'`).Scan(&billy); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM chat WHERE bot_id='sammy'`).Scan(&sammy); err != nil {
+		t.Fatal(err)
+	}
+	expected := "@Billy ([chat](/ai/chats/" + billy + ")) do X, @Sammy ([chat](/ai/chats/" + sammy + ")) do Y"
+	if ticket.Description != expected {
+		t.Fatalf("response description=%q want %q", ticket.Description, expected)
+	}
+	var history int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ticket_history WHERE ticket_id=? AND content LIKE 'Linked @%' AND user_id IN ('billy','sammy')`, ticket.ID).Scan(&history); err != nil || history != 2 {
+		t.Fatalf("linked history=%d err=%v", history, err)
+	}
+	if code := requestJSON(t, s, http.MethodPut, "/api/tickets/"+ticket.ID, map[string]string{"description": expected}, nil); code != http.StatusOK {
 		t.Fatalf("update status=%d", code)
+	}
+	if code := requestJSON(t, s, http.MethodPut, "/api/tickets/"+ticket.ID, map[string]string{"description": strings.Replace(expected, "do X", "do Z", 1)}, nil); code != http.StatusOK {
+		t.Fatalf("changed update status=%d", code)
 	}
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM chat WHERE bot_id IN ('billy','sammy')`).Scan(&count); err != nil || count != 3 {
-		t.Fatalf("new task chats=%d err=%v", count, err)
+		t.Fatalf("changed description chats=%d err=%v", count, err)
+	}
+	var linkedDescription string
+	if err := db.QueryRow(`SELECT description FROM ticket WHERE id=?`, ticket.ID).Scan(&linkedDescription); err != nil {
+		t.Fatal(err)
+	}
+	var newest string
+	if err := db.QueryRow(`SELECT id FROM chat WHERE bot_id='billy' ORDER BY rowid DESC LIMIT 1`).Scan(&newest); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(linkedDescription, "([chat 1](/ai/chats/"+billy+"), [chat 2](/ai/chats/"+newest+")) do Z") {
+		t.Fatalf("updated linked description=%q", linkedDescription)
 	}
 	ai := New(db, "ai", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) {
 		p := newPipeChatProcess()
@@ -82,6 +111,16 @@ func TestCommentMentionOpensBotChat(t *testing.T) {
 		t.Fatalf("comment status=%d", code)
 	}
 	assertMentionChats(t, db, processes, ticket.ID, ticket.Code, ticket.Title, 1, []string{"Task: check"})
+	var chatID, trigger, author string
+	if err := db.QueryRow(`SELECT id FROM chat WHERE bot_id='billy'`).Scan(&chatID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT content,user_id FROM ticket_comment WHERE ticket_id=? AND id<>?`, ticket.ID, comment.ID).Scan(&trigger, &author); err != nil {
+		t.Fatal(err)
+	}
+	if author != "billy" || trigger != "Triggered by @Billy in the previous comment → [chat](/ai/chats/"+chatID+")" {
+		t.Fatalf("trigger=(%q,%q)", author, trigger)
+	}
 	ai := newServer("ai")
 	defer ai.Close()
 	if code := requestJSON(t, ai, http.MethodPost, "/api/tickets/"+ticket.ID+"/comments", map[string]string{"content": "posted", "as_bot": "billy"}, nil); code != http.StatusCreated {

@@ -1,9 +1,15 @@
 package api
 
 import (
+	"database/sql"
 	"log"
 	"os"
+	"regexp"
+	"strconv"
+	"strings"
 )
+
+var mentionChatID = regexp.MustCompile(`\]\(/ai/chats/([^\)\s]+)\)`)
 
 func (s *Server) ticketBotNames() []string {
 	rows, err := s.db.Query(`SELECT name FROM "user" WHERE is_ai=1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE,rowid`)
@@ -23,25 +29,26 @@ func (s *Server) ticketBotNames() []string {
 	return names
 }
 
-func (s *Server) openTicketMentionChats(ticketID, source string, mentions []mention) {
+func (s *Server) openTicketMentionChats(ticketID, source string, mentions []mention) []string {
+	ids := make([]string, len(mentions))
 	if len(mentions) == 0 {
-		return
+		return ids
 	}
 	var isAI bool
 	if err := s.db.QueryRow(`SELECT is_ai FROM "user" WHERE id=?`, s.userID).Scan(&isAI); err != nil || isAI {
-		return
+		return ids
 	}
 	var code, title string
 	if err := s.db.QueryRow(`SELECT code,title FROM ticket WHERE id=?`, ticketID).Scan(&code, &title); err != nil {
 		log.Printf("load ticket for mentions %s: %v", ticketID, err)
-		return
+		return ids
 	}
 	defaults, err := s.chatDefaults()
 	if err != nil {
 		log.Printf("load chat defaults for ticket mentions: %v", err)
-		return
+		return ids
 	}
-	for _, m := range mentions {
+	for i, m := range mentions {
 		b, err := scanBot(s.db.QueryRow(`SELECT `+botColumns+` FROM "user" WHERE name=? COLLATE NOCASE AND is_ai=1 AND deleted_at IS NULL`, m.Bot))
 		if err != nil {
 			log.Printf("load mentioned bot %q: %v", m.Bot, err)
@@ -87,6 +94,88 @@ func (s *Server) openTicketMentionChats(ticketID, source string, mentions []ment
 		if _, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: text}); err != nil {
 			log.Printf("send ticket mention to %q: %v", b.Name, cleanupConnectorDir(workdir, err))
 			_, _ = s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
+		} else {
+			ids[i] = id
+		}
+	}
+	return ids
+}
+
+func (s *Server) linkTicketMentionChats(ticketID, expected string, mentions []mention, ids []string) string {
+	linked := expected
+	if len(mentions) == 0 {
+		return linked
+	}
+	err := txrun(s.db, func(tx *sql.Tx) error {
+		var current string
+		if err := tx.QueryRow(`SELECT description FROM ticket WHERE id=?`, ticketID).Scan(&current); err != nil {
+			return err
+		}
+		if current != expected {
+			log.Printf("skip linking ticket mention chats for %s: description changed", ticketID)
+			return nil
+		}
+		runes := []rune(current)
+		for i := len(mentions) - 1; i >= 0; i-- {
+			if i >= len(ids) || ids[i] == "" {
+				continue
+			}
+			m := mentions[i]
+			var userID string
+			if err := tx.QueryRow(`SELECT id FROM "user" WHERE name=? COLLATE NOCASE AND is_ai=1 AND deleted_at IS NULL`, m.Bot).Scan(&userID); err != nil {
+				return err
+			}
+			insert := " ([chat](/ai/chats/" + ids[i] + "))"
+			if m.group != m.name {
+				segment := string(runes[m.name:m.group])
+				targets := mentionChatID.FindAllStringSubmatch(segment, -1)
+				links := make([]string, 0, len(targets)+1)
+				for _, target := range targets {
+					links = append(links, target[1])
+				}
+				links = append(links, ids[i])
+				var items []string
+				for n, target := range links {
+					label := "chat"
+					if len(links) > 1 {
+						label += " " + strconv.Itoa(n+1)
+					}
+					items = append(items, "["+label+"](/ai/chats/"+target+")")
+				}
+				insert = " (" + strings.Join(items, ", ") + ")"
+			}
+			runes = append(runes[:m.name], append([]rune(insert), runes[m.group:]...)...)
+			if _, err := tx.Exec(`INSERT INTO ticket_history(id,content,created_at,ticket_id,user_id) VALUES(?,?,?,?,?)`, uid(), "Linked @"+m.Bot+" chat", now(), ticketID, userID); err != nil {
+				return err
+			}
+		}
+		if string(runes) == current {
+			return nil
+		}
+		linked = string(runes)
+		_, err := tx.Exec(`UPDATE ticket SET description=?,updated_at=? WHERE id=?`, linked, now(), ticketID)
+		return err
+	})
+	if err != nil {
+		log.Printf("link ticket mention chats %s: %v", ticketID, err)
+		return expected
+	}
+	return linked
+}
+
+func (s *Server) addTriggeredMentionComments(ticketID string, mentions []mention, ids []string) {
+	for i, m := range mentions {
+		if i >= len(ids) || ids[i] == "" {
+			continue
+		}
+		var botID string
+		if err := s.db.QueryRow(`SELECT id FROM "user" WHERE name=? COLLATE NOCASE AND is_ai=1 AND deleted_at IS NULL`, m.Bot).Scan(&botID); err != nil {
+			log.Printf("lookup triggered mention bot %q: %v", m.Bot, err)
+			continue
+		}
+		text := "Triggered by @" + m.Bot + " in the previous comment → [chat](/ai/chats/" + ids[i] + ")"
+		if _, err := s.db.Exec(`INSERT INTO ticket_comment(id,content,created_at,updated_at,ticket_id,user_id) VALUES(?,?,?,?,?,?)`, uid(), text, now(), now(), ticketID, botID); err != nil {
+			log.Printf("insert triggered mention comment: %v", err)
 		}
 	}
 }

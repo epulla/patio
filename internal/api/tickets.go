@@ -79,7 +79,9 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.openTicketMentionChats(out.ID, "description", parseMentions(desc, s.ticketBotNames()))
+	mentions := parseMentions(desc, s.ticketBotNames())
+	ids := s.openTicketMentionChats(out.ID, "description", mentions)
+	out.Description = s.linkTicketMentionChats(out.ID, desc, mentions, ids)
 	write(w, 201, out)
 }
 
@@ -405,8 +407,10 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var description string
-	if json.Unmarshal(m["description"], &description) == nil {
-		s.openTicketMentionChats(id, "description", newMentions(oldDescription, description, s.ticketBotNames()))
+	if len(m["description"]) > 0 && json.Unmarshal(m["description"], &description) == nil {
+		mentions := newMentions(oldDescription, description, s.ticketBotNames())
+		ids := s.openTicketMentionChats(id, "description", mentions)
+		out.Description = s.linkTicketMentionChats(id, description, mentions, ids)
 	}
 	write(w, 200, out)
 }
@@ -700,7 +704,9 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 			errw(w, 500, e.Error())
 		}
 	} else {
-		s.openTicketMentionChats(tid, "comment "+id, parseMentions(in.Content, s.ticketBotNames()))
+		mentions := parseMentions(in.Content, s.ticketBotNames())
+		ids := s.openTicketMentionChats(tid, "comment "+id, mentions)
+		s.addTriggeredMentionComments(tid, mentions, ids)
 		write(w, 201, c)
 	}
 }
