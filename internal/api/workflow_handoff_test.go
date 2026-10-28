@@ -42,7 +42,7 @@ func workflowHandoffFixture(t *testing.T, graph workflowGraph, budget int) (*Ser
 }
 
 func fanJoinGraph() workflowGraph {
-	return testGraph([]workflowNode{{ID: "root", BotID: "ai"}, {ID: "a", BotID: "ai"}, {ID: "b", BotID: "ai"}, {ID: "join", BotID: "ai"}},
+	return testGraph([]workflowNode{{ID: "root", BotID: "ai"}, {ID: "a", BotID: "ai"}, {ID: "b", BotID: "ai"}, {ID: "join", BotID: "ai", Mode: "wait"}},
 		workflowEdge{ID: "root-a", From: "root", To: "a"}, workflowEdge{ID: "root-b", From: "root", To: "b"},
 		workflowEdge{ID: "a-join", From: "a", To: "join", ReportBack: true, TimeoutMinutes: 15, Instruction: "merge alpha"},
 		workflowEdge{ID: "b-join", From: "b", To: "join", ReportBack: true, TimeoutMinutes: 25})
@@ -61,22 +61,75 @@ func TestWorkflowHandoffRejectsEdgeFromOtherStep(t *testing.T) {
 }
 
 func TestWorkflowHandoffCreatesChildFromEdge(t *testing.T) {
-	g := testGraph([]workflowNode{{ID: "root", BotID: "ai"}, {ID: "next", BotID: "ai"}}, workflowEdge{ID: "go", From: "root", To: "next", ReportBack: true, TimeoutMinutes: 19})
-	s, root, _, _, wid := workflowHandoffFixture(t, g, 10)
-	var out map[string]string
-	if code := postWorkflowEdge(t, s, root, "go", "Do work", &out); code != 200 || out["chat_id"] == "" {
-		t.Fatalf("status=%d response=%v", code, out)
+	for _, tc := range []struct {
+		name, mode string
+		want       int
+	}{{"auto", "", 0}, {"wait", "wait", 1}} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := testGraph([]workflowNode{{ID: "root", BotID: "ai"}, {ID: "next", BotID: "ai", Mode: tc.mode}}, workflowEdge{ID: "go", From: "root", To: "next", ReportBack: true, TimeoutMinutes: 19})
+			s, root, _, _, wid := workflowHandoffFixture(t, g, 10)
+			var out map[string]string
+			if code := postWorkflowEdge(t, s, root, "go", "Do work", &out); code != 200 || out["chat_id"] == "" {
+				t.Fatalf("status=%d response=%v", code, out)
+			}
+			var botID, gotWorkflow, node, runID, edgeID, deadline string
+			var wait int
+			if err := s.db.QueryRow(`SELECT c.bot_id,c.workflow_id,c.workflow_node,c.workflow_run_id,h.workflow_edge,h.deadline_at,c.workflow_wait FROM chat c JOIN chat_handoff h ON h.to_chat_id=c.id WHERE c.id=?`, out["chat_id"]).Scan(&botID, &gotWorkflow, &node, &runID, &edgeID, &deadline, &wait); err != nil {
+				t.Fatal(err)
+			}
+			if botID != "ai" || gotWorkflow != wid || node != "next" || runID != root || edgeID != "go" || wait != tc.want {
+				t.Fatalf("child bot=%s workflow=%s node=%s run=%s edge=%s wait=%d", botID, gotWorkflow, node, runID, edgeID, wait)
+			}
+			d, err := time.Parse("2006-01-02T15:04:05.000Z", deadline)
+			if err != nil || time.Until(d) < 18*time.Minute {
+				t.Fatalf("deadline=%s err=%v", deadline, err)
+			}
+		})
 	}
-	var botID, gotWorkflow, node, runID, edgeID, deadline string
-	if err := s.db.QueryRow(`SELECT c.bot_id,c.workflow_id,c.workflow_node,c.workflow_run_id,h.workflow_edge,h.deadline_at FROM chat c JOIN chat_handoff h ON h.to_chat_id=c.id WHERE c.id=?`, out["chat_id"]).Scan(&botID, &gotWorkflow, &node, &runID, &edgeID, &deadline); err != nil {
+}
+
+func TestWorkflowStepNoteAutoAndWait(t *testing.T) {
+	g := testGraph([]workflowNode{{ID: "root", BotID: "ai"}, {ID: "next", BotID: "ai"}}, workflowEdge{ID: "go", From: "root", To: "next"})
+	s, root, _, _, _ := workflowHandoffFixture(t, g, 10)
+	for _, tc := range []struct {
+		name               string
+		wait               int
+		contains, excludes string
+	}{{"auto", 0, "Before ending your turn, hand off", "Do not hand off"}, {"wait", 1, "Do not hand off until the user tells you", "Before ending your turn, hand off"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := s.db.Exec(`UPDATE chat SET workflow_wait=? WHERE id=?`, tc.wait, root); err != nil {
+				t.Fatal(err)
+			}
+			note, err := workflowStepNote(s.db, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(note, tc.contains) || strings.Contains(note, tc.excludes) {
+				t.Fatalf("note=%q", note)
+			}
+		})
+	}
+}
+
+func TestChatPromptSavedWorkflowsOnlyOutsideWorkflow(t *testing.T) {
+	g := testGraph([]workflowNode{{ID: "root", BotID: "ai"}}, []workflowEdge{}...)
+	s, root, plain, _, wid := workflowHandoffFixture(t, g, 10)
+	if _, err := s.db.Exec(`UPDATE chat SET workflow_id=NULL,workflow_node=NULL,workflow_run_id=NULL WHERE id=?`, plain); err != nil {
 		t.Fatal(err)
 	}
-	if botID != "ai" || gotWorkflow != wid || node != "next" || runID != root || edgeID != "go" {
-		t.Fatalf("child bot=%s workflow=%s node=%s run=%s edge=%s", botID, gotWorkflow, node, runID, edgeID)
+	prompt, err := ChatPrompt(s.db, plain)
+	if err != nil {
+		t.Fatal(err)
 	}
-	d, err := time.Parse("2006-01-02T15:04:05.000Z", deadline)
-	if err != nil || time.Until(d) < 18*time.Minute {
-		t.Fatalf("deadline=%s err=%v", deadline, err)
+	if !strings.Contains(prompt, "Saved workflows") || !strings.Contains(prompt, "Test flow") || !strings.Contains(prompt, wid) {
+		t.Fatalf("saved workflow absent: %s", prompt)
+	}
+	prompt, err = ChatPrompt(s.db, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prompt, "Saved workflows") || strings.Contains(prompt, wid) {
+		t.Fatalf("workflow chat listed saved workflows: %s", prompt)
 	}
 }
 
@@ -98,6 +151,10 @@ func TestWorkflowJoinWaitsThenFiresCombinedInputs(t *testing.T) {
 	var fired map[string]string
 	if code := postWorkflowEdge(t, s, b, "b-join", "second", &fired); code != 200 || fired["chat_id"] == "" {
 		t.Fatalf("second=%d %v", code, fired)
+	}
+	var wait int
+	if err := s.db.QueryRow(`SELECT workflow_wait FROM chat WHERE id=?`, fired["chat_id"]).Scan(&wait); err != nil || wait != 1 {
+		t.Fatalf("join workflow_wait=%d err=%v", wait, err)
 	}
 	var prompt string
 	if err := s.db.QueryRow(`SELECT text FROM chat_queue WHERE chat_id=?`, fired["chat_id"]).Scan(&prompt); err != nil {

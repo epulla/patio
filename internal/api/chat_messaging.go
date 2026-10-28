@@ -26,6 +26,15 @@ type agentMessageRequest struct {
 	TimeoutMinutes int    `json:"timeout_minutes,omitempty"`
 }
 
+func workflowModeWait(g workflowGraph, node string) int {
+	for _, n := range g.Nodes {
+		if n.ID == node && n.Mode == "wait" {
+			return 1
+		}
+	}
+	return 0
+}
+
 func countWorkflowIncoming(g workflowGraph, node string) int {
 	n := 0
 	for _, e := range g.Edges {
@@ -167,7 +176,7 @@ func fireWorkflowJoin(s *Server, run, workflowID, node string, edge workflowEdge
 			return "", cleanupConnectorDir(dir, err)
 		}
 	}
-	if _, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, *connector, title, model, parent.Folder, created, created, parent.Thinking, parent.ShowThinking, parent.AutoAllow, parentID, bot.ID, wf.ID, node, run); err != nil {
+	if _, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, *connector, title, model, parent.Folder, created, created, parent.Thinking, parent.ShowThinking, parent.AutoAllow, parentID, bot.ID, wf.ID, node, run, workflowModeWait(wf.Graph, node)); err != nil {
 		if madeDir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}
@@ -666,7 +675,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	if in.WorkflowEdge != "" {
 		workflowID, workflowNode, runID = workflowIDValue, edge.To, workflowRun
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, caller.Thinking, caller.ShowThinking, caller.AutoAllow, caller.ID, botID, workflowID, workflowNode, runID); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, caller.Thinking, caller.ShowThinking, caller.AutoAllow, caller.ID, botID, workflowID, workflowNode, runID, workflowModeWait(wf.Graph, edge.To)); err != nil {
 		if createdWorkdir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,7 @@ func TestWorkflowCRUDAndValidation(t *testing.T) {
 		{"duplicate name", flow, "already exists"},
 		{"no nodes", map[string]any{"name": "x", "graph": testGraph(nil)}, "at least one node"},
 		{"unknown bot", map[string]any{"name": "x", "graph": testGraph([]workflowNode{{ID: "a", BotID: "nobody"}})}, "unknown bot"},
+		{"unknown mode", map[string]any{"name": "x", "graph": testGraph([]workflowNode{{ID: "a", BotID: "ai", Mode: "manual"}})}, "mode"},
 		{"two roots", map[string]any{"name": "x", "graph": testGraph([]workflowNode{martin, billy})}, "exactly one root"},
 		{"self-loop", map[string]any{"name": "x", "graph": testGraph([]workflowNode{martin}, workflowEdge{ID: "e", From: "m", To: "m"})}, "self-loop"},
 		{"unreachable loop", map[string]any{"name": "x", "graph": testGraph([]workflowNode{martin, billy, {ID: "c", BotID: "ai"}}, workflowEdge{ID: "e1", From: "b", To: "c"}, workflowEdge{ID: "e2", From: "c", To: "b"})}, "reachable"},
@@ -142,6 +144,76 @@ func TestRunWorkflowStartsRootChatAndTree(t *testing.T) {
 	}
 	if code := requestJSON(t, s, http.MethodGet, "/api/chats/missing/tree", nil, nil); code != http.StatusNotFound {
 		t.Fatalf("missing tree = %d", code)
+	}
+}
+
+func attachWorkflowFixture(t *testing.T) (*Server, string, string, string, string) {
+	t.Helper()
+	database, err := db.Open(filepath.Join(t.TempDir(), "attach.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	rootDir := t.TempDir()
+	connector := createTestConnector(t, database)
+	if _, err := database.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,connector_id,color) VALUES('billy','Billy','billy@test',1,1,?,'#123456')`, connector); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE "user" SET connector_id=? WHERE id='ai'`, connector); err != nil {
+		t.Fatal(err)
+	}
+	chatID := createDriverTestChat(t, database, connector, rootDir)
+	s := New(database, "local", false, "dev", rootDir, Options{DBPath: filepath.Join(rootDir, "attach.db"), findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return newPipeChatProcess(), nil }})
+	t.Cleanup(func() { _ = s.Close() })
+	g := testGraph([]workflowNode{{ID: "start", BotID: "billy"}, {ID: "next", BotID: "ai"}}, workflowEdge{ID: "continue", From: "start", To: "next"})
+	raw, err := json.Marshal(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wid := uid()
+	if _, err = database.Exec(`INSERT INTO workflow(id,name,description,hop_budget,graph,created_at,updated_at) VALUES(?,?,?,30,?,?,?)`, wid, "Attach flow", "A test workflow", string(raw), now(), now()); err != nil {
+		t.Fatal(err)
+	}
+	return s, chatID, wid, connector, "Billy"
+}
+
+func TestAttachWorkflowToExistingChat(t *testing.T) {
+	s, chatID, wid, _, _ := attachWorkflowFixture(t)
+	var out map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/workflows/"+wid+"/run", map[string]any{"chat_id": chatID}, &out); code != 200 || out["chat_id"] != chatID || !strings.Contains(out["note"], "Do not hand off until the user tells you") {
+		t.Fatalf("attach=%d %v", code, out)
+	}
+	var gotWorkflow, node, runID, bot string
+	var wait int
+	if err := s.db.QueryRow(`SELECT workflow_id,workflow_node,workflow_run_id,workflow_wait,bot_id FROM chat WHERE id=?`, chatID).Scan(&gotWorkflow, &node, &runID, &wait, &bot); err != nil {
+		t.Fatal(err)
+	}
+	if gotWorkflow != wid || node != "start" || runID != chatID || wait != 1 || bot != "billy" {
+		t.Fatalf("attached fields=%q %q %q wait=%d bot=%q", gotWorkflow, node, runID, wait, bot)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/workflows/"+wid+"/run", map[string]any{"chat_id": chatID}, nil); code != 409 {
+		t.Fatalf("second attach=%d", code)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/workflows/"+wid+"/run", map[string]any{"chat_id": "missing"}, nil); code != 404 {
+		t.Fatalf("missing attach=%d", code)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/workflows/"+wid+"/run", map[string]any{"chat_id": chatID, "prompt": "both"}, nil); code != 400 {
+		t.Fatalf("both inputs=%d", code)
+	}
+}
+
+func TestAttachWorkflowAnnounceStoresOneUserMessage(t *testing.T) {
+	s, chatID, wid, _, _ := attachWorkflowFixture(t)
+	if code := requestJSON(t, s, http.MethodPost, "/api/workflows/"+wid+"/run", map[string]any{"chat_id": chatID, "announce": true}, nil); code != 200 {
+		t.Fatalf("attach announce=%d", code)
+	}
+	var count int
+	var content string
+	if err := s.db.QueryRow(`SELECT count(*),min(content) FROM chat_message WHERE chat_id=? AND role='user'`, chatID).Scan(&count, &content); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || content != `Workflow "Attach flow" started in this chat.` {
+		t.Fatalf("announce messages=%d content=%q", count, content)
 	}
 }
 

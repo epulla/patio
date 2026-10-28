@@ -129,6 +129,61 @@ func TestAskUserToolStoresQuestionAndNotifiesScheduledRun(t *testing.T) {
 	}
 }
 
+func TestRunWorkflowToolAttachesCallingChat(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "run-workflow.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	connector := "workflow-connector"
+	if _, err = database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,'claude','Workflow',?)`, connector, "now"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`UPDATE "user" SET connector_id=? WHERE id='ai'`, connector); err != nil {
+		t.Fatal(err)
+	}
+	chatID := "calling-chat"
+	if _, err = database.Exec(`INSERT INTO chat(id,connector_id,title,created_at,updated_at,bot_id) VALUES(?,?,?,'now','now','ai')`, chatID, connector, "Calling"); err != nil {
+		t.Fatal(err)
+	}
+	graph := map[string]any{"nodes": []map[string]string{{"id": "start", "bot_id": "ai"}, {"id": "next", "bot_id": "ai"}}, "edges": []map[string]string{{"id": "go", "from": "start", "to": "next"}}}
+	raw, err := json.Marshal(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowID := "saved-flow"
+	if _, err = database.Exec(`INSERT INTO workflow(id,name,hop_budget,graph,created_at,updated_at) VALUES(?,'MCP flow',30,?,'now','now')`, workflowID, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	handler := api.New(database, "ai", true, "dev", t.TempDir())
+	server, err := NewServer(handler, "dev", database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err = server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	client := sdk.NewClient(&sdk.Implementation{Name: "workflow-attach-test", Version: "1"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result := callTool(t, session, "run_workflow", map[string]any{"id": workflowID, "chat_id": chatID})
+	if result.IsError {
+		t.Fatalf("run_workflow error: %#v", result.Content)
+	}
+	var wid, node, runID string
+	var wait int
+	if err = database.QueryRow(`SELECT workflow_id,workflow_node,workflow_run_id,workflow_wait FROM chat WHERE id=?`, chatID).Scan(&wid, &node, &runID, &wait); err != nil {
+		t.Fatal(err)
+	}
+	if wid != workflowID || node != "start" || runID != chatID || wait != 1 || !strings.Contains(result.Content[0].(*sdk.TextContent).Text, "Do not hand off until the user tells you") {
+		t.Fatalf("attached workflow=%q node=%q run=%q wait=%d result=%#v", wid, node, runID, wait, result.Content)
+	}
+}
+
 func TestMCPToolsAndAudit(t *testing.T) {
 	keyring.MockInit()
 	dbPath := filepath.Join(t.TempDir(), "test.db")

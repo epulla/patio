@@ -87,6 +87,54 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 			return "", err
 		}
 		prompt += section
+		var inWorkflow int
+		if chatID != "" {
+			if err := db.QueryRow(`SELECT count(*) FROM chat WHERE id=? AND workflow_run_id IS NOT NULL`, chatID).Scan(&inWorkflow); err != nil {
+				return "", err
+			}
+		}
+		if inWorkflow == 0 {
+			rows, err := db.Query(`SELECT name,COALESCE(description,''),graph,id FROM workflow WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE,rowid`)
+			if err != nil {
+				return "", err
+			}
+			var saved strings.Builder
+			for rows.Next() {
+				var name, description, raw, id string
+				if err := rows.Scan(&name, &description, &raw, &id); err != nil {
+					rows.Close()
+					return "", err
+				}
+				var graph workflowGraph
+				if err := json.Unmarshal([]byte(raw), &graph); err != nil {
+					rows.Close()
+					return "", err
+				}
+				if saved.Len() == 0 {
+					saved.WriteString(" Saved workflows (to start one in this chat, call run_workflow with its id and this chat's chat_id; it waits for the user before handing off):")
+				}
+				detail := description
+				if detail == "" {
+					var names []string
+					for _, n := range graph.Nodes {
+						var botName string
+						if err := db.QueryRow(`SELECT name FROM "user" WHERE id=?`, n.BotID).Scan(&botName); err != nil {
+							rows.Close()
+							return "", err
+						}
+						names = append(names, botName)
+					}
+					detail = strings.Join(names, " → ")
+				}
+				fmt.Fprintf(&saved, "\n- %s (id %s): %s", name, id, detail)
+			}
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return "", err
+			}
+			rows.Close()
+			prompt += saved.String()
+		}
 	}
 	prompt += skillIndex(skills)
 	if chatID != "" {
@@ -100,9 +148,10 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 // Chats outside a workflow, or whose workflow was deleted, get "".
 func workflowStepNote(db *sql.DB, chatID string) (string, error) {
 	var node, bname sql.NullString
+	var wait int
 	var w workflow
 	var graph string
-	err := db.QueryRow(`SELECT c.workflow_node,u.name,wf.name,wf.graph FROM chat c JOIN workflow wf ON wf.id=c.workflow_id AND wf.deleted_at IS NULL LEFT JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, chatID).Scan(&node, &bname, &w.Name, &graph)
+	err := db.QueryRow(`SELECT c.workflow_node,u.name,wf.name,wf.graph,c.workflow_wait FROM chat c JOIN workflow wf ON wf.id=c.workflow_id AND wf.deleted_at IS NULL LEFT JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, chatID).Scan(&node, &bname, &w.Name, &graph, &wait)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && !node.Valid {
 		return "", nil
 	}
@@ -139,6 +188,9 @@ func workflowStepNote(db *sql.DB, chatID string) (string, error) {
 	}
 	if edgeLines.Len() == 0 {
 		return note + " This is the last step: do it and finish with your result.", nil
+	}
+	if wait == 1 {
+		return note + fmt.Sprintf(" Work with the user on your part and keep talking as long as they want. Do not hand off until the user tells you to continue (for example \"go\" or \"hand off\"); then call create_chat with chat_id %q, the workflow_edge below and a prompt that carries everything agreed so far (Patio picks the bot):", chatID) + edgeLines.String(), nil
 	}
 	return note + fmt.Sprintf(" Do only your part; later steps belong to other bots. Before ending your turn, hand off by calling create_chat with chat_id %q, the workflow_edge below and a prompt for the next bot (Patio picks the bot):", chatID) + edgeLines.String(), nil
 }

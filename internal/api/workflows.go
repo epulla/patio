@@ -16,6 +16,7 @@ type workflowNode struct {
 	Y           float64 `json:"y"`
 	ConnectorID *string `json:"connector_id,omitempty"`
 	Model       *string `json:"model,omitempty"`
+	Mode        string  `json:"mode,omitempty"`
 }
 type workflowEdge struct {
 	ID             string `json:"id"`
@@ -87,6 +88,9 @@ func validWorkflow(in *workflowInput, id string, db *sql.DB) error {
 	nodes := map[string]bool{}
 	incoming := map[string]int{}
 	for _, n := range in.Graph.Nodes {
+		if n.Mode != "" && n.Mode != "auto" && n.Mode != "wait" {
+			return errors.New("mode must be auto or wait")
+		}
 		if n.ID == "" || nodes[n.ID] {
 			return errors.New("node ids must be unique")
 		}
@@ -256,10 +260,12 @@ func (s *Server) deleteWorkflow(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) runWorkflow(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Prompt string `json:"prompt"`
+		Prompt   string `json:"prompt"`
+		ChatID   string `json:"chat_id"`
+		Announce bool   `json:"announce"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Prompt) == "" {
-		errw(w, 400, "prompt required")
+	if decode(r, &in) != nil || (strings.TrimSpace(in.Prompt) == "") == (in.ChatID == "") {
+		errw(w, 400, "exactly one of prompt or chat_id required")
 		return
 	}
 	wf, err := s.loadWorkflow(idParam(r, "id"))
@@ -281,6 +287,61 @@ func (s *Server) runWorkflow(w http.ResponseWriter, r *http.Request) {
 			root = n
 			break
 		}
+	}
+	if in.ChatID != "" {
+		c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, in.ChatID))
+		if errors.Is(err, sql.ErrNoRows) {
+			errw(w, 404, "chat not found")
+			return
+		}
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if c.ConnectorID == nil {
+			errw(w, 400, errChatConnectorMissing.Error())
+			return
+		}
+		attached, err := s.db.Exec(`UPDATE chat SET workflow_id=?,workflow_node=?,workflow_run_id=id,workflow_wait=1,bot_id=? WHERE id=? AND workflow_run_id IS NULL`, wf.ID, root.ID, root.BotID, in.ChatID)
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if n, err := attached.RowsAffected(); err != nil || n == 0 {
+			if err == nil {
+				errw(w, 409, "chat is already in a workflow run")
+			} else {
+				errw(w, 500, err.Error())
+			}
+			return
+		}
+		note, err := workflowStepNote(s.db, in.ChatID)
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if in.Announce {
+			kind, dir, e := s.chats.connectorConfig(*c.ConnectorID)
+			if e != nil {
+				errw(w, 500, e.Error())
+				return
+			}
+			stored := `Workflow "` + wf.Name + `" started in this chat.`
+			_, e = s.chats.Send(c, kind, dir, ChatSendRequest{Text: stored + "\n\n---\n" + strings.TrimSpace(note), StoredText: stored})
+			if e != nil {
+				code := 500
+				if errors.Is(e, errChatTurnRunning) {
+					code = 409
+				}
+				if _, undoErr := s.db.Exec(`UPDATE chat SET workflow_id=NULL,workflow_node=NULL,workflow_run_id=NULL,workflow_wait=0,bot_id=? WHERE id=?`, c.BotID, in.ChatID); undoErr != nil {
+					e, code = errors.Join(e, undoErr), 500
+				}
+				errw(w, code, e.Error())
+				return
+			}
+		}
+		write(w, 200, map[string]string{"chat_id": in.ChatID, "note": strings.TrimSpace(note)})
+		return
 	}
 	b, err := scanBot(s.db.QueryRow(`SELECT `+botColumns+` FROM "user" WHERE id=? AND deleted_at IS NULL`, root.BotID))
 	if err != nil {
@@ -326,7 +387,11 @@ func (s *Server) runWorkflow(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, cleanupConnectorDir(workdir, err).Error())
 		return
 	}
-	_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id) VALUES(?,?,?,?,NULL,?,?,?,?,?,NULL,?,?,?,?)`, id, *connector, title, model, created, created, defaults.Thinking, defaults.ShowThinking, defaults.AutoAllow, botID, wf.ID, root.ID, id)
+	wait := 0
+	if root.Mode == "wait" {
+		wait = 1
+	}
+	_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,NULL,?,?,?,?,?,NULL,?,?,?,?,?)`, id, *connector, title, model, created, created, defaults.Thinking, defaults.ShowThinking, defaults.AutoAllow, botID, wf.ID, root.ID, id, wait)
 	if err != nil {
 		errw(w, 500, cleanupConnectorDir(workdir, err).Error())
 		return

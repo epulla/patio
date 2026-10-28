@@ -211,7 +211,8 @@ type workflowIDArgs struct {
 }
 type runWorkflowArgs struct {
 	ID     string `json:"id" jsonschema:"Workflow UUID"`
-	Prompt string `json:"prompt" jsonschema:"Task for the first bot"`
+	Prompt string `json:"prompt,omitempty" jsonschema:"Task for the first bot"`
+	ChatID string `json:"chat_id,omitempty" jsonschema:"Start the workflow in this chat instead of a new one; this chat becomes the first step"`
 }
 type listSkillsArgs struct {
 	IncludeDisabled bool `json:"include_disabled,omitempty"`
@@ -547,8 +548,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
-	addGeneric(s, "run_workflow", "Start a workflow run with a task; returns the first chat's id", h, func(a runWorkflowArgs) request {
-		return request{http.MethodPost, "/api/workflows/" + url.PathEscape(a.ID) + "/run", map[string]string{"prompt": a.Prompt}}
+	addGeneric(s, "run_workflow", "Start a workflow run. With chat_id, the calling chat becomes the first step and waits for the user; otherwise a new chat starts with prompt.", h, func(a runWorkflowArgs) request {
+		return request{http.MethodPost, "/api/workflows/" + url.PathEscape(a.ID) + "/run", map[string]any{"prompt": a.Prompt, "chat_id": a.ChatID}}
 	})
 	addGeneric(s, "create_connector", "Create an AI connector; secret is a write-only API key", h, func(a createConnectorArgs) request { return request{http.MethodPost, "/api/connectors", a} })
 	addGeneric(s, "update_connector", "Update provided connector fields; secret is write-only", h, func(a updateConnectorArgs) request {
