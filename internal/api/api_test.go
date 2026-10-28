@@ -797,6 +797,19 @@ func TestDueDateValidationOnTicketCreateAndUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateTicketReturnsUpdatedTicket(t *testing.T) {
+	_, handler := newAPI(t)
+	b := createBoard(t, handler, "UPD", []string{"Todo"})
+	created := createTicket(t, handler, b.ID, "")
+	var out ticket
+	if code := requestJSON(t, handler, http.MethodPut, "/api/tickets/"+created.ID, map[string]any{"title": "Renamed"}, &out); code != http.StatusOK {
+		t.Fatalf("status = %d", code)
+	}
+	if out.ID != created.ID || out.Title != "Renamed" || out.Code != "UPD-1" {
+		t.Fatalf("response = %+v", out)
+	}
+}
+
 func TestDeleteStatusWithTicketsConflicts(t *testing.T) {
 	_, handler := newAPI(t)
 	b := createBoard(t, handler, "DEL", []string{"Todo"})

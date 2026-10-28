@@ -312,7 +312,8 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 	var out ticket
 	var oldDescription string
 	e := txrun(s.db, func(tx *sql.Tx) error {
-		out, e := scanTicket(tx.QueryRow(`SELECT id,title,description,number,code,created_at,updated_at,due_date,status_updated_at,status_id,board_id,ticket_type_id,reporter_id,assignee_id FROM ticket WHERE id=?`, id))
+		var e error
+		out, e = scanTicket(tx.QueryRow(`SELECT id,title,description,number,code,created_at,updated_at,due_date,status_updated_at,status_id,board_id,ticket_type_id,reporter_id,assignee_id FROM ticket WHERE id=?`, id))
 		if e != nil {
 			return e
 		}
