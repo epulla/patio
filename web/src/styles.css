@@ -823,6 +823,14 @@ a:has(> .svg-icon) {
   border-radius: var(--radius-box);
   box-shadow: var(--shadow);
 }
+.board-card {
+  justify-content: flex-start;
+  white-space: normal;
+}
+.board-card > span:nth-child(2) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .board-card strong,
 .board-card small {
   display: block;
