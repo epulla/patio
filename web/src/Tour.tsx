@@ -34,9 +34,9 @@ const text = {
       skills: ["Skills and memories", "Skills are reusable instructions chats load for a task. Memories are facts and preferences the AI saves when you correct it, so you don't repeat yourself."],
       mcp: ["MCP servers", "Give chats more tools, like Gmail, Slack or Jira, by adding MCP servers."],
       monitors: ["Monitors", "Run an MCP tool on a schedule and get notified when its result changes."],
-      scheduled: ["Scheduled tasks", "Run a prompt on a schedule, like a daily summary of your boards."],
+      scheduled: ["Scheduled tasks", "Run a prompt on a schedule, like a daily summary of your boards. The play button runs a task right away."],
       patioMcp: ["Use Patio from other AI apps", "Patio is an MCP server too. Copy this setup into Claude Desktop, Claude Code or another client to manage your boards from there."],
-      foot: ["Settings and notifications", `Settings, theme and notifications live here. Press ${key("/")} anytime for every shortcut, and replay this tour from Settings.`],
+      foot: ["Settings and notifications", `Settings, theme and notifications live here. A dot on the gear means a new Patio version is out. Press ${key("/")} anytime for every shortcut, and replay this tour from Settings.`],
     },
   },
   es: {
@@ -63,9 +63,9 @@ const text = {
       skills: ["Habilidades y memorias", "Las habilidades son instrucciones reutilizables que los chats cargan para una tarea. Las memorias son datos y preferencias que la IA guarda cuando la corriges, para que no te repitas."],
       mcp: ["Servidores MCP", "Da más herramientas a los chats, como Gmail, Slack o Jira, agregando servidores MCP."],
       monitors: ["Monitores", "Ejecuta una herramienta MCP según un horario y recibe un aviso cuando su resultado cambia."],
-      scheduled: ["Tareas programadas", "Ejecuta un prompt según un horario, como un resumen diario de tus tableros."],
+      scheduled: ["Tareas programadas", "Ejecuta un prompt según un horario, como un resumen diario de tus tableros. El botón de reproducir ejecuta una tarea al instante."],
       patioMcp: ["Usa Patio desde otras apps de IA", "Patio también es un servidor MCP. Copia esta configuración en Claude Desktop, Claude Code u otro cliente para manejar tus tableros desde ahí."],
-      foot: ["Ajustes y avisos", `Aquí están los ajustes, el tema y las notificaciones. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Ajustes.`],
+      foot: ["Ajustes y avisos", `Aquí están los ajustes, el tema y las notificaciones. Un punto en el engranaje indica que hay una nueva versión de Patio. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Ajustes.`],
     },
   },
 };
