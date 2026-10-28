@@ -6,19 +6,114 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type agentMessageRequest struct {
 	FromChatID string `json:"from_chat_id"`
 	Text       string `json:"text"`
 	ReportBack bool   `json:"report_back"`
+}
+
+func (s *chatManager) deliverHandoffReports(parent string) error {
+	type report struct{ id, child, status, result, created, title string }
+	var reports []report
+	err := txrun(s.db, func(tx *sql.Tx) error {
+		rows, err := tx.Query(`UPDATE chat_handoff SET delivered=1 WHERE from_chat_id=? AND status!='pending' AND delivered=0 AND NOT EXISTS(SELECT 1 FROM chat_handoff p WHERE p.from_chat_id=? AND p.status='pending') RETURNING id,to_chat_id,status,result,created_at`, parent, parent)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var r report
+			if err := rows.Scan(&r.id, &r.child, &r.status, &r.result, &r.created); err != nil {
+				rows.Close()
+				return err
+			}
+			reports = append(reports, r)
+		}
+		return errors.Join(rows.Err(), rows.Close())
+	})
+	if err != nil {
+		return err
+	}
+	for i := range reports {
+		if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, reports[i].child).Scan(&reports[i].title); err != nil {
+			return err
+		}
+	}
+	if len(reports) == 0 {
+		return nil
+	}
+	sort.SliceStable(reports, func(i, j int) bool { return reports[i].created < reports[j].created })
+	text := reports[0].result
+	if reports[0].status != "ok" {
+		text = "[Status: " + reports[0].status + "] " + text
+	}
+	if len(reports) > 1 {
+		text = fmt.Sprintf("Reports from %d handoffs:", len(reports))
+		for _, r := range reports {
+			text += fmt.Sprintf("\n\n### %s (%s)\n%s", r.title, r.status, r.result)
+		}
+	}
+	if s.reportBack == nil {
+		return nil
+	}
+	return s.reportBack(parent, reports[0].child, text)
+}
+
+func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopping bool) ([]string, bool, error) {
+	var targetRows int
+	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE to_chat_id=?`, chatID).Scan(&targetRows); err != nil {
+		return nil, false, err
+	}
+	if targetRows == 0 {
+		return nil, false, nil
+	}
+	var ownPending int
+	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE from_chat_id=? AND status='pending'`, chatID).Scan(&ownPending); err != nil {
+		return nil, true, err
+	}
+	if ownPending > 0 {
+		return nil, true, nil
+	}
+	status := "ok"
+	if stopping {
+		status = "stopped"
+	} else if turnErr != nil {
+		status = "failed"
+	}
+	var parents []string
+	if err := txrun(s.db, func(tx *sql.Tx) error {
+		rows, err := tx.Query(`SELECT DISTINCT from_chat_id FROM chat_handoff WHERE to_chat_id=? AND status='pending'`, chatID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err != nil {
+				rows.Close()
+				return err
+			}
+			parents = append(parents, p)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		_, err = tx.Exec(`UPDATE chat_handoff SET status=?,result=?,finished_at=? WHERE to_chat_id=? AND status='pending'`, status, result, now(), chatID)
+		return err
+	}); err != nil {
+		return nil, true, err
+	}
+	return parents, true, nil
 }
 
 func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +190,23 @@ func agentMessageLabel(fromID, title string, reportBack bool) string {
 }
 
 func (s *Server) queueAgentMessage(id string, in agentMessageRequest) error {
-	if _, err := s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, in.Text, now(), in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
+	created := now()
+	err := txrun(s.db, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, in.Text, created, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
+			return err
+		}
+		if in.ReportBack {
+			var runID sql.NullString
+			if err := tx.QueryRow(`SELECT workflow_run_id FROM chat WHERE id=?`, in.FromChatID).Scan(&runID); err != nil {
+				return err
+			}
+			deadline := time.Now().UTC().Add(30 * time.Minute).Format("2006-01-02T15:04:05.000Z")
+			_, err := tx.Exec(`INSERT INTO chat_handoff(id,run_id,from_chat_id,to_chat_id,status,result,created_at,deadline_at) VALUES(?,?,?,?,'pending','',?,?)`, uid(), runID, in.FromChatID, id, created, deadline)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	s.chats.emit(id, map[string]any{"type": "queue"})

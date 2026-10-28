@@ -567,24 +567,38 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	if err := m.releaseTurn(id); err != nil {
 		return err
 	}
-	var reportTo sql.NullString
-	if err := m.db.QueryRow(`SELECT report_to_chat_id FROM chat_message WHERE chat_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1`, id).Scan(&reportTo); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+	result := assistantText
+	if stopping {
+		result = "Stopped by the user before finishing."
+	} else if turnErr != nil {
+		result = "Turn failed: " + turnErr.Error()
 	}
-	if reportTo.Valid && m.reportBack != nil {
-		result := assistantText
-		if stopping {
-			result = "Stopped by the user before finishing."
-		} else if turnErr != nil {
-			result = "Turn failed: " + turnErr.Error()
-		}
-		from := id
-		target := reportTo.String
+	parents, tracked, handoffErr := m.finishHandoffs(id, result, turnErr, stopping)
+	if handoffErr != nil {
+		return handoffErr
+	}
+	for _, parent := range parents {
+		parent := parent
 		m.background.Go(func() {
-			if err := m.reportBack(target, from, result); err != nil {
-				log.Printf("report chat result %s to %s: %v", from, target, err)
+			if err := m.deliverHandoffReports(parent); err != nil {
+				log.Printf("deliver handoff reports to %s: %v", parent, err)
 			}
 		})
+	}
+	if !tracked {
+		var reportTo sql.NullString
+		if err := m.db.QueryRow(`SELECT report_to_chat_id FROM chat_message WHERE chat_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1`, id).Scan(&reportTo); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if reportTo.Valid && m.reportBack != nil {
+			from := id
+			target := reportTo.String
+			m.background.Go(func() {
+				if err := m.reportBack(target, from, result); err != nil {
+					log.Printf("report chat result %s to %s: %v", from, target, err)
+				}
+			})
+		}
 	}
 	if turnErr == nil && !stopping {
 		m.background.Go(func() {

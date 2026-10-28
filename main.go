@@ -275,11 +275,17 @@ func main() {
 				}
 			}()
 			if *chatWindow == "" {
-				background.Add(5)
+				background.Add(6)
 				go func() {
 					defer background.Done()
 					if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
 						log.Printf("run scheduled tasks: %v", err)
+					}
+				}()
+				go func() {
+					defer background.Done()
+					if err := apiServer.StartHandoffSweeper(backgroundCtx, 30*time.Second); err != nil {
+						log.Printf("sweep chat handoffs: %v", err)
 					}
 				}()
 				go func() {

@@ -21,7 +21,7 @@ erDiagram
   allowed_folder { TEXT id; TEXT path; TEXT created_at }
   chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held; TEXT bot_id; TEXT workflow_id; TEXT workflow_node; TEXT workflow_run_id }
   workflow { TEXT id; TEXT name; TEXT description; INTEGER hop_budget; TEXT graph; TEXT created_at; TEXT updated_at; TEXT deleted_at }
-  chat_handoff { TEXT id; TEXT run_id; TEXT from_chat_id; TEXT to_chat_id; TEXT workflow_edge; TEXT status; TEXT result; TEXT created_at; TEXT deadline_at; TEXT finished_at }
+  chat_handoff { TEXT id; TEXT run_id; TEXT from_chat_id; TEXT to_chat_id; TEXT workflow_edge; TEXT status; TEXT result; TEXT created_at; TEXT deadline_at; TEXT finished_at; INTEGER delivered }
   workflow_join_input { TEXT id; TEXT run_id; TEXT node_id; TEXT edge_id; TEXT from_chat_id; TEXT status; TEXT text; TEXT created_at; TEXT deadline_at; INTEGER delivered }
   chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments; INTEGER answered; INTEGER tool_result_size; INTEGER tool_error; TEXT from_chat_id; TEXT report_to_chat_id }
   chat_queue { TEXT id; TEXT chat_id; TEXT text; TEXT attachments; TEXT created_at; TEXT from_chat_id; TEXT report_to_chat_id }

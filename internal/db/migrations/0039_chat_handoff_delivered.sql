@@ -1,0 +1,1 @@
+ALTER TABLE chat_handoff ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0;
