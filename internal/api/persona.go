@@ -190,7 +190,7 @@ func workflowStepNote(db *sql.DB, chatID string) (string, error) {
 		return note + " This is the last step: do it and finish with your result.", nil
 	}
 	if wait == 1 {
-		return note + fmt.Sprintf(" Work with the user on your part and keep talking as long as they want. Do not hand off until the user tells you to continue (for example \"go\" or \"hand off\"); then call create_chat with chat_id %q, the workflow_edge below and a prompt that carries everything agreed so far (Patio picks the bot):", chatID) + edgeLines.String(), nil
+		return note + fmt.Sprintf(" Work with the user on your part (clarify, plan, agree on the task) and keep talking as long as they want, but do only your part: the work of later steps belongs to the next bots, so never do it yourself. Do not hand off until the user tells you to continue (for example \"go\" or \"hand off\"); if they already said so, hand off as soon as the task is clear. Then call create_chat with chat_id %q, the workflow_edge below and a prompt that carries everything agreed so far (Patio picks the bot):", chatID) + edgeLines.String(), nil
 	}
 	return note + fmt.Sprintf(" Do only your part; later steps belong to other bots. Before ending your turn, hand off by calling create_chat with chat_id %q, the workflow_edge below and a prompt for the next bot (Patio picks the bot):", chatID) + edgeLines.String(), nil
 }
