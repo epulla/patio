@@ -31,7 +31,7 @@ const text = {
   en: {
     never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
     boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
-    bots: "Bots", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings",
+    bots: "Bots", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings", settingsUpdate: "Settings (update available)",
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
     pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
@@ -41,7 +41,7 @@ const text = {
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
     boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
-    bots: "Bots", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes",
+    bots: "Bots", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes", settingsUpdate: "Ajustes (hay una actualización)",
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
     pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
@@ -512,6 +512,18 @@ export default function App() {
   const states = pins.ids.map((id) => pinned.status[id]);
   const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
 
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    const check = () =>
+      api
+        .get<{ available: boolean }>("/api/update")
+        .then((update) => setUpdateAvailable(update.available))
+        .catch(() => setUpdateAvailable(false));
+    check();
+    const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const navItem = (
     to: string,
     label: string,
@@ -606,7 +618,15 @@ export default function App() {
           )}
         </nav>
         <div className="sidebar-foot" data-tour="foot">
-          {navItem("/settings", t.settings, <Icon name="gear" />, path === "/settings")}
+          {navItem(
+            "/settings",
+            updateAvailable ? t.settingsUpdate : t.settings,
+            <>
+              <Icon name="gear" />
+              {updateAvailable && <span className="update-dot" aria-hidden="true" />}
+            </>,
+            path === "/settings",
+          )}
           <ThemeToggle />
           <Notifications refresh={refresh} onScreen={onScreen} />
           {showDock && (
