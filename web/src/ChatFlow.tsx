@@ -1,9 +1,10 @@
 import "@xyflow/react/dist/style.css";
-import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
+import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import { api, type ChatTree, type FlowStatus } from "./api";
 import { ErrorText, navigate } from "./App";
 import { layout } from "./flowLayout";
+import { flowEdgeDefaults } from "./Workflows";
 import { Icon } from "./icons";
 import { useText } from "./i18n";
 
@@ -30,13 +31,15 @@ function RunCard({ data }: NodeProps<RunNode>) {
     <div className={`flow-node flow-status-${data.status}`}>
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <span className="flow-node-name">
-        <span className="bot-dot" style={{ background: data.bot_color || "var(--muted)" }} aria-hidden="true" /> {data.bot_name || data.title}
+        <span className="bot-dot" style={{ background: data.bot_color || "var(--muted)" }} aria-hidden="true" />
+        <span className="flow-node-title">{data.bot_name || data.title}</span>
       </span>
       <span className="flow-node-meta">
-        <span className="flow-badge">{t.status[data.status]}</span>
+        <span className="flow-badge flow-status">{t.status[data.status]}</span>
         {data.join && <span className="flow-badge">{t.reports(data.join.received, data.join.expected)}</span>}
-        {[data.connector_name, data.model].filter(Boolean).join(" · ")}
       </span>
+      <span className="flow-node-meta">{data.title}</span>
+      <span className="flow-node-meta">{[data.connector_name, data.model].filter(Boolean).join(" · ")}</span>
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
     </div>
   );
@@ -70,9 +73,9 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
     id: `${edge.from}-${edge.to}`,
     source: edge.from,
     target: edge.to,
+    ...flowEdgeDefaults,
     animated: edge.status === "pending",
     className: `flow-edge-${edge.status}`,
-    markerEnd: { type: MarkerType.ArrowClosed },
   }));
 
   return (
@@ -89,7 +92,7 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
       <p className="muted">{t.help}</p>
       <ErrorText error={error} />
       {tree && (
-        <div className="panel flow-canvas flow-run" aria-label={t.graph}>
+        <div className="flow-stage flow-run" aria-label={t.graph}>
           <ReactFlow
             key={tree.nodes.length}
             nodes={nodes}
@@ -99,10 +102,11 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
             nodesConnectable={false}
             onNodeClick={(_, node) => navigate(`/ai/chats/${node.id}`)}
             fitView
+            fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
             proOptions={{ hideAttribution: true }}
           >
-            <Background />
-            <Controls showInteractive={false} />
+            <Background gap={20} />
+            <Controls showInteractive={false} position="bottom-left" />
           </ReactFlow>
         </div>
       )}
