@@ -5290,3 +5290,7 @@ button.notif-row:focus-visible,
   background: var(--warning);
   box-shadow: 0 0 0 2px var(--sidebar-from);
 }
+.flow-help {
+  font-size: 12px;
+  font-weight: 400;
+}

@@ -35,7 +35,8 @@ const text = {
     name: "Workflow name", description: "Description", hopBudget: "Handoff budget", hopBudgetTitle: "Most handoffs one run may make before Patio pauses it",
     settings: "Settings", addBot: "Add bot", layout: "Auto layout", save: "Save", saved: "Saved", create: "Create",
     delete: (name: string) => `Delete ${name}`, confirmDelete: (name: string) => `Delete workflow "${name}"?`,
-    start: "Start", join: "Waits for all", unknownBot: "Missing bot", reportsBack: "reports back",
+    start: "Start", join: "Waits for all", waits: "Waits for you", mode: "Hands off", modeAuto: "Automatically",
+    autoHelp: "Does its part, then hands off right away.", waitsHelp: "Talks with you and hands off only when you say \"go\".", unknownBot: "Missing bot", reportsBack: "reports back",
     hint: "Select a step or arrow to edit it. Drag from a step's bottom dot to another step's top dot to connect them.",
     emptyCanvas: "Add a bot to start.",
     edge: "Handoff", reportBack: "Report back when done", instruction: "Instruction", instructionPlaceholder: "When the code is done, hand it to Sammy for review.",
@@ -51,7 +52,8 @@ const text = {
     name: "Nombre del flujo", description: "Descripción", hopBudget: "Límite de traspasos", hopBudgetTitle: "Máximo de traspasos que una ejecución puede hacer antes de que Patio la pause",
     settings: "Ajustes", addBot: "Agregar bot", layout: "Ordenar", save: "Guardar", saved: "Guardado", create: "Crear",
     delete: (name: string) => `Eliminar ${name}`, confirmDelete: (name: string) => `¿Eliminar el flujo "${name}"?`,
-    start: "Inicio", join: "Espera a todos", unknownBot: "Bot no encontrado", reportsBack: "informa",
+    start: "Inicio", join: "Espera a todos", waits: "Espera tu señal", mode: "Traspasa", modeAuto: "Automáticamente",
+    autoHelp: "Hace su parte y traspasa de inmediato.", waitsHelp: "Conversa contigo y traspasa solo cuando digas \"sigue\".", unknownBot: "Bot no encontrado", reportsBack: "informa",
     hint: "Selecciona un paso o una flecha para editarlo. Arrastra del punto inferior de un paso al punto superior de otro para conectarlos.",
     emptyCanvas: "Agrega un bot para empezar.",
     edge: "Traspaso", reportBack: "Informar al terminar", instruction: "Instrucción", instructionPlaceholder: "Cuando el código esté listo, pásalo a Sammy para revisión.",
@@ -62,7 +64,7 @@ const text = {
   },
 };
 
-type StepData = { bot?: Bot; root: boolean; join: boolean };
+type StepData = { bot?: Bot; root: boolean; join: boolean; wait: boolean };
 type StepNode = Node<StepData, "step">;
 type HandoffEdge = Edge<Omit<WorkflowEdge, "id" | "from" | "to">>;
 
@@ -170,6 +172,7 @@ function StepCard({ data, selected }: NodeProps<StepNode>) {
         <span className="flow-node-title">{data.bot?.name ?? t.unknownBot}</span>
         {data.root && <span className="flow-badge">{t.start}</span>}
         {data.join && <span className="flow-badge">{t.join}</span>}
+        {data.wait && <span className="flow-badge">{t.waits}</span>}
       </span>
       {data.bot?.description && <span className="flow-node-meta">{data.bot.description}</span>}
       <Handle type="source" position={Position.Bottom} />
@@ -189,7 +192,7 @@ function edgeLabel(data: HandoffEdge["data"], reportsBack: string) {
 function toFlow(workflow: Workflow | undefined, bots: Bot[], reportsBack: string): { nodes: StepNode[]; edges: HandoffEdge[] } {
   const graph = workflow?.graph ?? { nodes: [], edges: [] };
   return {
-    nodes: graph.nodes.map((node) => ({ id: node.id, type: "step", position: { x: node.x, y: node.y }, data: { bot: bots.find((b) => b.id === node.bot_id), root: false, join: false } })),
+    nodes: graph.nodes.map((node) => ({ id: node.id, type: "step", position: { x: node.x, y: node.y }, data: { bot: bots.find((b) => b.id === node.bot_id), root: false, join: false, wait: node.mode === "wait" } })),
     edges: graph.edges.map(({ id, from, to, ...data }) => ({ ...flowEdgeDefaults, id, source: from, target: to, data, label: edgeLabel(data, reportsBack) })),
   };
 }
@@ -241,7 +244,7 @@ function WorkflowEditor({
     const id = crypto.randomUUID();
     setNodes((current) => [
       ...current.map((node) => ({ ...node, selected: false })),
-      { id, type: "step", selected: true, position: lowest ? { x: lowest.position.x, y: lowest.position.y + 170 } : { x: 0, y: 0 }, data: { bot, root: false, join: false } },
+      { id, type: "step", selected: true, position: lowest ? { x: lowest.position.x, y: lowest.position.y + 170 } : { x: 0, y: 0 }, data: { bot, root: false, join: false, wait: false } },
     ]);
     changed();
     fit();
@@ -283,7 +286,7 @@ function WorkflowEditor({
     description,
     hop_budget: hopBudget,
     graph: {
-      nodes: nodes.map((node) => ({ id: node.id, bot_id: node.data.bot?.id ?? "", x: Math.round(node.position.x), y: Math.round(node.position.y) })),
+      nodes: nodes.map((node) => ({ id: node.id, bot_id: node.data.bot?.id ?? "", x: Math.round(node.position.x), y: Math.round(node.position.y), ...(node.data.wait ? { mode: "wait" as const } : {}) })),
       edges: edges.map((edge) => ({ id: edge.id, from: edge.source, to: edge.target, ...edge.data! })),
     },
   };
@@ -439,6 +442,21 @@ function WorkflowEditor({
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label>
+                    {t.mode}
+                    <select
+                      value={selectedNode.data.wait ? "wait" : "auto"}
+                      onChange={(event) => {
+                        const wait = event.target.value === "wait";
+                        setNodes((current) => current.map((node) => (node.id === selectedNode.id ? { ...node, data: { ...node.data, wait } } : node)));
+                        changed();
+                      }}
+                    >
+                      <option value="auto">{t.modeAuto}</option>
+                      <option value="wait">{t.waits}</option>
+                    </select>
+                    <span className="muted flow-help">{selectedNode.data.wait ? t.waitsHelp : t.autoHelp}</span>
                   </label>
                   <button
                     type="button"

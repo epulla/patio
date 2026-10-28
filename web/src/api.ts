@@ -217,7 +217,7 @@ export type Bot = {
   connector_id: string | null;
   model: string;
 };
-export type WorkflowNode = { id: string; bot_id: string; x: number; y: number; connector_id?: string | null; model?: string };
+export type WorkflowNode = { id: string; bot_id: string; x: number; y: number; connector_id?: string | null; model?: string; mode?: "auto" | "wait" };
 export type WorkflowEdge = { id: string; from: string; to: string; report_back: boolean; instruction: string; timeout_minutes: number };
 export type Workflow = {
   id: string;
