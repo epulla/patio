@@ -459,6 +459,9 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		instructions += " When an enabled skill applies to a task, call load_skill and follow its instructions before replying."
 	}
 	s := sdk.NewServer(&sdk.Implementation{Name: "patio", Version: version}, &sdk.ServerOptions{Instructions: instructions})
+	if database != nil {
+		s.AddReceivingMiddleware(changeActorMiddleware(database))
+	}
 	addGeneric(s, "list_boards", "List all boards", h, func(struct{}) request { return request{http.MethodGet, "/api/boards", nil} })
 	addGeneric(s, "reorder_boards", "Set sidebar board order", h, func(a reorderBoardsArgs) request {
 		return request{http.MethodPut, "/api/board-order", map[string]any{"board_ids": a.BoardIDs}}
@@ -493,8 +496,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "update_bot", "Update an AI bot", h, func(a apiBotUpdateArgs) request {
 		return request{http.MethodPatch, "/api/bots/" + url.PathEscape(a.ID), a.apiBotArgs}
 	})
-	addGenericHandler(s, "delete_bot", "Delete an AI bot; Martin cannot be deleted", func(a botIDArgs) (*sdk.CallToolResult, error) {
-		if _, err := doJSON(h, request{http.MethodDelete, "/api/bots/" + url.PathEscape(a.ID), nil}); err != nil {
+	addGenericHandler(s, "delete_bot", "Delete an AI bot; Martin cannot be deleted", func(ctx context.Context, a botIDArgs) (*sdk.CallToolResult, error) {
+		if _, err := doJSON(ctx, h, request{http.MethodDelete, "/api/bots/" + url.PathEscape(a.ID), nil}); err != nil {
 			return errorResult(err), nil
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
@@ -511,8 +514,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "list_connector_models", "List models available from a connector", h, func(a connectorIDArgs) request {
 		return request{http.MethodGet, "/api/connectors/" + url.PathEscape(a.ID) + "/models", nil}
 	})
-	addGenericHandler(s, "get_board", "Get board data including statuses, types, and compact ticket rows (use get_ticket for a description). Tickets in temporary (Done-type) columns are counted, not listed, unless include_done is true", func(a boardArgs) (*sdk.CallToolResult, error) {
-		data, err := doJSON(h, request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil})
+	addGenericHandler(s, "get_board", "Get board data including statuses, types, and compact ticket rows (use get_ticket for a description). Tickets in temporary (Done-type) columns are counted, not listed, unless include_done is true", func(ctx context.Context, a boardArgs) (*sdk.CallToolResult, error) {
+		data, err := doJSON(ctx, h, request{http.MethodGet, "/api/boards/" + url.PathEscape(a.BoardID) + "/data", nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -574,8 +577,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "reorder_columns", "Set board column order", h, func(a reorderColumnsArgs) request {
 		return request{http.MethodPut, "/api/boards/" + url.PathEscape(a.BoardID) + "/status-order", map[string]any{"status_ids": a.StatusIDs}}
 	})
-	addGenericHandler(s, "delete_column", "Delete an empty column; only columns without tickets can be deleted", func(a columnIDArgs) (*sdk.CallToolResult, error) {
-		_, err := doJSON(h, request{http.MethodDelete, "/api/statuses/" + url.PathEscape(a.ID), nil})
+	addGenericHandler(s, "delete_column", "Delete an empty column; only columns without tickets can be deleted", func(ctx context.Context, a columnIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(ctx, h, request{http.MethodDelete, "/api/statuses/" + url.PathEscape(a.ID), nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -603,14 +606,14 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return request{http.MethodPut, "/api/tickets/" + url.PathEscape(a.ID), a}
 	})
 	addGenericHandler(s, "move_ticket", "Move ticket to status UUID or name", moveHandler(h))
-	addGenericHandler(s, "search_tickets", "Search tickets by title or code, filter by board and created/updated time, and sort; newest first. Returns compact rows (use get_ticket for a description), 50 by default", func(a searchArgs) (*sdk.CallToolResult, error) {
+	addGenericHandler(s, "search_tickets", "Search tickets by title or code, filter by board and created/updated time, and sort; newest first. Returns compact rows (use get_ticket for a description), 50 by default", func(ctx context.Context, a searchArgs) (*sdk.CallToolResult, error) {
 		q := url.Values{}
 		for k, v := range map[string]string{"q": a.Query, "board_id": a.BoardID, "created_from": a.CreatedFrom, "created_to": a.CreatedTo, "updated_from": a.UpdatedFrom, "updated_to": a.UpdatedTo, "sort": a.Sort, "dir": a.Dir} {
 			if v != "" {
 				q.Set(k, v)
 			}
 		}
-		data, err := doJSON(h, request{http.MethodGet, "/api/tickets/search?" + q.Encode(), nil})
+		data, err := doJSON(ctx, h, request{http.MethodGet, "/api/tickets/search?" + q.Encode(), nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -624,7 +627,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return jsonResult(tickets[:min(len(tickets), limit)])
 	})
-	addGenericHandler(s, "add_comment", "Add a ticket comment; optionally post as this chat's bot", func(a commentArgs) (*sdk.CallToolResult, error) {
+	addGenericHandler(s, "add_comment", "Add a ticket comment; optionally post as this chat's bot", func(ctx context.Context, a commentArgs) (*sdk.CallToolResult, error) {
 		body := map[string]string{"content": a.Content}
 		if a.ChatID != "" {
 			if database == nil {
@@ -636,7 +639,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			}
 			body["as_bot"] = botID.String
 		}
-		return do(h, request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", body})
+		return do(ctx, h, request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", body})
 	})
 	addGeneric(s, "list_comments", "List ticket comments", h, func(a ticketIDArgs) request {
 		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID) + "/comments", nil}
@@ -694,8 +697,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		a.ID = ""
 		return request{http.MethodPut, path, a}
 	})
-	addGenericHandler(s, "delete_scheduled_task", "Delete scheduled task", func(a scheduledTaskIDArgs) (*sdk.CallToolResult, error) {
-		_, err := doJSON(h, request{http.MethodDelete, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil})
+	addGenericHandler(s, "delete_scheduled_task", "Delete scheduled task", func(ctx context.Context, a scheduledTaskIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(ctx, h, request{http.MethodDelete, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -711,8 +714,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		body := monitorBody{Name: a.Name, MCPServerID: a.MCPServerID, Tool: a.Tool, Args: a.Args, Schedule: a.Schedule, Condition: a.Condition, ResultPath: a.ResultPath, IDPath: a.IDPath, Actions: a.Actions, Enabled: a.Enabled}
 		return request{http.MethodPut, path, body}
 	})
-	addGenericHandler(s, "delete_monitor", "Delete monitor", func(a monitorIDArgs) (*sdk.CallToolResult, error) {
-		_, err := doJSON(h, request{http.MethodDelete, "/api/monitors/" + url.PathEscape(a.ID), nil})
+	addGenericHandler(s, "delete_monitor", "Delete monitor", func(ctx context.Context, a monitorIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(ctx, h, request{http.MethodDelete, "/api/monitors/" + url.PathEscape(a.ID), nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -731,8 +734,8 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		body := calendarItemUpdateBody{a.Kind, a.Title, a.Description, a.StartsAt, a.EndsAt, a.AllDay, a.BoardID, a.TicketID}
 		return request{http.MethodPut, "/api/calendar-items/" + url.PathEscape(a.ID), body}
 	})
-	addGenericHandler(s, "delete_calendar_item", "Delete a calendar item", func(a calendarItemIDArgs) (*sdk.CallToolResult, error) {
-		_, err := doJSON(h, request{http.MethodDelete, "/api/calendar-items/" + url.PathEscape(a.ID), nil})
+	addGenericHandler(s, "delete_calendar_item", "Delete a calendar item", func(ctx context.Context, a calendarItemIDArgs) (*sdk.CallToolResult, error) {
+		_, err := doJSON(ctx, h, request{http.MethodDelete, "/api/calendar-items/" + url.PathEscape(a.ID), nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -801,14 +804,14 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 	if len(skills) > 0 {
 		description = "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions."
 	}
-	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills; optionally include disabled skills"}, func(_ context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills; optionally include disabled skills"}, func(ctx context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
 		var enabled []api.Skill
 		var err error
 		if in.IncludeDisabled {
-			data, e := doJSON(h, request{http.MethodGet, "/api/skills", nil})
+			data, e := doJSON(ctx, h, request{http.MethodGet, "/api/skills", nil})
 			err = e
 			if err == nil {
 				err = json.Unmarshal(data, &enabled)
@@ -841,7 +844,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil, nil
 	})
-	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "load_skill", Description: description}, func(_ context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "load_skill", Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
@@ -854,8 +857,8 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
 	})
-	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"}, func(_ context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
-		data, err := doJSON(h, request{http.MethodPost, "/api/skills", in})
+	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"}, func(ctx context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
+		data, err := doJSON(ctx, h, request{http.MethodPost, "/api/skills", in})
 		if err != nil {
 			if strings.Contains(err.Error(), "skill name already exists") {
 				err = fmt.Errorf("%w; use update_skill", err)
@@ -864,7 +867,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil, nil
 	})
-	sdk.AddTool[updateSkillArgs, any](s, &sdk.Tool{Name: "update_skill", Description: "Update a skill by name"}, func(_ context.Context, _ *sdk.CallToolRequest, in updateSkillArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[updateSkillArgs, any](s, &sdk.Tool{Name: "update_skill", Description: "Update a skill by name"}, func(ctx context.Context, _ *sdk.CallToolRequest, in updateSkillArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
@@ -880,10 +883,10 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 			Body        *string `json:"body,omitempty"`
 			Enabled     *bool   `json:"enabled,omitempty"`
 		}{in.Description, in.Body, in.Enabled}
-		result, err := do(h, request{http.MethodPut, "/api/skills/" + url.PathEscape(skill.ID), body})
+		result, err := do(ctx, h, request{http.MethodPut, "/api/skills/" + url.PathEscape(skill.ID), body})
 		return result, nil, err
 	})
-	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "delete_skill", Description: "Delete a skill by name"}, func(_ context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "delete_skill", Description: "Delete a skill by name"}, func(ctx context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
@@ -894,7 +897,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
-		_, err = doJSON(h, request{http.MethodDelete, "/api/skills/" + url.PathEscape(skill.ID), nil})
+		_, err = doJSON(ctx, h, request{http.MethodDelete, "/api/skills/" + url.PathEscape(skill.ID), nil})
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
@@ -1006,21 +1009,21 @@ type request struct {
 
 func addGeneric[T any](s *sdk.Server, name, description string, h http.Handler, makeRequest func(T) request) {
 	sdk.AddTool[T, any](s, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, req *sdk.CallToolRequest, in T) (*sdk.CallToolResult, any, error) {
-		result, err := do(h, makeRequest(in))
+		result, err := do(ctx, h, makeRequest(in))
 		return result, nil, err
 	})
 }
 
-func addGenericHandler[T any](s *sdk.Server, name, description string, handler func(T) (*sdk.CallToolResult, error)) {
+func addGenericHandler[T any](s *sdk.Server, name, description string, handler func(context.Context, T) (*sdk.CallToolResult, error)) {
 	sdk.AddTool[T, any](s, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, req *sdk.CallToolRequest, in T) (*sdk.CallToolResult, any, error) {
-		result, err := handler(in)
+		result, err := handler(ctx, in)
 		return result, nil, err
 	})
 }
 
-func moveHandler(h http.Handler) func(moveTicketArgs) (*sdk.CallToolResult, error) {
-	return func(in moveTicketArgs) (*sdk.CallToolResult, error) {
-		ticket, err := doJSON(h, request{http.MethodGet, "/api/tickets/" + url.PathEscape(in.ID), nil})
+func moveHandler(h http.Handler) func(context.Context, moveTicketArgs) (*sdk.CallToolResult, error) {
+	return func(ctx context.Context, in moveTicketArgs) (*sdk.CallToolResult, error) {
+		ticket, err := doJSON(ctx, h, request{http.MethodGet, "/api/tickets/" + url.PathEscape(in.ID), nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -1030,7 +1033,7 @@ func moveHandler(h http.Handler) func(moveTicketArgs) (*sdk.CallToolResult, erro
 		if err := json.Unmarshal(ticket, &t); err != nil {
 			return nil, err
 		}
-		data, err := doJSON(h, request{http.MethodGet, "/api/boards/" + url.PathEscape(t.BoardID) + "/data", nil})
+		data, err := doJSON(ctx, h, request{http.MethodGet, "/api/boards/" + url.PathEscape(t.BoardID) + "/data", nil})
 		if err != nil {
 			return errorResult(err), nil
 		}
@@ -1049,7 +1052,7 @@ func moveHandler(h http.Handler) func(moveTicketArgs) (*sdk.CallToolResult, erro
 				break
 			}
 		}
-		return do(h, request{method: http.MethodPut, path: "/api/tickets/" + url.PathEscape(in.ID) + "/move?mcp_status_label=" + url.QueryEscape(statusLabel), body: struct {
+		return do(ctx, h, request{method: http.MethodPut, path: "/api/tickets/" + url.PathEscape(in.ID) + "/move?mcp_status_label=" + url.QueryEscape(statusLabel), body: struct {
 			StatusID string `json:"status_id"`
 			Index    int    `json:"index"`
 		}{status, math.MaxInt32}}) // API clamps to column length: append at end
@@ -1064,20 +1067,20 @@ func jsonResult(value any) (*sdk.CallToolResult, error) {
 	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil
 }
 
-func do(h http.Handler, r request) (*sdk.CallToolResult, error) {
-	body, err := doJSON(h, r)
+func do(ctx context.Context, h http.Handler, r request) (*sdk.CallToolResult, error) {
+	body, err := doJSON(ctx, h, r)
 	if err != nil {
 		return errorResult(err), nil
 	}
 	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(body)}}}, nil
 }
 
-func doJSON(h http.Handler, r request) ([]byte, error) {
+func doJSON(ctx context.Context, h http.Handler, r request) ([]byte, error) {
 	var prior []byte
 	if r.method == http.MethodDelete {
 		if snapshot := mcpSnapshotPath(r.path); snapshot != "" {
 			var err error
-			prior, err = doJSON(h, request{http.MethodGet, snapshot, nil})
+			prior, err = doJSON(ctx, h, request{http.MethodGet, snapshot, nil})
 			if err != nil {
 				log.Printf("read MCP target before delete %s: %v", r.path, err)
 			}
@@ -1105,7 +1108,7 @@ func doJSON(h http.Handler, r request) ([]byte, error) {
 		if notifier, ok := h.(interface {
 			Notify(string, string, string, string, bool) error
 		}); ok {
-			if title, body, link, write := mcpChange(h, r, prior, data); write {
+			if title, body, link, write := mcpChange(ctx, h, r, prior, data); write {
 				if err := notifier.Notify("change", title, body, link, false); err != nil {
 					log.Printf("store MCP change notification: %v", err)
 				}
@@ -1134,7 +1137,7 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			description = "Create child chat handoff. bot: name of the bot to run the child (its connector, model and persona); explicit connector_id/model override. Without bot, connector, model, thinking and auto-allow default to the calling chat's."
 		}
 		n := name
-		s.AddTool(&sdk.Tool{Name: n, Description: description, InputSchema: map[string]any{"type": "object", "properties": properties, "required": required}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		s.AddTool(&sdk.Tool{Name: n, Description: description, InputSchema: map[string]any{"type": "object", "properties": properties, "required": required}}, func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 			var a map[string]any
 			if err := json.Unmarshal(req.Params.Arguments, &a); err != nil {
 				return errorResult(err), nil
@@ -1161,7 +1164,7 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 				a["from_chat_id"] = caller
 				path = "/api/chats/" + url.PathEscape(target) + "/agent-messages"
 			}
-			out, err := doJSON(h, request{http.MethodPost, path, a})
+			out, err := doJSON(ctx, h, request{http.MethodPost, path, a})
 			if err != nil {
 				return errorResult(err), nil
 			}
@@ -1184,10 +1187,13 @@ func mcpSnapshotPath(path string) string {
 	return ""
 }
 
-func mcpChange(h http.Handler, r request, prior, response []byte) (string, string, string, bool) {
-	actor := "Martin"
-	if named, ok := h.(interface{ MCPActor() string }); ok {
-		actor = named.MCPActor()
+func mcpChange(ctx context.Context, h http.Handler, r request, prior, response []byte) (string, string, string, bool) {
+	actor := mcpActor(ctx)
+	if actor == "" {
+		actor = "Martin"
+		if named, ok := h.(interface{ MCPActor() string }); ok {
+			actor = named.MCPActor()
+		}
 	}
 	parts := strings.Split(strings.SplitN(r.path, "?", 2)[0], "/")
 	resource := ""
@@ -1227,7 +1233,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		for i, part := range parts {
 			if part == "tickets" && i+1 < len(parts) {
 				id := parts[i+1]
-				item := mcpTicket(h, id, nil)
+				item := mcpTicket(ctx, h, id, nil)
 				code, ticketTitle := item["code"], item["title"]
 				id = item["id"]
 				return actor + " commented on " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
@@ -1238,7 +1244,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		id, code, ticketTitle := mcpValue(result, "id"), mcpValue(result, "code"), mcpValue(result, "title")
 		if id != "" {
 			if code == "" {
-				code = mcpTicket(h, id, result)["code"]
+				code = mcpTicket(ctx, h, id, result)["code"]
 			}
 			return actor + " created " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 		}
@@ -1255,7 +1261,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		if id == "" && result != nil {
 			id = mcpValue(result, "id")
 		}
-		item := mcpTicket(h, id, firstMap(result, old))
+		item := mcpTicket(ctx, h, id, firstMap(result, old))
 		code, ticketTitle := item["code"], item["title"]
 		if item["id"] != "" {
 			id = item["id"]
@@ -1292,7 +1298,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 			}
 		}
 		if resource == "skills" && id != "" && mcpValue(entity, "name") == "" {
-			if loaded, err := doJSON(h, request{http.MethodGet, "/api/skills/" + url.PathEscape(id), nil}); err == nil {
+			if loaded, err := doJSON(ctx, h, request{http.MethodGet, "/api/skills/" + url.PathEscape(id), nil}); err == nil {
 				_ = json.Unmarshal(loaded, &entity)
 			}
 		}
@@ -1364,13 +1370,13 @@ func firstMap(maps ...map[string]any) map[string]any {
 	return map[string]any{}
 }
 
-func mcpTicket(h http.Handler, id string, fallback map[string]any) map[string]string {
+func mcpTicket(ctx context.Context, h http.Handler, id string, fallback map[string]any) map[string]string {
 	item := map[string]string{}
 	if fallback != nil {
 		item["code"], item["title"], item["id"] = mcpValue(fallback, "code"), mcpValue(fallback, "title"), mcpValue(fallback, "id")
 	}
 	if item["code"] == "" || item["title"] == "" {
-		if data, err := doJSON(h, request{http.MethodGet, "/api/tickets/" + url.PathEscape(id), nil}); err == nil {
+		if data, err := doJSON(ctx, h, request{http.MethodGet, "/api/tickets/" + url.PathEscape(id), nil}); err == nil {
 			var got map[string]any
 			if json.Unmarshal(data, &got) == nil {
 				item["code"], item["title"], item["id"] = mcpValue(got, "code"), mcpValue(got, "title"), mcpValue(got, "id")

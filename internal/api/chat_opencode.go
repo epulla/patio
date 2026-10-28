@@ -396,7 +396,7 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		return err
 	}
 	if d.personaPrompt {
-		request.Text = prompt + "\n\n" + request.Text
+		request.Text = prompt + " When calling Patio tools that change things, pass chat_id: " + d.chatID + ".\n\n" + request.Text
 		d.personaPrompt = false
 	}
 	parts := opencodePromptParts(request.Text, files)

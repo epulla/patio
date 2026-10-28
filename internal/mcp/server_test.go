@@ -429,10 +429,10 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if changeTitle != "Martin moved AI-1 to Done" || changeLink != "/tickets/"+ticket.ID {
 		t.Fatalf("move notification=%q %q", changeTitle, changeLink)
 	}
-	if title, body, link, ok := mcpChange(http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/AI-10", nil}, []byte(`{"id":"AI-10","code":"AI-10","title":"Example"}`), nil); !ok || title != "Martin deleted AI-10" || body != "[AI-10: Example](/tickets/AI-10)" || link != "/tickets/AI-10" {
+	if title, body, link, ok := mcpChange(context.Background(), http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/AI-10", nil}, []byte(`{"id":"AI-10","code":"AI-10","title":"Example"}`), nil); !ok || title != "Martin deleted AI-10" || body != "[AI-10: Example](/tickets/AI-10)" || link != "/tickets/AI-10" {
 		t.Fatalf("delete notification = %q %q %q %v", title, body, link, ok)
 	}
-	if title, _, _, ok := mcpChange(http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/8ac86c6e-cc4b-4a29-8ea1-132731001122", nil}, nil, nil); !ok || title != "Martin deleted a ticket" {
+	if title, _, _, ok := mcpChange(context.Background(), http.NotFoundHandler(), request{http.MethodDelete, "/api/tickets/8ac86c6e-cc4b-4a29-8ea1-132731001122", nil}, nil, nil); !ok || title != "Martin deleted a ticket" {
 		t.Fatalf("UUID delete title = %q, want generic ticket title", title)
 	}
 	if comment := callTool(t, session, "add_comment", map[string]any{"ticket_id": ticket.ID, "content": "Looks good"}); comment.IsError {
@@ -978,12 +978,15 @@ func TestCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	seen := map[string]map[string]any{}
 	for _, tool := range tools {
-		if tool.Name == "list_boards" {
-			return
+		if schema, ok := tool.InputSchema.(map[string]any); ok {
+			seen[tool.Name], _ = schema["properties"].(map[string]any)
 		}
 	}
-	t.Fatalf("tools do not include list_boards: %#v", tools)
+	if seen["create_skill"]["chat_id"] == nil || seen["list_boards"]["chat_id"] != nil || seen["add_comment"]["chat_id"] == nil {
+		t.Fatalf("chat_id schemas create_skill=%v list_boards=%v add_comment=%v", seen["create_skill"], seen["list_boards"], seen["add_comment"])
+	}
 }
 
 func callTool(t *testing.T, session *sdk.ClientSession, name string, args any) *sdk.CallToolResult {
@@ -1016,7 +1019,17 @@ func TestChangeNotificationsCreditTheChatBot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	for _, test := range []struct{ actor, skill, want string }{{"", "note-a", "Martin created skill note-a"}, {"Billy", "note-b", "Billy created skill note-b"}} {
+	if _, err := database.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai) VALUES('billy','Billy','billy@test',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO chat(id,title,bot_id,created_at,updated_at) VALUES('billy-chat','Billy chat','billy','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ actor, chat, skill, want string }{
+		{"", "", "note-a", "Martin created skill note-a"},
+		{"Billy", "", "note-b", "Billy created skill note-b"},
+		{"", "billy-chat", "note-c", "Billy created skill note-c"},
+	} {
 		server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath), api.Options{MCPActor: test.actor}), "dev", database, false)
 		if err != nil {
 			t.Fatal(err)
@@ -1029,13 +1042,13 @@ func TestChangeNotificationsCreditTheChatBot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if created := callTool(t, session, "create_skill", map[string]any{"name": test.skill, "description": "d", "body": "b"}); created.IsError {
+		if created := callTool(t, session, "create_skill", map[string]any{"name": test.skill, "description": "d", "body": "b", "chat_id": test.chat}); created.IsError {
 			t.Fatalf("create skill: %#v", created.Content)
 		}
 		session.Close()
 		var title string
 		if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != test.want {
-			t.Fatalf("actor %q: title = %q, %v; want %q", test.actor, title, err, test.want)
+			t.Fatalf("chat %q: title = %q, %v; want %q", test.chat, title, err, test.want)
 		}
 	}
 }
