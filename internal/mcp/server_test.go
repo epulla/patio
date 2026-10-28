@@ -894,6 +894,13 @@ func TestMCPSkillTools(t *testing.T) {
 	if err := database.QueryRow(`SELECT title,link FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&skillChange, &skillLink); err != nil || skillChange != "Martin updated skill repeatable" || skillLink != "/ai/skills/"+skillID {
 		t.Fatalf("skill change notification = %q %q, %v", skillChange, skillLink, err)
 	}
+	if created := callTool(t, session, "create_skill", map[string]any{"name": "prefers-tabs", "description": "Uses tabs", "body": "Why", "kind": "memory"}); created.IsError {
+		t.Fatalf("create memory failed: %#v", created.Content)
+	}
+	var memoryChange string
+	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&memoryChange); err != nil || memoryChange != "Martin created memory prefers-tabs" {
+		t.Fatalf("memory change notification = %q, %v", memoryChange, err)
+	}
 	var history []struct {
 		Action   string `json:"action"`
 		UserIsAI bool   `json:"user_is_ai"`

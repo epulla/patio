@@ -1298,7 +1298,11 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		} else {
 			switch resource {
 			case "skills":
-				name = "skill " + name
+				if mcpValue(entity, "kind") == "memory" {
+					name = "memory " + name
+				} else {
+					name = "skill " + name
+				}
 			case "scheduled-tasks":
 				name = "scheduled task " + name
 			case "connectors":
