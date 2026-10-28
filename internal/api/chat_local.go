@@ -167,7 +167,7 @@ var localMCPTools = map[string]bool{
 	"link_tickets": true, "unlink_tickets": true, "add_comment": true, "list_comments": true, "get_ticket_history": true,
 	"list_calendar": true, "create_calendar_item": true, "update_calendar_item": true, "delete_calendar_item": true,
 	"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true,
-	"list_bots": false, "create_bot": false, "update_bot": false,
+	"list_bots": false, "create_bot": false, "update_bot": false, "delete_bot": false,
 	"ask_user": true, "create_notification": true,
 
 	"update_board": false, "reorder_boards": false, "create_column": false, "update_column": false, "delete_column": false,

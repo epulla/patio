@@ -182,6 +182,17 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if listedBots.IsError || !strings.Contains(listedBots.Content[0].(*sdk.TextContent).Text, "BotUpdated") {
 		t.Fatalf("list bots failed: %#v", listedBots.Content)
 	}
+	if deleted := callTool(t, session, "delete_bot", map[string]any{"id": botResult.ID}); deleted.IsError {
+		t.Fatalf("delete bot failed: %#v", deleted.Content)
+	}
+	if listed := callTool(t, session, "list_bots", map[string]any{}); strings.Contains(listed.Content[0].(*sdk.TextContent).Text, "BotUpdated") {
+		t.Fatalf("deleted bot still listed: %#v", listed.Content)
+	}
+	for _, id := range []string{botResult.ID, "ai"} {
+		if again := callTool(t, session, "delete_bot", map[string]any{"id": id}); !again.IsError {
+			t.Fatalf("delete_bot %s should fail", id)
+		}
+	}
 
 	expectedTools := map[string]bool{
 		"list_boards": true, "get_board": true, "create_board": true, "create_ticket": true,
@@ -195,7 +206,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
 		"query_db": true, "list_connectors": true, "create_connector": true,
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
-		"list_bots": true, "create_bot": true, "update_bot": true,
+		"list_bots": true, "create_bot": true, "update_bot": true, "delete_bot": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
 		"ask_user": true, "create_notification": true, "get_item_history": true, "send_to_chat": true, "create_chat": true,
@@ -241,8 +252,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 60 {
-		t.Fatalf("tool count = %d, want 60", count)
+	if count != 61 {
+		t.Fatalf("tool count = %d, want 61", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)

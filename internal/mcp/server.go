@@ -176,6 +176,9 @@ type apiBotUpdateArgs struct {
 	ID string `json:"id"`
 	apiBotArgs
 }
+type botIDArgs struct {
+	ID string `json:"id" jsonschema:"Bot UUID"`
+}
 type listSkillsArgs struct {
 	IncludeDisabled bool `json:"include_disabled,omitempty"`
 }
@@ -489,6 +492,12 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "create_bot", "Create an AI bot", h, func(a apiBotArgs) request { return request{http.MethodPost, "/api/bots", a} })
 	addGeneric(s, "update_bot", "Update an AI bot", h, func(a apiBotUpdateArgs) request {
 		return request{http.MethodPatch, "/api/bots/" + url.PathEscape(a.ID), a.apiBotArgs}
+	})
+	addGenericHandler(s, "delete_bot", "Delete an AI bot; Martin cannot be deleted", func(a botIDArgs) (*sdk.CallToolResult, error) {
+		if _, err := doJSON(h, request{http.MethodDelete, "/api/bots/" + url.PathEscape(a.ID), nil}); err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
 	addGeneric(s, "create_connector", "Create an AI connector; secret is a write-only API key", h, func(a createConnectorArgs) request { return request{http.MethodPost, "/api/connectors", a} })
 	addGeneric(s, "update_connector", "Update provided connector fields; secret is write-only", h, func(a updateConnectorArgs) request {
