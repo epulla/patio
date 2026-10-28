@@ -154,6 +154,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/scheduled-tasks", s.tracked("scheduled_task", s.createScheduledTask))
 	m.HandleFunc("PUT /api/scheduled-tasks/{id}", s.tracked("scheduled_task", s.updateScheduledTask))
 	m.HandleFunc("DELETE /api/scheduled-tasks/{id}", s.tracked("scheduled_task", s.deleteScheduledTask))
+	m.HandleFunc("POST /api/scheduled-tasks/{id}/run", s.runScheduledNow)
 	m.HandleFunc("GET /api/monitors", s.listMonitors)
 	m.HandleFunc("POST /api/monitors", s.createMonitor)
 	m.HandleFunc("GET /api/monitors/{id}", s.getMonitor)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -189,6 +190,59 @@ func (s *Server) startScheduled(claim scheduledClaim) error {
 	}
 	return err
 }
+
+// runScheduledNow starts one run outside the schedule; next_run_at is left alone.
+func (s *Server) runScheduledNow(w http.ResponseWriter, r *http.Request) {
+	task, err := scanScheduledTask(s.db.QueryRow(`SELECT `+scheduledTaskColumns+` FROM scheduled_task WHERE id=?`, idParam(r, "id")))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "scheduled task not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	claim := scheduledClaim{task: task, runID: uid(), when: time.Now()}
+	stamp := now()
+	err = txrun(s.db, func(tx *sql.Tx) error {
+		var runningID string
+		var chatID sql.NullString
+		err := tx.QueryRow(`SELECT id,chat_id FROM scheduled_task_run WHERE task_id=? AND status='running'`, task.ID).Scan(&runningID, &chatID)
+		if err == nil {
+			if chatID.Valid && s.chats.Running(chatID.String) {
+				return errScheduledRunning
+			}
+			if _, err := tx.Exec(`UPDATE scheduled_task_run SET status='failed',error='Stopped before finishing' WHERE id=?`, runningID); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		_, err = tx.Exec(`INSERT INTO scheduled_task_run(id,task_id,scheduled_for,status,late,created_at) VALUES(?,?,?,'running',0,?)`, claim.runID, task.ID, stamp, stamp)
+		return err
+	})
+	if errors.Is(err, errScheduledRunning) {
+		errw(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.startScheduled(claim); err != nil {
+		s.failScheduled(claim, err)
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var chatID string
+	if err := s.db.QueryRow(`SELECT chat_id FROM scheduled_task_run WHERE id=?`, claim.runID).Scan(&chatID); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string]string{"chat_id": chatID})
+}
+
+var errScheduledRunning = errors.New("scheduled task is already running")
 
 func (s *Server) failScheduled(claim scheduledClaim, cause error) {
 	if _, err := s.db.Exec(`UPDATE scheduled_task_run SET status='failed',error=? WHERE id=? AND status='running'`, cause.Error(), claim.runID); err != nil {

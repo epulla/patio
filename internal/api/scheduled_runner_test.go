@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"io"
+	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
@@ -117,6 +118,46 @@ func TestScheduledRunCompletesChatTurn(t *testing.T) {
 		}
 		return status == "done"
 	})
+}
+
+func TestScheduledRunNow(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	root := t.TempDir()
+	connectorID := createTestConnector(t, database)
+	fake := newPipeChatProcess()
+	s := New(database, "local", false, "dev", root, Options{
+		DBPath:         filepath.Join(root, "test.db"),
+		findClaude:     func() (string, error) { return "claude-test", nil },
+		commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil },
+		processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil },
+	})
+	id, next := uid(), "2099-01-01T00:00:00.000Z"
+	if _, err := database.Exec(`INSERT INTO scheduled_task(id,title,prompt,connector_id,schedule,enabled,next_run_at,created_at,updated_at) VALUES(?,'task','do this',?,'0 9 * * *',0,?,?,?)`, id, connectorID, next, now(), now()); err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		ChatID string `json:"chat_id"`
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/scheduled-tasks/"+id+"/run", nil, &out); code != http.StatusOK || out.ChatID == "" {
+		t.Fatalf("run now = %d %+v", code, out)
+	}
+	var taskID, status, nextAfter string
+	if err := database.QueryRow(`SELECT c.scheduled_task_id,r.status,t.next_run_at FROM chat c JOIN scheduled_task_run r ON r.chat_id=c.id JOIN scheduled_task t ON t.id=r.task_id WHERE c.id=?`, out.ChatID).Scan(&taskID, &status, &nextAfter); err != nil {
+		t.Fatal(err)
+	}
+	if taskID != id || status != "running" || nextAfter != next {
+		t.Fatalf("task=%q status=%q next=%q", taskID, status, nextAfter)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/scheduled-tasks/"+id+"/run", nil, nil); code != http.StatusConflict {
+		t.Fatalf("second run now = %d, want 409", code)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/scheduled-tasks/missing/run", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("missing run now = %d, want 404", code)
+	}
 }
 
 func TestScheduledMissingConnectorFails(t *testing.T) {
