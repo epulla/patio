@@ -12,6 +12,8 @@ import { statusIcons } from "./chatStatus";
 import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, pruneSplit, setActiveGroup, shownPin, splitLeaves, usePinGroups, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Bots from "./Bots";
+import Workflows from "./Workflows";
+import ChatFlow from "./ChatFlow";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
 import Monitors from "./Monitors";
@@ -31,7 +33,7 @@ const text = {
   en: {
     never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
     boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
-    bots: "Bots", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings", settingsUpdate: "Settings (update available)",
+    bots: "Bots & Workflows", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings", settingsUpdate: "Settings (update available)",
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
     pinnedTip: (n: number, shortcut: string) => `Pinned chats (${n}) ${shortcut}`,
@@ -41,7 +43,7 @@ const text = {
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
     boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
-    bots: "Bots", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes", settingsUpdate: "Ajustes (hay una actualización)",
+    bots: "Bots & Flujos", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes", settingsUpdate: "Ajustes (hay una actualización)",
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
     pinnedTip: (n: number, shortcut: string) => `Chats fijados (${n}) ${shortcut}`,
@@ -95,6 +97,7 @@ const pageItems: [RegExp, (id: string) => Promise<unknown>][] = [
   [/^\/ai\/skills\/([^/]+)$/, (id) => api.get(`/api/skills/${id}`)],
   [/^\/ai\/scheduled\/([^/]+)$/, (id) => api.get(`/api/scheduled-tasks/${id}`)],
   [/^\/ai\/bots\/([^/]+)$/, (id) => api.get<{ id: string }[]>("/api/bots").then((bots) => bots.some((bot) => bot.id === id) || Promise.reject())],
+  [/^\/ai\/workflows\/([^/]+)$/, (id) => api.get(`/api/workflows/${id}`)],
 ];
 
 // The page open when the app last quit, if it still exists.
@@ -486,6 +489,10 @@ export default function App() {
     );
   const botMatch = path.match(/^\/ai\/bots(?:\/([^/]+))?$/);
   if (botMatch) page = <Bots id={botMatch[1] && decodeURIComponent(botMatch[1])} refresh={refresh} />;
+  const workflowMatch = path.match(/^\/ai\/workflows(?:\/([^/]+))?$/);
+  if (workflowMatch) page = <Workflows id={workflowMatch[1] && decodeURIComponent(workflowMatch[1])} refresh={refresh} />;
+  const flowMatch = path.match(/^\/ai\/chats\/([^/]+)\/flow$/);
+  if (flowMatch) page = <ChatFlow id={decodeURIComponent(flowMatch[1])} refresh={refresh} />;
   const skillMatch = path.match(/^\/ai\/skills(?:\/([^/]+))?$/);
   if (skillMatch)
     page = <Skills id={skillMatch[1] && decodeURIComponent(skillMatch[1])} refresh={refresh} />;
@@ -601,7 +608,7 @@ export default function App() {
               { "data-tour": "connectors" },
             )}
             {navItem("/ai/chats", t.chats, <Icon name="chat" />, !!chatMatch, { "data-tour": "chats" })}
-            {navItem("/ai/bots", t.bots, <Icon name="bot" />, !!botMatch, { "data-tour": "bots" })}
+            {navItem("/ai/bots", t.bots, <Icon name="bot" />, !!botMatch || !!workflowMatch, { "data-tour": "bots" })}
             {navItem("/ai/skills", t.skills, <Icon name="sparkles" />, !!skillMatch, { "data-tour": "skills" })}
             {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp", { "data-tour": "mcp" })}
           </div>

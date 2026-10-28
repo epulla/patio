@@ -217,6 +217,36 @@ export type Bot = {
   connector_id: string | null;
   model: string;
 };
+export type WorkflowNode = { id: string; bot_id: string; x: number; y: number; connector_id?: string | null; model?: string };
+export type WorkflowEdge = { id: string; from: string; to: string; report_back: boolean; instruction: string; timeout_minutes: number };
+export type Workflow = {
+  id: string;
+  name: string;
+  description: string;
+  hop_budget: number;
+  graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
+  created_at: string;
+  updated_at: string;
+};
+export type FlowStatus = "running" | "queued" | "waiting" | "held" | "error" | "idle";
+export type ChatTree = {
+  root_id: string;
+  workflow: { id: string; name: string } | null;
+  nodes: {
+    chat_id: string;
+    parent_chat_id: string | null;
+    title: string;
+    bot_id: string | null;
+    bot_name: string;
+    bot_color: string;
+    connector_name: string;
+    model: string;
+    status: FlowStatus;
+    workflow_node: string | null;
+    join: { received: number; expected: number } | null;
+  }[];
+  edges: { from: string; to: string; status: "pending" | "ok" | "failed" | "stopped" }[];
+};
 export type ScheduledTask = {
   id: string;
   title: string;

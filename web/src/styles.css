@@ -5040,6 +5040,116 @@ button.notif-row:focus-visible,
 .ai-create .composer textarea {
   min-height: 88px;
 }
+.flow-editor {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 420px;
+}
+.flow-palette,
+.flow-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.flow-palette p {
+  margin: 0;
+  font-size: 13px;
+}
+.flow-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  text-align: left;
+}
+.flow-side {
+  width: 260px;
+}
+.flow-side h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.flow-side label:has(> input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.flow-canvas {
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--base-200);
+  overflow: hidden;
+}
+.flow-run {
+  height: min(70vh, 640px);
+  padding: 0;
+}
+.flow-node {
+  width: 200px;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--base-100);
+  color: var(--content);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.flow-node.selected,
+.react-flow__node.selected .flow-node {
+  outline: 2px solid var(--primary);
+}
+.flow-node-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.flow-node-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.flow-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--content);
+}
+.flow-status-running .flow-badge:first-child,
+.flow-status-waiting .flow-badge:first-child {
+  background: color-mix(in oklch, var(--info) 22%, transparent);
+}
+.flow-status-queued .flow-badge:first-child,
+.flow-status-held .flow-badge:first-child {
+  background: color-mix(in oklch, var(--warning) 45%, transparent);
+}
+.flow-status-error .flow-badge:first-child {
+  background: color-mix(in oklch, var(--error) 22%, transparent);
+}
+.flow-edge-failed .react-flow__edge-path {
+  stroke: var(--error);
+}
+.flow-edge-stopped .react-flow__edge-path {
+  stroke-dasharray: 4 4;
+}
+@media (max-width: 900px) {
+  .flow-editor {
+    grid-template-columns: 1fr;
+  }
+  .flow-side {
+    width: auto;
+  }
+}
 .update-dot {
   position: absolute;
   top: -3px;

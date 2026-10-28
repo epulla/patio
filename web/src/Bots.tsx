@@ -1,5 +1,5 @@
 import { confirmDialog } from "./confirm";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, type Bot, type ChatDefaults, type Connector } from "./api";
 import { ErrorText, navigate } from "./App";
 import { startModel, useModels } from "./Chats";
@@ -13,7 +13,7 @@ import { useText } from "./i18n";
 
 const text = {
   en: {
-    bots: "Bots", new: "New bot", help: "Bots are AI personas with their own name, instructions, connector and model. Mention one with @ in a chat; new chats start with the default bot from Settings.",
+    title: "Bots & Workflows", bots: "Bots", workflows: "Workflows", new: "New bot", help: "Bots are AI personas with their own name, instructions, connector and model. Mention one with @ in a chat; new chats start with the default bot from Settings.",
     empty: "No bots yet", count: (n: number) => `${n} bot${n === 1 ? "" : "s"}`, back: "Bots", gone: "This bot no longer exists.", create: "create a bot",
     name: "Name", nameTitle: "Letters, digits and _ only: it's how you @mention the bot", description: "Role", descriptionPlaceholder: "Developer: writes and tests code",
     persona: "Persona prompt", personaPlaceholder: "You are Billy, a careful developer. Keep changes small and always run the tests.",
@@ -21,7 +21,7 @@ const text = {
     save: "Save", saved: "Saved", createBot: "Create bot", delete: (name: string) => `Delete ${name}`, confirmDelete: (name: string) => `Delete bot "${name}"?`, protected: "Martin is the built-in bot; you can edit him but not delete him.",
   },
   es: {
-    bots: "Bots", new: "Nuevo bot", help: "Los bots son personalidades de IA con su propio nombre, instrucciones, conector y modelo. Menciona uno con @ en un chat; los chats nuevos empiezan con el bot predeterminado de Ajustes.",
+    title: "Bots & Flujos", bots: "Bots", workflows: "Flujos", new: "Nuevo bot", help: "Los bots son personalidades de IA con su propio nombre, instrucciones, conector y modelo. Menciona uno con @ en un chat; los chats nuevos empiezan con el bot predeterminado de Ajustes.",
     empty: "Aún no hay bots", count: (n: number) => `${n} bot${n === 1 ? "" : "s"}`, back: "Bots", gone: "Este bot ya no existe.", create: "crear un bot",
     name: "Nombre", nameTitle: "Solo letras, números y _: así lo mencionas con @", description: "Rol", descriptionPlaceholder: "Desarrollador: escribe y prueba código",
     persona: "Instrucciones de personalidad", personaPlaceholder: "Eres Billy, un desarrollador cuidadoso. Haz cambios pequeños y siempre ejecuta las pruebas.",
@@ -86,13 +86,7 @@ export default function Bots({ id, refresh }: { id?: string; refresh: number }) 
 
   return (
     <div className="stack">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">AI</p>
-          <h1>{t.bots}</h1>
-        </div>
-        <div className="actions">{newButton}</div>
-      </div>
+      <BotsHeading actions={newButton} tab="bots" />
       <p className="muted">{t.help}</p>
       <ErrorText error={error} />
       {noConnectors && <ConnectorRequired then={t.create} />}
@@ -122,6 +116,28 @@ export default function Bots({ id, refresh }: { id?: string; refresh: number }) 
       )}
       {bots?.length === 0 && !noConnectors && <p className="muted">{t.empty}</p>}
     </div>
+  );
+}
+
+export function BotsHeading({ actions, tab }: { actions: ReactNode; tab: "bots" | "workflows" }) {
+  const t = useText(text);
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">AI</p>
+          <h1>{t.title}</h1>
+        </div>
+        <div className="actions">{actions}</div>
+      </div>
+      <div className="tabs" role="tablist">
+        {(["bots", "workflows"] as const).map((value) => (
+          <button key={value} role="tab" aria-selected={tab === value} onClick={() => navigate(`/ai/${value}`)}>
+            {t[value]}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

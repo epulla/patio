@@ -5,6 +5,8 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
+    "@dagrejs/dagre": "latest",
+    "@xyflow/react": "latest",
     "dompurify": "latest",
     "marked": "latest",
     "react": "latest",
