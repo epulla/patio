@@ -95,7 +95,7 @@ func TestWorkflowStepNoteAutoAndWait(t *testing.T) {
 		name               string
 		wait               int
 		contains, excludes string
-	}{{"auto", 0, "Before ending your turn, hand off", "Do not hand off"}, {"wait", 1, "Do not hand off until the user tells you", "Before ending your turn, hand off"}} {
+	}{{"auto", 0, "Before ending your turn, hand off", "Do not hand off"}, {"wait", 1, "tell the user to say \"go\" when they are ready", "Before ending your turn, hand off"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := s.db.Exec(`UPDATE chat SET workflow_wait=? WHERE id=?`, tc.wait, root); err != nil {
 				t.Fatal(err)
