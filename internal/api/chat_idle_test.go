@@ -96,6 +96,18 @@ func TestChatSendRestartsRuntimeAfterIdleClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForDriverClose(t, first)
+	// The driver closes before closeIdleRuntime clears rt.stopping; Send fails until it does.
+	rt := manager.lookupRuntime(c.ID)
+	rt.mu.Lock()
+	done := rt.stopDone
+	rt.mu.Unlock()
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("idle close did not finish")
+		}
+	}
 	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "second"}); err != nil {
 		t.Fatal(err)
 	}
