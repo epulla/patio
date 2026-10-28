@@ -1181,8 +1181,9 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			properties["model"] = map[string]any{"type": "string"}
 			properties["bot"] = map[string]any{"type": "string"}
 			properties["prompt"] = map[string]any{"type": "string"}
+			properties["workflow_edge"] = map[string]any{"type": "string"}
 			required = append(required, "prompt")
-			description = "Create child chat handoff. bot: name of the bot to run the child (its connector, model and persona); explicit connector_id/model override. Without bot, connector, model, thinking and auto-allow default to the calling chat's."
+			description = "Create child chat handoff. In a workflow chat, pass workflow_edge from your instructions; Patio picks the bot. bot: name of the bot to run the child (its connector, model and persona); explicit connector_id/model override. Without bot, connector, model, thinking and auto-allow default to the calling chat's."
 		}
 		n := name
 		s.AddTool(&sdk.Tool{Name: n, Description: description, InputSchema: map[string]any{"type": "object", "properties": properties, "required": required}}, func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {

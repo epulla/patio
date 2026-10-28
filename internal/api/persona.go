@@ -81,6 +81,53 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 		}
 		rows.Close()
 		prompt += bots.String()
+		// Chats outside a workflow, or whose workflow was deleted, get no workflow section.
+		var node, bname sql.NullString
+		var w workflow
+		var graph string
+		err = db.QueryRow(`SELECT c.workflow_node,u.name,wf.name,wf.graph FROM chat c JOIN workflow wf ON wf.id=c.workflow_id AND wf.deleted_at IS NULL LEFT JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, chatID).Scan(&node, &bname, &w.Name, &graph)
+		if err != nil && err != sql.ErrNoRows {
+			return "", err
+		}
+		if err == nil && node.Valid {
+			if err := json.Unmarshal([]byte(graph), &w.Graph); err != nil {
+				return "", err
+			}
+			workflowPrompt := fmt.Sprintf(` Workflow %q: you are the step run by %s.`, w.Name, bname.String)
+			n := 0
+			var edgeLines strings.Builder
+			for _, e := range w.Graph.Edges {
+				if e.From != node.String {
+					continue
+				}
+				n++
+				dest := ""
+				for _, step := range w.Graph.Nodes {
+					if step.ID == e.To {
+						if err := db.QueryRow(`SELECT name FROM "user" WHERE id=?`, step.BotID).Scan(&dest); err != nil {
+							return "", err
+						}
+						break
+					}
+				}
+				note := ""
+				if countWorkflowIncoming(w.Graph, e.To) >= 2 {
+					note = " (waits for all its inputs)"
+				}
+				instruction := e.Instruction
+				if instruction == "" {
+					instruction = "continue the task"
+				}
+				fmt.Fprintf(&edgeLines, "\n- workflow_edge %q → %s%s: %s", e.ID, dest, note, instruction)
+			}
+			if n > 0 {
+				workflowPrompt += " When your part is done, hand off with create_chat, passing workflow_edge (Patio picks the bot):"
+				workflowPrompt += edgeLines.String()
+			} else {
+				workflowPrompt += " This is the last step: finish with your result."
+			}
+			prompt += workflowPrompt
+		}
 	}
 	prompt += skillIndex(skills)
 	if chatID != "" {

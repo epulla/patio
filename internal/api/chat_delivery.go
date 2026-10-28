@@ -12,7 +12,7 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		return nil
 	}
 	defer s.agentDeliveryMu.Unlock()
-	rows, err := s.db.Query(`SELECT DISTINCT q.chat_id,c.agent_hops,c.queue_held FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id IS NOT NULL ORDER BY q.chat_id`)
+	rows, err := s.db.Query(`SELECT DISTINCT q.chat_id,c.agent_hops,c.queue_held, c.workflow_run_id IS NOT NULL FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id IS NOT NULL ORDER BY q.chat_id`)
 	if err != nil {
 		return err
 	}
@@ -20,11 +20,12 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		id        string
 		hops      int
 		queueHeld int
+		workflow  bool
 	}
 	var chats []pendingChat
 	for rows.Next() {
 		var item pendingChat
-		if err := rows.Scan(&item.id, &item.hops, &item.queueHeld); err != nil {
+		if err := rows.Scan(&item.id, &item.hops, &item.queueHeld, &item.workflow); err != nil {
 			rows.Close()
 			return err
 		}
@@ -45,7 +46,7 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		if pending.queueHeld != 0 {
 			continue
 		}
-		if pending.hops >= 10 {
+		if pending.hops >= 10 && !pending.workflow {
 			if err := s.notifyAgentHopCap(pending.id); err != nil {
 				deliveryErrors = append(deliveryErrors, err)
 			}
