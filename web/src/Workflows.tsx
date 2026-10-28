@@ -41,7 +41,7 @@ const text = {
     edge: "Handoff", reportBack: "Report back when done", instruction: "Instruction", instructionPlaceholder: "When the code is done, hand it to Sammy for review.",
     timeout: "Timeout (minutes)", timeoutTitle: "0 uses the default of 30 minutes", removeEdge: "Remove handoff",
     node: "Step", removeNode: "Remove step", bot: "Bot", canvas: "Workflow graph", closePanel: "Close",
-    run: "Run", runTitle: (name: string) => `Run ${name}`, runPrompt: "Task for the first bot", runPlaceholder: "Add a dark mode toggle to the settings page", runSave: "Save your changes before running.", cancel: "Cancel",
+    run: "Run", runTitle: (name: string) => `Run ${name}`, runPrompt: "Task for the first bot", runPlaceholder: "Add a dark mode toggle to the settings page", cancel: "Cancel",
     noRoot: "Exactly one bot must have no incoming arrow; it's where the run starts.",
   },
   es: {
@@ -57,7 +57,7 @@ const text = {
     edge: "Traspaso", reportBack: "Informar al terminar", instruction: "Instrucción", instructionPlaceholder: "Cuando el código esté listo, pásalo a Sammy para revisión.",
     timeout: "Tiempo límite (minutos)", timeoutTitle: "0 usa el valor predeterminado de 30 minutos", removeEdge: "Quitar traspaso",
     node: "Paso", removeNode: "Quitar paso", bot: "Bot", canvas: "Grafo del flujo", closePanel: "Cerrar",
-    run: "Ejecutar", runTitle: (name: string) => `Ejecutar ${name}`, runPrompt: "Tarea para el primer bot", runPlaceholder: "Agrega un interruptor de modo oscuro en la página de ajustes", runSave: "Guarda tus cambios antes de ejecutar.", cancel: "Cancelar",
+    run: "Ejecutar", runTitle: (name: string) => `Ejecutar ${name}`, runPrompt: "Tarea para el primer bot", runPlaceholder: "Agrega un interruptor de modo oscuro en la página de ajustes", cancel: "Cancelar",
     noRoot: "Exactamente un bot debe quedar sin flechas de entrada; ahí empieza la ejecución.",
   },
 };
@@ -288,8 +288,7 @@ function WorkflowEditor({
     },
   };
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function save() {
     try {
       const result = workflow ? await api.patch<Workflow>(`/api/workflows/${workflow.id}`, body) : await api.post<Workflow>("/api/workflows", body);
       setError(undefined);
@@ -297,9 +296,21 @@ function WorkflowEditor({
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1500);
       onSaved(result);
+      return true;
     } catch (reason) {
       setError(reason);
+      return false;
     }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    await save();
+  }
+
+  // Run uses the saved workflow, so unsaved edits are saved first.
+  async function run() {
+    if (!dirty || (await save())) setRunning(true);
   }
 
   async function remove() {
@@ -346,7 +357,7 @@ function WorkflowEditor({
               {saved ? t.saved : workflow ? t.save : t.create}
             </button>
             {workflow && (
-              <button type="button" className="primary" disabled={dirty} title={dirty ? t.runSave : undefined} onClick={() => setRunning(true)}>
+              <button type="button" className="primary" disabled={nodes.length === 0 || roots.length !== 1} onClick={run}>
                 <Icon name="play" /> {t.run}
               </button>
             )}
