@@ -207,6 +207,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"query_db": true, "list_connectors": true, "create_connector": true,
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
 		"list_bots": true, "create_bot": true, "update_bot": true, "delete_bot": true,
+		"list_workflows": true, "create_workflow": true, "update_workflow": true, "delete_workflow": true, "run_workflow": true,
 		"update_column": true, "reorder_columns": true, "reorder_boards": true, "delete_column": true, "create_ticket_type": true, "update_ticket_type": true, "list_comments": true, "get_ticket_history": true, "list_users": true,
 		"get_settings_defaults": true, "update_settings_defaults": true,
 		"ask_user": true, "create_notification": true, "get_item_history": true, "send_to_chat": true, "create_chat": true,
@@ -252,8 +253,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 61 {
-		t.Fatalf("tool count = %d, want 61", count)
+	if count != 66 {
+		t.Fatalf("tool count = %d, want 66", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -1050,5 +1051,38 @@ func TestChangeNotificationsCreditTheChatBot(t *testing.T) {
 		if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != test.want {
 			t.Fatalf("chat %q: title = %q, %v; want %q", test.chat, title, err, test.want)
 		}
+	}
+}
+
+func TestWorkflowTools(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workflow.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	created := callTool(t, session, "create_workflow", map[string]any{"name": "Solo", "graph": map[string]any{"nodes": []map[string]any{{"id": "m", "bot_id": "ai"}}, "edges": []any{}}})
+	if created.IsError {
+		t.Fatalf("create_workflow: %#v", created.Content)
+	}
+	if listed := callTool(t, session, "list_workflows", map[string]any{}); listed.IsError || !strings.Contains(listed.Content[0].(*sdk.TextContent).Text, `"Solo"`) {
+		t.Fatalf("list_workflows: %#v", listed.Content)
+	}
+	var title string
+	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != "Martin created workflow Solo" {
+		t.Fatalf("notification = %q, %v", title, err)
 	}
 }

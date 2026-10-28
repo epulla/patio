@@ -94,7 +94,7 @@ type createTicketArgs struct {
 	DueDate      *string `json:"due_date,omitempty" jsonschema:"Optional due date in YYYY-MM-DD format"`
 }
 type itemHistoryArgs struct {
-	ItemType string `json:"item_type" jsonschema:"skill, connector, mcp_server, scheduled_task or bot"`
+	ItemType string `json:"item_type" jsonschema:"skill, connector, mcp_server, scheduled_task, bot or workflow"`
 	ItemID   string `json:"item_id"`
 }
 type ticketIDArgs struct {
@@ -178,6 +178,40 @@ type apiBotUpdateArgs struct {
 }
 type botIDArgs struct {
 	ID string `json:"id" jsonschema:"Bot UUID"`
+}
+type workflowNodeArg struct {
+	ID    string  `json:"id" jsonschema:"Node id, unique in the workflow"`
+	BotID string  `json:"bot_id" jsonschema:"Bot UUID that runs this step"`
+	X     float64 `json:"x,omitempty"`
+	Y     float64 `json:"y,omitempty"`
+}
+type workflowEdgeArg struct {
+	ID             string `json:"id"`
+	From           string `json:"from" jsonschema:"Node id that hands off"`
+	To             string `json:"to" jsonschema:"Node id that receives; a node with 2+ incoming edges waits for all"`
+	ReportBack     bool   `json:"report_back,omitempty"`
+	Instruction    string `json:"instruction,omitempty"`
+	TimeoutMinutes int    `json:"timeout_minutes,omitempty" jsonschema:"0 uses 30"`
+}
+type workflowArgs struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	HopBudget   int    `json:"hop_budget,omitempty" jsonschema:"Most handoffs per run; default 30"`
+	Graph       struct {
+		Nodes []workflowNodeArg `json:"nodes"`
+		Edges []workflowEdgeArg `json:"edges"`
+	} `json:"graph" jsonschema:"Exactly one node without incoming edges starts the run"`
+}
+type workflowUpdateArgs struct {
+	ID string `json:"id" jsonschema:"Workflow UUID"`
+	workflowArgs
+}
+type workflowIDArgs struct {
+	ID string `json:"id" jsonschema:"Workflow UUID"`
+}
+type runWorkflowArgs struct {
+	ID     string `json:"id" jsonschema:"Workflow UUID"`
+	Prompt string `json:"prompt" jsonschema:"Task for the first bot"`
 }
 type listSkillsArgs struct {
 	IncludeDisabled bool `json:"include_disabled,omitempty"`
@@ -501,6 +535,20 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return errorResult(err), nil
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
+	})
+	addGeneric(s, "list_workflows", "List bot workflows", h, func(struct{}) request { return request{http.MethodGet, "/api/workflows", nil} })
+	addGeneric(s, "create_workflow", "Create a bot workflow: nodes are bots, edges are handoffs", h, func(a workflowArgs) request { return request{http.MethodPost, "/api/workflows", a} })
+	addGeneric(s, "update_workflow", "Update a bot workflow; all fields are replaced", h, func(a workflowUpdateArgs) request {
+		return request{http.MethodPatch, "/api/workflows/" + url.PathEscape(a.ID), a.workflowArgs}
+	})
+	addGenericHandler(s, "delete_workflow", "Delete a bot workflow", func(ctx context.Context, a workflowIDArgs) (*sdk.CallToolResult, error) {
+		if _, err := doJSON(ctx, h, request{http.MethodDelete, "/api/workflows/" + url.PathEscape(a.ID), nil}); err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
+	})
+	addGeneric(s, "run_workflow", "Start a workflow run with a task; returns the first chat's id", h, func(a runWorkflowArgs) request {
+		return request{http.MethodPost, "/api/workflows/" + url.PathEscape(a.ID) + "/run", map[string]string{"prompt": a.Prompt}}
 	})
 	addGeneric(s, "create_connector", "Create an AI connector; secret is a write-only API key", h, func(a createConnectorArgs) request { return request{http.MethodPost, "/api/connectors", a} })
 	addGeneric(s, "update_connector", "Update provided connector fields; secret is write-only", h, func(a updateConnectorArgs) request {
@@ -1285,7 +1333,10 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 		if id != "" {
 			return title, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 		}
-	case "boards", "statuses", "ticket-types", "skills", "scheduled-tasks", "connectors", "mcp-servers", "calendar-items", "board-order":
+	case "boards", "statuses", "ticket-types", "skills", "scheduled-tasks", "connectors", "mcp-servers", "calendar-items", "board-order", "workflows":
+		if resource == "workflows" && parts[len(parts)-1] == "run" {
+			return "", "", "", false
+		}
 		entity := firstMap(result, old)
 		id := mcpPathID(parts, resource)
 		if id == "" {
@@ -1325,6 +1376,8 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 				name = "column " + name
 			case "calendar-items":
 				name = "calendar item " + name
+			case "workflows":
+				name = "workflow " + name
 			}
 		}
 		if resource == "scheduled-tasks" && id != "" {
@@ -1344,6 +1397,9 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 		}
 		if resource == "mcp-servers" {
 			target = "/ai/mcp"
+		}
+		if resource == "workflows" && id != "" && r.method != http.MethodDelete {
+			target = "/ai/workflows/" + id
 		}
 		return actor + " " + verb + " " + name, "", target, true
 	default:

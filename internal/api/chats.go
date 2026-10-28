@@ -569,7 +569,12 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	response := map[string]any{"chat": c, "messages": messages, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals}
+	flowStatus, err := s.flowStatus(c.ID)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	response := map[string]any{"chat": c, "messages": messages, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals, "flow_status": flowStatus}
 	data, err := json.Marshal(response)
 	if err != nil {
 		errw(w, 500, err.Error())

@@ -168,6 +168,7 @@ var localMCPTools = map[string]bool{
 	"list_calendar": true, "create_calendar_item": true, "update_calendar_item": true, "delete_calendar_item": true,
 	"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true,
 	"list_bots": false, "create_bot": false, "update_bot": false, "delete_bot": false,
+	"list_workflows": false, "create_workflow": false, "update_workflow": false, "delete_workflow": false, "run_workflow": false,
 	"ask_user": true, "create_notification": true,
 
 	"update_board": false, "reorder_boards": false, "create_column": false, "update_column": false, "delete_column": false,
