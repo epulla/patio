@@ -961,6 +961,28 @@ func TestDrainQueuedSendFailureRestoresRowsAndHops(t *testing.T) {
 	}
 }
 
+func TestDrainQueuedLeavesQueueOpenWhenTurnRunning(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	chatID := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('busy-row',?,'later','[]',?)`, chatID, now()); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, "local", false, "dev", root)
+	defer s.Close()
+	s.chats.chats[chatID] = &chatRuntime{busy: true}
+	if _, err := s.chats.drainQueued(chatID, false); !errors.Is(err, errChatTurnRunning) {
+		t.Fatalf("drain err = %v, want errChatTurnRunning", err)
+	}
+	var queued, held int
+	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM chat_queue WHERE chat_id=?),queue_held FROM chat WHERE id=?`, chatID, chatID).Scan(&queued, &held); err != nil {
+		t.Fatal(err)
+	}
+	if queued != 1 || held != 0 {
+		t.Fatalf("queued=%d held=%d, want 1 queued and queue open for the running turn to drain", queued, held)
+	}
+}
+
 func TestConcurrentQueueDrainsSendRowsOnce(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)

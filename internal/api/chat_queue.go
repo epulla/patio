@@ -182,6 +182,11 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 		return ChatMessage{}, err
 	}
 	restore := func(cause error, messageID string) error {
+		// A turn that started meanwhile drains the queue when it ends; holding it would strand the rows.
+		held := 1
+		if !manual && errors.Is(cause, errChatTurnRunning) {
+			held = oldQueueHeld
+		}
 		restoreErr := txrun(m.db, func(tx *sql.Tx) error {
 			if messageID != "" {
 				if _, err := tx.Exec(`DELETE FROM chat_message WHERE id=? AND chat_id=? AND role='user'`, messageID, chatID); err != nil {
@@ -193,7 +198,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 					return err
 				}
 			}
-			_, err := tx.Exec(`UPDATE chat SET agent_hops=?,agent_hops_notified=?,queue_held=1 WHERE id=?`, oldHops, oldNotified, chatID)
+			_, err := tx.Exec(`UPDATE chat SET agent_hops=?,agent_hops_notified=?,queue_held=? WHERE id=?`, oldHops, oldNotified, held, chatID)
 			return err
 		})
 		m.emit(chatID, map[string]any{"type": "queue"})
