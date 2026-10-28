@@ -259,3 +259,23 @@ func TestChatPromptWorkflowEdgesAndLastStep(t *testing.T) {
 		t.Fatalf("deleted workflow prompt=%q err=%v", prompt, err)
 	}
 }
+
+func TestWaitingStepReportsOnlyAfterHandingOff(t *testing.T) {
+	g := testGraph([]workflowNode{{ID: "root", BotID: "ai"}, {ID: "mid", BotID: "ai", Mode: "wait"}, {ID: "last", BotID: "ai"}},
+		workflowEdge{ID: "e1", From: "root", To: "mid", ReportBack: true}, workflowEdge{ID: "e2", From: "mid", To: "last"})
+	s, root, _, _, _ := workflowHandoffFixture(t, g, 10)
+	var out map[string]string
+	if code := postWorkflowEdge(t, s, root, "e1", "Draft it", &out); code != 200 {
+		t.Fatalf("handoff = %d", code)
+	}
+	mid := out["chat_id"]
+	if parents, _, err := s.chats.finishHandoffs(mid, "draft", nil, false); err != nil || len(parents) != 0 {
+		t.Fatalf("waiting step reported a draft: parents=%v err=%v", parents, err)
+	}
+	if code := postWorkflowEdge(t, s, mid, "e2", "Review it", nil); code != 200 {
+		t.Fatalf("mid handoff = %d", code)
+	}
+	if parents, _, err := s.chats.finishHandoffs(mid, "final", nil, false); err != nil || len(parents) != 1 || parents[0] != root {
+		t.Fatalf("after handing off: parents=%v err=%v, want [%s]", parents, err, root)
+	}
+}

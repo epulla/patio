@@ -241,6 +241,30 @@ func (s *chatManager) deliverHandoffReports(parent string) error {
 	return s.reportBack(parent, reports[0].child, text)
 }
 
+// waitingForGo reports a workflow step that waits for the user and hasn't handed off yet;
+// its turns until then are drafts, so the parent hears nothing.
+func (s *chatManager) waitingForGo(chatID string) (bool, error) {
+	var node, graph sql.NullString
+	var handedOff int
+	err := s.db.QueryRow(`SELECT c.workflow_node,w.graph,(SELECT count(*) FROM chat k WHERE k.parent_chat_id=c.id AND k.workflow_run_id IS NOT NULL)+(SELECT count(*) FROM workflow_join_input j WHERE j.from_chat_id=c.id) FROM chat c JOIN workflow w ON w.id=c.workflow_id AND w.deleted_at IS NULL WHERE c.id=? AND c.workflow_wait=1`, chatID).Scan(&node, &graph, &handedOff)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && handedOff > 0 {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var g workflowGraph
+	if err := json.Unmarshal([]byte(graph.String), &g); err != nil {
+		return false, err
+	}
+	for _, e := range g.Edges {
+		if e.From == node.String {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopping bool) ([]string, bool, error) {
 	var targetRows int
 	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE to_chat_id=?`, chatID).Scan(&targetRows); err != nil {
@@ -255,6 +279,12 @@ func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopp
 	}
 	if ownPending > 0 {
 		return nil, true, nil
+	}
+	if turnErr == nil && !stopping {
+		waiting, err := s.waitingForGo(chatID)
+		if err != nil || waiting {
+			return nil, true, err
+		}
 	}
 	status := "ok"
 	if stopping {
