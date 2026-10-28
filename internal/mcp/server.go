@@ -1185,6 +1185,10 @@ func mcpSnapshotPath(path string) string {
 }
 
 func mcpChange(h http.Handler, r request, prior, response []byte) (string, string, string, bool) {
+	actor := "Martin"
+	if named, ok := h.(interface{ MCPActor() string }); ok {
+		actor = named.MCPActor()
+	}
 	parts := strings.Split(strings.SplitN(r.path, "?", 2)[0], "/")
 	resource := ""
 	for i := 1; i < len(parts); i++ {
@@ -1226,7 +1230,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 				item := mcpTicket(h, id, nil)
 				code, ticketTitle := item["code"], item["title"]
 				id = item["id"]
-				return "Martin commented on " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
+				return actor + " commented on " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 			}
 		}
 	}
@@ -1236,7 +1240,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 			if code == "" {
 				code = mcpTicket(h, id, result)["code"]
 			}
-			return "Martin created " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
+			return actor + " created " + code, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 		}
 	}
 	switch resource {
@@ -1257,7 +1261,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 			id = item["id"]
 		}
 		if strings.Contains(r.path, "/move") {
-			title = "Martin moved " + code
+			title = actor + " moved " + code
 			if parsed, err := url.Parse(r.path); err == nil && parsed.Query().Get("mcp_status_label") != "" {
 				title += " to " + parsed.Query().Get("mcp_status_label")
 			} else if result != nil {
@@ -1266,11 +1270,11 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 				}
 			}
 		} else if r.method == http.MethodDelete {
-			title = "Martin deleted " + code
+			title = actor + " deleted " + code
 		} else if r.method == http.MethodPost {
-			title = "Martin created " + code
+			title = actor + " created " + code
 		} else {
-			title = "Martin updated " + code
+			title = actor + " updated " + code
 		}
 		if id != "" {
 			return title, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
@@ -1284,7 +1288,7 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		if resource == "boards" && id != "" {
 			if name := mcpValue(entity, "name"); name != "" {
 				target = "/boards/" + id
-				return "Martin " + verb + " board " + name, "[" + markdownLabel(name) + "](" + target + ")", target, true
+				return actor + " " + verb + " board " + name, "[" + markdownLabel(name) + "](" + target + ")", target, true
 			}
 		}
 		if resource == "skills" && id != "" && mcpValue(entity, "name") == "" {
@@ -1335,11 +1339,11 @@ func mcpChange(h http.Handler, r request, prior, response []byte) (string, strin
 		if resource == "mcp-servers" {
 			target = "/ai/mcp"
 		}
-		return "Martin " + verb + " " + name, "", target, true
+		return actor + " " + verb + " " + name, "", target, true
 	default:
 		return "", "", "", false
 	}
-	return "Martin " + verb + " " + resource, "", "", true
+	return actor + " " + verb + " " + resource, "", "", true
 }
 
 func mcpPathID(parts []string, resource string) string {

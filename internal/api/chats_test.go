@@ -552,3 +552,24 @@ func TestDeleteConnectorKeepsChat(t *testing.T) {
 }
 
 func stringPtr(value string) *string { return &value }
+
+func TestChatBotName(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai) VALUES('billy','Billy','billy@test',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE chat SET bot_id=NULL WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if name, err := ChatBotName(database, chatID); err != nil || name != "" {
+		t.Fatalf("no bot = %q, %v", name, err)
+	}
+	if _, err := database.Exec(`UPDATE chat SET bot_id='billy' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if name, err := ChatBotName(database, chatID); err != nil || name != "Billy" {
+		t.Fatalf("bot = %q, %v", name, err)
+	}
+}

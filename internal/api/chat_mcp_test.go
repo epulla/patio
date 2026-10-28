@@ -162,3 +162,16 @@ func slicesIndex(values []string, target string) int {
 	}
 	return -1
 }
+
+func TestTicketMCPServerSpecPassesChat(t *testing.T) {
+	m := &chatManager{mcpExecutable: "/app/patio", dbPath: "/data/test.db"}
+	for chatID, want := range map[string][]string{
+		"chat-1": {"mcp", "-d", "/data/test.db", "-in-app", "-chat", "chat-1"},
+		"":       {"mcp", "-d", "/data/test.db", "-in-app"},
+	} {
+		spec, err := m.ticketMCPServerSpec(chatID)
+		if err != nil || !reflect.DeepEqual(spec["args"], want) {
+			t.Fatalf("chat %q args = %v, %v; want %v", chatID, spec["args"], err, want)
+		}
+	}
+}

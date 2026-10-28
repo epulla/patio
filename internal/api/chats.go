@@ -1226,6 +1226,24 @@ func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusAccepted, message)
 }
 
+// ChatBotName is the name of the bot running chat id, or "" when it has none.
+func ChatBotName(database *sql.DB, id string) (string, error) {
+	var name string
+	err := database.QueryRow(`SELECT u.name FROM chat c JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, id).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return name, err
+}
+
+// MCPActor is who MCP change notifications credit.
+func (s *Server) MCPActor() string {
+	if s.mcpActor == "" {
+		return "Martin"
+	}
+	return s.mcpActor
+}
+
 func ChatExists(database *sql.DB, id string) (bool, error) {
 	var exists int
 	err := database.QueryRow(`SELECT 1 FROM chat WHERE id=?`, id).Scan(&exists)

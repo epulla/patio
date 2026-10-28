@@ -1008,3 +1008,34 @@ func decodeText(t *testing.T, result *sdk.CallToolResult, out any) {
 		t.Fatal(err)
 	}
 }
+
+func TestChangeNotificationsCreditTheChatBot(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "actor.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, test := range []struct{ actor, skill, want string }{{"", "note-a", "Martin created skill note-a"}, {"Billy", "note-b", "Billy created skill note-b"}} {
+		server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath), api.Options{MCPActor: test.actor}), "dev", database, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		serverTransport, clientTransport := sdk.NewInMemoryTransports()
+		if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+			t.Fatal(err)
+		}
+		session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if created := callTool(t, session, "create_skill", map[string]any{"name": test.skill, "description": "d", "body": "b"}); created.IsError {
+			t.Fatalf("create skill: %#v", created.Content)
+		}
+		session.Close()
+		var title string
+		if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != test.want {
+			t.Fatalf("actor %q: title = %q, %v; want %q", test.actor, title, err, test.want)
+		}
+	}
+}

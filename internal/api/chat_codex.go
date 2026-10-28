@@ -58,7 +58,7 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 	if err != nil {
 		return nil, err
 	}
-	ticket, err := m.ticketMCPServerSpec()
+	ticket, err := m.ticketMCPServerSpec(c.ID)
 	if err != nil {
 		return nil, err
 	}

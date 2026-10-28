@@ -432,6 +432,7 @@ func runMCP(args []string) {
 	dbFile := flags.String("d", "", "database file path (default: per-OS data directory)")
 	approveChat := flags.String("approve-chat", "", "enable Claude approval tool for chat ID")
 	inApp := flags.Bool("in-app", false, "omit chat persona from MCP instructions")
+	chatID := flags.String("chat", "", "chat ID whose bot is credited in change notifications")
 	if err := flags.Parse(args); err != nil {
 		log.Fatal(err)
 	}
@@ -465,7 +466,16 @@ func runMCP(args []string) {
 			log.Printf("close database: %v", err)
 		}
 	}()
-	handler := api.New(database, "ai", true, version, filepath.Dir(dbFilePath), api.Options{DBPath: dbFilePath})
+	if *chatID == "" {
+		*chatID = *approveChat
+	}
+	actor := ""
+	if *chatID != "" {
+		if actor, err = api.ChatBotName(database, *chatID); err != nil {
+			log.Fatalf("look up chat bot %q: %v", *chatID, err)
+		}
+	}
+	handler := api.New(database, "ai", true, version, filepath.Dir(dbFilePath), api.Options{DBPath: dbFilePath, MCPActor: actor})
 	var server *sdk.Server
 	if approveEnabled {
 		if *approveChat == "" {

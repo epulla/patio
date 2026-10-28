@@ -147,7 +147,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 		return nil, fmt.Errorf("find opencode: %w", err)
 	}
 	env := connectorEnv("opencode", configDir)
-	mcpSpec, err := m.ticketMCPServerSpec()
+	mcpSpec, err := m.ticketMCPServerSpec("") // shared by all chats on this connector, so no single bot to credit
 	if err != nil {
 		return nil, err
 	}

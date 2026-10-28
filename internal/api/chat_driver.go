@@ -697,7 +697,7 @@ func setChatEnv(env []string, key, value string) []string {
 	return append(env, prefix+value)
 }
 
-func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
+func (m *chatManager) ticketMCPServerSpec(chatID string) (map[string]any, error) {
 	exe := m.mcpExecutable
 	if exe == "" {
 		var err error
@@ -706,7 +706,11 @@ func (m *chatManager) ticketMCPServerSpec() (map[string]any, error) {
 			return nil, err
 		}
 	}
-	return map[string]any{"command": exe, "args": []string{"mcp", "-d", m.dbPath, "-in-app"}}, nil
+	args := []string{"mcp", "-d", m.dbPath, "-in-app"}
+	if chatID != "" {
+		args = append(args, "-chat", chatID)
+	}
+	return map[string]any{"command": exe, "args": args}, nil
 }
 
 func (m *chatManager) requestApproval(ctx context.Context, chatID, toolName string, input json.RawMessage) (bool, error) {

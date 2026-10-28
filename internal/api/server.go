@@ -17,6 +17,7 @@ import (
 
 type Server struct {
 	db              *sql.DB
+	mcpActor        string
 	userID          string
 	showHidden      bool
 	version         string
@@ -62,6 +63,7 @@ type Options struct {
 	findCopilot     func() (string, error)
 	mcpExecutable   string
 	PatioMCPTools   []string
+	MCPActor        string
 	opencodeStarter opencodeProcessStarter
 	findOpencode    func() (string, error)
 	opencodeMajor   func(context.Context, string, []string) (int, error)
@@ -102,7 +104,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
+	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}

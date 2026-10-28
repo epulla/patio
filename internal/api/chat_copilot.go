@@ -67,7 +67,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	if err != nil {
 		return nil, err
 	}
-	ticket, err := m.ticketMCPServerSpec()
+	ticket, err := m.ticketMCPServerSpec(c.ID)
 	if err != nil {
 		return nil, err
 	}

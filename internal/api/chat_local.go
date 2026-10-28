@@ -115,7 +115,7 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 		}
 		d.tools = append(d.tools, definition)
 	}
-	spec, err := m.ticketMCPServerSpec()
+	spec, err := m.ticketMCPServerSpec(c.ID)
 	if err != nil {
 		cancel()
 		return nil, err
