@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -304,12 +305,12 @@ func TestRequestApproval(t *testing.T) {
 			connectorID := createTestConnector(t, database)
 			chatID := createDriverTestChat(t, database, connectorID, root)
 			events := make(chan any, 1)
-			nativeCalls := 0
+			var nativeCalls atomic.Int32
 			server := New(database, "local", false, "dev", root, Options{Emit: func(name string, event any) {
 				if name == "chat:"+chatID {
 					events <- event
 				}
-			}, Notify: func(string, string, string) error { nativeCalls++; return nil }})
+			}, Notify: func(string, string, string) error { nativeCalls.Add(1); return nil }})
 			server.chats.approvalPollInterval = time.Millisecond
 			server.chats.approvalTimeout = 30 * time.Millisecond
 			ctx, cancel := context.WithCancel(context.Background())
@@ -341,15 +342,15 @@ func TestRequestApproval(t *testing.T) {
 				t.Fatal("approval row was not inserted")
 			}
 			deadline = time.Now().Add(time.Second)
-			for nativeCalls == 0 && time.Now().Before(deadline) {
+			for nativeCalls.Load() == 0 && time.Now().Before(deadline) {
 				time.Sleep(time.Millisecond)
 			}
 			var notificationCount int
 			if err := database.QueryRow(`SELECT count(*) FROM notification WHERE kind='approval' AND body='' AND link=?`, "/ai/chats/"+chatID).Scan(&notificationCount); err != nil {
 				t.Fatal(err)
 			}
-			if notificationCount != 1 || nativeCalls != 1 {
-				t.Fatalf("approval notifications=%d native calls=%d, want 1 each", notificationCount, nativeCalls)
+			if notificationCount != 1 || nativeCalls.Load() != 1 {
+				t.Fatalf("approval notifications=%d native calls=%d, want 1 each", notificationCount, nativeCalls.Load())
 			}
 			select {
 			case event := <-events:
