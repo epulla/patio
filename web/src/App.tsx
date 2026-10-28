@@ -442,6 +442,18 @@ export default function App() {
     if (id && pins.ids.includes(id)) rememberPinnedChat(id);
   }, [path, pins.ids]);
 
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    const check = () =>
+      api
+        .get<{ available: boolean }>("/api/update")
+        .then((update) => setUpdateAvailable(update.available))
+        .catch(() => setUpdateAvailable(false));
+    check();
+    const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   if (!config) return null;
   if (config.chat_window)
     return (
@@ -518,18 +530,6 @@ export default function App() {
   };
   const states = pins.ids.map((id) => pinned.status[id]);
   const dockAlert = dockOpen ? undefined : states.includes("approval") ? "approval" : states.includes("reply") ? "reply" : undefined;
-
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  useEffect(() => {
-    const check = () =>
-      api
-        .get<{ available: boolean }>("/api/update")
-        .then((update) => setUpdateAvailable(update.available))
-        .catch(() => setUpdateAvailable(false));
-    check();
-    const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const navItem = (
     to: string,
