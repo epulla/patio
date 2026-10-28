@@ -41,7 +41,7 @@ const text = {
     edge: "Handoff", reportBack: "Report back when done", instruction: "Instruction", instructionPlaceholder: "When the code is done, hand it to Sammy for review.",
     timeout: "Timeout (minutes)", timeoutTitle: "0 uses the default of 30 minutes", removeEdge: "Remove handoff",
     node: "Step", removeNode: "Remove step", bot: "Bot", canvas: "Workflow graph", closePanel: "Close",
-    run: "Run", runTitle: (name: string) => `Run ${name}`, runPrompt: "Task for the first bot", runPlaceholder: "Add a dark mode toggle to the settings page", cancel: "Cancel",
+    run: "Run", runTitle: (name: string) => `Run ${name}`, runPrompt: "Task for the first bot", runPlaceholder: "Add a dark mode toggle to the settings page", starting: "Starting…", cancel: "Cancel",
     noRoot: "Exactly one bot must have no incoming arrow; it's where the run starts.",
   },
   es: {
@@ -57,7 +57,7 @@ const text = {
     edge: "Traspaso", reportBack: "Informar al terminar", instruction: "Instrucción", instructionPlaceholder: "Cuando el código esté listo, pásalo a Sammy para revisión.",
     timeout: "Tiempo límite (minutos)", timeoutTitle: "0 usa el valor predeterminado de 30 minutos", removeEdge: "Quitar traspaso",
     node: "Paso", removeNode: "Quitar paso", bot: "Bot", canvas: "Grafo del flujo", closePanel: "Cerrar",
-    run: "Ejecutar", runTitle: (name: string) => `Ejecutar ${name}`, runPrompt: "Tarea para el primer bot", runPlaceholder: "Agrega un interruptor de modo oscuro en la página de ajustes", cancel: "Cancelar",
+    run: "Ejecutar", runTitle: (name: string) => `Ejecutar ${name}`, runPrompt: "Tarea para el primer bot", runPlaceholder: "Agrega un interruptor de modo oscuro en la página de ajustes", starting: "Iniciando…", cancel: "Cancelar",
     noRoot: "Exactamente un bot debe quedar sin flechas de entrada; ahí empieza la ejecución.",
   },
 };
@@ -470,6 +470,7 @@ function RunDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => v
   const dialog = useRef<HTMLDialogElement>(null);
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<unknown>();
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
@@ -477,12 +478,15 @@ function RunDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => v
 
   async function run(event: FormEvent) {
     event.preventDefault();
+    if (starting) return;
+    setStarting(true);
     try {
       const result = await api.post<{ chat_id: string }>(`/api/workflows/${workflow.id}/run`, { prompt });
       dialog.current?.close();
       navigate(`/ai/chats/${result.chat_id}`);
     } catch (reason) {
       setError(reason);
+      setStarting(false);
     }
   }
 
@@ -502,8 +506,8 @@ function RunDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => v
           <button type="button" onClick={() => dialog.current?.close()}>
             {t.cancel}
           </button>
-          <button className="primary" disabled={!prompt.trim()}>
-            <Icon name="play" /> {t.run}
+          <button className="primary" disabled={!prompt.trim() || starting} aria-busy={starting}>
+            {starting ? <span className="spinner" aria-hidden="true" /> : <Icon name="play" />} {starting ? t.starting : t.run}
           </button>
         </div>
       </form>
