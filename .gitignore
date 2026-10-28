@@ -9,5 +9,9 @@ web/dist/*
 !/build/windows/
 /build/windows/*
 !/build/windows/icon.ico
+!/build/darwin/
+/build/darwin/*
+!/build/darwin/Info.plist
+!/build/darwin/Info.dev.plist
 web/wailsjs/
 web/package.json.md5
