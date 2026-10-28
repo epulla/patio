@@ -334,7 +334,11 @@ func (s *Server) runWorkflow(w http.ResponseWriter, r *http.Request) {
 	child.ConnectorID = connector
 	child.Model = model
 	child.BotID = &botID
-	if _, err = s.chats.Send(child, kind, dir, ChatSendRequest{Text: in.Prompt}); err != nil {
+	text, err := withStepNote(s.db, id, in.Prompt)
+	if err == nil {
+		_, err = s.chats.Send(child, kind, dir, ChatSendRequest{Text: text})
+	}
+	if err != nil {
 		_, delErr := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
 		err = cleanupConnectorDir(workdir, errors.Join(err, delErr))
 		errw(w, 500, err.Error())

@@ -98,7 +98,7 @@ func TestRunWorkflowStartsRootChatAndTree(t *testing.T) {
 	if err := database.QueryRow(`SELECT c.bot_id,c.workflow_id,c.workflow_node,c.workflow_run_id,m.content FROM chat c JOIN chat_message m ON m.chat_id=c.id AND m.role='user' WHERE c.id=?`, run.ChatID).Scan(&botID, &workflowID, &node, &runID, &text); err != nil {
 		t.Fatal(err)
 	}
-	if botID != "billy" || workflowID != created.ID || node != "b" || runID != run.ChatID || text != "Build it" {
+	if botID != "billy" || workflowID != created.ID || node != "b" || runID != run.ChatID || !strings.HasPrefix(text, "Build it\n\n---\n") || !strings.Contains(text, `call`) || !strings.Contains(text, `workflow_edge "e1"`) {
 		t.Fatalf("root chat bot=%q workflow=%q node=%q run=%q text=%q", botID, workflowID, node, runID, text)
 	}
 

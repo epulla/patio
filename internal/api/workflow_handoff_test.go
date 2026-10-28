@@ -192,7 +192,7 @@ func TestChatPromptWorkflowEdgesAndLastStep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "This is the last step: finish with your result.") {
+	if !strings.Contains(prompt, "This is the last step: do it and finish with your result.") {
 		t.Fatalf("last-step prompt=%s", prompt)
 	}
 	if _, err = s.db.Exec(`UPDATE workflow SET deleted_at='9'`); err != nil {

@@ -173,7 +173,10 @@ func fireWorkflowJoin(s *Server, run, workflowID, node string, edge workflowEdge
 		}
 		return "", err
 	}
-	if err = s.queueAgentMessage(id, agentMessageRequest{FromChatID: parentID, Text: prompt, ReportBack: edge.ReportBack, WorkflowEdge: edge.ID, TimeoutMinutes: edge.TimeoutMinutes}); err != nil {
+	if prompt, err = withStepNote(s.db, id, prompt); err == nil {
+		err = s.queueAgentMessage(id, agentMessageRequest{FromChatID: parentID, Text: prompt, ReportBack: edge.ReportBack, WorkflowEdge: edge.ID, TimeoutMinutes: edge.TimeoutMinutes})
+	}
+	if err != nil {
 		_, delErr := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
 		if madeDir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
@@ -673,7 +676,12 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	var outcome struct {
 		Status string `json:"status"`
 	}
-	body := agentMessageRequest{FromChatID: caller.ID, Text: in.Prompt, ReportBack: in.ReportBack, WorkflowEdge: in.WorkflowEdge, TimeoutMinutes: edge.TimeoutMinutes}
+	text, err := withStepNote(s.db, id, in.Prompt)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	body := agentMessageRequest{FromChatID: caller.ID, Text: text, ReportBack: in.ReportBack, WorkflowEdge: in.WorkflowEdge, TimeoutMinutes: edge.TimeoutMinutes}
 	raw, marshalErr := json.Marshal(body)
 	if marshalErr != nil {
 		errw(w, 500, marshalErr.Error())

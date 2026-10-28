@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -81,59 +82,74 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 		}
 		rows.Close()
 		prompt += bots.String()
-		// Chats outside a workflow, or whose workflow was deleted, get no workflow section.
-		var node, bname sql.NullString
-		var w workflow
-		var graph string
-		err = db.QueryRow(`SELECT c.workflow_node,u.name,wf.name,wf.graph FROM chat c JOIN workflow wf ON wf.id=c.workflow_id AND wf.deleted_at IS NULL LEFT JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, chatID).Scan(&node, &bname, &w.Name, &graph)
-		if err != nil && err != sql.ErrNoRows {
+		section, err := workflowStepNote(db, chatID)
+		if err != nil {
 			return "", err
 		}
-		if err == nil && node.Valid {
-			if err := json.Unmarshal([]byte(graph), &w.Graph); err != nil {
-				return "", err
-			}
-			workflowPrompt := fmt.Sprintf(` Workflow %q: you are the step run by %s.`, w.Name, bname.String)
-			n := 0
-			var edgeLines strings.Builder
-			for _, e := range w.Graph.Edges {
-				if e.From != node.String {
-					continue
-				}
-				n++
-				dest := ""
-				for _, step := range w.Graph.Nodes {
-					if step.ID == e.To {
-						if err := db.QueryRow(`SELECT name FROM "user" WHERE id=?`, step.BotID).Scan(&dest); err != nil {
-							return "", err
-						}
-						break
-					}
-				}
-				note := ""
-				if countWorkflowIncoming(w.Graph, e.To) >= 2 {
-					note = " (waits for all its inputs)"
-				}
-				instruction := e.Instruction
-				if instruction == "" {
-					instruction = "continue the task"
-				}
-				fmt.Fprintf(&edgeLines, "\n- workflow_edge %q → %s%s: %s", e.ID, dest, note, instruction)
-			}
-			if n > 0 {
-				workflowPrompt += " When your part is done, hand off with create_chat, passing workflow_edge (Patio picks the bot):"
-				workflowPrompt += edgeLines.String()
-			} else {
-				workflowPrompt += " This is the last step: finish with your result."
-			}
-			prompt += workflowPrompt
-		}
+		prompt += section
 	}
 	prompt += skillIndex(skills)
 	if chatID != "" {
 		prompt += " This chat's ID is " + chatID + "."
 	}
 	return prompt, nil
+}
+
+// workflowStepNote tells a workflow chat what its step is and how to hand off. It goes in
+// the system prompt and in each step's first message, where models follow it more reliably.
+// Chats outside a workflow, or whose workflow was deleted, get "".
+func workflowStepNote(db *sql.DB, chatID string) (string, error) {
+	var node, bname sql.NullString
+	var w workflow
+	var graph string
+	err := db.QueryRow(`SELECT c.workflow_node,u.name,wf.name,wf.graph FROM chat c JOIN workflow wf ON wf.id=c.workflow_id AND wf.deleted_at IS NULL LEFT JOIN "user" u ON u.id=c.bot_id WHERE c.id=?`, chatID).Scan(&node, &bname, &w.Name, &graph)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !node.Valid {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := json.Unmarshal([]byte(graph), &w.Graph); err != nil {
+		return "", err
+	}
+	note := fmt.Sprintf(` Workflow %q: you are the step run by %s.`, w.Name, bname.String)
+	var edgeLines strings.Builder
+	for _, e := range w.Graph.Edges {
+		if e.From != node.String {
+			continue
+		}
+		dest := ""
+		for _, step := range w.Graph.Nodes {
+			if step.ID == e.To {
+				if err := db.QueryRow(`SELECT name FROM "user" WHERE id=?`, step.BotID).Scan(&dest); err != nil {
+					return "", err
+				}
+				break
+			}
+		}
+		join := ""
+		if countWorkflowIncoming(w.Graph, e.To) >= 2 {
+			join = " (waits for all its inputs)"
+		}
+		instruction := e.Instruction
+		if instruction == "" {
+			instruction = "continue the task"
+		}
+		fmt.Fprintf(&edgeLines, "\n- workflow_edge %q → %s%s: %s", e.ID, dest, join, instruction)
+	}
+	if edgeLines.Len() == 0 {
+		return note + " This is the last step: do it and finish with your result.", nil
+	}
+	return note + fmt.Sprintf(" Do only your part; later steps belong to other bots. Before ending your turn, hand off by calling create_chat with chat_id %q, the workflow_edge below and a prompt for the next bot (Patio picks the bot):", chatID) + edgeLines.String(), nil
+}
+
+// withStepNote appends a workflow chat's step note to its first message.
+func withStepNote(db *sql.DB, chatID, text string) (string, error) {
+	note, err := workflowStepNote(db, chatID)
+	if err != nil || note == "" {
+		return text, err
+	}
+	return text + "\n\n---\n" + strings.TrimSpace(note), nil
 }
 
 // MartinPersonaEnabled remains for the local connector's legacy prompt builder.
