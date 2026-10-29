@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/epulla/patio/releases/latest"><img src="https://img.shields.io/github/v/release/epulla/patio?style=for-the-badge&label=Download&color=2ea44f" height="48" alt="Download Patio"></a><br>
-  <sub>macOS (Apple Silicon and Intel) · Windows x64 · Linux x64 · <a href="#1-install-patio">install steps</a> · <a href="https://github.com/epulla/patio/releases">all releases</a></sub>
+  <sub>macOS (Apple Silicon and Intel) · Windows x64 · Linux x64 · <code>brew install --cask epulla/tap/patio</code> · <a href="#1-install-patio">install steps</a> · <a href="https://github.com/epulla/patio/releases">all releases</a></sub>
 </p>
 
 Bring Claude Code, Codex, GitHub Copilot, opencode, or local AI into your workflow. Keep conversations alongside kanban boards, work with files, and delegate focused tasks between supported agents. Built with **Go, Wails, React, and SQLite**, with application data stored on your computer.
@@ -36,7 +36,17 @@ Bring Claude Code, Codex, GitHub Copilot, opencode, or local AI into your workfl
 
 ### 1. Install Patio
 
-Download the build for your computer from [Releases](https://github.com/epulla/patio/releases/latest).
+On macOS, install with [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask epulla/tap/patio
+```
+
+Update with `brew upgrade --cask patio`. Remove with `brew uninstall --cask patio`; add `--zap` to also delete your boards, chats and logs.
+
+The app is not notarized, so macOS blocks the first launch. Open **System Settings → Privacy & Security** and choose **Open Anyway** for Patio.
+
+Or download the build for your computer from [Releases](https://github.com/epulla/patio/releases/latest).
 
 | Platform | Download |
 | --- | --- |
