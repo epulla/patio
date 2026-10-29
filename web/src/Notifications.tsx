@@ -26,10 +26,20 @@ type Page = { notifications: Notification[]; unread: number; next_cursor: string
 export function useNotificationsBlocked() {
   const [blocked, setBlocked] = useState(false);
   useEffect(() => {
-    api
-      .get<{ blocked: boolean }>("/api/notifications/status")
-      .then((value) => setBlocked(value.blocked))
-      .catch(() => undefined);
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      api
+        .get<{ blocked: boolean }>("/api/notifications/status")
+        .then((value) => setBlocked(value.blocked))
+        .catch(() => undefined);
+    };
+    check();
+    addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, []);
   return blocked;
 }
