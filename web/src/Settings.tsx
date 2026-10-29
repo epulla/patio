@@ -31,7 +31,7 @@ const text = {
     general: "General",
     keyboardShortcuts: "Keyboard shortcuts",
     version: "Version",
-    checkUpdates: "Check for updates", upToDate: "You're up to date.", devBuild: "Development build; updates aren't checked.", updateAvailable: (v: string) => `${v} is available.`, download: "Download", whatsNew: "What's new",
+    checkUpdates: "Check for updates", upToDate: "You're up to date.", devBuild: "Development build; updates aren't checked.", updateAvailable: (v: string) => `Patio ${v} is available.`, download: "Download", whatsNew: "What's new",
     database: "Database",
     logs: "Logs",
     showIn: (manager: string) => `Show in ${manager}`,
@@ -119,7 +119,7 @@ const text = {
     general: "General",
     keyboardShortcuts: "Atajos de teclado",
     version: "Versión",
-    checkUpdates: "Buscar actualizaciones", upToDate: "Tienes la última versión.", devBuild: "Versión de desarrollo; no se buscan actualizaciones.", updateAvailable: (v: string) => `${v} está disponible.`, download: "Descargar", whatsNew: "Novedades",
+    checkUpdates: "Buscar actualizaciones", upToDate: "Tienes la última versión.", devBuild: "Versión de desarrollo; no se buscan actualizaciones.", updateAvailable: (v: string) => `Patio ${v} está disponible.`, download: "Descargar", whatsNew: "Novedades",
     database: "Base de datos",
     logs: "Registros",
     showIn: (manager: string) => `Mostrar en ${manager}`,
@@ -324,6 +324,7 @@ function General() {
 
   useEffect(() => {
     api.get<SettingsAbout>("/api/settings/about").then(setAbout).catch(setError);
+    api.get<UpdateInfo>("/api/update").then(setUpdate).catch(() => undefined);
   }, []);
 
   async function reveal(target: SettingsRevealTarget) {
@@ -359,6 +360,17 @@ function General() {
 
   return (
     <section className="stack">
+      {update && update !== "checking" && update.available && (
+        <p className="callout update-banner" role="status">
+          {t.updateAvailable(update.latest)}{" "}
+          <a href={update.download} target="_blank" rel="noreferrer" onClick={(event) => openUrl(event, update.download)}>
+            {t.download}
+          </a>{" · "}
+          <a href={update.url} target="_blank" rel="noreferrer" onClick={(event) => openUrl(event, update.url)}>
+            {t.whatsNew}
+          </a>
+        </p>
+      )}
       <h2>{t.general}</h2>
       <section className="panel">
         {about ? (
@@ -371,23 +383,9 @@ function General() {
                   {update === "checking" ? t.checking : t.checkUpdates}
                 </button>
               </span>
-              {update && update !== "checking" && (
+              {update && update !== "checking" && !update.available && (
                 <span className="muted" role="status">
-                  {update.available ? (
-                    <>
-                      {t.updateAvailable(update.latest)}{" "}
-                      <a href={update.download} target="_blank" rel="noreferrer" onClick={(event) => openUrl(event, update.download)}>
-                        {t.download}
-                      </a>{" · "}
-                      <a href={update.url} target="_blank" rel="noreferrer" onClick={(event) => openUrl(event, update.url)}>
-                        {t.whatsNew}
-                      </a>
-                    </>
-                  ) : about.version === "dev" ? (
-                    t.devBuild
-                  ) : (
-                    t.upToDate
-                  )}
+                  {about.version === "dev" ? t.devBuild : t.upToDate}
                 </span>
               )}
               <ErrorText error={updateError} />

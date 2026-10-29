@@ -5294,3 +5294,7 @@ button.notif-row:focus-visible,
   font-size: 12px;
   font-weight: 400;
 }
+.update-banner {
+  background: color-mix(in oklch, var(--info) 18%, var(--base-100));
+  border-color: color-mix(in oklch, var(--info) 60%, transparent);
+}

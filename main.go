@@ -302,7 +302,7 @@ func main() {
 				}()
 				go func() {
 					defer background.Done()
-					if err := apiServer.StartUpdateChecker(backgroundCtx, 24*time.Hour); err != nil {
+					if err := apiServer.StartUpdateChecker(backgroundCtx, 6*time.Hour); err != nil {
 						log.Printf("check for update: %v", err)
 					}
 				}()
