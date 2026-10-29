@@ -115,3 +115,22 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+      - uses: actions/checkout@v4
+        with:
+          repository: epulla/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: homebrew-tap
+      - name: Bump Homebrew cask
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARM="$(sha256sum ../dist/patio-darwin-arm64.zip | cut -d ' ' -f 1)"
+          INTEL="$(sha256sum ../dist/patio-darwin-amd64.zip | cut -d ' ' -f 1)"
+          sed -i -e "s/^  version \".*\"/  version \"$VERSION\"/" \
+            -e "s/^  sha256 arm:   \".*\",/  sha256 arm:   \"$ARM\",/" \
+            -e "s/^         intel: \".*\"/         intel: \"$INTEL\"/" Casks/patio.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "patio $VERSION"
+          git push
