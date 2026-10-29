@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type ChatTree, type FlowStatus } from "./api";
 import { ErrorText, navigate } from "./App";
 import { layout } from "./flowLayout";
@@ -52,12 +52,24 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
   const [tree, setTree] = useState<ChatTree>();
   const [error, setError] = useState<unknown>();
 
+  // React Flow resets a node's measurement whenever it gets a new object, hiding it until re-measured;
+  // keep the same tree (and so the same node objects) while polls return identical data.
+  const lastTree = useRef("");
+
   useEffect(() => {
     let cancelled = false;
+    lastTree.current = "";
     const load = () =>
       api
         .get<ChatTree>(`/api/chats/${id}/tree`)
-        .then((next) => !cancelled && (setTree(next), setError(undefined)))
+        .then((next) => {
+          if (cancelled) return;
+          setError(undefined);
+          const json = JSON.stringify(next);
+          if (json === lastTree.current) return;
+          lastTree.current = json;
+          setTree(next);
+        })
         .catch((reason) => !cancelled && setError(reason));
     load();
     const timer = window.setInterval(load, 2000);
@@ -67,16 +79,23 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
     };
   }, [id, refresh]);
 
-  const positions = tree && layout(tree.nodes.map((node) => node.chat_id), tree.edges);
-  const nodes: RunNode[] = (tree?.nodes ?? []).map((node) => ({ id: node.chat_id, type: "run", position: positions?.get(node.chat_id) ?? { x: 0, y: 0 }, data: node, selected: node.chat_id === id }));
-  const edges: Edge[] = (tree?.edges ?? []).map((edge) => ({
-    id: `${edge.from}-${edge.to}`,
-    source: edge.from,
-    target: edge.to,
-    ...flowEdgeDefaults,
-    animated: edge.status === "pending",
-    className: `flow-edge-${edge.status}`,
-  }));
+  const nodes = useMemo<RunNode[]>(() => {
+    if (!tree) return [];
+    const positions = layout(tree.nodes.map((node) => node.chat_id), tree.edges);
+    return tree.nodes.map((node) => ({ id: node.chat_id, type: "run", position: positions.get(node.chat_id) ?? { x: 0, y: 0 }, data: node, selected: node.chat_id === id }));
+  }, [tree, id]);
+  const edges = useMemo<Edge[]>(
+    () =>
+      (tree?.edges ?? []).map((edge) => ({
+        id: `${edge.from}-${edge.to}`,
+        source: edge.from,
+        target: edge.to,
+        ...flowEdgeDefaults,
+        animated: edge.status === "pending",
+        className: `flow-edge-${edge.status}`,
+      })),
+    [tree],
+  );
 
   return (
     <div className="stack">
@@ -102,7 +121,8 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
             nodesConnectable={false}
             onNodeClick={(_, node) => navigate(`/ai/chats/${node.id}`)}
             fitView
-            fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
+            minZoom={0.1}
+            fitViewOptions={{ padding: 0.3, minZoom: 0.1, maxZoom: 1 }}
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={20} />
