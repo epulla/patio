@@ -583,7 +583,7 @@ export default function App() {
             boardDrag.current.dropped = true;
           }}
         >
-          {navItem("/dashboard", t.dashboard, <Icon name="chart" />, path === "/dashboard")}
+          {navItem("/dashboard", t.dashboard, <Icon name="chart" />, path === "/dashboard", { "data-tour": "dashboard" })}
           {navItem("/", t.boards, <Icon name="boards" />, path === "/", { "data-tour": "boards" })}
           {navItem("/tickets", t.tickets, <Icon name="ticket" />, isTickets, { "data-tour": "tickets" })}
           {navItem("/calendar", t.calendar, <Icon name="calendar" />, isCalendar, { "data-tour": "calendar" })}
