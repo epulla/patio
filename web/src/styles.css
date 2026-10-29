@@ -5383,13 +5383,22 @@ button.notif-row:focus-visible,
 .dashboard-stat.alert strong {
   color: var(--error);
 }
+/* Undo the global button look so clickable cards match the other cards. */
 .dashboard-stat.clickable {
+  height: auto;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 16px 20px;
+  border-radius: var(--radius-box);
+  background: var(--base-100);
   color: inherit;
   font: inherit;
   text-align: left;
+  white-space: normal;
   cursor: pointer;
 }
 .dashboard-stat.clickable:hover {
+  background: var(--base-100);
   border-color: color-mix(in oklch, var(--primary) 50%, var(--border));
 }
 .dashboard-delta.up {
