@@ -1,0 +1,194 @@
+import { useEffect, useState } from "react";
+import { api, type CalendarResponse, type Ticket } from "./api";
+import { ErrorText, navigate } from "./App";
+import { locale, useText } from "./i18n";
+
+type DashboardData = {
+  days: { date: string; done: number; cancelled: number }[];
+  created: number;
+  done: number;
+  cancelled: number;
+  boards: { id: string; name: string; created: number; done: number; cancelled: number }[];
+  overdue: Ticket[];
+  due_soon: Ticket[];
+};
+
+const text = {
+  en: {
+    overview: "Overview", dashboard: "Dashboard", done: "Done", cancelled: "Cancelled", created: "Created", overdue: "Overdue", dueSoon: "Due in 7 days", today: "Today",
+    lastDays: (n: number) => `Last ${n} days`, perDay: "Done per day", byBoard: "By board", board: "Board", tickets: "Tickets due", upcoming: "Upcoming 7 days",
+    nothingDue: "Nothing overdue or due soon.", nothingUpcoming: "No events or scheduled runs.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} done, ${cancelled} cancelled`,
+    chart: (done: number, cancelled: number) => `${done} done and ${cancelled} cancelled in this range`, aiTask: "AI task", event: "Event", reminder: "Reminder", noActivity: "No activity in this range.",
+  },
+  es: {
+    overview: "Resumen", dashboard: "Panel", done: "Hechos", cancelled: "Cancelados", created: "Creados", overdue: "Vencidos", dueSoon: "Vencen en 7 días", today: "Hoy",
+    lastDays: (n: number) => `Últimos ${n} días`, perDay: "Hechos por día", byBoard: "Por tablero", board: "Tablero", tickets: "Tickets por vencer", upcoming: "Próximos 7 días",
+    nothingDue: "Nada vencido ni por vencer.", nothingUpcoming: "Sin eventos ni ejecuciones programadas.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} hechos, ${cancelled} cancelados`,
+    chart: (done: number, cancelled: number) => `${done} hechos y ${cancelled} cancelados en este periodo`, aiTask: "Tarea de IA", event: "Evento", reminder: "Recordatorio", noActivity: "Sin actividad en este periodo.",
+  },
+};
+
+const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+export default function Dashboard({ refresh }: { refresh: number }) {
+  const t = useText(text);
+  const days = 30;
+  const [data, setData] = useState<DashboardData>();
+  const [calendar, setCalendar] = useState<CalendarResponse>({ items: [], tickets: [], scheduled: [] });
+  const [error, setError] = useState<unknown>();
+  const now = new Date();
+  const today = dateKey(now);
+
+  useEffect(() => {
+    let active = true;
+    const week = new Date();
+    week.setDate(week.getDate() + 7);
+    Promise.all([
+      api.get<DashboardData>(`/api/dashboard?days=${days}`),
+      api.get<CalendarResponse>(`/api/calendar?from=${today}&to=${dateKey(week)}`),
+    ])
+      .then(([dashboard, upcoming]) => {
+        if (!active) return;
+        setData(dashboard);
+        setCalendar(upcoming);
+        setError(undefined);
+      })
+      .catch((reason) => active && setError(reason));
+    return () => {
+      active = false;
+    };
+  }, [refresh, today]);
+
+  const nextRuns = calendar.scheduled.filter((run, i, all) => new Date(run.at) >= now && all.findIndex((other) => other.task_id === run.task_id && new Date(other.at) >= now) === i);
+  const upcoming = [
+    ...calendar.items.map((item) => ({ key: item.id, at: item.starts_at, title: item.title, kind: item.kind as string, allDay: item.all_day, to: "/calendar" })),
+    ...nextRuns.map((run) => ({ key: run.task_id, at: run.at, title: run.title, kind: "scheduled", allDay: false, to: `/ai/scheduled/${run.task_id}` })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  const todayCount = upcoming.filter((item) => (item.allDay ? item.at.slice(0, 10) : dateKey(new Date(item.at))) <= today).length;
+  const max = Math.max(1, ...(data?.days ?? []).map((day) => day.done + day.cancelled));
+  const when = (at: string, allDay: boolean) =>
+    allDay ? new Date(`${at.slice(0, 10)}T00:00`).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short" }) : new Date(at).toLocaleString(locale(), { weekday: "short", hour: "numeric", minute: "2-digit" });
+
+  return (
+    <div className="stack dashboard-page">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">{t.overview}</p>
+          <h1>{t.dashboard}</h1>
+        </div>
+      </div>
+      <ErrorText error={error} />
+      {data && (
+        <>
+          <div className="dashboard-stats">
+            {(
+              [
+                [t.done, data.done, t.lastDays(days)],
+                [t.created, data.created, t.lastDays(days)],
+                [t.overdue, data.overdue.length, ""],
+                [t.dueSoon, data.due_soon.length, ""],
+                [t.today, todayCount, t.upcoming],
+              ] as const
+            ).map(([label, value, hint]) => (
+              <div className={`panel dashboard-stat ${label === t.overdue && value > 0 ? "alert" : ""}`} key={label}>
+                <span className="eyebrow">{label}</span>
+                <strong>{value}</strong>
+                {hint && <small>{hint}</small>}
+              </div>
+            ))}
+          </div>
+          <section className="panel">
+            <div className="dashboard-section-head">
+              <h2>{t.perDay}</h2>
+              <span className="dashboard-legend">
+                <span className="done">{t.done}</span>
+                <span className="cancelled">{t.cancelled}</span>
+              </span>
+            </div>
+            <div className="dashboard-chart" role="img" aria-label={t.chart(data.done, data.cancelled)}>
+              {data.days.map((day) => (
+                <div className="dashboard-bar" key={day.date} title={t.bar(day.date, day.done, day.cancelled)}>
+                  <span className="cancelled" style={{ height: `${(day.cancelled / max) * 100}%` }} />
+                  <span className="done" style={{ height: `${(day.done / max) * 100}%` }} />
+                </div>
+              ))}
+            </div>
+            <div className="dashboard-axis" aria-hidden="true">
+              <span>{data.days[0]?.date}</span>
+              <span>{data.days.at(-1)?.date}</span>
+            </div>
+          </section>
+          <section className="panel">
+            <h2>{t.byBoard}</h2>
+            {data.boards.length === 0 ? (
+              <p className="dashboard-empty">{t.noActivity}</p>
+            ) : (
+              <table className="dashboard-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t.board}</th>
+                    <th scope="col">{t.created}</th>
+                    <th scope="col">{t.done}</th>
+                    <th scope="col">{t.cancelled}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.boards.map((board) => (
+                    <tr key={board.id}>
+                      <th scope="row">
+                        <a href={`/boards/${board.id}`} onClick={(event) => (event.preventDefault(), navigate(`/boards/${board.id}`))}>
+                          {board.name}
+                        </a>
+                      </th>
+                      <td>{board.created}</td>
+                      <td>{board.done}</td>
+                      <td>{board.cancelled}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+          <div className="dashboard-lists">
+            <section className="panel">
+              <h2>{t.tickets}</h2>
+              {data.overdue.length + data.due_soon.length === 0 ? (
+                <p className="dashboard-empty">{t.nothingDue}</p>
+              ) : (
+                <ul className="dashboard-list">
+                  {[...data.overdue, ...data.due_soon].map((ticket) => (
+                    <li key={ticket.id}>
+                      <button className="ghost" onClick={() => navigate(`/tickets/${ticket.id}`)}>
+                        <span className="ticket-code">{ticket.code}</span>
+                        <span className="dashboard-item-title">{ticket.title}</span>
+                        <span className={ticket.due_date! < today ? "dashboard-due overdue" : "dashboard-due"}>{when(ticket.due_date!, true)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section className="panel">
+              <h2>{t.upcoming}</h2>
+              {upcoming.length === 0 ? (
+                <p className="dashboard-empty">{t.nothingUpcoming}</p>
+              ) : (
+                <ul className="dashboard-list">
+                  {upcoming.map((item) => (
+                    <li key={`${item.kind}-${item.key}`}>
+                      <button className="ghost" onClick={() => navigate(item.to)}>
+                        <span className={`calendar-chip ${item.kind}`}>{item.kind === "scheduled" ? t.aiTask : item.kind === "reminder" ? t.reminder : t.event}</span>
+                        <span className="dashboard-item-title">{item.title}</span>
+                        <span className="dashboard-due">{when(item.at, item.allDay)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
