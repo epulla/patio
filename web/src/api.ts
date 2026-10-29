@@ -46,6 +46,7 @@ export type Status = {
   type: "classic" | "temporary";
   board_id: string;
   hide_after_days: number;
+  counts_as: "" | "done" | "cancelled" | "none";
   tickets: Ticket[];
 };
 export type TicketType = {

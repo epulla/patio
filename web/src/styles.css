@@ -1313,6 +1313,9 @@ a:has(> .svg-icon) {
   flex: none;
   width: 140px;
 }
+.type-row > .picker + .days-field + .picker {
+  width: 170px;
+}
 .preview-title {
   margin: 8px 0 0;
   font-size: 13px;

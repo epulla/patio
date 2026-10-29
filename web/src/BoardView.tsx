@@ -37,6 +37,8 @@ const text = {
     order: "Order", columnOrder: "Column order", classic: "Classic", temporary: "Temporary", hideAfterDays: "Hide tickets after N days",
     days: "days", ticketTypes: "Ticket types", newType: "New type", color: "Color", addType: "Add type",
     deleteColumn: (name: string) => `Delete column "${name}"?`, deleteTicketType: (name: string) => `Delete ticket type "${name}"?`,
+    countsAsHelp: "Dashboard: Auto counts temporary columns as done (or cancelled when named like Cancelled), and ignores the rest.",
+    countsAs: (name: string) => `${name} counts on the dashboard as`, countsAuto: "Dashboard: auto", countsDone: "Counts as done", countsCancelled: "Counts as cancelled", countsNone: "Not counted",
     columnType: (name: string) => `${name} type`, columnDays: (name: string) => `${name} hide after days`,
     save: (name: string) => `Save ${name}`, delete: (name: string) => `Delete ${name}`,
     close: "Close", title: "Title", description: "Description", type: "Type", noType: "No type", dueDate: "Due date", createTicket: "Create ticket",
@@ -54,6 +56,8 @@ const text = {
     order: "Orden", columnOrder: "Orden de columnas", classic: "Clásica", temporary: "Temporal", hideAfterDays: "Ocultar tickets después de N días",
     days: "días", ticketTypes: "Tipos de ticket", newType: "Nuevo tipo", color: "Color", addType: "Agregar tipo",
     deleteColumn: (name: string) => `¿Eliminar columna «${name}»?`, deleteTicketType: (name: string) => `¿Eliminar tipo de ticket «${name}»?`,
+    countsAsHelp: "Panel: Automático cuenta las columnas temporales como hechas (o canceladas si se llaman como Cancelado) e ignora el resto.",
+    countsAs: (name: string) => `${name} cuenta en el panel como`, countsAuto: "Panel: automático", countsDone: "Cuenta como hecho", countsCancelled: "Cuenta como cancelado", countsNone: "No cuenta",
     columnType: (name: string) => `Tipo de ${name}`, columnDays: (name: string) => `Ocultar ${name} después de (días)`,
     save: (name: string) => `Guardar ${name}`, delete: (name: string) => `Eliminar ${name}`,
     close: "Cerrar", title: "Título", description: "Descripción", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", createTicket: "Crear ticket",
@@ -596,7 +600,7 @@ function StatusManager({
     <div className="settings-section">
       <h2>{t.columns}</h2>
       <small>
-        {t.temporaryHelp}
+        {t.temporaryHelp} {t.countsAsHelp}
       </small>
       {statuses.map((status) => (
         <StatusRow
@@ -651,12 +655,14 @@ function StatusRow({
   const [hideAfterDays, setHideAfterDays] = useState(
     String(status.hide_after_days),
   );
+  const [countsAs, setCountsAs] = useState(status.counts_as ?? "");
   async function save() {
     try {
       await api.put(`/api/statuses/${status.id}`, {
         name,
         type,
         hide_after_days: Number(hideAfterDays),
+        counts_as: countsAs,
       });
       onReload();
     } catch (error) {
@@ -693,6 +699,17 @@ function StatusRow({
         value={hideAfterDays}
         onChange={setHideAfterDays}
         hidden={type !== "temporary"}
+      />
+      <Picker
+        label={t.countsAs(status.name)}
+        empty={t.countsAuto}
+        options={[
+          { id: "done", name: t.countsDone },
+          { id: "cancelled", name: t.countsCancelled },
+          { id: "none", name: t.countsNone },
+        ]}
+        value={countsAs}
+        onChange={(value) => setCountsAs(value as Status["counts_as"])}
       />
       <IconButton icon="check" label={t.save(status.name)} onClick={save} />
       <IconButton
