@@ -1,9 +1,10 @@
-import { useMemo, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { navigate } from "./App";
 import { iconSvg } from "./icons";
 import { useText } from "./i18n";
+import LinkPreview, { previewRoute } from "./LinkPreview";
 
 const appRoute =
   /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
@@ -44,6 +45,36 @@ export default function Markdown({ text, onFile }: { text: string; onFile?: (pat
         .replaceAll("</pre>", "</pre></div>"),
     [text, t.copy],
   );
+  const [preview, setPreview] = useState<{ href: string; anchor: DOMRect } | null>(null);
+  const timer = useRef<number>(undefined);
+  const schedule = (update: () => void, delay: number) => {
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(update, delay);
+  };
+  const hidePreview = () => schedule(() => setPreview(null), 200);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!preview) return;
+    const close = () => setPreview(null);
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && close();
+    addEventListener("keydown", onKey);
+    addEventListener("scroll", close, true);
+    return () => {
+      removeEventListener("keydown", onKey);
+      removeEventListener("scroll", close, true);
+    };
+  }, [preview]);
+  // mouseover/mouseout also fire when moving between a link's children; relatedTarget filters those out.
+  function onMouseOver(event: MouseEvent<HTMLDivElement>) {
+    const link = (event.target as HTMLElement).closest("a");
+    if (!link || link.contains(event.relatedTarget as Node | null)) return;
+    const href = link.getAttribute("href")?.split(/[?#]/, 1)[0] ?? "";
+    if (previewRoute.test(href)) schedule(() => setPreview({ href, anchor: link.getBoundingClientRect() }), 400);
+  }
+  function onMouseOut(event: MouseEvent<HTMLDivElement>) {
+    const link = (event.target as HTMLElement).closest("a");
+    if (link && !link.contains(event.relatedTarget as Node | null)) hidePreview();
+  }
   function onClick(event: MouseEvent<HTMLDivElement>) {
     const copy = (event.target as HTMLElement).closest<HTMLButtonElement>(".code-copy");
     if (copy) {
@@ -89,5 +120,12 @@ export default function Markdown({ text, onFile }: { text: string; onFile?: (pat
       }
     }
   }
-  return <div className="markdown" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <>
+      <div className="markdown" onClick={onClick} onMouseOver={onMouseOver} onMouseOut={onMouseOut} dangerouslySetInnerHTML={{ __html: html }} />
+      {preview && (
+        <LinkPreview key={preview.href} {...preview} onEnter={() => clearTimeout(timer.current)} onLeave={hidePreview} />
+      )}
+    </>
+  );
 }
