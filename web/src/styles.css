@@ -2175,10 +2175,15 @@ main:has(> .chats) {
 [role="menuitemradio"][data-dragging] {
   opacity: 0.45;
 }
+/* An outline paints above the row's own button, so the ring stays whole even on the active group. */
 .group-row.drop-into {
   border-radius: var(--radius-field);
-  box-shadow: inset 0 0 0 2px var(--pin, var(--primary));
+  outline: 2px solid var(--pin, var(--primary));
+  outline-offset: -2px;
   background: var(--base-200);
+}
+.group-row.drop-into .chat-link {
+  background: transparent;
 }
 .chat-row .chat-link {
   flex: 1;
