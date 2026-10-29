@@ -249,6 +249,7 @@ export function setGroupColor(id: string, color: PinColor) {
 }
 
 export const groupDragType = "application/x-pin-group";
+export const chatDragType = "application/x-chat";
 
 export function setGroupOrder(ids: string[]) {
   update((store) => ({ ...store, groups: ids.map((id) => store.groups.find((group) => group.id === id)).filter((group) => !!group) }));

@@ -39,7 +39,7 @@ import SplitButton from "./SplitButton";
 import Switch from "./Switch";
 import { formatBytes } from "./Settings";
 import { ConnectorRequired } from "./Connectors";
-import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
+import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, chatDragType, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { mentionsBot, useMentions } from "./mentions";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
@@ -752,8 +752,8 @@ export default function Chats({
                   reorder.start(group.id);
                 }}
                 onDragOver={(event) => {
-                  // A pinned tab dropped on a group moves the chat there; a group row reorders.
-                  if (event.dataTransfer.types.includes(pinTabType)) {
+                  // A pinned tab or chat row dropped on a group pins the chat there; a group row reorders.
+                  if (event.dataTransfer.types.includes(pinTabType) || event.dataTransfer.types.includes(chatDragType)) {
                     event.preventDefault();
                     return setDropInto(group.id);
                   }
@@ -767,7 +767,7 @@ export default function Chats({
                   setDropInto(undefined);
                 }}
                 onDrop={(event) => {
-                  const chatID = event.dataTransfer.getData(pinTabType);
+                  const chatID = event.dataTransfer.getData(pinTabType) || event.dataTransfer.getData(chatDragType);
                   if (chatID) {
                     event.preventDefault();
                     moveChat(chatID, group.id, group.name);
@@ -859,7 +859,17 @@ export default function Chats({
             const pinned = pinnedIds.has(chat.id);
             const state = status[chat.id];
             return (
-              <div key={chat.id} className="chat-row" style={chatPinStyle(chat.id)}>
+              <div
+                key={chat.id}
+                className="chat-row"
+                style={chatPinStyle(chat.id)}
+                draggable={showGroups}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(chatDragType, chat.id);
+                  event.dataTransfer.effectAllowed = "move";
+                  dragGhost(event, chat.title);
+                }}
+              >
                 <button
                   className="chat-link"
                   aria-current={!showGroup && chat.id === id ? "page" : undefined}
