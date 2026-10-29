@@ -5378,6 +5378,21 @@ button.notif-row:focus-visible,
 .dashboard-stat.alert strong {
   color: var(--error);
 }
+.dashboard-stat.clickable {
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dashboard-stat.clickable:hover {
+  border-color: color-mix(in oklch, var(--primary) 50%, var(--border));
+}
+.dashboard-delta.up {
+  color: var(--success, oklch(70% 0.15 150));
+}
+.dashboard-delta.down {
+  color: var(--error);
+}
 .dashboard-section-head {
   display: flex;
   justify-content: space-between;
@@ -5404,11 +5419,39 @@ button.notif-row:focus-visible,
   background: color-mix(in oklch, var(--content) 28%, transparent);
 }
 .dashboard-chart {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 2px;
   height: 160px;
+  margin-top: 24px;
   border-bottom: 1px solid var(--border);
+}
+.dashboard-gridline {
+  position: absolute;
+  inset-inline: 0;
+  border-top: 1px dashed color-mix(in oklch, var(--border) 70%, transparent);
+  pointer-events: none;
+}
+.dashboard-gridline span {
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+.dashboard-tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  z-index: 10;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--neutral);
+  color: var(--neutral-content);
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  pointer-events: none;
 }
 .dashboard-bar {
   flex: 1;
@@ -5427,7 +5470,7 @@ button.notif-row:focus-visible,
 }
 .dashboard-axis {
   display: flex;
-  justify-content: space-between;
+  gap: 2px;
   margin-top: 6px;
   font: 11px var(--mono);
   color: var(--muted);
@@ -5446,6 +5489,13 @@ button.notif-row:focus-visible,
 .dashboard-table th:first-child {
   text-align: left;
   font-weight: 500;
+}
+.dashboard-table th:first-child a {
+  color: inherit;
+  text-decoration: none;
+}
+.dashboard-table th:first-child a:hover {
+  text-decoration: underline;
 }
 .dashboard-table thead th {
   font-size: 12px;
@@ -5496,4 +5546,14 @@ button.notif-row:focus-visible,
 .dashboard-empty {
   margin: 0;
   color: var(--muted);
+}
+.dashboard-axis span {
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+}
+.dashboard-axis span:last-child {
+  display: flex;
+  justify-content: flex-end;
 }

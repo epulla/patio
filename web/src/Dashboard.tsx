@@ -12,22 +12,26 @@ type DashboardData = {
   boards: { id: string; name: string; created: number; done: number; cancelled: number }[];
   overdue: Ticket[];
   due_soon: Ticket[];
+  previous?: { done: number; created: number };
 };
 
 const text = {
   en: {
-    overview: "Overview", dashboard: "Dashboard", done: "Done", cancelled: "Cancelled", created: "Created", overdue: "Overdue", dueSoon: "Due in 7 days", today: "Today",
+    overview: "Overview", dashboard: "Dashboard", done: "Done", cancelled: "Cancelled", created: "Created", overdue: "Overdue", dueSoon: "Due in 7 days", today: "Events today", openTickets: "Open tickets", vsPrevious: (pct: number) => `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs previous`, donePct: "Done %",
     lastDays: (n: number) => `Last ${n} days`, perDay: "Done per day", byBoard: "By board", board: "Board", tickets: "Tickets due", upcoming: "Upcoming 7 days",
     nothingDue: "Nothing overdue or due soon.", nothingUpcoming: "No events or scheduled runs.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} done, ${cancelled} cancelled`,
     chart: (done: number, cancelled: number) => `${done} done and ${cancelled} cancelled in this range`, range: "Range", allBoards: "All boards", aiTask: "AI task", event: "Event", reminder: "Reminder", noActivity: "No activity in this range.",
   },
   es: {
-    overview: "Resumen", dashboard: "Panel", done: "Hechos", cancelled: "Cancelados", created: "Creados", overdue: "Vencidos", dueSoon: "Vencen en 7 días", today: "Hoy",
+    overview: "Resumen", dashboard: "Panel", done: "Hechos", cancelled: "Cancelados", created: "Creados", overdue: "Vencidos", dueSoon: "Vencen en 7 días", today: "Eventos hoy", openTickets: "Tickets abiertos", vsPrevious: (pct: number) => `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs. periodo anterior`, donePct: "% hechos",
     lastDays: (n: number) => `Últimos ${n} días`, perDay: "Hechos por día", byBoard: "Por tablero", board: "Tablero", tickets: "Tickets por vencer", upcoming: "Próximos 7 días",
     nothingDue: "Nada vencido ni por vencer.", nothingUpcoming: "Sin eventos ni ejecuciones programadas.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} hechos, ${cancelled} cancelados`,
     chart: (done: number, cancelled: number) => `${done} hechos y ${cancelled} cancelados en este periodo`, range: "Periodo", allBoards: "Todos los tableros", aiTask: "Tarea de IA", event: "Evento", reminder: "Recordatorio", noActivity: "Sin actividad en este periodo.",
   },
 };
+
+const shortDate = (date: string) => new Date(`${date}T00:00`).toLocaleDateString(locale(), { month: "short", day: "numeric" });
+const change = (current: number, previous?: number) => (previous ? Math.round(((current - previous) / previous) * 100) : undefined);
 
 const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
@@ -39,6 +43,7 @@ export default function Dashboard({ refresh }: { refresh: number }) {
   const [data, setData] = useState<DashboardData>();
   const [calendar, setCalendar] = useState<CalendarResponse>({ items: [], tickets: [], scheduled: [] });
   const [error, setError] = useState<unknown>();
+  const [hover, setHover] = useState<number>();
   const now = new Date();
   const today = dateKey(now);
 
@@ -74,6 +79,10 @@ export default function Dashboard({ refresh }: { refresh: number }) {
   ].sort((a, b) => a.at.localeCompare(b.at));
   const todayCount = upcoming.filter((item) => (item.allDay ? item.at.slice(0, 10) : dateKey(new Date(item.at))) <= today).length;
   const max = Math.max(1, ...(data?.days ?? []).map((day) => day.done + day.cancelled));
+  const tickEvery = days <= 7 ? 1 : days <= 30 ? 7 : 14;
+  const gridlines = max > 1 ? [max, Math.round(max / 2)] : [max];
+  const hovered = hover === undefined ? undefined : data?.days[hover];
+  const toTickets = () => document.getElementById("dashboard-tickets")?.scrollIntoView({ behavior: "smooth", block: "start" });
   const when = (at: string, allDay: boolean) =>
     allDay ? new Date(`${at.slice(0, 10)}T00:00`).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short" }) : new Date(at).toLocaleString(locale(), { weekday: "short", hour: "numeric", minute: "2-digit" });
 
@@ -102,21 +111,34 @@ export default function Dashboard({ refresh }: { refresh: number }) {
       {data && (
         <>
           <div className="dashboard-stats">
-            {(
-              [
-                [t.done, data.done, t.lastDays(days)],
-                [t.created, data.created, t.lastDays(days)],
-                [t.overdue, data.overdue.length, ""],
-                [t.dueSoon, data.due_soon.length, ""],
-                [t.today, todayCount, t.upcoming],
-              ] as const
-            ).map(([label, value, hint]) => (
-              <div className={`panel dashboard-stat ${label === t.overdue && value > 0 ? "alert" : ""}`} key={label}>
-                <span className="eyebrow">{label}</span>
-                <strong>{value}</strong>
-                {hint && <small>{hint}</small>}
-              </div>
-            ))}
+            {[
+              { label: t.done, value: data.done, hint: t.lastDays(days), delta: change(data.done, data.previous?.done) },
+              { label: t.created, value: data.created, hint: t.lastDays(days), delta: change(data.created, data.previous?.created) },
+              { label: t.overdue, value: data.overdue.length, hint: t.openTickets, onClick: toTickets },
+              { label: t.dueSoon, value: data.due_soon.length, hint: t.openTickets, onClick: toTickets },
+              { label: t.today, value: todayCount, hint: t.upcoming },
+            ].map(({ label, value, hint, delta, onClick }) => {
+              const body = (
+                <>
+                  <span className="eyebrow">{label}</span>
+                  <strong>{value}</strong>
+                  <small>
+                    {hint}
+                    {delta !== undefined && <span className={`dashboard-delta ${delta >= 0 ? "up" : "down"}`}> · {t.vsPrevious(delta)}</span>}
+                  </small>
+                </>
+              );
+              const className = `panel dashboard-stat ${label === t.overdue && value > 0 ? "alert" : ""}`;
+              return onClick ? (
+                <button type="button" className={`${className} clickable`} key={label} onClick={onClick}>
+                  {body}
+                </button>
+              ) : (
+                <div className={className} key={label}>
+                  {body}
+                </div>
+              );
+            })}
           </div>
           <section className="panel">
             <div className="dashboard-section-head">
@@ -126,17 +148,28 @@ export default function Dashboard({ refresh }: { refresh: number }) {
                 <span className="cancelled">{t.cancelled}</span>
               </span>
             </div>
-            <div className="dashboard-chart" role="img" aria-label={t.chart(data.done, data.cancelled)}>
-              {data.days.map((day) => (
-                <div className="dashboard-bar" key={day.date} title={t.bar(day.date, day.done, day.cancelled)}>
+            <div className="dashboard-chart" role="img" aria-label={t.chart(data.done, data.cancelled)} onMouseLeave={() => setHover(undefined)}>
+              {gridlines.map((value) => (
+                <span className="dashboard-gridline" key={value} style={{ bottom: `${(value / max) * 100}%` }} aria-hidden="true">
+                  <span>{value}</span>
+                </span>
+              ))}
+              {data.days.map((day, i) => (
+                <div className="dashboard-bar" key={day.date} onMouseEnter={() => setHover(i)}>
                   <span className="cancelled" style={{ height: `${(day.cancelled / max) * 100}%` }} />
                   <span className="done" style={{ height: `${(day.done / max) * 100}%` }} />
                 </div>
               ))}
+              {hovered && (
+                <div className="dashboard-tooltip" style={{ left: `${((hover! + 0.5) / data.days.length) * 100}%` }} aria-hidden="true">
+                  {t.bar(shortDate(hovered.date), hovered.done, hovered.cancelled)}
+                </div>
+              )}
             </div>
             <div className="dashboard-axis" aria-hidden="true">
-              <span>{data.days[0]?.date}</span>
-              <span>{data.days.at(-1)?.date}</span>
+              {data.days.map((day, i) => (
+                <span key={day.date}>{(data.days.length - 1 - i) % tickEvery === 0 ? shortDate(day.date) : ""}</span>
+              ))}
             </div>
           </section>
           <section className="panel">
@@ -151,10 +184,11 @@ export default function Dashboard({ refresh }: { refresh: number }) {
                     <th scope="col">{t.created}</th>
                     <th scope="col">{t.done}</th>
                     <th scope="col">{t.cancelled}</th>
+                    <th scope="col">{t.donePct}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.boards.map((board) => (
+                  {[...data.boards].sort((a, b) => b.done - a.done).map((board) => (
                     <tr key={board.id}>
                       <th scope="row">
                         <a href={`/boards/${board.id}`} onClick={(event) => (event.preventDefault(), navigate(`/boards/${board.id}`))}>
@@ -164,6 +198,7 @@ export default function Dashboard({ refresh }: { refresh: number }) {
                       <td>{board.created}</td>
                       <td>{board.done}</td>
                       <td>{board.cancelled}</td>
+                      <td>{board.created ? `${Math.round((board.done / board.created) * 100)}%` : "–"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -171,7 +206,7 @@ export default function Dashboard({ refresh }: { refresh: number }) {
             )}
           </section>
           <div className="dashboard-lists">
-            <section className="panel">
+            <section className="panel" id="dashboard-tickets">
               <h2>{t.tickets}</h2>
               {data.overdue.length + data.due_soon.length === 0 ? (
                 <p className="dashboard-empty">{t.nothingDue}</p>
