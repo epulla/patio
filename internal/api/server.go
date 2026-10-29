@@ -32,6 +32,7 @@ type Server struct {
 	revealFile      func(string) error
 	openOAuthURL    func(string) error
 	notify          func(string, string, string) error
+	notesBlocked    func() bool
 	oauthMu         sync.Mutex
 	oauthLogins     map[string]*mcpOAuthLogin
 	handler         http.Handler
@@ -52,6 +53,8 @@ type Options struct {
 	LogPath string
 	Emit    func(string, any)
 	Notify  func(title, body, link string) error
+	// NotificationsBlocked reports whether the OS blocks desktop notifications; nil means never.
+	NotificationsBlocked func() bool
 
 	processFactory  chatProcessFactory
 	commandBuilder  chatCommandBuilder
@@ -104,7 +107,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
+	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -119,6 +122,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("GET /api/config", s.config)
 	m.HandleFunc("GET /api/notifications", s.listNotifications)
 	m.HandleFunc("POST /api/notifications", s.createNotification)
+	m.HandleFunc("GET /api/notifications/status", s.notificationsStatus)
 	m.HandleFunc("GET /api/history", s.listItemHistory)
 	m.HandleFunc("POST /api/history/{id}/restore", s.restoreItemHistory)
 	m.HandleFunc("POST /api/notifications/{id}/read", s.readNotification)

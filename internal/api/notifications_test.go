@@ -189,3 +189,28 @@ func TestNotificationPagingAndUnreadFilter(t *testing.T) {
 		t.Fatalf("invalid cursor status=%d, want 400", invalid.Code)
 	}
 }
+
+func TestNotificationsStatus(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "status.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	for _, test := range []struct {
+		name    string
+		blocked func() bool
+		want    bool
+	}{
+		{name: "no check"},
+		{name: "allowed", blocked: func() bool { return false }},
+		{name: "blocked", blocked: func() bool { return true }, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s := New(database, "local", false, "dev", t.TempDir(), Options{NotificationsBlocked: test.blocked})
+			var got struct{ Blocked bool }
+			if code := requestJSON(t, s, http.MethodGet, "/api/notifications/status", nil, &got); code != http.StatusOK || got.Blocked != test.want {
+				t.Fatalf("status=%d blocked=%v, want 200 %v", code, got.Blocked, test.want)
+			}
+		})
+	}
+}
