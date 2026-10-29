@@ -7,7 +7,7 @@ import (
 )
 
 func TestDashboardCountsDoneCancelledAndDueTickets(t *testing.T) {
-	_, handler := newAPI(t)
+	database, handler := newAPI(t)
 	var board testBoard
 	statuses := []any{"To Do", map[string]any{"name": "Done", "type": "temporary"}, map[string]any{"name": "Cancelled", "type": "temporary"}}
 	if code := requestJSON(t, handler, http.MethodPost, "/api/boards", map[string]any{"name": "Dash", "short_name": "DASH", "statuses": statuses}, &board); code != http.StatusCreated {
@@ -52,5 +52,43 @@ func TestDashboardCountsDoneCancelledAndDueTickets(t *testing.T) {
 	}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/dashboard?days=0", nil, nil); code != http.StatusBadRequest {
 		t.Fatalf("bad days = %d", code)
+	}
+	previousDate := time.Date(today.Year(), today.Month(), today.Day()-10, 12, 0, 0, 0, time.Local).UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, err := database.Exec(`UPDATE ticket SET created_at=? WHERE id=?`, previousDate, done.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE ticket_status_transition SET moved_at=? WHERE ticket_id=? AND to_status_id=?`, previousDate, done.ID, ids[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	var previous struct {
+		Done    int `json:"done"`
+		Created int `json:"created"`
+	}
+	var response struct {
+		Previous struct {
+			Done    int `json:"done"`
+			Created int `json:"created"`
+		} `json:"previous"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/dashboard?days=7&board_id="+board.ID, nil, &response); code != http.StatusOK {
+		t.Fatalf("dashboard = %d", code)
+	}
+	previous = response.Previous
+	if previous.Done != 1 || previous.Created != 1 {
+		t.Fatalf("previous counts = %#v", previous)
+	}
+}
+
+func TestStatusCountsAsClassification(t *testing.T) {
+	if got := statusCountsAs("classic", "Doing", `{"counts_as":"done"}`); got != "done" {
+		t.Fatalf("classic override = %q", got)
+	}
+	if got := statusCountsAs("temporary", "Done", `{"counts_as":"none"}`); got != "none" {
+		t.Fatalf("temporary override = %q", got)
+	}
+	for _, name := range []string{"Cancelado", "Descartado"} {
+		if got := statusCountsAs("temporary", name, `{}`); got != "cancelled" {
+			t.Fatalf("%s classification = %q", name, got)
+		}
 	}
 }

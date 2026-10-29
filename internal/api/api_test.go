@@ -28,7 +28,37 @@ type testBoard struct {
 type testStatus struct {
 	ID            string `json:"id"`
 	HideAfterDays int    `json:"hide_after_days"`
+	CountsAs      string `json:"counts_as"`
 }
+
+func TestStatusCountsAsUpdate(t *testing.T) {
+	database, handler := newAPI(t)
+	b := createBoard(t, handler, "COUNT", []string{"Todo"})
+	var st testStatus
+	if code := requestJSON(t, handler, http.MethodPost, "/api/boards/"+b.ID+"/statuses", map[string]any{"name": "Done", "type": "temporary"}, &st); code != http.StatusCreated {
+		t.Fatalf("create status = %d", code)
+	}
+	body := map[string]any{"name": "Done", "type": "temporary", "counts_as": "invalid"}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/statuses/"+st.ID, body, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid counts_as = %d", code)
+	}
+	body["counts_as"] = "done"
+	if code := requestJSON(t, handler, http.MethodPut, "/api/statuses/"+st.ID, body, &st); code != http.StatusOK || st.CountsAs != "done" {
+		t.Fatalf("update status = %d, %#v", code, st)
+	}
+	var raw string
+	if err := database.QueryRow(`SELECT additional_fields FROM status WHERE id=?`, st.ID).Scan(&raw); err != nil || !strings.Contains(raw, `"counts_as":"done"`) {
+		t.Fatalf("additional_fields = %s, err=%v", raw, err)
+	}
+	body["counts_as"] = ""
+	if code := requestJSON(t, handler, http.MethodPut, "/api/statuses/"+st.ID, body, &st); code != http.StatusOK || st.CountsAs != "" {
+		t.Fatalf("clear counts_as = %d, %#v", code, st)
+	}
+	if err := database.QueryRow(`SELECT additional_fields FROM status WHERE id=?`, st.ID).Scan(&raw); err != nil || strings.Contains(raw, `"counts_as"`) {
+		t.Fatalf("cleared additional_fields = %s, err=%v", raw, err)
+	}
+}
+
 type testTicket struct {
 	ID         string  `json:"id"`
 	Code       string  `json:"code"`

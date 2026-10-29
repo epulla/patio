@@ -38,6 +38,7 @@ type transferTicket struct {
 type transferStatus struct {
 	status
 	HideAfterDays *int     `json:"hide_after_days,omitempty"`
+	CountsAs      string   `json:"counts_as,omitempty"`
 	TicketIDs     []string `json:"ticket_ids"`
 }
 type transferType = ticketType
@@ -152,6 +153,7 @@ func (s *Server) backup(id string) (boardBackup, error) {
 		x.status = st
 		days := st.HideAfterDays
 		x.HideAfterDays = &days
+		x.CountsAs = st.CountsAs
 		var q string
 		if e = s.db.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, sid).Scan(&q); e != nil {
 			return b, e
@@ -665,6 +667,11 @@ func (s *Server) importBoard(w http.ResponseWriter, r *http.Request) {
 			sm[x.ID] = id
 			so = append(so, id)
 			additional, e := setStatusHideAfterDays(map[string]json.RawMessage{}, *x.HideAfterDays)
+			if e == nil {
+				fields := map[string]json.RawMessage{}
+				_ = json.Unmarshal([]byte(additional), &fields)
+				additional, e = setStatusCountsAs(fields, x.CountsAs)
+			}
 			if e != nil {
 				return e
 			}

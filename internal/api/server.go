@@ -273,6 +273,7 @@ type status struct {
 	Type          string `json:"type"`
 	BoardID       string `json:"board_id"`
 	HideAfterDays int    `json:"hide_after_days"`
+	CountsAs      string `json:"counts_as"`
 }
 
 func statusFields(raw string) (map[string]json.RawMessage, int, error) {
@@ -300,14 +301,31 @@ func setStatusHideAfterDays(fields map[string]json.RawMessage, days int) (string
 	return string(encoded), err
 }
 
+func setStatusCountsAs(fields map[string]json.RawMessage, value string) (string, error) {
+	if value == "" {
+		delete(fields, "counts_as")
+	} else {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return "", err
+		}
+		fields["counts_as"] = encoded
+	}
+	encoded, err := json.Marshal(fields)
+	return string(encoded), err
+}
+
 func scanStatus(row interface{ Scan(...any) error }) (status, error) {
 	var st status
 	var raw string
 	if err := row.Scan(&st.ID, &st.Name, &st.Type, &st.BoardID, &raw); err != nil {
 		return st, err
 	}
-	_, days, err := statusFields(raw)
+	fields, days, err := statusFields(raw)
 	st.HideAfterDays = days
+	if err == nil && fields["counts_as"] != nil {
+		err = json.Unmarshal(fields["counts_as"], &st.CountsAs)
+	}
 	return st, err
 }
 

@@ -45,11 +45,13 @@ type createBoardStatus struct {
 	Name          string  `json:"name" jsonschema:"Column name"`
 	Type          *string `json:"type,omitempty" jsonschema:"Optional column type: classic or temporary. If omitted, hide_after_days selects temporary; otherwise classic."`
 	HideAfterDays *int    `json:"hide_after_days,omitempty" jsonschema:"Days before tickets auto-hide; when type is omitted, setting this makes column temporary. Temporary defaults to 1 day."`
+	CountsAs      *string `json:"counts_as,omitempty" jsonschema:"Dashboard counting: done, cancelled, none, or empty for auto"`
 }
 type createBoardStatusBody struct {
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	HideAfterDays *int   `json:"hide_after_days,omitempty"`
+	Name          string  `json:"name"`
+	Type          string  `json:"type"`
+	HideAfterDays *int    `json:"hide_after_days,omitempty"`
+	CountsAs      *string `json:"counts_as,omitempty" jsonschema:"Dashboard counting: done, cancelled, none, or empty for auto"`
 }
 type createBoardBody struct {
 	Name      string                  `json:"name"`
@@ -63,11 +65,12 @@ type boardUpdateArgs struct {
 	Template  string `json:"template,omitempty"`
 }
 type columnArgs struct {
-	ID            string `json:"id,omitempty"`
-	BoardID       string `json:"board_id,omitempty"`
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	HideAfterDays *int   `json:"hide_after_days,omitempty"`
+	ID            string  `json:"id,omitempty"`
+	BoardID       string  `json:"board_id,omitempty"`
+	Name          string  `json:"name"`
+	Type          string  `json:"type"`
+	HideAfterDays *int    `json:"hide_after_days,omitempty"`
+	CountsAs      *string `json:"counts_as,omitempty" jsonschema:"Dashboard counting: done, cancelled, none, or empty for auto"`
 }
 type reorderColumnsArgs struct {
 	BoardID   string   `json:"board_id"`
@@ -609,7 +612,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 				} else if status.HideAfterDays != nil {
 					typeName = "temporary"
 				}
-				body.Statuses[i] = createBoardStatusBody{status.Name, typeName, status.HideAfterDays}
+				body.Statuses[i] = createBoardStatusBody{status.Name, typeName, status.HideAfterDays, status.CountsAs}
 			}
 		}
 		return request{http.MethodPost, "/api/boards", body}
@@ -618,10 +621,10 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		return request{http.MethodPut, "/api/boards/" + url.PathEscape(a.BoardID), map[string]any{"name": a.Name, "short_name": a.ShortName, "template": a.Template}}
 	})
 	addGeneric(s, "create_column", "Create a board column; type is classic or temporary", h, func(a columnArgs) request {
-		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/statuses", map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays}}
+		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/statuses", map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays, "counts_as": a.CountsAs}}
 	})
 	addGeneric(s, "update_column", "Update column name, type, and optional hide_after_days", h, func(a columnArgs) request {
-		return request{http.MethodPut, "/api/statuses/" + url.PathEscape(a.ID), map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays}}
+		return request{http.MethodPut, "/api/statuses/" + url.PathEscape(a.ID), map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays, "counts_as": a.CountsAs}}
 	})
 	addGeneric(s, "reorder_columns", "Set board column order", h, func(a reorderColumnsArgs) request {
 		return request{http.MethodPut, "/api/boards/" + url.PathEscape(a.BoardID) + "/status-order", map[string]any{"status_ids": a.StatusIDs}}

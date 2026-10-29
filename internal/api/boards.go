@@ -436,11 +436,12 @@ func (s *Server) boardData(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name          string `json:"name"`
-		Type          string `json:"type"`
-		HideAfterDays *int   `json:"hide_after_days"`
+		Name          string  `json:"name"`
+		Type          string  `json:"type"`
+		HideAfterDays *int    `json:"hide_after_days"`
+		CountsAs      *string `json:"counts_as"`
 	}
-	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") || (in.HideAfterDays != nil && *in.HideAfterDays < 1) {
+	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") || (in.HideAfterDays != nil && *in.HideAfterDays < 1) || (in.CountsAs != nil && *in.CountsAs != "" && *in.CountsAs != "done" && *in.CountsAs != "cancelled" && *in.CountsAs != "none") {
 		errw(w, 400, "name and valid type required")
 		return
 	}
@@ -449,6 +450,11 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 		days = *in.HideAfterDays
 	}
 	additional, e := setStatusHideAfterDays(map[string]json.RawMessage{}, days)
+	if e == nil && in.CountsAs != nil {
+		fields := map[string]json.RawMessage{}
+		_ = json.Unmarshal([]byte(additional), &fields)
+		additional, e = setStatusCountsAs(fields, *in.CountsAs)
+	}
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
@@ -476,6 +482,9 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		_, e = tx.Exec(`UPDATE status_order SET status_ids=? WHERE board_id=?`, listJSON(a), bid)
 		out = status{ID: id, Name: in.Name, Type: in.Type, BoardID: bid, HideAfterDays: days}
+		if in.CountsAs != nil {
+			out.CountsAs = *in.CountsAs
+		}
 		return e
 	})
 	if e != nil {
@@ -490,16 +499,18 @@ func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name          string `json:"name"`
-		Type          string `json:"type"`
-		HideAfterDays *int   `json:"hide_after_days"`
+		Name          string  `json:"name"`
+		Type          string  `json:"type"`
+		HideAfterDays *int    `json:"hide_after_days"`
+		CountsAs      *string `json:"counts_as"`
 	}
-	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") || (in.HideAfterDays != nil && *in.HideAfterDays < 1) {
+	if decode(r, &in) != nil || !required(in.Name) || (in.Type != "classic" && in.Type != "temporary") || (in.HideAfterDays != nil && *in.HideAfterDays < 1) || (in.CountsAs != nil && *in.CountsAs != "" && *in.CountsAs != "done" && *in.CountsAs != "cancelled" && *in.CountsAs != "none") {
 		errw(w, 400, "name and valid type required")
 		return
 	}
 	var x status
 	days := 1
+	var savedRaw string
 	id := idParam(r, "id")
 	e := txrun(s.db, func(tx *sql.Tx) error {
 		var raw string
@@ -518,6 +529,13 @@ func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) {
 				return e
 			}
 		}
+		if in.CountsAs != nil {
+			raw, e = setStatusCountsAs(fields, *in.CountsAs)
+			if e != nil {
+				return e
+			}
+		}
+		savedRaw = raw
 		return tx.QueryRow(`UPDATE status SET name=?,type=?,additional_fields=?,updated_at=? WHERE id=? AND deleted_at IS NULL RETURNING id,name,type,board_id`, in.Name, in.Type, raw, now(), id).Scan(&x.ID, &x.Name, &x.Type, &x.BoardID)
 	})
 	if e == sql.ErrNoRows {
@@ -526,6 +544,14 @@ func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, e.Error())
 	} else {
 		x.HideAfterDays = days
+		if in.CountsAs != nil {
+			x.CountsAs = *in.CountsAs
+		} else {
+			var fields map[string]json.RawMessage
+			if json.Unmarshal([]byte(savedRaw), &fields) == nil && fields["counts_as"] != nil {
+				_ = json.Unmarshal(fields["counts_as"], &x.CountsAs)
+			}
+		}
 		write(w, 200, x)
 	}
 }
