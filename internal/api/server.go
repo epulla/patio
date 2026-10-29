@@ -236,6 +236,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("DELETE /api/ticket-links/{id}", s.deleteTicketLink)
 	m.HandleFunc("PUT /api/tickets/{id}", s.updateTicket)
 	m.HandleFunc("GET /api/calendar", s.calendar)
+	m.HandleFunc("GET /api/dashboard", s.dashboard)
 	m.HandleFunc("POST /api/calendar-items", s.createCalendarItem)
 	m.HandleFunc("PUT /api/calendar-items/{id}", s.updateCalendarItem)
 	m.HandleFunc("DELETE /api/calendar-items/{id}", s.deleteCalendarItem)

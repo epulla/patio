@@ -7,7 +7,7 @@ import { useText } from "./i18n";
 import LinkPreview, { previewRoute } from "./LinkPreview";
 
 const appRoute =
-  /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
+  /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings|dashboard)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
 
 // Added after sanitizing; clicks are handled in onClick below.
 const copyCodeButton = (copy: string) => `<button type="button" class="icon ghost code-copy" aria-label="${copy}" data-tip="${copy}">${iconSvg("copy")}${iconSvg("check")}</button>`;
