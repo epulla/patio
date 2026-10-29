@@ -46,30 +46,37 @@ export default function LinkPreview({
   onLeave: () => void;
 }) {
   const t = useText({
-    en: { running: "Running", idle: "Idle", tickets: (n: number) => `${n} ticket${n === 1 ? "" : "s"}` },
-    es: { running: "En curso", idle: "Inactivo", tickets: (n: number) => `${n} ticket${n === 1 ? "" : "s"}` },
+    en: { running: "Running", idle: "Idle", tickets: (n: number) => `${n} ticket${n === 1 ? "" : "s"}`, loading: "Loading…", notFound: "Not found" },
+    es: { running: "En curso", idle: "Inactivo", tickets: (n: number) => `${n} ticket${n === 1 ? "" : "s"}`, loading: "Cargando…", notFound: "No encontrado" },
   });
-  const [preview, setPreview] = useState<Preview>();
+  // null means the request failed (usually a deleted item).
+  const [preview, setPreview] = useState<Preview | null>();
   useEffect(() => {
     let request = cache.get(href);
     if (!request) {
       request = load(href);
       cache.set(href, request);
+      // Failures aren't cached, so an item created later still previews.
+      request.catch(() => cache.delete(href));
     }
     let live = true;
-    request.then((value) => live && setPreview(value), () => undefined);
+    request.then(
+      (value) => live && setPreview(value),
+      () => live && setPreview(null),
+    );
     return () => {
       live = false;
     };
   }, [href]);
-  if (!preview) return null;
   const below = anchor.bottom + 220 < innerHeight;
   const style: CSSProperties = {
     left: Math.max(8, Math.min(anchor.left, innerWidth - 328)),
     ...(below ? { top: anchor.bottom + 6 } : { bottom: innerHeight - anchor.top + 6 }),
   };
   let body;
-  if (preview.kind === "ticket") {
+  if (preview === undefined) body = <span className="link-preview-row">{t.loading}</span>;
+  else if (preview === null) body = <span className="link-preview-row">{t.notFound}</span>;
+  else if (preview.kind === "ticket") {
     const { ticket, board } = preview;
     const type = board.ticket_types.find((item) => item.id === ticket.ticket_type_id);
     body = (
