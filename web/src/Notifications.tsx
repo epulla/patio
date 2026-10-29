@@ -8,8 +8,8 @@ import { ErrorText, navigate, openLink } from "./App";
 import { lang, locale, useText } from "./i18n";
 
 const text = {
-  en: { unread: "Unread: ", notifications: "Notifications", caughtUp: "You're all caught up.", new: "New: ", all: "See all notifications", now: "now", dismiss: "Dismiss notification", today: "Today", yesterday: "Yesterday", inbox: "Inbox", description: "Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days. Opening this page or the bell marks them read.", empty: "No notifications in the last 7 days.", loading: "Loading…", more: "Load more" },
-  es: { unread: "Sin leer: ", notifications: "Notificaciones", caughtUp: "Estás al día.", new: "Nuevo: ", all: "Ver todas las notificaciones", now: "ahora", dismiss: "Descartar notificación", today: "Hoy", yesterday: "Ayer", inbox: "Bandeja de entrada", description: "Respuestas de chat, aprobaciones, recordatorios, tareas programadas y cambios de Martin. Se conservan durante 7 días. Al abrir esta página o la campana, se marcan como leídas.", empty: "No hay notificaciones de los últimos 7 días.", loading: "Cargando…", more: "Cargar más" },
+  en: { unread: "Unread: ", notifications: "Notifications", caughtUp: "You're all caught up.", new: "New: ", all: "See all notifications", now: "now", dismiss: "Dismiss notification", today: "Today", yesterday: "Yesterday", inbox: "Inbox", description: "Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days. Opening this page or the bell marks them read.", empty: "No notifications in the last 7 days.", loading: "Loading…", more: "Load more", alertsOff: "Desktop alerts are off · Open Settings" },
+  es: { unread: "Sin leer: ", notifications: "Notificaciones", caughtUp: "Estás al día.", new: "Nuevo: ", all: "Ver todas las notificaciones", now: "ahora", dismiss: "Descartar notificación", today: "Hoy", yesterday: "Ayer", inbox: "Bandeja de entrada", description: "Respuestas de chat, aprobaciones, recordatorios, tareas programadas y cambios de Martin. Se conservan durante 7 días. Al abrir esta página o la campana, se marcan como leídas.", empty: "No hay notificaciones de los últimos 7 días.", loading: "Cargando…", more: "Cargar más", alertsOff: "Las alertas de escritorio están desactivadas · Abrir Ajustes" },
 };
 
 type Notification = {
@@ -22,6 +22,21 @@ type Notification = {
   read_at: string | null;
 };
 type Page = { notifications: Notification[]; unread: number; next_cursor: string | null };
+
+export function useNotificationsBlocked() {
+  const [blocked, setBlocked] = useState(false);
+  useEffect(() => {
+    api
+      .get<{ blocked: boolean }>("/api/notifications/status")
+      .then((value) => setBlocked(value.blocked))
+      .catch(() => undefined);
+  }, []);
+  return blocked;
+}
+
+export function openNotificationSettings() {
+  window.runtime?.BrowserOpenURL("x-apple.systempreferences:com.apple.Notifications-Settings.extension");
+}
 
 const kindIcons: Record<string, IconName> = { chat: "chat", approval: "hand", scheduled: "clock", calendar: "calendar", change: "sparkles", health: "plug", custom: "bell", monitor: "eye" };
 
@@ -123,6 +138,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
 
   const [popoverOpen, setPopoverOpen] = useState(false);
   const fresh = useMarkSeen(list, popoverOpen, unread > 0, readAll);
+  const blocked = useNotificationsBlocked();
 
   return (
     <div className="notifications">
@@ -146,6 +162,11 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
             <div className="notif-head">
               <strong>{t.notifications}</strong>
             </div>
+            {blocked && (
+              <button type="button" role="menuitem" className="notif-blocked" onClick={() => (close(false), openNotificationSettings())}>
+                {t.alertsOff}
+              </button>
+            )}
             {list.length === 0 ? (
               <p className="muted notif-empty">{t.caughtUp}</p>
             ) : (
