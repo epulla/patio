@@ -4,6 +4,7 @@ import BoardView, { NewTicketPage } from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
+import Dashboard from "./Dashboard";
 import Connectors from "./Connectors";
 import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
 import { isShortcutsKey, ShortcutsDialog } from "./Shortcuts";
@@ -32,7 +33,7 @@ import { lang, locale, useText } from "./i18n";
 const text = {
   en: {
     never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
-    boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
+    dashboard: "Dashboard", boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
     bots: "Bots & Workflows", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings", settingsUpdate: "Settings (update available)",
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
@@ -42,7 +43,7 @@ const text = {
   },
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
-    boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
+    dashboard: "Panel", boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
     bots: "Bots & Flujos", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes", settingsUpdate: "Ajustes (hay una actualización)",
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
@@ -490,6 +491,7 @@ export default function App() {
     );
   }
   if (isCalendar) page = <Calendar refresh={refresh} />;
+  if (path === "/dashboard") page = <Dashboard refresh={refresh} />;
   const monitorMatch = path.match(/^\/monitors(?:\/([^/]+))?$/);
   if (monitorMatch) page = <Monitors id={monitorMatch[1] && decodeURIComponent(monitorMatch[1])} refresh={refresh} />;
   if (isTickets) page = <Tickets refresh={refresh} />;
@@ -581,6 +583,7 @@ export default function App() {
             boardDrag.current.dropped = true;
           }}
         >
+          {navItem("/dashboard", t.dashboard, <Icon name="chart" />, path === "/dashboard")}
           {navItem("/", t.boards, <Icon name="boards" />, path === "/", { "data-tour": "boards" })}
           {navItem("/tickets", t.tickets, <Icon name="ticket" />, isTickets, { "data-tour": "tickets" })}
           {navItem("/calendar", t.calendar, <Icon name="calendar" />, isCalendar, { "data-tour": "calendar" })}
