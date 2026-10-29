@@ -17,12 +17,12 @@ import { locale, useText } from "./i18n";
 
 const text = { en: { schedule: "Schedule", calendar: "Calendar", today: "Today", previous: "Previous period", next: "Next period", month: "Month", week: "Week", board: "Board", allBoards: "All boards", addOn: (date: string) => `Add item on ${date}`, reminder: "Reminder", event: "Event", skipped: "Skipped", ranLate: "Ran late", failed: "Failed", waiting: "Waiting", runsFirst: (count: number, time: string) => `${count} runs this day, first at ${time}`, aiTask: "AI task", due: "Due", edit: "Edit calendar item", new: "New calendar item", close: "Close", kind: "Kind", title: "Title", description: "Description", allDay: "All day", start: "Start", endOptional: "End (optional)", boardOptional: "Board (optional)", noBoard: "No board", save: "Save", delete: "Delete", confirmDelete: "Delete this calendar item?", show: "Show", events: "Events", reminders: "Reminders", dueDates: "Ticket due dates", aiTasks: "AI tasks" }, es: { schedule: "Agenda", calendar: "Calendario", today: "Hoy", previous: "Periodo anterior", next: "Periodo siguiente", month: "Mes", week: "Semana", board: "Tablero", allBoards: "Todos los tableros", addOn: (date: string) => `Agregar elemento el ${date}`, reminder: "Recordatorio", event: "Evento", skipped: "Omitida", ranLate: "Se ejecutó tarde", failed: "Fallida", waiting: "En espera", runsFirst: (count: number, time: string) => `${count} ejecuciones hoy; primera a las ${time}`, aiTask: "Tarea de IA", due: "Vence", edit: "Editar elemento del calendario", new: "Nuevo elemento del calendario", close: "Cerrar", kind: "Tipo", title: "Título", description: "Descripción", allDay: "Todo el día", start: "Inicio", endOptional: "Fin (opcional)", boardOptional: "Tablero (opcional)", noBoard: "Sin tablero", save: "Guardar", delete: "Eliminar", confirmDelete: "¿Eliminar este elemento del calendario?", show: "Mostrar", events: "Eventos", reminders: "Recordatorios", dueDates: "Vencimientos de tickets", aiTasks: "Tareas de IA" } };
 
-type Shown = { event: boolean; reminder: boolean; due: boolean; scheduled: boolean };
+export type Shown = { event: boolean; reminder: boolean; due: boolean; scheduled: boolean };
 
-function loadShown(): Shown {
+export function loadShown(key = "calendar-shown"): Shown {
   const all = { event: true, reminder: true, due: true, scheduled: true };
   try {
-    return { ...all, ...JSON.parse(localStorage.getItem("calendar-shown") ?? "{}") };
+    return { ...all, ...JSON.parse(localStorage.getItem(key) ?? "{}") };
   } catch {
     return all;
   }
@@ -100,7 +100,7 @@ export default function Calendar({ refresh }: { refresh: number }) {
   const [editing, setEditing] = useState<CalendarItem | null | undefined>();
   const [createDate, setCreateDate] = useState("");
   const [reload, setReload] = useState(0);
-  const [shown, setShown] = useState(loadShown);
+  const [shown, setShown] = useState(() => loadShown());
 
   function toggle(kind: keyof Shown, value: boolean) {
     const next = { ...shown, [kind]: value };

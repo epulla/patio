@@ -3,6 +3,9 @@ import { api, type Board, type CalendarResponse, type Ticket } from "./api";
 import { ErrorText, navigate } from "./App";
 import { locale, useText } from "./i18n";
 import Picker from "./Picker";
+import Menu from "./Menu";
+import { Icon } from "./icons";
+import { loadShown, type Shown } from "./Calendar";
 
 type DashboardData = {
   days: { date: string; done: number; cancelled: number }[];
@@ -20,13 +23,13 @@ const text = {
     overview: "Overview", dashboard: "Dashboard", done: "Done", cancelled: "Cancelled", created: "Created", overdue: "Overdue", dueSoon: "Due in 7 days", today: "Events today", openTickets: "Open tickets", vsPrevious: (pct: number) => `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs previous`, donePct: "Done %",
     lastDays: (n: number) => `Last ${n} days`, perDay: "Done per day", byBoard: "By board", board: "Board", tickets: "Tickets due", upcoming: "Upcoming 7 days",
     nothingDue: "Nothing overdue or due soon.", nothingUpcoming: "No events or scheduled runs.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} done, ${cancelled} cancelled`,
-    chart: (done: number, cancelled: number) => `${done} done and ${cancelled} cancelled in this range`, range: "Range", allBoards: "All boards", aiTask: "AI task", event: "Event", reminder: "Reminder", noActivity: "No activity in this range.",
+    chart: (done: number, cancelled: number) => `${done} done and ${cancelled} cancelled in this range`, range: "Range", allBoards: "All boards", aiTask: "AI task", event: "Event", reminder: "Reminder", show: "Show", events: "Events", reminders: "Reminders", aiTasks: "AI tasks", noActivity: "No activity in this range.",
   },
   es: {
     overview: "Resumen", dashboard: "Panel", done: "Hechos", cancelled: "Cancelados", created: "Creados", overdue: "Vencidos", dueSoon: "Vencen en 7 días", today: "Eventos hoy", openTickets: "Tickets abiertos", vsPrevious: (pct: number) => `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs. periodo anterior`, donePct: "% hechos",
     lastDays: (n: number) => `Últimos ${n} días`, perDay: "Hechos por día", byBoard: "Por tablero", board: "Tablero", tickets: "Tickets por vencer", upcoming: "Próximos 7 días",
     nothingDue: "Nada vencido ni por vencer.", nothingUpcoming: "Sin eventos ni ejecuciones programadas.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} hechos, ${cancelled} cancelados`,
-    chart: (done: number, cancelled: number) => `${done} hechos y ${cancelled} cancelados en este periodo`, range: "Periodo", allBoards: "Todos los tableros", aiTask: "Tarea de IA", event: "Evento", reminder: "Recordatorio", noActivity: "Sin actividad en este periodo.",
+    chart: (done: number, cancelled: number) => `${done} hechos y ${cancelled} cancelados en este periodo`, range: "Periodo", allBoards: "Todos los tableros", aiTask: "Tarea de IA", event: "Evento", reminder: "Recordatorio", show: "Mostrar", events: "Eventos", reminders: "Recordatorios", aiTasks: "Tareas de IA", noActivity: "Sin actividad en este periodo.",
   },
 };
 
@@ -44,6 +47,12 @@ export default function Dashboard({ refresh }: { refresh: number }) {
   const [calendar, setCalendar] = useState<CalendarResponse>({ items: [], tickets: [], scheduled: [] });
   const [error, setError] = useState<unknown>();
   const [hover, setHover] = useState<number>();
+  const [shown, setShown] = useState(() => loadShown("dashboard-shown"));
+  function toggle(kind: keyof Shown) {
+    const next = { ...shown, [kind]: !shown[kind] };
+    setShown(next);
+    localStorage.setItem("dashboard-shown", JSON.stringify(next));
+  }
   const now = new Date();
   const today = dateKey(now);
 
@@ -76,7 +85,9 @@ export default function Dashboard({ refresh }: { refresh: number }) {
   const upcoming = [
     ...calendar.items.map((item) => ({ key: item.id, at: item.starts_at, title: item.title, kind: item.kind as string, allDay: item.all_day, to: "/calendar" })),
     ...nextRuns.map((run) => ({ key: run.task_id, at: run.at, title: run.title, kind: "scheduled", allDay: false, to: `/ai/scheduled/${run.task_id}` })),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+  ]
+    .filter((item) => shown[item.kind as keyof Shown])
+    .sort((a, b) => a.at.localeCompare(b.at));
   const todayCount = upcoming.filter((item) => (item.allDay ? item.at.slice(0, 10) : dateKey(new Date(item.at))) <= today).length;
   const max = Math.max(1, ...(data?.days ?? []).map((day) => day.done + day.cancelled));
   const tickEvery = days <= 7 ? 1 : days <= 30 ? 7 : 14;
@@ -225,7 +236,19 @@ export default function Dashboard({ refresh }: { refresh: number }) {
               )}
             </section>
             <section className="panel">
-              <h2>{t.upcoming}</h2>
+              <div className="dashboard-section-head">
+                <h2>{t.upcoming}</h2>
+                <Menu label={t.show} buttonClassName="icon" button={<Icon name="filter" />}>
+                  {() =>
+                    ([["event", t.events], ["reminder", t.reminders], ["scheduled", t.aiTasks]] as const).map(([kind, label]) => (
+                      <button key={kind} type="button" role="menuitemcheckbox" aria-checked={shown[kind]} className="setting-row" onClick={() => toggle(kind)}>
+                        <span className="setting-text">{label}</span>
+                        <span className="switch-track" aria-hidden="true" />
+                      </button>
+                    ))
+                  }
+                </Menu>
+              </div>
               {upcoming.length === 0 ? (
                 <p className="dashboard-empty">{t.nothingUpcoming}</p>
               ) : (
