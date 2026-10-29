@@ -8,6 +8,7 @@
   <b>Your agents. Your work. One place.</b><br>
   An open-source desktop workspace for <b>AI chats</b>, <b>kanban boards</b>, and <b>automation</b>.<br>
   <a href="https://github.com/epulla/patio/actions/workflows/release.yml"><img src="https://github.com/epulla/patio/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="https://hub.xerj.org/contributors/epulla"><img src="https://hub.xerj.org/contributors/epulla/badge.svg" alt="XERJ Corpus Hub contributor"></a>
 </p>
 
 <p align="center">
