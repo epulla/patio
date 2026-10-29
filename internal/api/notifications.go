@@ -266,6 +266,10 @@ func (s *Server) nativeNotification(w http.ResponseWriter, r *http.Request) {
 	noContent(w)
 }
 
+func (s *Server) notificationsStatus(w http.ResponseWriter, r *http.Request) {
+	write(w, http.StatusOK, map[string]bool{"blocked": s.notesBlocked != nil && s.notesBlocked()})
+}
+
 func (s *Server) PurgeNotifications() error {
 	return txrun(s.db, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM notification WHERE created_at < ?`, time.Now().UTC().Add(-7*24*time.Hour).Format("2006-01-02T15:04:05.000Z")); err != nil {

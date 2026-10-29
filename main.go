@@ -112,6 +112,7 @@ func main() {
 			})
 		},
 		fallback: func(title, body string) error { return beeep.Notify(title, body, "") },
+		check:    func() (bool, error) { return wruntime.CheckNotificationAuthorization(appCtx) },
 	}
 	mux := http.NewServeMux()
 	patioToolNames, err := mcpserver.RegisteredToolNames()
@@ -128,11 +129,12 @@ func main() {
 			}
 			return ""
 		}(),
-		WindowID:    windowID,
-		LogPath:     logFilePath,
-		StartWindow: func(args []string) error { return startWindow(exe, args) },
-		FocusWindow: func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
-		Notify:      notes.Notify,
+		WindowID:             windowID,
+		LogPath:              logFilePath,
+		StartWindow:          func(args []string) error { return startWindow(exe, args) },
+		FocusWindow:          func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
+		Notify:               notes.Notify,
+		NotificationsBlocked: notes.Blocked,
 		Emit: func(event string, data any) {
 			wruntime.EventsEmit(appCtx, event, data)
 		},
@@ -223,6 +225,7 @@ func main() {
 					showPath(link)
 				})
 				ok, err := wruntime.RequestNotificationAuthorization(ctx)
+				notes.asked.Store(runtime.GOOS == "darwin")
 				if !ok || err != nil {
 					log.Printf("native notifications not authorized, using beeep: %v", err)
 					return
@@ -418,8 +421,24 @@ func startWindow(exe string, args []string) error {
 // notifier sends through Wails once authorized and falls back to beeep otherwise.
 type notifier struct {
 	ready    atomic.Bool
+	asked    atomic.Bool
 	send     func(title, body, link string) error
 	fallback func(title, body string) error
+	check    func() (bool, error)
+}
+
+// Blocked re-checks macOS authorization once Patio has asked for it, so allowing
+// notifications in System Settings switches sending back to Wails.
+func (n *notifier) Blocked() bool {
+	if !n.asked.Load() {
+		return false
+	}
+	ok, err := n.check()
+	if err != nil {
+		log.Printf("check notification authorization: %v", err)
+	}
+	n.ready.Store(ok)
+	return !ok
 }
 
 func (n *notifier) Notify(title, body, link string) error {

@@ -18,6 +18,7 @@ import { palettes, setThemePrefs, useThemePrefs, type Mode, type SidebarStyle } 
 import Picker from "./Picker";
 import ModelPicker from "./ModelPicker";
 import { useModels } from "./Chats";
+import { openNotificationSettings, useNotificationsBlocked } from "./Notifications";
 import { locale, setLanguage, useLanguage, useText, type Language } from "./i18n";
 
 const text = {
@@ -29,6 +30,7 @@ const text = {
     folderPath: "Folder path",
     addFolder: "Add folder",
     general: "General",
+    desktopNotifications: "Desktop notifications", off: "Off", openSettings: "Open Settings",
     keyboardShortcuts: "Keyboard shortcuts",
     version: "Version",
     checkUpdates: "Check for updates", upToDate: "You're up to date.", devBuild: "Development build; updates aren't checked.", updateAvailable: (v: string) => `Patio ${v} is available.`, download: "Download", whatsNew: "What's new",
@@ -117,6 +119,7 @@ const text = {
     folderPath: "Ruta de la carpeta",
     addFolder: "Agregar carpeta",
     general: "General",
+    desktopNotifications: "Notificaciones de escritorio", off: "Desactivadas", openSettings: "Abrir Ajustes",
     keyboardShortcuts: "Atajos de teclado",
     version: "Versión",
     checkUpdates: "Buscar actualizaciones", upToDate: "Tienes la última versión.", devBuild: "Versión de desarrollo; no se buscan actualizaciones.", updateAvailable: (v: string) => `Patio ${v} está disponible.`, download: "Descargar", whatsNew: "Novedades",
@@ -304,6 +307,7 @@ function General() {
   const [error, setError] = useState<unknown>();
   const [update, setUpdate] = useState<UpdateInfo | "checking">();
   const [updateError, setUpdateError] = useState<unknown>();
+  const notificationsBlocked = useNotificationsBlocked();
 
   async function checkUpdates() {
     setUpdate("checking");
@@ -390,6 +394,19 @@ function General() {
               )}
               <ErrorText error={updateError} />
             </dd>
+            {notificationsBlocked && (
+              <>
+                <dt>{t.desktopNotifications}</dt>
+                <dd>
+                  {t.off}
+                  <span className="about-actions">
+                    <button type="button" onClick={openNotificationSettings}>
+                      {t.openSettings}
+                    </button>
+                  </span>
+                </dd>
+              </>
+            )}
             <dt>{t.database}</dt>
             <dd>
               <code className="about-path">{about.db_path}</code>

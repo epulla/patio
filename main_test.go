@@ -189,6 +189,29 @@ func TestNotifierFallsBackToBeeep(t *testing.T) {
 	}
 }
 
+func TestNotifierBlocked(t *testing.T) {
+	tests := []struct {
+		name        string
+		asked       bool
+		allowed     bool
+		wantBlocked bool
+		wantReady   bool
+	}{
+		{name: "not asked yet"},
+		{name: "allowed later", asked: true, allowed: true, wantReady: true},
+		{name: "denied", asked: true, wantBlocked: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			n := &notifier{check: func() (bool, error) { return test.allowed, nil }}
+			n.asked.Store(test.asked)
+			if got := n.Blocked(); got != test.wantBlocked || n.ready.Load() != test.wantReady {
+				t.Fatalf("blocked=%v ready=%v, want %v %v", got, n.ready.Load(), test.wantBlocked, test.wantReady)
+			}
+		})
+	}
+}
+
 func mustAbs(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
