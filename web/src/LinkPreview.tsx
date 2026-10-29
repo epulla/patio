@@ -58,6 +58,8 @@ export default function LinkPreview({
       cache.set(href, request);
       // Failures aren't cached, so an item created later still previews.
       request.catch(() => cache.delete(href));
+      // Expire after 30s so edits and chat status show up on the next hover.
+      setTimeout(() => cache.get(href) === request && cache.delete(href), 30_000);
     }
     let live = true;
     request.then(
