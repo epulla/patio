@@ -5205,6 +5205,13 @@ button.notif-row:focus-visible,
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.flow-node-meta.flow-node-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .flow-badge {
   flex: none;

@@ -38,7 +38,7 @@ function RunCard({ data }: NodeProps<RunNode>) {
         <span className="flow-badge flow-status">{t.status[data.status]}</span>
         {data.join && <span className="flow-badge">{t.reports(data.join.received, data.join.expected)}</span>}
       </span>
-      <span className="flow-node-meta">{data.title}</span>
+      <span className="flow-node-meta flow-node-summary" title={data.title}>{data.title}</span>
       <span className="flow-node-meta">{[data.connector_name, data.model].filter(Boolean).join(" · ")}</span>
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
     </div>
