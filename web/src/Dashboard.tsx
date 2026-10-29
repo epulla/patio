@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, type CalendarResponse, type Ticket } from "./api";
+import { api, type Board, type CalendarResponse, type Ticket } from "./api";
 import { ErrorText, navigate } from "./App";
 import { locale, useText } from "./i18n";
+import Picker from "./Picker";
 
 type DashboardData = {
   days: { date: string; done: number; cancelled: number }[];
@@ -18,13 +19,13 @@ const text = {
     overview: "Overview", dashboard: "Dashboard", done: "Done", cancelled: "Cancelled", created: "Created", overdue: "Overdue", dueSoon: "Due in 7 days", today: "Today",
     lastDays: (n: number) => `Last ${n} days`, perDay: "Done per day", byBoard: "By board", board: "Board", tickets: "Tickets due", upcoming: "Upcoming 7 days",
     nothingDue: "Nothing overdue or due soon.", nothingUpcoming: "No events or scheduled runs.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} done, ${cancelled} cancelled`,
-    chart: (done: number, cancelled: number) => `${done} done and ${cancelled} cancelled in this range`, aiTask: "AI task", event: "Event", reminder: "Reminder", noActivity: "No activity in this range.",
+    chart: (done: number, cancelled: number) => `${done} done and ${cancelled} cancelled in this range`, range: "Range", allBoards: "All boards", aiTask: "AI task", event: "Event", reminder: "Reminder", noActivity: "No activity in this range.",
   },
   es: {
     overview: "Resumen", dashboard: "Panel", done: "Hechos", cancelled: "Cancelados", created: "Creados", overdue: "Vencidos", dueSoon: "Vencen en 7 días", today: "Hoy",
     lastDays: (n: number) => `Últimos ${n} días`, perDay: "Hechos por día", byBoard: "Por tablero", board: "Tablero", tickets: "Tickets por vencer", upcoming: "Próximos 7 días",
     nothingDue: "Nada vencido ni por vencer.", nothingUpcoming: "Sin eventos ni ejecuciones programadas.", bar: (date: string, done: number, cancelled: number) => `${date}: ${done} hechos, ${cancelled} cancelados`,
-    chart: (done: number, cancelled: number) => `${done} hechos y ${cancelled} cancelados en este periodo`, aiTask: "Tarea de IA", event: "Evento", reminder: "Recordatorio", noActivity: "Sin actividad en este periodo.",
+    chart: (done: number, cancelled: number) => `${done} hechos y ${cancelled} cancelados en este periodo`, range: "Periodo", allBoards: "Todos los tableros", aiTask: "Tarea de IA", event: "Evento", reminder: "Recordatorio", noActivity: "Sin actividad en este periodo.",
   },
 };
 
@@ -32,7 +33,9 @@ const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() 
 
 export default function Dashboard({ refresh }: { refresh: number }) {
   const t = useText(text);
-  const days = 30;
+  const [days, setDays] = useState(30);
+  const [boardID, setBoardID] = useState("");
+  const [boards, setBoards] = useState<Board[]>([]);
   const [data, setData] = useState<DashboardData>();
   const [calendar, setCalendar] = useState<CalendarResponse>({ items: [], tickets: [], scheduled: [] });
   const [error, setError] = useState<unknown>();
@@ -40,12 +43,17 @@ export default function Dashboard({ refresh }: { refresh: number }) {
   const today = dateKey(now);
 
   useEffect(() => {
+    api.get<Board[]>("/api/boards").then(setBoards).catch(setError);
+  }, [refresh]);
+
+  useEffect(() => {
     let active = true;
+    const board = boardID ? `&board_id=${encodeURIComponent(boardID)}` : "";
     const week = new Date();
     week.setDate(week.getDate() + 7);
     Promise.all([
-      api.get<DashboardData>(`/api/dashboard?days=${days}`),
-      api.get<CalendarResponse>(`/api/calendar?from=${today}&to=${dateKey(week)}`),
+      api.get<DashboardData>(`/api/dashboard?days=${days}${board}`),
+      api.get<CalendarResponse>(`/api/calendar?from=${today}&to=${dateKey(week)}${board}`),
     ])
       .then(([dashboard, upcoming]) => {
         if (!active) return;
@@ -57,7 +65,7 @@ export default function Dashboard({ refresh }: { refresh: number }) {
     return () => {
       active = false;
     };
-  }, [refresh, today]);
+  }, [refresh, today, days, boardID]);
 
   const nextRuns = calendar.scheduled.filter((run, i, all) => new Date(run.at) >= now && all.findIndex((other) => other.task_id === run.task_id && new Date(other.at) >= now) === i);
   const upcoming = [
@@ -75,6 +83,19 @@ export default function Dashboard({ refresh }: { refresh: number }) {
         <div>
           <p className="eyebrow">{t.overview}</p>
           <h1>{t.dashboard}</h1>
+        </div>
+        <div className="calendar-controls">
+          <div className="join" role="group" aria-label={t.range}>
+            {[7, 30, 90].map((n) => (
+              <button key={n} aria-pressed={days === n} onClick={() => setDays(n)}>
+                {t.lastDays(n)}
+              </button>
+            ))}
+          </div>
+          <label>
+            {t.board}
+            <Picker label={t.board} empty={t.allBoards} options={boards} value={boardID} onChange={setBoardID} />
+          </label>
         </div>
       </div>
       <ErrorText error={error} />
