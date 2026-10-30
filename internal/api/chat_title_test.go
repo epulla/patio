@@ -97,6 +97,46 @@ func TestChatTitleGenerationFirstReplyAndSettings(t *testing.T) {
 	}
 }
 
+func TestOpencodeTitleModelFallback(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "title-opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	manager := &chatManager{db: database, chats: map[string]*chatRuntime{}, queueLocks: map[string]*sync.Mutex{}, emitEvent: func(string, any) {}}
+	oldGen, oldList := titleTextGenerator, opencodeModelLister
+	t.Cleanup(func() { titleTextGenerator, opencodeModelLister = oldGen, oldList })
+	var gotModel string
+	titleTextGenerator = func(_ context.Context, _ *chatManager, _, model, _ string) (string, error) {
+		gotModel = model
+		return "A generated title", nil
+	}
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES('oc','opencode','OpenCode',?)`, now()); err != nil {
+		t.Fatal(err)
+	}
+	for i, tc := range []struct {
+		listed []string
+		want   string
+	}{
+		{[]string{"openai/gpt-5", opencodeTitleModel}, opencodeTitleModel},
+		{[]string{"openai/gpt-5"}, "anthropic/chat-model"},
+	} {
+		opencodeModelLister = func(context.Context, string) ([]string, error) { return tc.listed, nil }
+		id := fmt.Sprintf("chat-%d", i)
+		if _, err := database.Exec(`INSERT INTO chat(id,title,connector_id,model,created_at,updated_at) VALUES(?,'Initial','oc','anthropic/chat-model',?,?)`, id, now(), now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,'user','question',?)`, uid(), id, now()); err != nil {
+			t.Fatal(err)
+		}
+		manager.maybeGenerateChatTitle(id, "reply")
+		manager.background.Wait()
+		if gotModel != tc.want {
+			t.Fatalf("listed %v: model=%q want %q", tc.listed, gotModel, tc.want)
+		}
+	}
+}
+
 func TestRenameChatLocksTitle(t *testing.T) {
 	database, handler := newAPI(t)
 	id := uid()
