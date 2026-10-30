@@ -570,7 +570,6 @@ export default function Chats({
               }}
             >
               <Conversation
-                key={chatID}
                 id={chatID}
                 refresh={refresh}
                 connectors={connectors}
@@ -1063,7 +1062,6 @@ export default function Chats({
               }}
             >
               <Conversation
-                key={chatID}
                 id={chatID}
                 refresh={refresh}
                 connectors={connectors}
@@ -1382,7 +1380,11 @@ export function Conversation({
     if (!draft.attachments.length) return;
     api
       .get<ChatAttachment[]>(`/api/chats/${id}/attachments`)
-      .then((kept) => setPending((current) => current.filter((a) => kept.some((k) => k.name === a.name))))
+      // Only restored chips are checked; uploads added since then stay.
+      .then((kept) => {
+        const gone = new Set(draft.attachments.filter((a) => !kept.some((k) => k.name === a.name)).map((a) => a.name));
+        setPending((current) => current.filter((a) => !gone.has(a.name)));
+      })
       .catch(() => undefined);
   }, []);
 
@@ -1579,6 +1581,10 @@ export function Conversation({
         localStorage.removeItem(startKey);
         setStartContext(undefined);
       }
+      // Clear storage directly too: the chat may have been switched away (unmounted) while posting.
+      const stored = loadDraft(id);
+      const sent = new Set(pending.map((a) => a.name));
+      saveDraft(id, stored.text === text ? "" : stored.text, stored.attachments.filter((a) => !sent.has(a.name)));
       changeText("");
       setPending([]);
       if ("queued" in result) {
