@@ -2003,6 +2003,11 @@ main:has(> .chats) {
 .chat-list.collapsed .split-toggle {
   width: 20px;
 }
+/* Right-aligned, the group menu would run left under the sidebar; open it toward the content. */
+.chat-list.collapsed .menu-list {
+  right: auto;
+  left: 0;
+}
 .chat-list.collapsed .chat-list-head {
   margin-bottom: 14px;
 }
