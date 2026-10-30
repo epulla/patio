@@ -2199,17 +2199,25 @@ main:has(> .chats) {
   min-width: 0;
 }
 .chat-row {
+  position: relative;
   padding-left: calc(var(--depth, 0) * 14px);
 }
+/* The caret sits over the link's left padding, beside the title, so it doesn't take width from it. */
 .tree-toggle {
+  position: absolute;
+  top: 7px;
+  left: calc(var(--depth, 0) * 14px + 3px);
+  z-index: 1;
   display: inline-flex;
-  flex: none;
   align-items: center;
-  gap: 2px;
-  height: 28px;
-  padding: 0 6px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   color: var(--muted);
-  font-size: 12px;
+}
+.chat-link.tree-gutter {
+  padding-left: 25px;
 }
 .tree-toggle .svg-icon {
   width: 12px;
