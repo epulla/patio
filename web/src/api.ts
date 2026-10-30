@@ -16,6 +16,9 @@ export type ChatDefaults = {
   default_bot_id: string;
   show_thinking: boolean;
   language: "system" | "en" | "es";
+  ai_titles: boolean;
+  title_connector_id: string | null;
+  title_model: string;
 };
 export type SettingsAbout = {
   version: string;

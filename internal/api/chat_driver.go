@@ -549,6 +549,14 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 			err = holdErr
 		}
 	}
+	if err == nil && role == "assistant" && !stopping {
+		var count int
+		if countErr := m.db.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='assistant'`, id).Scan(&count); countErr != nil {
+			log.Printf("check first assistant reply for chat %s: %v", id, countErr)
+		} else if count == 1 {
+			m.maybeGenerateChatTitle(id, assistantText)
+		}
+	}
 	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
 		rt.busy = false

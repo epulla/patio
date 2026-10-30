@@ -34,6 +34,7 @@ type chat struct {
 	ID              string           `json:"id"`
 	ConnectorID     *string          `json:"connector_id"`
 	Title           string           `json:"title"`
+	TitleLocked     bool             `json:"title_locked"`
 	Model           string           `json:"model"`
 	Folder          *string          `json:"folder"`
 	SessionID       *string          `json:"session_id"`
@@ -199,7 +200,7 @@ func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 
 func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string, string, string, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID, &c.BotID); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.TitleLocked, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID, &c.BotID); err != nil {
 		return c, "", "", "", err
 	}
 	c.Workdir = s.chatWorkdir(c)
@@ -232,7 +233,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id,bot_id`
+const chatColumns = `id,connector_id,title,title_locked,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id,bot_id`
 
 func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	limit := 50
@@ -885,6 +886,7 @@ func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Title        *string         `json:"title"`
+		TitleAuto    bool            `json:"title_auto"`
 		Model        *string         `json:"model"`
 		Thinking     *bool           `json:"thinking"`
 		ShowThinking *bool           `json:"show_thinking"`
@@ -983,7 +985,9 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	writeUpdate := func(exec interface {
 		Exec(string, ...any) (sql.Result, error)
 	}) error {
-		res, err := exec.Exec(`UPDATE chat SET title=?,model=?,thinking=?,show_thinking=?,auto_allow=?,session_id=CASE WHEN folder IS ? THEN session_id ELSE NULL END,folder=?,updated_at=? WHERE id=?`, title, model, thinking, showThinking, autoAllow, folder, folder, updated, id)
+		// The composer's placeholder title from the first message (title_auto) leaves room for an AI title.
+		titleLocked := c.TitleLocked || in.Title != nil && title != c.Title && !in.TitleAuto
+		res, err := exec.Exec(`UPDATE chat SET title=?,title_locked=?,model=?,thinking=?,show_thinking=?,auto_allow=?,session_id=CASE WHEN folder IS ? THEN session_id ELSE NULL END,folder=?,updated_at=? WHERE id=?`, title, titleLocked, model, thinking, showThinking, autoAllow, folder, folder, updated, id)
 		if err != nil {
 			return err
 		}

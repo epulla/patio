@@ -407,7 +407,7 @@ func (s *Server) startMonitorChat(m monitor, prompt string) error {
 		}
 	}
 	if err := txrun(s.db, func(tx *sql.Tx) error {
-		_, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow) VALUES(?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, defaults.ShowThinking, c.AutoAllow)
+		_, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,title_locked,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow) VALUES(?,?,?,1,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, defaults.ShowThinking, c.AutoAllow)
 		return err
 	}); err != nil {
 		return err

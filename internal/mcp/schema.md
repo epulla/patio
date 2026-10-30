@@ -19,7 +19,7 @@ erDiagram
   calendar_item { TEXT id; TEXT kind; TEXT title; TEXT description; TEXT starts_at; TEXT ends_at; INTEGER all_day; TEXT board_id; TEXT ticket_id; TEXT created_by; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT notified_at }
   connector { TEXT id; TEXT kind; TEXT name; TEXT config_dir; TEXT base_url; TEXT model; TEXT quota_json; TEXT created_at }
   allowed_folder { TEXT id; TEXT path; TEXT created_at }
-  chat { TEXT id; TEXT connector_id; TEXT title; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held; TEXT bot_id; TEXT workflow_id; TEXT workflow_node; TEXT workflow_run_id; INTEGER workflow_wait }
+  chat { TEXT id; TEXT connector_id; TEXT title; INTEGER title_locked; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held; TEXT bot_id; TEXT workflow_id; TEXT workflow_node; TEXT workflow_run_id; INTEGER workflow_wait }
   workflow { TEXT id; TEXT name; TEXT description; INTEGER hop_budget; TEXT graph; TEXT created_at; TEXT updated_at; TEXT deleted_at }
   chat_handoff { TEXT id; TEXT run_id; TEXT from_chat_id; TEXT to_chat_id; TEXT workflow_edge; TEXT status; TEXT result; TEXT created_at; TEXT deadline_at; TEXT finished_at; INTEGER delivered }
   workflow_join_input { TEXT id; TEXT run_id; TEXT node_id; TEXT edge_id; TEXT from_chat_id; TEXT status; TEXT text; TEXT created_at; TEXT deadline_at; INTEGER delivered }

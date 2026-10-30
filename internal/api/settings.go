@@ -13,18 +13,21 @@ import (
 )
 
 type settingsDefaults struct {
-	ConnectorID  *string `json:"connector_id"`
-	Model        string  `json:"model"`
-	Language     string  `json:"language"`
-	Folder       *string `json:"folder"`
-	AutoAllow    bool    `json:"auto_allow"`
-	Thinking     bool    `json:"thinking"`
-	ShowThinking bool    `json:"show_thinking"`
-	DefaultBotID string  `json:"default_bot_id"`
+	ConnectorID      *string `json:"connector_id"`
+	Model            string  `json:"model"`
+	Language         string  `json:"language"`
+	Folder           *string `json:"folder"`
+	AutoAllow        bool    `json:"auto_allow"`
+	Thinking         bool    `json:"thinking"`
+	ShowThinking     bool    `json:"show_thinking"`
+	DefaultBotID     string  `json:"default_bot_id"`
+	AITitles         bool    `json:"ai_titles"`
+	TitleConnectorID *string `json:"title_connector_id"`
+	TitleModel       string  `json:"title_model"`
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Thinking: true, DefaultBotID: "ai", Language: "system"}
+	defaults := settingsDefaults{AutoAllow: true, Thinking: true, DefaultBotID: "ai", Language: "system", AITitles: true}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -56,6 +59,30 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			defaults.ConnectorID = nil
 		} else if err != nil {
+			return defaults, err
+		}
+	}
+	if raw, ok := values["title_connector_id"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.TitleConnectorID); err != nil {
+			return defaults, err
+		}
+	}
+	if defaults.TitleConnectorID != nil {
+		var exists int
+		err := s.db.QueryRow(`SELECT 1 FROM connector WHERE id=?`, *defaults.TitleConnectorID).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			defaults.TitleConnectorID = nil
+		} else if err != nil {
+			return defaults, err
+		}
+	}
+	if raw, ok := values["title_model"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.TitleModel); err != nil {
+			return defaults, err
+		}
+	}
+	if raw, ok := values["ai_titles"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.AITitles); err != nil {
 			return defaults, err
 		}
 	}
@@ -144,14 +171,17 @@ func (s *Server) putOnboarding(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ConnectorID  json.RawMessage `json:"connector_id"`
-		Model        *string         `json:"model"`
-		Language     *string         `json:"language"`
-		Folder       json.RawMessage `json:"folder"`
-		AutoAllow    *bool           `json:"auto_allow"`
-		Thinking     *bool           `json:"thinking"`
-		ShowThinking *bool           `json:"show_thinking"`
-		DefaultBotID *string         `json:"default_bot_id"`
+		ConnectorID      json.RawMessage `json:"connector_id"`
+		Model            *string         `json:"model"`
+		Language         *string         `json:"language"`
+		Folder           json.RawMessage `json:"folder"`
+		AutoAllow        *bool           `json:"auto_allow"`
+		Thinking         *bool           `json:"thinking"`
+		ShowThinking     *bool           `json:"show_thinking"`
+		DefaultBotID     *string         `json:"default_bot_id"`
+		AITitles         *bool           `json:"ai_titles"`
+		TitleConnectorID json.RawMessage `json:"title_connector_id"`
+		TitleModel       *string         `json:"title_model"`
 	}
 	if decode(r, &in) != nil {
 		errw(w, http.StatusBadRequest, "invalid settings defaults JSON")
@@ -176,6 +206,31 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	autoAllow, thinking, showThinking, defaultBotID := defaults.AutoAllow, defaults.Thinking, defaults.ShowThinking, defaults.DefaultBotID
+	aiTitles, titleConnectorID, titleModel := defaults.AITitles, defaults.TitleConnectorID, defaults.TitleModel
+	if in.AITitles != nil {
+		aiTitles = *in.AITitles
+	}
+	if in.TitleModel != nil {
+		titleModel = *in.TitleModel
+	}
+	if len(in.TitleConnectorID) > 0 && string(in.TitleConnectorID) != "null" {
+		var value string
+		if json.Unmarshal(in.TitleConnectorID, &value) != nil || !required(value) {
+			errw(w, 400, "title connector must exist or be null")
+			return
+		}
+		var exists int
+		if err := s.db.QueryRow(`SELECT 1 FROM connector WHERE id=?`, value).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+			errw(w, 400, "title connector not found")
+			return
+		} else if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		titleConnectorID = &value
+	} else if string(in.TitleConnectorID) == "null" {
+		titleConnectorID = nil
+	}
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
 	}
@@ -239,14 +294,17 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		folder = nil
 	}
 	values := map[string]any{
-		"connector_id":   connectorID,
-		"model":          model,
-		"language":       language,
-		"folder":         folder,
-		"auto_allow":     autoAllow,
-		"thinking":       thinking,
-		"show_thinking":  showThinking,
-		"default_bot_id": defaultBotID,
+		"connector_id":       connectorID,
+		"model":              model,
+		"language":           language,
+		"folder":             folder,
+		"auto_allow":         autoAllow,
+		"thinking":           thinking,
+		"show_thinking":      showThinking,
+		"default_bot_id":     defaultBotID,
+		"ai_titles":          aiTitles,
+		"title_connector_id": titleConnectorID,
+		"title_model":        titleModel,
 	}
 	encoded := make(map[string]string, len(values))
 	for key, value := range values {
@@ -268,7 +326,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, DefaultBotID: defaultBotID})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, DefaultBotID: defaultBotID, AITitles: aiTitles, TitleConnectorID: titleConnectorID, TitleModel: titleModel})
 }
 
 func sameConnectorID(a, b *string) bool {

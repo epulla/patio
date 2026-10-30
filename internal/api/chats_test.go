@@ -29,6 +29,9 @@ func chatAPI(t *testing.T) (*sql.DB, http.Handler, string) {
 			t.Error(err)
 		}
 	})
+	if _, err := database.Exec(`INSERT INTO app_setting(key,value) VALUES('ai_titles','false')`); err != nil {
+		t.Fatal(err)
+	}
 	return database, New(database, "local", false, "dev", root), root
 }
 

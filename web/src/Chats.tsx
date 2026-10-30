@@ -1336,6 +1336,7 @@ export function Conversation({
   const [contextOff, setContextOff] = useState<string>();
   const contextOn = !!context && contextOff !== context.line;
   const [title, setTitle] = useState("");
+  const titleAtFocus = useRef("");
   const [error, setError] = useState<unknown>();
   const [missing, setMissing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -1358,7 +1359,8 @@ export function Conversation({
         if ("unchanged" in value) return;
         loaded.current = { id, version: value.version };
         setDetail(value);
-        setTitle(value.chat.title);
+        // An AI title arriving mid-edit must not replace what the user is typing.
+        if (document.activeElement?.id !== `${uid}-title`) setTitle(value.chat.title);
         setRunning(value.chat.running);
       })
       .catch((reason) => {
@@ -1590,7 +1592,7 @@ export function Conversation({
       addSent(message);
         if (detail.chat.title === "New chat" && detail.messages.length === 0) {
         const label = (value || pending.map((a) => a.name).join(", ")).replace(/\s+/g, " ");
-        await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label);
+        await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
       if (!queueing) setRunning(false);
@@ -1640,11 +1642,11 @@ export function Conversation({
     }
   }
 
-  async function rename(next: string) {
+  async function rename(next: string, auto?: boolean) {
     const value = next.trim();
     if (!value || value === detail?.chat.title) return setTitle(detail?.chat.title ?? "");
     try {
-      await api.put(`/api/chats/${id}`, { title: value });
+      await api.put(`/api/chats/${id}`, { title: value, ...(auto ? { title_auto: true } : {}) });
       setTitle(value);
       setDetail((current) => current && { ...current, chat: { ...current.chat, title: value } });
       onChanged();
@@ -1861,7 +1863,11 @@ export function Conversation({
             id={`${uid}-title`}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            onBlur={(event) => rename(event.target.value)}
+            onFocus={(event) => (titleAtFocus.current = event.target.value)}
+            // Unedited, it takes any title that arrived while focused instead of renaming back.
+            onBlur={(event) =>
+              event.target.value === titleAtFocus.current ? setTitle(detail.chat.title) : rename(event.target.value)
+            }
             onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
           />
         </div>

@@ -84,6 +84,11 @@ const text = {
     autoAllow: "Auto-allow file changes and commands",
     thinking: "Thinking",
     showThinking: "Show thinking",
+    aiTitles: "AI chat titles",
+    aiTitlesHint: "Name new chats with a short AI title after the first reply. Renamed chats keep their title.",
+    titleConnector: "Title connector",
+    chatConnector: "Same as the chat (cheap model when known)",
+    titleModel: "Title model",
     defaultBot: "Bot",
     noBot: "None (plain assistant)",
     showTour: "Show tour again",
@@ -173,6 +178,11 @@ const text = {
     autoAllow: "Permitir cambios de archivos y comandos automáticamente",
     thinking: "Razonamiento",
     showThinking: "Mostrar razonamiento",
+    aiTitles: "Títulos de chat con IA",
+    aiTitlesHint: "Nombra los chats nuevos con un título corto de IA tras la primera respuesta. Los chats renombrados conservan su título.",
+    titleConnector: "Conector de títulos",
+    chatConnector: "El mismo del chat (modelo económico si se conoce)",
+    titleModel: "Modelo de títulos",
     defaultBot: "Bot",
     noBot: "Ninguno (asistente simple)",
     showTour: "Ver el recorrido otra vez",
@@ -578,6 +588,7 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
   }, [foldersVersion]);
 
   const { models, loading: modelsLoading } = useModels(defaults?.connector_id);
+  const titleModels = useModels(defaults?.title_connector_id);
 
   async function save(change: Partial<ChatDefaults>) {
     try {
@@ -656,6 +667,35 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
               checked={defaults.show_thinking}
               onChange={(show_thinking) => save({ show_thinking })}
             />
+            <Switch label={t.aiTitles} title={t.aiTitlesHint} checked={defaults.ai_titles} onChange={(ai_titles) => save({ ai_titles })} />
+            {defaults.ai_titles && (
+              <div className="defaults-fields">
+                <label>
+                  {t.titleConnector}
+                  <Picker
+                    label={t.titleConnector}
+                    empty={t.chatConnector}
+                    options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
+                    value={defaults.title_connector_id ?? ""}
+                    onChange={(id) => save({ title_connector_id: id || null, title_model: "" })}
+                  />
+                </label>
+                {defaults.title_connector_id && (
+                  <div className="field">
+                    <span className="label-row">
+                      {t.titleModel} {titleModels.loading && <span className="spinner" role="status" aria-label={t.loadingModels} />}
+                    </span>
+                    <ModelPicker
+                      models={titleModels.models}
+                      value={defaults.title_model}
+                      loading={titleModels.loading}
+                      pinKind={connectors.find((c) => c.id === defaults.title_connector_id)?.kind}
+                      onChange={(title_model) => save({ title_model })}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </>
         ) : (
           !error && <p className="muted" role="status">{t.loading}</p>

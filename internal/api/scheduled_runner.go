@@ -174,7 +174,7 @@ func (s *Server) startScheduled(claim scheduledClaim) error {
 		}
 	}
 	if err := txrun(s.db, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,auto_allow,scheduled_task_id,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.AutoAllow, t.ID, c.BotID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,title_locked,model,folder,created_at,updated_at,thinking,auto_allow,scheduled_task_id,bot_id) VALUES(?,?,?,1,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.AutoAllow, t.ID, c.BotID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(`UPDATE scheduled_task_run SET chat_id=? WHERE id=?`, chatID, claim.runID)
