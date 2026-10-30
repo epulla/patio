@@ -265,10 +265,12 @@ export default function Chats({
   const toggleTree = (chatID: string) =>
     changeTreeOpen((open) => (open.has(chatID) ? open.delete(chatID) : open.add(chatID)));
   // The open chat's parents expand so it shows in the list.
+  // Keyed on the ancestry itself, so a parent loading later still expands but a deliberate collapse stays.
+  const ancestry = id ? chatAncestors(chats, id).join() : "";
   useEffect(() => {
-    const hidden = id ? chatAncestors(chats, id).filter((chatID) => !treeOpen.has(chatID)) : [];
+    const hidden = ancestry.split(",").filter((chatID) => chatID && !treeOpen.has(chatID));
     if (hidden.length) changeTreeOpen((open) => hidden.forEach((chatID) => open.add(chatID)));
-  }, [id, chats.length]);
+  }, [id, ancestry]);
   const reorder = useGroupReorder(groups.groups);
   const groupDropped = useRef(false);
   const [dropInto, setDropInto] = useState<string>();
@@ -933,6 +935,7 @@ export default function Chats({
                   <button
                     type="button"
                     className="ghost tree-toggle"
+                    data-tour="tree-toggle"
                     aria-expanded={expanded}
                     aria-label={t.childChats(chat.title, children)}
                     onClick={() => toggleTree(chat.id)}
