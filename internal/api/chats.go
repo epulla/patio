@@ -50,6 +50,7 @@ type chat struct {
 	ScheduledTaskID *string          `json:"scheduled_task_id"`
 	ScheduledLate   bool             `json:"scheduled_late"`
 	ParentChatID    *string          `json:"parent_chat_id"`
+	ParentTitle     string           `json:"parent_title,omitempty"`
 	BotID           *string          `json:"bot_id"`
 }
 
@@ -245,7 +246,11 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `SELECT ` + chatColumns + ` FROM chat`
 	args := []any{}
-	if values, present := r.URL.Query()["cursor"]; present {
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	if search != "" {
+		query += ` WHERE title LIKE ? ESCAPE '\'`
+		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)+"%")
+	} else if values, present := r.URL.Query()["cursor"]; present {
 		cursor := values[0]
 		updatedAt, id, ok := strings.Cut(cursor, "|")
 		if !ok {
@@ -285,6 +290,12 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 		if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM chat_approval WHERE chat_id=? AND status='pending'), EXISTS(SELECT 1 FROM chat_turn t JOIN app_window w ON w.id=t.window_id WHERE t.chat_id=? AND t.window_id<>? AND w.heartbeat_at>=?)`, c.ID, c.ID, s.windowID, nowMinusWindowStale()).Scan(&c.PendingCount, &c.OtherWindow); err != nil {
 			errw(w, 500, err.Error())
 			return
+		}
+		if search != "" && c.ParentChatID != nil {
+			if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, *c.ParentChatID).Scan(&c.ParentTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				errw(w, 500, err.Error())
+				return
+			}
 		}
 		out = append(out, c)
 	}

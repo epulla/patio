@@ -193,6 +193,26 @@ func TestChatListPaging(t *testing.T) {
 	}
 }
 
+func TestChatListSearch(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var parent, child chat
+	requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID, "title": "Planner work"}, &parent)
+	requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID, "title": "Review 100%"}, &child)
+	if _, err := database.Exec(`UPDATE chat SET parent_chat_id=? WHERE id=?`, parent.ID, child.ID); err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Chats []chat `json:"chats"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?q=PLAN", nil, &page); code != http.StatusOK || len(page.Chats) != 1 || page.Chats[0].ID != parent.ID {
+		t.Fatalf("search plan = %d, %#v", code, page.Chats)
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?q="+url.QueryEscape("0%"), nil, &page); code != http.StatusOK || len(page.Chats) != 1 || page.Chats[0].ParentTitle != "Planner work" {
+		t.Fatalf("search literal %% = %d, %#v", code, page.Chats)
+	}
+}
+
 func TestChatListRuntimeApprovalAndOtherWindow(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)

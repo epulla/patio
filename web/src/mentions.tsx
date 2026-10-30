@@ -1,12 +1,18 @@
 import { useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { api, type SearchTicket, type User } from "./api";
+import { api, type Chat, type SearchTicket, type User } from "./api";
 import { useText } from "./i18n";
 
-type Trigger = { char: "@" | "#"; start: number; query: string };
+type Trigger = { char: "@" | "#" | "[["; start: number; query: string };
 type Suggestion = { key: string; label: string; detail?: string; insert: string };
 
+const linkText = (text: string) => text.replace(/[[\]\\]/g, "\\$&");
+export const chatLink = (chat: Pick<Chat, "id" | "title">) => `[${linkText(chat.title)}](/ai/chats/${chat.id})`;
+
 // A trigger only counts at the start of the text or after whitespace, so emails and `## Heading` don't open it.
+// Chat titles have spaces, so a `[[` query runs to the caret.
 function findTrigger(value: string, caret: number): Trigger | null {
+  const chat = /(?:^|\s)\[\[([^\]\n]*)$/.exec(value.slice(0, caret));
+  if (chat) return { char: "[[", start: caret - chat[1].length - 2, query: chat[1] };
   const match = /(?:^|\s)([@#])([^\s@#]*)$/.exec(value.slice(0, caret));
   if (!match) return null;
   return { char: match[1] as Trigger["char"], start: caret - match[2].length - 1, query: match[2] };
@@ -40,12 +46,21 @@ async function suggest({ char, query }: Trigger, hiddenBotId?: string): Promise<
   }
   // Debounce: callers drop results that arrive after a newer request.
   await new Promise((resolve) => setTimeout(resolve, 150));
+  if (char === "[[") {
+    const { chats } = await api.get<{ chats: Chat[] }>(`/api/chats?limit=8&q=${encodeURIComponent(query)}`);
+    return chats.map((chat) => ({
+      key: chat.id,
+      label: chat.title,
+      detail: chat.parent_title && `↳ ${chat.parent_title}`,
+      insert: chatLink(chat),
+    }));
+  }
   const tickets = await api.get<SearchTicket[]>(`/api/tickets/search?q=${encodeURIComponent(query)}&sort=updated`);
   return tickets.slice(0, 8).map((ticket) => ({
     key: ticket.id,
     label: `${ticket.code} · ${ticket.title}`,
     detail: ticket.status_name,
-    insert: `[${`${ticket.code}: ${ticket.title}`.replace(/[[\]\\]/g, "\\$&")}](/tickets/${ticket.id})`,
+    insert: `[${linkText(`${ticket.code}: ${ticket.title}`)}](/tickets/${ticket.id})`,
   }));
 }
 
