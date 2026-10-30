@@ -207,6 +207,7 @@ export type Chat = {
   capabilities: { thinking: { supported: boolean; reason: string }; steer: boolean };
   scheduled_task_id: string | null;
   scheduled_late: boolean;
+  parent_chat_id: string | null;
   parent_title?: string;
   bot_id: string | null;
 };

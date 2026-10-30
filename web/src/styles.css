@@ -2189,6 +2189,23 @@ main:has(> .chats) {
   flex: 1;
   min-width: 0;
 }
+.chat-row {
+  padding-left: calc(var(--depth, 0) * 14px);
+}
+.tree-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tree-toggle .svg-icon {
+  width: 12px;
+  height: 12px;
+}
 .chat-link.new-group {
   color: var(--muted);
   font-size: 12px;
