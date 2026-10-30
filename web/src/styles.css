@@ -2438,8 +2438,15 @@ main:has(> .chats) {
   cursor: grab;
 }
 main.chat-window {
+  position: relative;
   height: 100%;
   padding: 16px;
+}
+main.chat-window .app-version {
+  position: absolute;
+  right: 16px;
+  bottom: 1px;
+  line-height: 14px;
 }
 .chat-dock {
   position: relative;

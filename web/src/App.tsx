@@ -460,6 +460,7 @@ export default function App() {
     return (
       <main className="chat-window">
         <Chats id={config.chat_window} refresh={refresh} windowed />
+        {config.version && <span className="app-version">{config.version}</span>}
       </main>
     );
 
