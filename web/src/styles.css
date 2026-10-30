@@ -4498,10 +4498,15 @@ main.chat-window .app-version {
   border-radius: 4px;
   align-self: center;
 }
-.attachment-open {
+/* Reset the generic button height and hover fill so the chip keeps its size; the thumb anchors to the chip. */
+.attachments:not(.sent) .attachment {
   position: relative;
+}
+.attachment-open,
+.attachment-open:hover {
   display: inline-flex;
   min-width: 0;
+  height: auto;
   padding: 0;
   border: 0;
   background: none;
@@ -4509,10 +4514,13 @@ main.chat-window .app-version {
   font: inherit;
   cursor: zoom-in;
 }
+.attachment:has(.attachment-open:hover) {
+  border-color: var(--muted);
+}
 .attachment-thumb {
   display: none;
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 6px);
   left: 0;
   z-index: 20;
   max-width: 240px;
