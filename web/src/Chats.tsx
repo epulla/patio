@@ -887,7 +887,7 @@ export default function Chats({
             return (
               <div
                 key={chat.id}
-                className="chat-row"
+                className="chat-row chat-item"
                 data-tour="chat-row"
                 style={{ ...chatPinStyle(chat.id), "--depth": depth } as CSSProperties}
                 draggable
@@ -946,23 +946,29 @@ export default function Chats({
                 </button>
                 <Menu label={t.chatOptions(chat.title)} buttonClassName="icon ghost" button={<Icon name="more" />}>
                   {(close) => (
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        close();
-                        navigator.clipboard.writeText(chatLink(chat)).then(() => setCopiedRow(chat.id), () => undefined);
-                      }}
-                    >
-                      <Icon name="link" /> {t.copyLink}
-                    </button>
+                    <>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          close();
+                          togglePin(chat.id);
+                        }}
+                      >
+                        <Icon name="pin" /> {pinned ? t.unpin : t.pin}
+                      </button>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          close();
+                          navigator.clipboard.writeText(chatLink(chat)).then(() => setCopiedRow(chat.id), () => undefined);
+                        }}
+                      >
+                        <Icon name="link" /> {t.copyLink}
+                      </button>
+                    </>
                   )}
                 </Menu>
-                <IconButton
-                  className={pinned ? "ghost pinned" : "ghost"}
-                  icon="pin"
-                  label={pinned ? t.unpin : t.pin}
-                  onClick={() => togglePin(chat.id)}
-                />
+                {pinned && <IconButton className="ghost pinned pin-indicator" icon="pin" label={t.unpin} onClick={() => togglePin(chat.id)} />}
               </div>
             );
           })}
