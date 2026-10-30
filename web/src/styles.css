@@ -4509,6 +4509,9 @@ main.chat-window .app-version {
 /* Reset the generic button height and hover fill so the chip keeps its size; the thumb anchors to the chip. */
 .attachments:not(.sent) .attachment {
   position: relative;
+  transition:
+    border-color 140ms ease-out,
+    background-color 140ms ease-out;
 }
 .attachment-open,
 .attachment-open:hover {
@@ -4525,8 +4528,17 @@ main.chat-window .app-version {
 .attachment:has(.attachment-open:hover) {
   border-color: var(--muted);
 }
+/* Hidden via opacity + visibility (delayed on hide) so it can fade, and never catches pointer events. */
 .attachment-thumb {
-  display: none;
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out,
+    visibility 0s linear 140ms;
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
@@ -4542,7 +4554,19 @@ main.chat-window .app-version {
 }
 .attachment-open:hover .attachment-thumb,
 .attachment-open:focus-visible .attachment-thumb {
-  display: block;
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .attachments:not(.sent) .attachment,
+  .attachment-thumb {
+    transition: none;
+  }
+  .attachment-thumb {
+    transform: none;
+  }
 }
 .attachments.sent .attachment.image {
   cursor: zoom-in;
