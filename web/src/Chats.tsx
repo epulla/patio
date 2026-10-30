@@ -2006,8 +2006,8 @@ export function Conversation({
               <IconButton
                 type="button"
                 icon="x"
+                className="tip-up"
                 label={t.remove(attachment.name)}
-                disabled={running}
                 onClick={() => unattach(attachment)}
               />
             </li>
