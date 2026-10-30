@@ -2,12 +2,20 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	connectorcli "patio/internal/connector"
 	"patio/internal/db"
 )
 
@@ -126,7 +134,7 @@ func TestGenerateTextIsolatesCLIs(t *testing.T) {
 	}{
 		{"claude", "A useful title\n", []string{"--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", `{"disableAllHooks":true}`, "text"}},
 		{"codex", "A useful title\n", []string{"--ephemeral", "read-only", "shell_tool", "unified_exec", "apps", "plugins", "hooks", "mcp_servers={}", `web_search="disabled"`}},
-		{"opencode", `{"type":"step_start"}` + "\n" + `{"type":"text","part":{"type":"text","text":"A useful title"}}` + "\n", []string{"--format", "json"}},
+		{"opencode", `{"type":"step_start"}` + "\n" + `{"type":"text","part":{"type":"text","text":"A useful title"}}` + "\n", []string{"--standalone", "--format", "json"}},
 		{"copilot", "A useful title\n", []string{"-s", "--available-tools=", "--disable-builtin-mcps", "--no-custom-instructions", "--no-ask-user"}},
 	} {
 		if _, err := database.Exec(`INSERT INTO connector(id,kind,name,created_at) VALUES(?,?,?,?)`, tc.kind, tc.kind, tc.kind, now()); err != nil {
@@ -135,9 +143,6 @@ func TestGenerateTextIsolatesCLIs(t *testing.T) {
 		titleCommandRunner = func(_ context.Context, kind, path string, args, env []string) ([]byte, error) {
 			if path != tc.kind+"-test" || !containsArgs(args, append(tc.want, "make title")...) {
 				t.Fatalf("%s args %q", tc.kind, args)
-			}
-			if kind == "opencode" && !containsArgs(env, "OPENCODE_CONFIG_CONTENT="+opencodeTitleConfig) {
-				t.Fatal("opencode tools not disabled")
 			}
 			return []byte(tc.stdout), nil
 		}
@@ -155,6 +160,141 @@ func TestTitleCommandRunnerIgnoresStderr(t *testing.T) {
 	_, err = titleCommandRunner(context.Background(), "codex", "/bin/sh", []string{"-c", "echo 'auth failed' >&2; exit 1"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "auth failed") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestTitleCommandRunnerIsolatesOpencode(t *testing.T) {
+	env := append(os.Environ(), "OPENCODE_CONFIG=/user/opencode.json", "OPENCODE_CONFIG_DIR=/user/opencode", "PWD=/user/project")
+	script := `[ "$(pwd -P)" = "$(cd "$PWD" && pwd -P)" ] && echo "$PWD|$XDG_CONFIG_HOME|$OPENCODE_CONFIG|$OPENCODE_CONFIG_DIR|$OPENCODE_DISABLE_PROJECT_CONFIG|$OPENCODE_CONFIG_CONTENT"`
+	out, err := titleCommandRunner(context.Background(), "opencode", "/bin/sh", []string{"-c", script}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := strings.SplitN(string(out), "|", 2)[0]
+	if !strings.HasPrefix(filepath.Base(dir), "patio-title-") {
+		t.Fatalf("cwd %q is not a fresh title dir", out)
+	}
+	if want := dir + "|" + filepath.Join(dir, "config") + "|||1|" + opencodeTitleConfig; strings.TrimSpace(string(out)) != want {
+		t.Fatalf("env %q, want %q", out, want)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("title dir not removed: %v", err)
+	}
+}
+
+// Starts the same private server `opencode run --standalone` spawns, with the title env and cwd,
+// and checks the effective config: deny-all permissions, no user plugins or MCP servers.
+func TestOpencodeTitleEffectiveConfigLive(t *testing.T) {
+	if os.Getenv("PATIO_OPENCODE_V2_LIVE") != "1" {
+		t.Skip("set PATIO_OPENCODE_V2_LIVE=1 for OpenCode v2 checks")
+	}
+	path, err := connectorcli.Find("opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, path, "serve", "--hostname", "127.0.0.1", "--port", strconv.Itoa(port))
+	cmd.Dir = dir
+	cmd.Env = append(opencodeTitleEnv(os.Environ(), dir), "OPENCODE_SERVER_PASSWORD=patio-test")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = cmd.Wait() }()
+	get := func(route string, v any) {
+		t.Helper()
+		var lastErr error
+		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+			req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+strconv.Itoa(port)+route, nil)
+			req.SetBasicAuth("opencode", "patio-test")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if resp.StatusCode == http.StatusServiceUnavailable {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("status %d", resp.StatusCode)
+				continue
+			}
+			err = json.NewDecoder(resp.Body).Decode(v)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK || err != nil {
+				t.Fatalf("%s: status %d err %v", route, resp.StatusCode, err)
+			}
+			return
+		}
+		t.Fatalf("%s: %v", route, lastErr)
+	}
+	var sources []struct {
+		Type string `json:"type"`
+		Path string `json:"path"`
+	}
+	get("/api/config", &sources)
+	for _, s := range sources {
+		if s.Path != "" && !strings.HasPrefix(s.Path, dir) {
+			t.Errorf("config source outside title dir: %s", s.Path)
+		}
+	}
+	var plugins struct {
+		Data []struct {
+			ID     string `json:"id"`
+			Source struct {
+				Type string `json:"type"`
+			} `json:"source"`
+		} `json:"data"`
+	}
+	get("/api/plugin", &plugins)
+	for _, p := range plugins.Data {
+		if p.Source.Type != "builtin" {
+			t.Errorf("non-builtin plugin loaded: %s", p.ID)
+		}
+	}
+	var mcp struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	get("/api/mcp", &mcp)
+	if len(mcp.Data) != 0 {
+		t.Errorf("MCP servers loaded: %d", len(mcp.Data))
+	}
+	var agents struct {
+		Data []struct {
+			ID          string `json:"id"`
+			Permissions []struct {
+				Action, Resource, Effect string
+			} `json:"permissions"`
+		} `json:"data"`
+	}
+	// Agents can report built-in defaults for a moment after startup, before config is applied.
+	var open []string
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(500 * time.Millisecond) {
+		get("/api/agent", &agents)
+		open = nil
+		for _, a := range agents.Data {
+			denied := false
+			for _, p := range a.Permissions {
+				if p.Action == "*" && p.Resource == "*" {
+					denied = p.Effect == "deny"
+				} else if p.Effect != "deny" {
+					denied = false
+				}
+			}
+			if !denied {
+				open = append(open, a.ID)
+			}
+		}
+		if (len(agents.Data) > 0 && len(open) == 0) || time.Now().After(deadline) {
+			break
+		}
+	}
+	if len(agents.Data) == 0 || len(open) > 0 {
+		t.Fatalf("agents without deny-all permissions: %v (of %d)", open, len(agents.Data))
 	}
 }
 

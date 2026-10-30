@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,16 +22,34 @@ import (
 )
 
 var titleCommandRunner = func(ctx context.Context, kind, path string, args, env []string) ([]byte, error) {
-	if kind == "opencode" {
-		out, err := connectorcli.OpencodeCommandOutput(ctx, path, args, env)
-		return []byte(out), titleCommandError(err)
+	dir, err := os.MkdirTemp("", "patio-title-")
+	if err != nil {
+		return nil, err
 	}
+	defer os.RemoveAll(dir)
 	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Dir = os.TempDir()
+	cmd.Dir = dir
 	cmd.Env = env
+	if kind == "opencode" {
+		cmd.Env = opencodeTitleEnv(env, dir)
+	}
 	proc.HideConsole(cmd)
 	out, err := cmd.Output()
 	return out, titleCommandError(err)
+}
+
+// opencodeTitleEnv gives a --standalone run (private server, so no shared-service lock) a config
+// built only from the deny-all content: no global/project config, plugins, MCP servers or hooks.
+func opencodeTitleEnv(env []string, dir string) []string {
+	out := make([]string, 0, len(env)+4)
+	for _, kv := range env {
+		key := strings.SplitN(kv, "=", 2)[0]
+		if key != "OPENCODE_CONFIG" && key != "OPENCODE_CONFIG_DIR" && key != "OPENCODE_CONFIG_CONTENT" && key != "XDG_CONFIG_HOME" && key != "PWD" {
+			out = append(out, kv)
+		}
+	}
+	return append(out, "PWD="+dir, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "OPENCODE_DISABLE_PROJECT_CONFIG=1",
+		"OPENCODE_DISABLE_CLAUDE_CODE=1", "OPENCODE_CONFIG_CONTENT="+opencodeTitleConfig)
 }
 
 // titleCommandError keeps stderr diagnostics out of the title but in the logged error.
@@ -91,7 +110,7 @@ func (m *chatManager) generateText(ctx context.Context, connectorID, model, prom
 		}
 		args = append(args, prompt)
 	case "opencode":
-		args = []string{"run", "--format", "json"}
+		args = []string{"run", "--standalone", "--format", "json"}
 		if model != "" {
 			args = append(args, "--model", model)
 		}
@@ -117,9 +136,6 @@ func (m *chatManager) generateText(ctx context.Context, connectorID, model, prom
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	env := connectorcli.Env(kind.String, configDir.String, secret)
-	if kind.String == "opencode" {
-		env = append(env, "OPENCODE_CONFIG_CONTENT="+opencodeTitleConfig)
-	}
 	out, err := titleCommandRunner(ctx, kind.String, cli, args, env)
 	if err != nil {
 		return "", err
