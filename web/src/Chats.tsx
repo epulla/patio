@@ -42,6 +42,7 @@ import { ConnectorRequired } from "./Connectors";
 import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, chatDragType, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { mentionsBot, useMentions } from "./mentions";
+import { loadDraft, saveDraft } from "./drafts";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
 import PinTabs, { dragGhost, reorderType as pinTabType, useGroupReorder } from "./PinTabs";
@@ -546,6 +547,7 @@ export default function Chats({
               }}
             >
               <Conversation
+                key={chatID}
                 id={chatID}
                 refresh={refresh}
                 connectors={connectors}
@@ -1008,6 +1010,7 @@ export default function Chats({
               }}
             >
               <Conversation
+                key={chatID}
                 id={chatID}
                 refresh={refresh}
                 connectors={connectors}
@@ -1252,13 +1255,9 @@ export function Conversation({
   const [running, setRunning] = useState(false);
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
   const posting = useRef(false);
-  const draftKey = `chat-draft:${id}`;
-  const [text, setText] = useState(() => localStorage.getItem(draftKey) ?? "");
-  function changeText(value: string) {
-    setText(value);
-    if (value) localStorage.setItem(draftKey, value);
-    else localStorage.removeItem(draftKey);
-  }
+  // Conversation is keyed by chat id everywhere, so the draft loads once per chat.
+  const [draft] = useState(() => loadDraft(id));
+  const [text, changeText] = useState(draft.text);
   const botId = detail?.chat.bot_id ?? undefined;
   const mentions = useMentions(input, changeText, "above", botId);
   const [botName, setBotName] = useState<string>();
@@ -1285,7 +1284,7 @@ export function Conversation({
   const [error, setError] = useState<unknown>();
   const [missing, setMissing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
-  const [pending, setPending] = useState<ChatAttachment[]>([]);
+  const [pending, setPending] = useState<ChatAttachment[]>(draft.attachments);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const end = useRef<HTMLDivElement>(null);
@@ -1318,10 +1317,16 @@ export function Conversation({
     void loadQueue();
   }, [id, refresh]);
 
+  useEffect(() => saveDraft(id, text, pending), [text, pending]);
+
+  // Unsent uploads live in server memory, so drop restored chips the server no longer has (e.g. after a restart).
   useEffect(() => {
-    setPending([]);
-    setDragging(false);
-  }, [id]);
+    if (!draft.attachments.length) return;
+    api
+      .get<ChatAttachment[]>(`/api/chats/${id}/attachments`)
+      .then((kept) => setPending((current) => current.filter((a) => kept.some((k) => k.name === a.name))))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.runtime?.EventsOn(`chat:${id}`, (data) => {

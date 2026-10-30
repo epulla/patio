@@ -223,6 +223,10 @@ func TestChatAttachmentServeDeleteAndPathSafety(t *testing.T) {
 	if deleteRes.Code != http.StatusNoContent {
 		t.Fatalf("delete unsent = %d: %s", deleteRes.Code, deleteRes.Body.String())
 	}
+	var listed []ChatAttachment
+	if code := requestJSON(t, server, http.MethodGet, "/api/chats/"+c.ID+"/attachments", nil, &listed); code != http.StatusOK || len(listed) != 1 || listed[0].Name != "preview.png" {
+		t.Fatalf("list unsent = %d, %#v", code, listed)
+	}
 }
 
 type attachmentTestDriver struct {

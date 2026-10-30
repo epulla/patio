@@ -190,6 +190,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/{id}/questions/{messageID}/answer", s.answerChatQuestion)
 	m.HandleFunc("POST /api/chats/{id}/reveal", s.revealChatFile)
 	m.HandleFunc("POST /api/chats/{id}/attachments", s.uploadChatAttachments)
+	m.HandleFunc("GET /api/chats/{id}/attachments", s.listChatAttachments)
 	m.HandleFunc("GET /api/chats/{id}/attachments/{name}", s.getChatAttachment)
 	m.HandleFunc("DELETE /api/chats/{id}/attachments/{name}", s.deleteChatAttachment)
 	m.HandleFunc("POST /api/chats/{id}/attachments/{name}/reveal", s.revealChatAttachment)

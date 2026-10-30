@@ -391,6 +391,22 @@ func (s *Server) attachmentPath(c chat, name string) (string, error) {
 	return resolved, nil
 }
 
+// listChatAttachments returns the chat's unsent uploads, so the composer can
+// restore a saved draft.
+func (s *Server) listChatAttachments(w http.ResponseWriter, r *http.Request) {
+	c, ok := s.chatForAttachments(w, r)
+	if !ok {
+		return
+	}
+	s.attachmentsMu.Lock()
+	defer s.attachmentsMu.Unlock()
+	list := make([]ChatAttachment, 0, len(s.attachments[c.ID]))
+	for _, attachment := range s.attachments[c.ID] {
+		list = append(list, attachment)
+	}
+	write(w, http.StatusOK, list)
+}
+
 func (s *Server) getChatAttachment(w http.ResponseWriter, r *http.Request) {
 	c, ok := s.chatForAttachments(w, r)
 	if !ok {
