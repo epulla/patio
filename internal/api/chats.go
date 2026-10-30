@@ -248,6 +248,7 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT ` + chatColumns + ` FROM chat`
 	args := []any{}
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	_, searching := r.URL.Query()["q"]
 	if search != "" {
 		query += ` WHERE title LIKE ? ESCAPE '\'`
 		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)+"%")
@@ -292,7 +293,7 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 			errw(w, 500, err.Error())
 			return
 		}
-		if search != "" && c.ParentChatID != nil {
+		if searching && c.ParentChatID != nil {
 			if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, *c.ParentChatID).Scan(&c.ParentTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				errw(w, 500, err.Error())
 				return

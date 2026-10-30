@@ -886,6 +886,7 @@ export default function Chats({
               <div
                 key={chat.id}
                 className="chat-row"
+                data-tour="chat-row"
                 style={{ ...chatPinStyle(chat.id), "--depth": depth } as CSSProperties}
                 draggable
                 onDragStart={(event) => {

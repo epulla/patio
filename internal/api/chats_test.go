@@ -214,6 +214,9 @@ func TestChatListSearch(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?q="+url.QueryEscape("0%"), nil, &page); code != http.StatusOK || len(page.Chats) != 1 || page.Chats[0].ParentTitle != "Planner work" {
 		t.Fatalf("search literal %% = %d, %#v", code, page.Chats)
 	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats?limit=8&q=", nil, &page); code != http.StatusOK || len(page.Chats) != 2 || page.Chats[0].ParentTitle != "Planner work" {
+		t.Fatalf("empty search = %d, %#v", code, page.Chats)
+	}
 }
 
 func TestChatListRuntimeApprovalAndOtherWindow(t *testing.T) {
