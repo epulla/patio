@@ -28,22 +28,26 @@ export function saveDraft(chatID: string, text: string, attachments: ChatAttachm
 }
 
 // Drafts being sent: cleared from storage when the send starts, restored if it fails.
+// One send per chat at a time, also across remounted composers, so each chat has one copy.
 const sending = new Map<string, Draft>();
 const listeners = new Map<string, Set<(draft: Draft) => void>>();
+
+export function isSending(chatID: string) {
+  return sending.has(chatID);
+}
 
 export function takeDraft(chatID: string, text: string, attachments: ChatAttachment[]) {
   sending.set(chatID, { text, attachments, at: Date.now() });
   saveDraft(chatID, "", []);
 }
 
-export function dropSending(chatID: string) {
+export function finishSend(chatID: string) {
   sending.delete(chatID);
 }
 
 // Puts a failed send back unless the chat has a newer draft; mounted composers get it via onRestore.
 export function restoreDraft(chatID: string) {
   const draft = sending.get(chatID);
-  sending.delete(chatID);
   const stored = loadDraft(chatID);
   if (!draft || stored.text || stored.attachments.length) return;
   saveDraft(chatID, draft.text, draft.attachments);

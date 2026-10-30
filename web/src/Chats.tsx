@@ -42,7 +42,7 @@ import { ConnectorRequired } from "./Connectors";
 import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, chatDragType, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { chatLink, mentionsBot, useMentions } from "./mentions";
-import { dropSending, loadDraft, onRestore, restoreDraft, saveDraft, takeDraft } from "./drafts";
+import { finishSend, isSending, loadDraft, onRestore, restoreDraft, saveDraft, takeDraft } from "./drafts";
 import { chatAncestors, chatTree, loadTreeOpen, saveTreeOpen } from "./chatTree";
 import Lightbox from "./Lightbox";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
@@ -1311,7 +1311,6 @@ export function Conversation({
   const [thinking, setThinking] = useState("");
   const [running, setRunning] = useState(false);
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
-  const posting = useRef(false);
   // Conversation is keyed by chat id everywhere, so the draft loads once per chat.
   const [draft] = useState(() => loadDraft(id));
   const [text, changeText] = useState(draft.text);
@@ -1574,10 +1573,9 @@ export function Conversation({
   async function send(event?: FormEvent) {
     event?.preventDefault();
     const value = text.trim();
-    if ((!value && !pending.length) || uploading || !detail || posting.current) return;
+    if ((!value && !pending.length) || uploading || !detail || isSending(id)) return;
     // While a reply runs the backend queues the message instead of sending it.
     const queueing = running;
-    posting.current = true;
     setError(undefined);
     if (!queueing) {
       setRunning(true);
@@ -1587,18 +1585,19 @@ export function Conversation({
     takeDraft(id, text, pending);
     changeText("");
     setPending([]);
+    let sent = false;
     try {
       const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
       const result = await api.post<ChatMessage | { queued: QueuedMessage }>(`/api/chats/${id}/messages`, {
         text: prefix + value,
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
+      sent = true;
       if (prefix) sentContext.set(id, context!.line);
       if (startContext) {
         localStorage.removeItem(startKey);
         setStartContext(undefined);
       }
-      dropSending(id);
       if ("queued" in result) {
         const item = result.queued;
         setQueue((current) => (current.some((q) => q.id === item.id) ? current : [...current, item]));
@@ -1613,11 +1612,11 @@ export function Conversation({
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
-      restoreDraft(id);
+      if (!sent) restoreDraft(id);
       if (!queueing) setRunning(false);
       setError(reason);
     } finally {
-      posting.current = false;
+      finishSend(id);
     }
   }
 
