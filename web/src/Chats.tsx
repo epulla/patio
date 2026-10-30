@@ -42,7 +42,7 @@ import { ConnectorRequired } from "./Connectors";
 import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGroup, groupDragType, chatDragType, pinColors, pinStyle, setGroupColor, type PinColor, deleteGroup, groupOf, isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, maxPins, moveToGroup, pin, pinNumber, pinShortcut, rememberPinnedChat, renameGroup, setActiveGroup, setGroupView, setPins, shownPin, type PinView, lastPinnedChat, maxPanes, pruneSplit, replaceLeaf, setGroupSplit, setSplitRatio, splitLeaf, splitLeaves, type SplitEdge, type SplitNode, unpin, unpinAriaShortcut, unpinShortcut, usePinGroups, usePins } from "./pins";
 import Picker from "./Picker";
 import { chatLink, mentionsBot, useMentions } from "./mentions";
-import { loadDraft, saveDraft } from "./drafts";
+import { dropSending, loadDraft, onRestore, restoreDraft, saveDraft, takeDraft } from "./drafts";
 import { chatAncestors, chatTree, loadTreeOpen, saveTreeOpen } from "./chatTree";
 import Lightbox from "./Lightbox";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
@@ -1379,6 +1379,15 @@ export function Conversation({
 
   useEffect(() => saveDraft(id, text, pending), [text, pending]);
 
+  useEffect(
+    () =>
+      onRestore(id, (restored) => {
+        changeText(restored.text);
+        setPending(restored.attachments);
+      }),
+    [],
+  );
+
   // Unsent uploads live in server memory, so drop restored chips the server no longer has (e.g. after a restart).
   useEffect(() => {
     if (!draft.attachments.length) return;
@@ -1574,6 +1583,10 @@ export function Conversation({
       setRunning(true);
       atBottom.current = true;
     }
+    // Clear right away so reopening the chat mid-send shows an empty composer; restored on failure.
+    takeDraft(id, text, pending);
+    changeText("");
+    setPending([]);
     try {
       const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
       const result = await api.post<ChatMessage | { queued: QueuedMessage }>(`/api/chats/${id}/messages`, {
@@ -1585,12 +1598,7 @@ export function Conversation({
         localStorage.removeItem(startKey);
         setStartContext(undefined);
       }
-      // Clear storage directly too: the chat may have been switched away (unmounted) while posting.
-      const stored = loadDraft(id);
-      const sent = new Set(pending.map((a) => a.name));
-      saveDraft(id, stored.text === text ? "" : stored.text, stored.attachments.filter((a) => !sent.has(a.name)));
-      changeText("");
-      setPending([]);
+      dropSending(id);
       if ("queued" in result) {
         const item = result.queued;
         setQueue((current) => (current.some((q) => q.id === item.id) ? current : [...current, item]));
@@ -1605,6 +1613,7 @@ export function Conversation({
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
+      restoreDraft(id);
       if (!queueing) setRunning(false);
       setError(reason);
     } finally {
