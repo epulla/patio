@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -193,6 +194,9 @@ func TestGenerateTextIsolatesCLIs(t *testing.T) {
 }
 
 func TestTitleCommandRunnerIgnoresStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
 	out, err := titleCommandRunner(context.Background(), "codex", "/bin/sh", []string{"-c", "echo 'OpenAI Codex v1 banner' >&2; echo 'A useful title'"}, nil)
 	if err != nil || strings.TrimSpace(string(out)) != "A useful title" {
 		t.Fatalf("out=%q err=%v", out, err)
@@ -204,6 +208,9 @@ func TestTitleCommandRunnerIgnoresStderr(t *testing.T) {
 }
 
 func TestTitleCommandRunnerIsolatesOpencode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
 	env := append(os.Environ(), "OPENCODE_CONFIG=/user/opencode.json", "OPENCODE_CONFIG_DIR=/user/opencode", "PWD=/user/project")
 	script := `[ "$(pwd -P)" = "$(cd "$PWD" && pwd -P)" ] && echo "$PWD|$XDG_CONFIG_HOME|$OPENCODE_CONFIG|$OPENCODE_CONFIG_DIR|$OPENCODE_DISABLE_PROJECT_CONFIG|$OPENCODE_CONFIG_CONTENT"`
 	out, err := titleCommandRunner(context.Background(), "opencode", "/bin/sh", []string{"-c", script}, env)
