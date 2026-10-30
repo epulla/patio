@@ -667,7 +667,9 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
               checked={defaults.show_thinking}
               onChange={(show_thinking) => save({ show_thinking })}
             />
-            <Switch label={t.aiTitles} title={t.aiTitlesHint} checked={defaults.ai_titles} onChange={(ai_titles) => save({ ai_titles })} />
+            <div data-tour="ai-titles">
+              <Switch label={t.aiTitles} title={t.aiTitlesHint} checked={defaults.ai_titles} onChange={(ai_titles) => save({ ai_titles })} />
+            </div>
             {defaults.ai_titles && (
               <div className="defaults-fields">
                 <label>
