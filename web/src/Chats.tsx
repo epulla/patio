@@ -2105,6 +2105,7 @@ export function Conversation({
             <IconButton
               type="button"
               className="ghost tip-up"
+              data-tour="attach"
               icon="paperclip"
               label={t.attachFiles}
               disabled={!connector || uploading || pending.length >= maxAttachments}
