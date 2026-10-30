@@ -133,6 +133,12 @@
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--content) 25%, transparent) transparent;
 }
+/* The shell fills the window through % heights, not vh: WKWebView's vh can differ from the visible area. */
+html,
+body,
+#root {
+  height: 100%;
+}
 body {
   margin: 0;
 }
@@ -152,17 +158,22 @@ a {
 }
 
 /* Shell */
-/* clip, not hidden: hidden makes .app a scroll container and breaks the sticky sidebar and dock.
-   Hidden tooltips near the right edge still take layout space and would add a page scrollbar. */
+/* A fixed-height shell: pages scroll inside .page-scroll, so the window never gets a scrollbar.
+   x is hidden there because tooltips near the right edge still take layout space. */
 .app {
   display: flex;
-  min-height: 100vh;
-  overflow-x: clip;
+  height: 100%;
+  overflow: hidden;
+}
+/* Positioned so absolute children (e.g. .sr-only) scroll with the page instead of extending the document. */
+.page-scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden auto;
 }
 .sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  position: relative;
   width: 260px;
   flex-shrink: 0;
   display: flex;
@@ -361,18 +372,15 @@ a {
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
 }
 .app-version {
-  position: fixed;
-  right: 8px;
-  bottom: 6px;
+  padding: 0 4px;
   color: var(--muted);
   font: 11px var(--mono);
-  pointer-events: none;
+  text-align: center;
 }
 .sidebar.collapsed .sidebar-head {
   justify-content: center;
 }
 main {
-  flex: 1;
   min-width: 0;
   max-width: 1440px;
   margin: 0 auto;
@@ -1951,7 +1959,7 @@ label.days-field {
   display: grid;
   grid-template-columns: clamp(180px, 22%, 220px) minmax(0, 1fr);
   gap: 12px;
-  height: calc(100vh - 24px);
+  height: 100%;
   min-height: 420px;
 }
 /* Fixed width with .chat-rail stretched: shrink-wrapped, the rail's scrollbar clips the 32px initials. */
@@ -1985,6 +1993,7 @@ label.days-field {
 /* Top padding and the collapsed list's spacing match .sidebar so their buttons line up. */
 main:has(> .chats) {
   max-width: none;
+  height: 100%;
   padding: 16px 8px 8px;
 }
 .chat-list.collapsed {
@@ -2429,12 +2438,11 @@ main:has(> .chats) {
   cursor: grab;
 }
 main.chat-window {
+  height: 100%;
   padding: 16px;
 }
 .chat-dock {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  position: relative;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -2665,7 +2673,7 @@ main.chat-window {
 }
 .chats.windowed {
   grid-template-columns: minmax(0, 1fr);
-  height: calc(100vh - 32px);
+  height: 100%;
 }
 .chats > .skill-empty {
   align-self: center;
@@ -4209,8 +4217,13 @@ main.chat-window {
   .sidebar {
     display: none;
   }
-  .app-version {
-    display: none;
+  html,
+  body,
+  #root,
+  .app,
+  .page-scroll {
+    height: auto;
+    overflow: visible;
   }
   main {
     max-width: none;

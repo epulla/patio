@@ -656,13 +656,16 @@ export default function App() {
             </button>
           )}
         </div>
+        {config.version && <span className="app-version">{config.version}</span>}
         {tip && (
           <div className={tip.focus ? "rail-tip wide focus" : "rail-tip wide"} aria-hidden="true" style={{ top: tip.top, left: tip.left }}>
             {tip.text}
           </div>
         )}
       </aside>
-      <main>{page}</main>
+      <div className="page-scroll">
+        <main>{page}</main>
+      </div>
       {showDock && dockOpen && (
         <ChatDock
           ids={pins.ids}
@@ -697,7 +700,6 @@ export default function App() {
           {notice}
         </p>
       )}
-      {config.version && <span className="app-version">{config.version}</span>}
     </div>
   );
 }
