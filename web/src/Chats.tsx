@@ -43,6 +43,7 @@ import { requestNewPinnedChat, newPinnedShortcut, addGroup, allPinnedIds, moveGr
 import Picker from "./Picker";
 import { mentionsBot, useMentions } from "./mentions";
 import { loadDraft, saveDraft } from "./drafts";
+import Lightbox from "./Lightbox";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
 import PinTabs, { dragGhost, reorderType as pinTabType, useGroupReorder } from "./PinTabs";
@@ -1286,6 +1287,7 @@ export function Conversation({
   const [announcement, setAnnouncement] = useState("");
   const [pending, setPending] = useState<ChatAttachment[]>(draft.attachments);
   const [uploading, setUploading] = useState(false);
+  const [viewing, setViewing] = useState<ChatAttachment>();
   const [dragging, setDragging] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
@@ -1889,7 +1891,14 @@ export function Conversation({
         <ul className="attachments" aria-label={t.filesToSend}>
           {pending.map((attachment) => (
             <li key={attachment.name} className="attachment">
-              <AttachmentLabel attachment={attachment} />
+              {attachment.kind === "image" ? (
+                <button type="button" className="attachment-open" onClick={() => setViewing(attachment)}>
+                  <AttachmentLabel attachment={attachment} />
+                  <img className="attachment-thumb" src={attachmentURL(id, attachment.name)} alt="" />
+                </button>
+              ) : (
+                <AttachmentLabel attachment={attachment} />
+              )}
               <IconButton
                 type="button"
                 icon="x"
@@ -1905,6 +1914,14 @@ export function Conversation({
             </li>
           )}
         </ul>
+      )}
+      {viewing && (
+        <Lightbox
+          src={attachmentURL(id, viewing.name)}
+          name={viewing.name}
+          onReveal={() => revealAttachment(viewing)}
+          onClose={() => setViewing(undefined)}
+        />
       )}
       {openQuestion && (
         <QuestionCard
@@ -2179,6 +2196,8 @@ function pastedFile(file: File) {
   return new File([file], `pasted-${stamp}.${extension}`, { type: file.type });
 }
 
+const attachmentURL = (chatID: string, name: string) => `/api/chats/${chatID}/attachments/${encodeURIComponent(name)}`;
+
 function AttachmentLabel({ attachment }: { attachment: ChatAttachment }) {
   return (
     <span className="attachment-label">
@@ -2289,9 +2308,18 @@ const Timeline = memo(function Timeline({
       onError(reason);
     }
   }
+  const [viewing, setViewing] = useState<ChatAttachment>();
   const lastReply = [...detail.messages].reverse().find((message) => message.role === "assistant" && message.content)?.id;
   return (
     <>
+    {viewing && (
+      <Lightbox
+        src={attachmentURL(chatId, viewing.name)}
+        name={viewing.name}
+        onReveal={() => revealAttachment(viewing)}
+        onClose={() => setViewing(undefined)}
+      />
+    )}
     {timeline(detail).map((message) =>
       "tool_name" in message ? (
         <ToolLine key={message.id} body={() => `${message.tool_name}\n${prettyJSON(message.input_json)}`}>
@@ -2337,16 +2365,10 @@ const Timeline = memo(function Timeline({
                   <button
                     type="button"
                     className={attachment.kind === "image" ? "attachment image" : "attachment"}
-                    title={t.showFolder}
-                    onClick={() => revealAttachment(attachment)}
+                    title={attachment.kind === "image" ? undefined : t.showFolder}
+                    onClick={() => (attachment.kind === "image" ? setViewing(attachment) : revealAttachment(attachment))}
                   >
-                    {attachment.kind === "image" && (
-                      <img
-                        src={`/api/chats/${chatId}/attachments/${encodeURIComponent(attachment.name)}`}
-                        alt=""
-                        loading="lazy"
-                      />
-                    )}
+                    {attachment.kind === "image" && <img src={attachmentURL(chatId, attachment.name)} alt="" loading="lazy" />}
                     <AttachmentLabel attachment={attachment} />
                   </button>
                 </li>

@@ -4461,6 +4461,63 @@ main.chat-window {
   border-radius: 4px;
   align-self: center;
 }
+.attachment-open {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: zoom-in;
+}
+.attachment-thumb {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  max-width: 240px;
+  max-height: 160px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--base-100);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+  object-fit: contain;
+}
+.attachment-open:hover .attachment-thumb,
+.attachment-open:focus-visible .attachment-thumb {
+  display: block;
+}
+.attachments.sent .attachment.image {
+  cursor: zoom-in;
+}
+.lightbox {
+  width: auto;
+  max-width: calc(100vw - 40px);
+}
+.lightbox-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lightbox-panel .page-heading {
+  flex-wrap: nowrap;
+}
+.lightbox-panel h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+.lightbox-panel img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  margin: 0 auto;
+  object-fit: contain;
+}
 .attachment-label {
   display: inline-flex;
   align-items: center;
