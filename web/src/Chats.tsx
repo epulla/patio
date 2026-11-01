@@ -929,14 +929,16 @@ export default function Chats({
                     {state && <span className="sr-only">, {statusText[state]}</span>}
                   </span>
                   <small>
-                    {copiedRow === chat.id ? t.copied : new Date(chat.updated_at).toLocaleDateString(locale())}
-                    {children > 0 && ` · ${t.handoffs(children)}`}
-                    {chat.scheduled_task_id && (
-                      <>
-                        {" · "}
-                        <Icon name="clock" /> {t.scheduled}
-                      </>
-                    )}
+                    <span className="chat-meta">
+                      {copiedRow === chat.id ? t.copied : new Date(chat.updated_at).toLocaleDateString(locale())}
+                      {children > 0 && ` · ${t.handoffs(children)}`}
+                      {chat.scheduled_task_id && (
+                        <>
+                          {" · "}
+                          <Icon name="clock" /> {t.scheduled}
+                        </>
+                      )}
+                    </span>
                     {chat.scheduled_late && (
                     <span className="run-label" title={t.lateTitle}>
                         Ran late
