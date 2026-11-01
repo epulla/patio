@@ -2148,9 +2148,17 @@ main:has(> .chats) {
   width: 12px;
   height: 12px;
 }
+/* Negative margin keeps the hover pad from shifting the meta text. */
 .chat-link small .late-clock {
   display: flex;
   flex: none;
+  margin: -2px;
+  padding: 2px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.chat-link small .late-clock:hover {
+  background: color-mix(in oklch, var(--content) 12%, transparent);
 }
 .chat-link small .late-clock .svg-icon {
   color: var(--muted);
