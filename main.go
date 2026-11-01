@@ -213,6 +213,10 @@ func main() {
 	})
 	wins.app = app
 	wins.showMain(*openPath)
+	// Dock click with only chat windows open brings the main window back.
+	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
+		wins.reopenMain()
+	})
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		ctx := app.Context()
 		if err := api.CleanupStaleCopilotMCPConfigs(); err != nil {
@@ -380,6 +384,16 @@ func (w *windows) showMain(path string) {
 			w.main = nil
 		}
 	})
+}
+
+// reopenMain recreates the main window only when it was closed.
+func (w *windows) reopenMain() {
+	w.mu.Lock()
+	closed := w.main == nil
+	w.mu.Unlock()
+	if closed {
+		w.showMain("")
+	}
 }
 
 // openChat focuses the chat's window or opens one, cascading from the right edge of the screen.
