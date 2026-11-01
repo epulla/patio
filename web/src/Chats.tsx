@@ -1458,10 +1458,26 @@ export function Conversation({
   useEffect(() => {
     atBottom.current = true;
   }, [id]);
+  // Watch the DOM rather than state: thinking text, tool results, cards and loading images grow the list too.
+  const ready = !!detail;
   useEffect(() => {
     const box = end.current?.parentElement;
-    if (box && atBottom.current) box.scrollTop = box.scrollHeight;
-  }, [detail?.messages.length, streaming, detail?.pending_approvals.length, split]);
+    if (!box) return;
+    const follow = () => {
+      if (atBottom.current) box.scrollTop = box.scrollHeight;
+    };
+    follow();
+    const mutations = new MutationObserver(follow);
+    mutations.observe(box, { childList: true, subtree: true, characterData: true });
+    const resize = new ResizeObserver(follow);
+    resize.observe(box);
+    box.addEventListener("load", follow, true);
+    return () => {
+      mutations.disconnect();
+      resize.disconnect();
+      box.removeEventListener("load", follow, true);
+    };
+  }, [id, split, ready]);
 
   const [away, setAway] = useState(false);
   const onMessagesScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -1480,7 +1496,6 @@ export function Conversation({
     </button>
   );
 
-  const ready = !!detail;
   useEffect(() => {
     if (focused && ready) input.current?.focus();
   }, [focused, ready]);
