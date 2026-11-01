@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,11 +24,9 @@ import (
 
 	"github.com/gen2brain/beeep"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/linux"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 	"patio/internal/api"
 	"patio/internal/db"
 	mcpserver "patio/internal/mcp"
@@ -104,15 +103,23 @@ func main() {
 	windowID := api.NewWindowID()
 	mime.AddExtensionType(".js", "text/javascript")
 
-	var appCtx context.Context
-	notes := &notifier{
-		send: func(title, body, link string) error {
-			return wruntime.SendNotification(appCtx, wruntime.NotificationOptions{
-				ID: fmt.Sprint(time.Now().UnixNano()), Title: title, Body: body, Data: map[string]any{"link": link},
-			})
-		},
-		fallback: func(title, body string) error { return beeep.Notify(title, body, "") },
-		check:    func() (bool, error) { return wruntime.CheckNotificationAuthorization(appCtx) },
+	notes := &notifier{fallback: func(title, body string) error { return beeep.Notify(title, body, "") }}
+	nsvc := notifications.New()
+	notes.send = func(title, body, link string) error {
+		return nsvc.SendNotification(notifications.NotificationOptions{
+			ID: fmt.Sprint(time.Now().UnixNano()), Title: title, Body: body, Data: map[string]any{"link": link},
+		})
+	}
+	notes.check = nsvc.CheckNotificationAuthorization
+	var app *application.App
+	var mainWindow *application.WebviewWindow
+	showPath := func(path string) {
+		mainWindow.UnMinimise()
+		mainWindow.Show()
+		mainWindow.Focus()
+		if path != "" {
+			app.Event.Emit("navigate", path)
+		}
 	}
 	mux := http.NewServeMux()
 	patioToolNames, err := mcpserver.RegisteredToolNames()
@@ -132,11 +139,11 @@ func main() {
 		WindowID:             windowID,
 		LogPath:              logFilePath,
 		StartWindow:          func(args []string) error { return startWindow(exe, args) },
-		FocusWindow:          func() { wruntime.WindowUnminimise(appCtx); wruntime.WindowShow(appCtx) },
+		FocusWindow:          func() { showPath("") },
 		Notify:               notes.Notify,
 		NotificationsBlocked: notes.Blocked,
 		Emit: func(event string, data any) {
-			wruntime.EventsEmit(appCtx, event, data)
+			app.Event.Emit(event, data)
 		},
 	})
 	mux.Handle("/api/", apiServer)
@@ -178,201 +185,35 @@ func main() {
 	var background sync.WaitGroup
 	windowStop := make(chan struct{})
 	// WKWebView ignores window.print(); Wails exposes native printing only from Go.
-	mux.HandleFunc("POST /api/print", func(w http.ResponseWriter, _ *http.Request) {
-		wruntime.WindowPrint(appCtx)
+	mux.HandleFunc("POST /api/print", func(w http.ResponseWriter, r *http.Request) {
+		window := app.Window.Current()
+		if id, err := strconv.ParseUint(r.Header.Get("x-wails-window-id"), 10, 0); err == nil {
+			if byID, ok := app.Window.GetByID(uint(id)); ok {
+				window = byID
+			}
+		}
+		if window != nil {
+			if err := window.Print(); err != nil {
+				log.Printf("print window: %v", err)
+			}
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("/", spaHandler)
 	log.Printf("database at %s", path)
-	runErr := wails.Run(&options.App{
-		Title:  appTitle(chatTitle),
-		Width:  appWidth(*chatWindow),
-		Height: 800,
-		Linux: &linux.Options{
-			Icon:             appIcon,
-			ProgramName:      "patio",
-			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
-		},
-		OnStartup: func(ctx context.Context) {
-			appCtx = ctx
-			if *chatWindow == "" {
-				if err := api.CleanupStaleCopilotMCPConfigs(); err != nil {
-					log.Printf("clean stale Copilot MCP configs: %v", err)
-				}
+	app = application.New(application.Options{
+		Name:   "Patio",
+		Icon:   appIcon,
+		Assets: application.AssetOptions{Handler: mux},
+		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Linux:  application.LinuxOptions{ProgramName: "patio"},
+		OnShutdown: func() {
+			if stopBackground != nil {
+				stopBackground()
 			}
-			showPath := func(path string) {
-				wruntime.WindowUnminimise(ctx)
-				wruntime.WindowShow(ctx)
-				if path != "" {
-					wruntime.EventsEmit(ctx, "navigate", path)
-				}
+			if err := nsvc.ServiceShutdown(); err != nil {
+				log.Printf("shut down native notifications: %v", err)
 			}
-			go func() {
-				if err := wruntime.InitializeNotifications(ctx); err != nil {
-					log.Printf("native notifications unavailable, using beeep: %v", err)
-					return
-				}
-				if !wruntime.IsNotificationAvailable(ctx) {
-					log.Printf("native notifications unavailable, using beeep")
-					return
-				}
-				wruntime.OnNotificationResponse(ctx, func(result wruntime.NotificationResult) {
-					if result.Error != nil {
-						log.Printf("native notification response: %v", result.Error)
-						return
-					}
-					link, _ := result.Response.UserInfo["link"].(string)
-					showPath(link)
-				})
-				ok, err := wruntime.RequestNotificationAuthorization(ctx)
-				notes.asked.Store(runtime.GOOS == "darwin")
-				if !ok || err != nil {
-					log.Printf("native notifications not authorized, using beeep: %v", err)
-					return
-				}
-				notes.ready.Store(true)
-			}()
-			if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
-				log.Printf("register app window: %v", err)
-			}
-			apiServer.RunWindowHeartbeat(windowStop, showPath)
-			backgroundCtx, cancel := context.WithCancel(ctx)
-			stopBackground = cancel
-			if *chatWindow == "" {
-				if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
-					log.Printf("deliver queued agent messages at startup: %v", err)
-				}
-			}
-			background.Add(1)
-			go func() {
-				defer background.Done()
-				purge := func() {
-					if err := apiServer.PurgeNotifications(); err != nil {
-						log.Printf("purge notifications: %v", err)
-					}
-				}
-				purge()
-				ticker := time.NewTicker(24 * time.Hour)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-backgroundCtx.Done():
-						return
-					case <-ticker.C:
-						purge()
-					}
-				}
-			}()
-			background.Add(1)
-			go func() {
-				defer background.Done()
-				if err := db.Watch(backgroundCtx, database, time.Second, func() {
-					wruntime.EventsEmit(ctx, "db-changed")
-					if *chatWindow == "" {
-						if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
-							log.Printf("deliver queued agent messages after database change: %v", err)
-						}
-					}
-				}); err != nil {
-					log.Printf("watch database changes: %v", err)
-				}
-			}()
-			if *chatWindow == "" {
-				background.Add(6)
-				go func() {
-					defer background.Done()
-					if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
-						log.Printf("run scheduled tasks: %v", err)
-					}
-				}()
-				go func() {
-					defer background.Done()
-					if err := apiServer.StartHandoffSweeper(backgroundCtx, 30*time.Second); err != nil {
-						log.Printf("sweep chat handoffs: %v", err)
-					}
-				}()
-				go func() {
-					defer background.Done()
-					if err := apiServer.StartMonitorRunner(backgroundCtx, 30*time.Second); err != nil {
-						log.Printf("run monitors: %v", err)
-					}
-				}()
-				go func() {
-					defer background.Done()
-					if err := apiServer.StartHealthMonitor(backgroundCtx, 5*time.Minute); err != nil {
-						log.Printf("monitor health: %v", err)
-					}
-				}()
-				go func() {
-					defer background.Done()
-					if err := apiServer.StartUpdateChecker(backgroundCtx, 6*time.Hour); err != nil {
-						log.Printf("check for update: %v", err)
-					}
-				}()
-				go func() {
-					defer background.Done()
-					if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(item reminder.Item, message string) error {
-						title := item.Title
-						if item.Kind == "reminder" {
-							title = "Reminder: " + title
-						}
-						if err := apiServer.Notify("calendar", title, message, "/calendar", true); err != nil {
-							return err
-						}
-						return nil
-					}); err != nil {
-						log.Printf("run reminders: %v", err)
-					}
-				}()
-			}
-		},
-		OnDomReady: func(ctx context.Context) {
-			if *chatWindow == "" {
-				return
-			}
-			screens, err := wruntime.ScreenGetAll(ctx)
-			if err != nil {
-				log.Printf("get screens for chat window: %v", err)
-				return
-			}
-			var screen *wruntime.Screen
-			for i := range screens {
-				if screens[i].IsCurrent {
-					screen = &screens[i]
-					break
-				}
-			}
-			if screen == nil {
-				for i := range screens {
-					if screens[i].IsPrimary {
-						screen = &screens[i]
-						break
-					}
-				}
-			}
-			if screen == nil {
-				log.Printf("no current or primary screen for chat window")
-				return
-			}
-			n, err := apiServer.LiveChatWindowCount()
-			if err != nil {
-				log.Printf("count live chat windows: %v", err)
-				return
-			}
-			// burnedout: assumed right-edge cascade, 32px step, wraps after 5
-			n %= 5
-			x := screen.Size.Width - 900 - 24 - 32*n
-			y := 40 + 32*n
-			if x < 0 {
-				x = 0
-			}
-			if y < 0 {
-				y = 0
-			}
-			wruntime.WindowSetPosition(ctx, x, y)
-		},
-		OnShutdown: func(ctx context.Context) {
-			wruntime.CleanupNotifications(ctx)
 			close(windowStop)
 			if err := apiServer.UnregisterWindow(); err != nil {
 				log.Printf("unregister app window: %v", err)
@@ -381,13 +222,139 @@ func main() {
 				log.Printf("close chat processes: %v", err)
 			}
 		},
-		AssetServer: &assetserver.Options{
-			Handler: mux,
-		},
 	})
-	if stopBackground != nil {
-		stopBackground()
-	}
+	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:  appTitle(chatTitle),
+		Width:  appWidth(*chatWindow),
+		Height: 800,
+		URL:    "/",
+		Linux:  application.LinuxWindow{Icon: appIcon, WebviewGpuPolicy: application.WebviewGpuPolicyNever},
+	})
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		ctx := app.Context()
+		if *chatWindow == "" {
+			if err := api.CleanupStaleCopilotMCPConfigs(); err != nil {
+				log.Printf("clean stale Copilot MCP configs: %v", err)
+			}
+		} else {
+			positionChatWindow(mainWindow, apiServer)
+		}
+		go func() {
+			if err := nsvc.ServiceStartup(ctx, application.ServiceOptions{}); err != nil {
+				log.Printf("native notifications unavailable, using beeep: %v", err)
+				return
+			}
+			nsvc.OnNotificationResponse(func(result notifications.NotificationResult) {
+				if result.Error != nil {
+					log.Printf("native notification response: %v", result.Error)
+					return
+				}
+				link, _ := result.Response.UserInfo["link"].(string)
+				showPath(link)
+			})
+			ok, err := nsvc.RequestNotificationAuthorization()
+			notes.asked.Store(runtime.GOOS == "darwin")
+			if !ok || err != nil {
+				log.Printf("native notifications not authorized, using beeep: %v", err)
+				return
+			}
+			notes.ready.Store(true)
+		}()
+		if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
+			log.Printf("register app window: %v", err)
+		}
+		apiServer.RunWindowHeartbeat(windowStop, showPath)
+		backgroundCtx, cancel := context.WithCancel(ctx)
+		stopBackground = cancel
+		if *chatWindow == "" {
+			if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+				log.Printf("deliver queued agent messages at startup: %v", err)
+			}
+		}
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			purge := func() {
+				if err := apiServer.PurgeNotifications(); err != nil {
+					log.Printf("purge notifications: %v", err)
+				}
+			}
+			purge()
+			ticker := time.NewTicker(24 * time.Hour)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-backgroundCtx.Done():
+					return
+				case <-ticker.C:
+					purge()
+				}
+			}
+		}()
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			if err := db.Watch(backgroundCtx, database, time.Second, func() {
+				app.Event.Emit("db-changed")
+				if *chatWindow == "" {
+					if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+						log.Printf("deliver queued agent messages after database change: %v", err)
+					}
+				}
+			}); err != nil {
+				log.Printf("watch database changes: %v", err)
+			}
+		}()
+		if *chatWindow == "" {
+			background.Add(6)
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
+					log.Printf("run scheduled tasks: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartHandoffSweeper(backgroundCtx, 30*time.Second); err != nil {
+					log.Printf("sweep chat handoffs: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartMonitorRunner(backgroundCtx, 30*time.Second); err != nil {
+					log.Printf("run monitors: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartHealthMonitor(backgroundCtx, 5*time.Minute); err != nil {
+					log.Printf("monitor health: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartUpdateChecker(backgroundCtx, 6*time.Hour); err != nil {
+					log.Printf("check for update: %v", err)
+				}
+			}()
+			go func() {
+				defer background.Done()
+				if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(item reminder.Item, message string) error {
+					title := item.Title
+					if item.Kind == "reminder" {
+						title = "Reminder: " + title
+					}
+					if err := apiServer.Notify("calendar", title, message, "/calendar", true); err != nil {
+						return err
+					}
+					return nil
+				}); err != nil {
+					log.Printf("run reminders: %v", err)
+				}
+			}()
+		}
+	})
+	runErr := app.Run()
 	background.Wait()
 	if err := database.Close(); err != nil {
 		log.Printf("close database: %v", err)
@@ -395,6 +362,23 @@ func main() {
 	if runErr != nil {
 		log.Fatal(runErr)
 	}
+}
+
+// positionChatWindow cascades chat windows from the right edge of their screen.
+func positionChatWindow(window *application.WebviewWindow, apiServer *api.Server) {
+	screen, err := window.GetScreen()
+	if err != nil || screen == nil {
+		log.Printf("get screen for chat window: %v", err)
+		return
+	}
+	n, err := apiServer.LiveChatWindowCount()
+	if err != nil {
+		log.Printf("count live chat windows: %v", err)
+		return
+	}
+	// burnedout: assumed right-edge cascade, 32px step, wraps after 5
+	n %= 5
+	window.SetRelativePosition(max(screen.WorkArea.Width-900-24-32*n, 0), 40+32*n)
 }
 
 func appTitle(chatTitle string) string {
