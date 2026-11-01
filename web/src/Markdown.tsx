@@ -5,6 +5,7 @@ import { navigate } from "./App";
 import { iconSvg } from "./icons";
 import { useText } from "./i18n";
 import LinkPreview, { previewRoute } from "./LinkPreview";
+import { isDesktop, openURL } from "./desktop";
 
 const appRoute =
   /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings|dashboard)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
@@ -102,7 +103,7 @@ export default function Markdown({ text, onFile }: { text: string; onFile?: (pat
     if (chat) dispatchEvent(new CustomEvent("open-chat-link", { detail: chat[1] }));
     else if (route === "/" || appRoute.test(route)) navigate(href);
     else if (/^https?:\/\//i.test(href)) {
-      if (window.runtime) window.runtime.BrowserOpenURL(href);
+      if (isDesktop) openURL(href);
       else window.open(href, "_blank", "noopener");
     } else if (/^file:\/\//i.test(href)) {
       onFile?.(href.split("#", 1)[0]);

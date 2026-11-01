@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { Chat } from "./api";
 import type { IconName } from "./icons";
+import { onEvent } from "./desktop";
 
 export type ChatStatus = "working" | "approval" | "reply";
 export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", reply: "check" };
@@ -44,12 +45,12 @@ export function useChatStatus(ids: string[]) {
   useEffect(() => {
     if (!key) return;
     const unsubscribes = key.split(",").map((id) =>
-      window.runtime?.EventsOn(`chat:${id}`, (data) => {
+      onEvent(`chat:${id}`, (data) => {
         const type = (data as { type: string }).type;
         update({ [id]: type === "approval" ? "approval" : type === "done" ? "reply" : type === "error" ? undefined : "working" });
       }),
     );
-    return () => unsubscribes.forEach((unsubscribe) => unsubscribe?.());
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, [key]);
   return useSyncExternalStore(subscribe, () => current);
 }

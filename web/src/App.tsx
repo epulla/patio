@@ -29,6 +29,7 @@ export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
 import { Icon, IconButton, PatioMark } from "./icons";
 import { lang, locale, useText } from "./i18n";
+import { isDesktop, onEvent, openURL } from "./desktop";
 
 const text = {
   en: {
@@ -62,7 +63,7 @@ export function navigate(path: string) {
 export function openLink(link: string) {
   if (!link) return;
   if (!/^https:\/\//i.test(link)) return navigate(link);
-  if (window.runtime) window.runtime.BrowserOpenURL(link);
+  if (isDesktop) openURL(link);
   else window.open(link, "_blank", "noopener");
 }
 
@@ -366,13 +367,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = window.runtime?.EventsOn("db-changed", () =>
-      setRefresh((current) => current + 1),
-    );
-    return () => unsubscribe?.();
+    return onEvent("db-changed", () => setRefresh((current) => current + 1));
   }, []);
 
-  useEffect(() => window.runtime?.EventsOn("navigate", (to) => openLink(String(to))), []);
+  useEffect(() => onEvent("navigate", (to) => openLink(String(to))), []);
 
   useEffect(() => {
     api

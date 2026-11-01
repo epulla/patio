@@ -12,6 +12,7 @@ import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
 import History from "./History";
 import { lang, locale, useText } from "./i18n";
+import { isDesktop, openURL } from "./desktop";
 
 const text = {
   en: {
@@ -286,9 +287,9 @@ function ConnectorCard({
             target="_blank"
             rel="noreferrer"
             onClick={(event) => {
-              if (!window.runtime) return;
+              if (!isDesktop) return;
               event.preventDefault();
-              window.runtime.BrowserOpenURL(status.install!.url);
+              openURL(status.install!.url);
             }}
           >
             {t.installGuide}

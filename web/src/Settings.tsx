@@ -20,6 +20,7 @@ import ModelPicker from "./ModelPicker";
 import { useModels } from "./Chats";
 import { openNotificationSettings, useNotificationsBlocked } from "./Notifications";
 import { locale, setLanguage, useLanguage, useText, type Language } from "./i18n";
+import { isDesktop, openURL } from "./desktop";
 
 const text = {
   en: {
@@ -331,9 +332,9 @@ function General() {
   }
 
   function openUrl(event: MouseEvent<HTMLAnchorElement>, url: string) {
-    if (!window.runtime) return;
+    if (!isDesktop) return;
     event.preventDefault();
-    window.runtime.BrowserOpenURL(url);
+    openURL(url);
   }
 
   useEffect(() => {
@@ -362,9 +363,9 @@ function General() {
   }
 
   function openRepo(event: MouseEvent<HTMLAnchorElement>) {
-    if (!window.runtime || !about) return;
+    if (!isDesktop || !about) return;
     event.preventDefault();
-    window.runtime.BrowserOpenURL(about.repo_url);
+    openURL(about.repo_url);
   }
 
   const manager = fileManager[about?.os ?? ""] ?? t.fileManager;

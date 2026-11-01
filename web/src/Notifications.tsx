@@ -6,6 +6,7 @@ import { Icon, IconButton, type IconName } from "./icons";
 import { api } from "./api";
 import { ErrorText, navigate, openLink } from "./App";
 import { lang, locale, useText } from "./i18n";
+import { isDesktop, openURL } from "./desktop";
 
 const text = {
   en: { unread: "Unread: ", notifications: "Notifications", caughtUp: "You're all caught up.", new: "New: ", all: "See all notifications", now: "now", dismiss: "Dismiss notification", today: "Today", yesterday: "Yesterday", inbox: "Inbox", description: "Chat replies, approvals, reminders, scheduled runs, and changes Martin made. Kept for 7 days. Opening this page or the bell marks them read.", empty: "No notifications in the last 7 days.", loading: "Loading…", more: "Load more", alertsOff: "Desktop alerts are off · Open Settings" },
@@ -45,7 +46,7 @@ export function useNotificationsBlocked() {
 }
 
 export function openNotificationSettings() {
-  window.runtime?.BrowserOpenURL("x-apple.systempreferences:com.apple.Notifications-Settings.extension");
+  if (isDesktop) openURL("x-apple.systempreferences:com.apple.Notifications-Settings.extension");
 }
 
 const kindIcons: Record<string, IconName> = { chat: "chat", approval: "hand", scheduled: "clock", calendar: "calendar", change: "sparkles", health: "plug", custom: "bell", monitor: "eye" };
