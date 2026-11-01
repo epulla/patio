@@ -27,7 +27,7 @@ import Notifications, { NotificationsPage } from "./Notifications";
 import { api, type Board, type Chat, type Config, type Connector } from "./api";
 export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
-import { Icon, IconButton } from "./icons";
+import { Icon, IconButton, PatioMark } from "./icons";
 import { lang, locale, useText } from "./i18n";
 
 const text = {
@@ -562,7 +562,9 @@ export default function App() {
     <div className="app">
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-head">
-          <span className="brand nav-label">Patio</span>
+          <span className="brand nav-label">
+            <PatioMark /> Patio
+          </span>
           <IconButton
             className="ghost"
             icon={collapsed ? "chevronsRight" : "chevronsLeft"}

@@ -204,8 +204,15 @@ a {
   padding: 0 4px 8px;
 }
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 800;
   font-size: 18px;
+}
+.brand .patio-mark {
+  width: 26px;
+  height: 26px;
 }
 .sidebar nav {
   flex: 1;
