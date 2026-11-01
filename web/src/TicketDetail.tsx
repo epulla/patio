@@ -295,7 +295,7 @@ export default function TicketDetail({
             </div>
           </aside>
         </div>
-        <div className="tab-bar">
+        <div className="tab-bar" data-tour="activity-order">
           <div className="tabs" role="tablist">
             {tabs.map(([key, label]) => (
               <button
