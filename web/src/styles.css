@@ -210,9 +210,13 @@ a {
   font-weight: 800;
   font-size: 18px;
 }
-.brand .patio-mark {
+.patio-mark {
+  flex: none;
   width: 26px;
   height: 26px;
+  background: currentColor;
+  -webkit-mask: var(--mark) center / contain no-repeat;
+  mask: var(--mark) center / contain no-repeat;
 }
 .sidebar nav {
   flex: 1;

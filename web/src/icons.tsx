@@ -1,4 +1,5 @@
-import { useId, type ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, CSSProperties } from "react";
+import patioMark from "./assets/patio-mark.png";
 
 // Paths from Lucide (ISC license), 24x24 stroke icons.
 const paths = {
@@ -198,33 +199,9 @@ export function Icon({ name }: { name: IconName }) {
   );
 }
 
-// One-color silhouette of the Patio kid; the mask cuts the fringe, eyes and smile out of the head.
+// The Patio kid's silhouette as a mask, so it takes the surrounding text color.
 export function PatioMark() {
-  const mask = `patio-mark${useId().replace(/\W/g, "")}`;
-  return (
-    <svg className="svg-icon patio-mark" viewBox="0 0 24 24" aria-hidden="true">
-      <mask id={mask}>
-        <path
-          fill="#fff"
-          d="M3.4 15Q2.2 13.6 1.2 11.6Q2.4 11.9 3.1 11.5Q1.9 9.6 1.7 7.6Q3.1 8.4 4.2 8.2Q4.2 6 5.6 4.9Q6.2 5.6 7.4 5.6Q7.1 3.9 6.4 2.6Q8.6 3 10 4.2Q10.6 2.6 11.8 1.6Q12.6 3 13.6 3.7Q15.6 3.2 17.4 4.2Q19.4 4.3 21.4 6.2Q20.4 6.9 20 7.9Q21.7 9 22.6 11.2Q21.5 11.6 20.8 12Q21.3 13.5 20.6 15Q20 19.2 16.4 21.6Q12 23.8 7.6 21.6Q4 19.2 3.4 15Z"
-        />
-        <path
-          fill="none"
-          stroke="#fff"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          d="M14.6 4.2C14.4 2.2 15.9.9 17.6 1.1 19.1 1.3 19.6 2.9 18.6 3.6 17.8 4.1 16.9 3.5 17.2 2.7"
-        />
-        <g fill="none" stroke="#000" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5.3 14.6Q5.4 11.4 8.2 10.6Q9.6 11.6 11.4 10.4Q13.2 11.6 15.4 10.3Q18.6 11 18.8 14.4" />
-          <path d="M10.2 18.8Q12.9 20.6 15.4 18.5" />
-        </g>
-        <circle cx="10" cy="15.6" r="1.25" fill="#000" />
-        <circle cx="15.2" cy="15.4" r="1.25" fill="#000" />
-      </mask>
-      <rect width="24" height="24" fill="currentColor" mask={`url(#${mask})`} />
-    </svg>
-  );
+  return <span className="patio-mark" style={{ "--mark": `url(${patioMark})` } as CSSProperties} aria-hidden="true" />;
 }
 
 // For HTML strings that React doesn't render (e.g. Markdown output).
