@@ -2285,6 +2285,13 @@ main:has(> .chats) {
   top: 8px;
   right: 3px;
 }
+/* A tint, not base-300, so hover still shows on the active row's base-300 background. */
+.chat-row > .menu > .icon:hover {
+  background: color-mix(in oklch, var(--content) 12%, transparent);
+}
+.chat-row:has(> .menu > .icon:hover) > .chat-link:not([aria-current]) {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
 .chat-item > .menu > .icon,
 .group-row > .menu > .icon {
   width: 24px;
