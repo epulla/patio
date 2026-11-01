@@ -4062,11 +4062,25 @@ main.chat-window .app-version {
   }
   .chats:has(> .pin-tabs) > .chat-list {
     grid-row: auto;
-    margin-bottom: 12px;
+    margin-bottom: 4px;
+  }
+  .chat-list {
+    gap: 6px;
   }
   .chat-list:not(.collapsed) nav {
     flex-direction: row;
     overflow-x: auto;
+  }
+  /* Stacked above the chat, the group strip stays compact. */
+  .group-row .chat-link {
+    min-height: 32px;
+    padding: 4px 26px 4px 10px;
+  }
+  .group-row > .menu {
+    top: 4px;
+  }
+  .chats > .pin-tabs + * {
+    margin-top: 4px;
   }
   .chat-link,
   .chat-row {
