@@ -2245,7 +2245,7 @@ main:has(> .chats) {
   height: 12px;
   color: inherit;
 }
-/* Group rows match the 40px ⋯ button; the rename input matches the row so it reads as editing in place. */
+/* Group rows are 40px tall; the rename input matches the row so it reads as editing in place. */
 .group-row .chat-link {
   min-height: 40px;
   justify-content: center;
@@ -2267,8 +2267,9 @@ main:has(> .chats) {
 .icon.pinned {
   color: var(--pin, var(--primary));
 }
-/* Chat rows overlay ⋯ and the pin on the link's right edge, so the title keeps the row's width. */
-.chat-item .chat-link {
+/* Chat and group rows overlay ⋯ (and the pin) on the link's right edge, so the title keeps the row's width. */
+.chat-item .chat-link,
+.group-row .chat-link {
   padding-right: 30px;
 }
 .chat-item > .menu {
@@ -2276,7 +2277,13 @@ main:has(> .chats) {
   right: 3px;
   bottom: 4px;
 }
-.chat-item > .menu > .icon {
+.group-row > .menu {
+  position: absolute;
+  top: 8px;
+  right: 3px;
+}
+.chat-item > .menu > .icon,
+.group-row > .menu > .icon {
   width: 24px;
   height: 24px;
   min-height: 24px;
