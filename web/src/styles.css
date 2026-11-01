@@ -1491,6 +1491,14 @@ label.days-field {
   gap: 4px;
   border-bottom: 1px solid var(--border);
 }
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tab-bar .tabs {
+  flex: 1;
+}
 .tabs button {
   border: 0;
   border-bottom: 2px solid transparent;

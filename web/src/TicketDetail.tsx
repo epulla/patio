@@ -25,7 +25,11 @@ import Picker from "./Picker";
 import { pin } from "./pins";
 import { lang, locale, useText } from "./i18n";
 
-const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by" }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por" } };
+const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by", order: "Order", newest: "Newest first", oldest: "Oldest first" }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por", order: "Orden", newest: "Más recientes primero", oldest: "Más antiguos primero" } };
+
+const orderKey = "ticket-activity-order";
+type Order = "newest" | "oldest";
+const ordered = <T,>(items: T[], order: Order) => (order === "newest" ? [...items].reverse() : items);
 
 const sendShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘↵" : "Ctrl+↵";
 
@@ -60,6 +64,11 @@ export default function TicketDetail({
   const [tab, setTab] = useState<"comments" | "history" | "transitions">(
     "comments",
   );
+  const [order, setOrderState] = useState<Order>(() => (localStorage.getItem(orderKey) === "oldest" ? "oldest" : "newest"));
+  function setOrder(value: Order) {
+    setOrderState(value);
+    localStorage.setItem(orderKey, value);
+  }
   const [chatConnectors, setChatConnectors] = useState<Connector[]>();
   const startingChat = useRef(false);
   const previous = useRef({ id, showHidden: config.show_hidden, refresh });
@@ -286,19 +295,30 @@ export default function TicketDetail({
             </div>
           </aside>
         </div>
-        <div className="tabs" role="tablist">
-          {tabs.map(([key, label]) => (
-            <button
-              key={key}
-              role="tab"
-              id={`tab-${key}`}
-              aria-selected={tab === key}
-              aria-controls="ticket-tabpanel"
-              onClick={() => setTab(key)}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="tab-bar">
+          <div className="tabs" role="tablist">
+            {tabs.map(([key, label]) => (
+              <button
+                key={key}
+                role="tab"
+                id={`tab-${key}`}
+                aria-selected={tab === key}
+                aria-controls="ticket-tabpanel"
+                onClick={() => setTab(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <Picker
+            label={t.order}
+            options={[
+              { id: "newest", name: t.newest },
+              { id: "oldest", name: t.oldest },
+            ]}
+            value={order}
+            onChange={(value) => setOrder(value as Order)}
+          />
         </div>
         <div
           className="tabpanel"
@@ -307,10 +327,10 @@ export default function TicketDetail({
           aria-labelledby={`tab-${tab}`}
         >
           {tab === "comments" && (
-            <Comments key={ticket.id} ticketId={ticket.id} comments={comments} onReload={load} />
+            <Comments key={ticket.id} ticketId={ticket.id} comments={ordered(comments, order)} onReload={load} />
           )}
           {tab === "history" &&
-            history.map((item) => (
+            ordered(history, order).map((item) => (
               <div className="timeline" key={item.id}>
                 <strong>
                   {item.user_name} <AIBadge isAI={item.user_is_ai} />
@@ -320,7 +340,7 @@ export default function TicketDetail({
               </div>
             ))}
           {tab === "transitions" &&
-            transitions.map((item) => (
+            ordered(transitions, order).map((item) => (
               <div className="transition" key={item.id}>
                 <strong>
                   {item.from_status_name || t.new} → {item.to_status_name}
@@ -389,7 +409,7 @@ function Comments({
       <button className="primary" onClick={add} disabled={sending} title={sendShortcut}>
         <Icon name="send" /> {t.addComment}
       </button>
-      {[...comments].reverse().map((comment) => (
+      {comments.map((comment) => (
         <div className="comment" key={comment.id}>
           <strong>
             {comment.user_name} <AIBadge isAI={comment.user_is_ai} />
