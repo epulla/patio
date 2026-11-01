@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
-	write(w, 200, map[string]any{"show_hidden": s.showHidden, "version": s.version, "chat_window": s.chatWindow, "open_path": s.openPath})
+	write(w, 200, map[string]any{"show_hidden": s.showHidden, "version": s.version})
 }
 func (s *Server) users(w http.ResponseWriter, r *http.Request) {
 	rows, e := s.db.Query(`SELECT id,name,last_name,email,is_ai FROM "user" WHERE deleted_at IS NULL ORDER BY name`)

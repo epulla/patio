@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +14,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -48,7 +52,6 @@ func main() {
 	proc.LoadLoginShellPath()
 	dbFile := flag.String("d", "", "database file path (default: per-OS data directory)")
 	showHidden := flag.Bool("show-hidden", false, "show assignee in the UI")
-	chatWindow := flag.String("chat", "", "open a chat in its own window")
 	openPath := flag.String("open", "", "navigate main window to an app path")
 	flag.Parse()
 	home, err := os.UserHomeDir()
@@ -65,7 +68,7 @@ func main() {
 		if err == nil {
 			err = os.MkdirAll(filepath.Dir(logFilePath), 0o700)
 		}
-		if err == nil && *chatWindow == "" {
+		if err == nil {
 			err = rotateLog(logFilePath)
 		}
 		if err == nil {
@@ -94,12 +97,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	chatTitle := ""
-	if *chatWindow != "" {
-		if err := database.QueryRow(`SELECT title FROM chat WHERE id=?`, *chatWindow).Scan(&chatTitle); err != nil {
-			log.Fatalf("chat %q not found: %v", *chatWindow, err)
-		}
-	}
 	windowID := api.NewWindowID()
 	mime.AddExtensionType(".js", "text/javascript")
 
@@ -112,34 +109,19 @@ func main() {
 	}
 	notes.check = nsvc.CheckNotificationAuthorization
 	var app *application.App
-	var mainWindow *application.WebviewWindow
-	showPath := func(path string) {
-		mainWindow.UnMinimise()
-		mainWindow.Show()
-		mainWindow.Focus()
-		if path != "" {
-			app.Event.Emit("navigate", path)
-		}
-	}
+	wins := &windows{db: database, chats: map[string]*application.WebviewWindow{}}
 	mux := http.NewServeMux()
 	patioToolNames, err := mcpserver.RegisteredToolNames()
 	if err != nil {
 		log.Printf("discover Patio MCP tool names for Copilot approvals: %v", err)
 	}
 	apiServer := api.New(database, "local", *showHidden, version, filepath.Dir(path), api.Options{
-		DBPath:        path,
-		PatioMCPTools: patioToolNames,
-		ChatWindow:    *chatWindow,
-		OpenPath: func() string {
-			if *chatWindow == "" {
-				return *openPath
-			}
-			return ""
-		}(),
+		DBPath:               path,
+		PatioMCPTools:        patioToolNames,
 		WindowID:             windowID,
 		LogPath:              logFilePath,
-		StartWindow:          func(args []string) error { return startWindow(exe, args) },
-		FocusWindow:          func() { showPath("") },
+		OpenChatWindow:       wins.openChat,
+		ShowMain:             wins.showMain,
 		Notify:               notes.Notify,
 		NotificationsBlocked: notes.Blocked,
 		Emit: func(event string, data any) {
@@ -207,6 +189,12 @@ func main() {
 		Assets: application.AssetOptions{Handler: mux},
 		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 		Linux:  application.LinuxOptions{ProgramName: "patio"},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: singleInstanceID(path),
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				wins.showMain(openPathArg(data.Args))
+			},
+		},
 		OnShutdown: func() {
 			if stopBackground != nil {
 				stopBackground()
@@ -223,21 +211,12 @@ func main() {
 			}
 		},
 	})
-	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  appTitle(chatTitle),
-		Width:  appWidth(*chatWindow),
-		Height: 800,
-		URL:    "/",
-		Linux:  application.LinuxWindow{Icon: appIcon, WebviewGpuPolicy: application.WebviewGpuPolicyNever},
-	})
+	wins.app = app
+	wins.showMain(*openPath)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		ctx := app.Context()
-		if *chatWindow == "" {
-			if err := api.CleanupStaleCopilotMCPConfigs(); err != nil {
-				log.Printf("clean stale Copilot MCP configs: %v", err)
-			}
-		} else {
-			positionChatWindow(mainWindow, apiServer)
+		if err := api.CleanupStaleCopilotMCPConfigs(); err != nil {
+			log.Printf("clean stale Copilot MCP configs: %v", err)
 		}
 		go func() {
 			if err := nsvc.ServiceStartup(ctx, application.ServiceOptions{}); err != nil {
@@ -250,7 +229,7 @@ func main() {
 					return
 				}
 				link, _ := result.Response.UserInfo["link"].(string)
-				showPath(link)
+				wins.showMain(link)
 			})
 			ok, err := nsvc.RequestNotificationAuthorization()
 			notes.asked.Store(runtime.GOOS == "darwin")
@@ -260,16 +239,14 @@ func main() {
 			}
 			notes.ready.Store(true)
 		}()
-		if err := apiServer.RegisterWindow(*chatWindow, os.Getpid()); err != nil {
+		if err := apiServer.RegisterWindow(os.Getpid()); err != nil {
 			log.Printf("register app window: %v", err)
 		}
-		apiServer.RunWindowHeartbeat(windowStop, showPath)
+		apiServer.RunWindowHeartbeat(windowStop)
 		backgroundCtx, cancel := context.WithCancel(ctx)
 		stopBackground = cancel
-		if *chatWindow == "" {
-			if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
-				log.Printf("deliver queued agent messages at startup: %v", err)
-			}
+		if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+			log.Printf("deliver queued agent messages at startup: %v", err)
 		}
 		background.Add(1)
 		go func() {
@@ -296,63 +273,59 @@ func main() {
 			defer background.Done()
 			if err := db.Watch(backgroundCtx, database, time.Second, func() {
 				app.Event.Emit("db-changed")
-				if *chatWindow == "" {
-					if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
-						log.Printf("deliver queued agent messages after database change: %v", err)
-					}
+				if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+					log.Printf("deliver queued agent messages after database change: %v", err)
 				}
 			}); err != nil {
 				log.Printf("watch database changes: %v", err)
 			}
 		}()
-		if *chatWindow == "" {
-			background.Add(6)
-			go func() {
-				defer background.Done()
-				if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
-					log.Printf("run scheduled tasks: %v", err)
+		background.Add(6)
+		go func() {
+			defer background.Done()
+			if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
+				log.Printf("run scheduled tasks: %v", err)
+			}
+		}()
+		go func() {
+			defer background.Done()
+			if err := apiServer.StartHandoffSweeper(backgroundCtx, 30*time.Second); err != nil {
+				log.Printf("sweep chat handoffs: %v", err)
+			}
+		}()
+		go func() {
+			defer background.Done()
+			if err := apiServer.StartMonitorRunner(backgroundCtx, 30*time.Second); err != nil {
+				log.Printf("run monitors: %v", err)
+			}
+		}()
+		go func() {
+			defer background.Done()
+			if err := apiServer.StartHealthMonitor(backgroundCtx, 5*time.Minute); err != nil {
+				log.Printf("monitor health: %v", err)
+			}
+		}()
+		go func() {
+			defer background.Done()
+			if err := apiServer.StartUpdateChecker(backgroundCtx, 6*time.Hour); err != nil {
+				log.Printf("check for update: %v", err)
+			}
+		}()
+		go func() {
+			defer background.Done()
+			if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(item reminder.Item, message string) error {
+				title := item.Title
+				if item.Kind == "reminder" {
+					title = "Reminder: " + title
 				}
-			}()
-			go func() {
-				defer background.Done()
-				if err := apiServer.StartHandoffSweeper(backgroundCtx, 30*time.Second); err != nil {
-					log.Printf("sweep chat handoffs: %v", err)
+				if err := apiServer.Notify("calendar", title, message, "/calendar", true); err != nil {
+					return err
 				}
-			}()
-			go func() {
-				defer background.Done()
-				if err := apiServer.StartMonitorRunner(backgroundCtx, 30*time.Second); err != nil {
-					log.Printf("run monitors: %v", err)
-				}
-			}()
-			go func() {
-				defer background.Done()
-				if err := apiServer.StartHealthMonitor(backgroundCtx, 5*time.Minute); err != nil {
-					log.Printf("monitor health: %v", err)
-				}
-			}()
-			go func() {
-				defer background.Done()
-				if err := apiServer.StartUpdateChecker(backgroundCtx, 6*time.Hour); err != nil {
-					log.Printf("check for update: %v", err)
-				}
-			}()
-			go func() {
-				defer background.Done()
-				if err := reminder.Run(backgroundCtx, database, 30*time.Second, func(item reminder.Item, message string) error {
-					title := item.Title
-					if item.Kind == "reminder" {
-						title = "Reminder: " + title
-					}
-					if err := apiServer.Notify("calendar", title, message, "/calendar", true); err != nil {
-						return err
-					}
-					return nil
-				}); err != nil {
-					log.Printf("run reminders: %v", err)
-				}
-			}()
-		}
+				return nil
+			}); err != nil {
+				log.Printf("run reminders: %v", err)
+			}
+		}()
 	})
 	runErr := app.Run()
 	background.Wait()
@@ -364,42 +337,120 @@ func main() {
 	}
 }
 
-// positionChatWindow cascades chat windows from the right edge of their screen.
-func positionChatWindow(window *application.WebviewWindow, apiServer *api.Server) {
-	screen, err := window.GetScreen()
-	if err != nil || screen == nil {
-		log.Printf("get screen for chat window: %v", err)
-		return
-	}
-	n, err := apiServer.LiveChatWindowCount()
-	if err != nil {
-		log.Printf("count live chat windows: %v", err)
-		return
-	}
-	// burnedout: assumed right-edge cascade, 32px step, wraps after 5
-	n %= 5
-	window.SetRelativePosition(max(screen.WorkArea.Width-900-24-32*n, 0), 40+32*n)
+// windows tracks the main window and one window per popped-out chat, all in this process.
+type windows struct {
+	app   *application.App
+	db    *sql.DB
+	mu    sync.Mutex
+	main  *application.WebviewWindow
+	chats map[string]*application.WebviewWindow
 }
 
-func appTitle(chatTitle string) string {
-	if chatTitle != "" {
-		return chatTitle
+// showMain focuses the main window, or reopens it after it was closed, at path when set.
+func (w *windows) showMain(path string) {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		path = ""
 	}
-	return "Patio"
-}
-func appWidth(chatID string) int {
-	if chatID != "" {
-		return 900
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.main != nil {
+		focusWindow(w.main)
+		if path != "" {
+			// Broadcast; chat windows ignore navigate.
+			w.app.Event.Emit("navigate", path)
+		}
+		return
 	}
-	return 1280
+	start := "/"
+	if path != "" {
+		start = path
+	}
+	win := w.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:  "Patio",
+		Width:  1280,
+		Height: 800,
+		URL:    start,
+		Linux:  application.LinuxWindow{Icon: appIcon, WebviewGpuPolicy: application.WebviewGpuPolicyNever},
+	})
+	w.main = win
+	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.main == win {
+			w.main = nil
+		}
+	})
 }
-func startWindow(exe string, args []string) error {
-	cmd := exec.Command(exe, args...)
-	if err := cmd.Start(); err != nil {
+
+// openChat focuses the chat's window or opens one, cascading from the right edge of the screen.
+func (w *windows) openChat(id string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if win, ok := w.chats[id]; ok {
+		focusWindow(win)
+		return nil
+	}
+	var title string
+	if err := w.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
 		return err
 	}
-	go func() { _ = cmd.Wait() }()
+	screen := w.app.Screen.GetPrimary()
+	if w.main != nil {
+		if current, err := w.main.GetScreen(); err == nil && current != nil {
+			screen = current
+		}
+	}
+	options := application.WebviewWindowOptions{
+		Name:   "chat-" + id,
+		Title:  title,
+		Width:  900,
+		Height: 800,
+		URL:    "/ai/chats/" + url.PathEscape(id) + "?window=chat",
+		Linux:  application.LinuxWindow{Icon: appIcon, WebviewGpuPolicy: application.WebviewGpuPolicyNever},
+	}
+	if screen != nil {
+		// burnedout: assumed right-edge cascade, 32px step, wraps after 5
+		n := len(w.chats) % 5
+		options.Screen = screen
+		options.InitialPosition = application.WindowXY
+		options.X = max(screen.WorkArea.Width-900-24-32*n, 0)
+		options.Y = 40 + 32*n
+	}
+	win := w.app.Window.NewWithOptions(options)
+	w.chats[id] = win
+	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.chats[id] == win {
+			delete(w.chats, id)
+		}
+	})
 	return nil
+}
+
+func focusWindow(win *application.WebviewWindow) {
+	win.UnMinimise()
+	win.Show()
+	win.Focus()
+}
+
+// singleInstanceID keys the lock by database so throwaway -d runs start their own app.
+func singleInstanceID(dbPath string) string {
+	sum := sha256.Sum256([]byte(dbPath))
+	return "io.github.epulla.patio." + hex.EncodeToString(sum[:8])
+}
+
+// openPathArg returns the -open value from a second launch's arguments.
+func openPathArg(args []string) string {
+	flags := flag.NewFlagSet("second-instance", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.String("d", "", "")
+	flags.Bool("show-hidden", false, "")
+	open := flags.String("open", "", "")
+	if len(args) > 0 {
+		_ = flags.Parse(args[1:])
+	}
+	return *open
 }
 
 // notifier sends through Wails once authorized and falls back to beeep otherwise.

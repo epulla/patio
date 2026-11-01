@@ -449,7 +449,7 @@ func (s *Server) reportChatResult(target, from, text string) error {
 		}
 		return deliveryErr
 	}
-	if s.chatWindow != "" || s.userID != "local" {
+	if s.userID != "local" {
 		return nil
 	}
 	if err := s.DeliverAgentMessages(context.Background()); err != nil {

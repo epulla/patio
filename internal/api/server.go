@@ -41,11 +41,9 @@ type Server struct {
 	attachmentsMu   sync.Mutex
 	agentDeliveryMu sync.Mutex
 	attachments     map[string]map[string]ChatAttachment
-	chatWindow      string
-	openPath        string
 	windowID        string
-	startWindow     func([]string) error
-	focusWindow     func()
+	openChat        func(string) error
+	showMain        func(string)
 }
 
 type Options struct {
@@ -73,11 +71,11 @@ type Options struct {
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
 	openOAuthURL    func(string) error
-	ChatWindow      string
-	OpenPath        string
 	WindowID        string
-	StartWindow     func([]string) error
-	FocusWindow     func()
+	// OpenChatWindow focuses the chat's window or opens a new one.
+	OpenChatWindow func(chatID string) error
+	// ShowMain focuses or reopens the main window, navigating to path when set.
+	ShowMain func(path string)
 }
 
 func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, options ...Options) *Server {
@@ -107,7 +105,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), chatWindow: opts.ChatWindow, openPath: opts.OpenPath, windowID: opts.WindowID, startWindow: opts.StartWindow, focusWindow: opts.FocusWindow}
+	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), windowID: opts.WindowID, openChat: opts.OpenChatWindow, showMain: opts.ShowMain}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}

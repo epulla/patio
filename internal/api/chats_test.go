@@ -219,7 +219,7 @@ func TestChatListSearch(t *testing.T) {
 	}
 }
 
-func TestChatListRuntimeApprovalAndOtherWindow(t *testing.T) {
+func TestChatListRuntimeAndApproval(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	server := New(database, "local", false, "dev", root, Options{WindowID: "current-window"})
@@ -230,12 +230,6 @@ func TestChatListRuntimeApprovalAndOtherWindow(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,status,auto,created_at) VALUES(?,?,?,'{}','pending',0,?)`, uid(), created.ID, "tool", now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO app_window(id,pid,heartbeat_at) VALUES(?,?,?)`, "other-window", 123, now()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.Exec(`INSERT INTO chat_turn(chat_id,window_id,started_at) VALUES(?,?,?)`, created.ID, "other-window", now()); err != nil {
-		t.Fatal(err)
-	}
 	runtime := server.chats.runtime(created.ID)
 	runtime.mu.Lock()
 	runtime.busy = true
@@ -244,14 +238,13 @@ func TestChatListRuntimeApprovalAndOtherWindow(t *testing.T) {
 		Chats []struct {
 			Running      bool `json:"running"`
 			PendingCount int  `json:"pending_count"`
-			OtherWindow  bool `json:"other_window"`
 		} `json:"chats"`
 	}
 	if code := requestJSON(t, server.handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 1 {
 		t.Fatalf("list status/chats = %d, %#v", code, listed.Chats)
 	}
 	got := listed.Chats[0]
-	if !got.Running || got.PendingCount != 1 || !got.OtherWindow {
+	if !got.Running || got.PendingCount != 1 {
 		t.Fatalf("list status fields = %#v", got)
 	}
 }

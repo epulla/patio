@@ -2737,12 +2737,6 @@ main.chat-window .app-version {
   font: 500 11px var(--mono);
   cursor: default;
 }
-.dock-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
 .dock-toggle {
   position: relative;
 }

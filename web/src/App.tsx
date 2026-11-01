@@ -67,6 +67,12 @@ export function openLink(link: string) {
   else window.open(link, "_blank", "noopener");
 }
 
+// Pop-out chat windows load /ai/chats/<id>?window=chat and keep that chat for their lifetime.
+const chatWindow =
+  new URLSearchParams(location.search).get("window") === "chat"
+    ? decodeURIComponent(location.pathname.match(/^\/ai\/chats\/([^/]+)$/)?.[1] ?? "")
+    : "";
+
 export function ErrorText({ error }: { error: unknown }) {
   if (!error) return null;
   return (
@@ -191,7 +197,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (config?.chat_window) return;
+    if (chatWindow) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isNewPinnedKey(event) || document.querySelector("dialog[open]")) return;
       event.preventDefault();
@@ -300,7 +306,7 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const step = groupStep(event);
-      if (!step || config?.chat_window || groups.groups.length < 2) return;
+      if (!step || chatWindow || groups.groups.length < 2) return;
       event.preventDefault();
       cycleGroup(step);
       if (location.pathname.startsWith("/ai/chats")) navigate("/ai/chats");
@@ -318,7 +324,7 @@ export default function App() {
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
-      if (!allPinned.length || config?.chat_window || location.pathname.startsWith("/ai/chats")) return;
+      if (!allPinned.length || chatWindow || location.pathname.startsWith("/ai/chats")) return;
       event.preventDefault();
       if (!dockOpen) return toggleDock(true);
       if (document.activeElement?.closest(".chat-dock")) return toggleDock(false);
@@ -334,7 +340,7 @@ export default function App() {
       const id = (event as CustomEvent<string>).detail;
       // Read the store, not render state: a chat pinned just before this event isn't rendered yet.
       const group = groupOf(id);
-      if (!group || config?.chat_window || location.pathname.startsWith("/ai/chats")) return navigate(`/ai/chats/${id}`);
+      if (!group || chatWindow || location.pathname.startsWith("/ai/chats")) return navigate(`/ai/chats/${id}`);
       setActiveGroup(group.id);
       toggleDock(true);
       setDockFocus({ id });
@@ -370,7 +376,7 @@ export default function App() {
     return onEvent("db-changed", () => setRefresh((current) => current + 1));
   }, []);
 
-  useEffect(() => onEvent("navigate", (to) => openLink(String(to))), []);
+  useEffect(() => (chatWindow ? undefined : onEvent("navigate", (to) => openLink(String(to)))), []);
 
   useEffect(() => {
     api
@@ -410,20 +416,19 @@ export default function App() {
     api
       .get<Config>("/api/config")
       .then((loaded) => {
-        if (loaded.open_path) navigate(loaded.open_path);
         // Restore only when the app opened at its start page and the user hasn't moved on yet.
-        else if (!loaded.chat_window && location.pathname === "/")
+        if (!chatWindow && location.pathname === "/")
           lastPage().then((page) => page && location.pathname === "/" && navigate(page));
         setConfig(loaded);
       })
-      .catch(() => setConfig({ show_hidden: false, version: "", chat_window: "", open_path: "" }));
+      .catch(() => setConfig({ show_hidden: false, version: "" }));
   }, []);
 
   // Pins live only in the UI, so the cleanup request carries every group's; the server skips it when cleanup is off.
   const pinIds = useRef(allPinned);
   pinIds.current = allPinned;
   useEffect(() => {
-    if (!config || config.chat_window) return;
+    if (!config || chatWindow) return;
     const run = () => api.post("/api/chats/cleanup", { keep: pinIds.current }).catch(() => undefined);
     run();
     const timer = setInterval(run, 24 * 60 * 60 * 1000);
@@ -432,7 +437,7 @@ export default function App() {
 
   // Chat windows share localStorage and the tour visits pages on its own, so neither records the last page.
   useEffect(() => {
-    if (config && !config.chat_window && !touring && !path.startsWith("/print/")) localStorage.setItem(lastPageKey, path);
+    if (config && !chatWindow && !touring && !path.startsWith("/print/")) localStorage.setItem(lastPageKey, path);
   }, [path, config, touring]);
 
   // The side panel is hidden on chat routes; remember the pinned chat viewed there for when it comes back.
@@ -454,10 +459,10 @@ export default function App() {
   }, []);
 
   if (!config) return null;
-  if (config.chat_window)
+  if (chatWindow)
     return (
       <main className="chat-window">
-        <Chats id={config.chat_window} refresh={refresh} windowed />
+        <Chats id={chatWindow} refresh={refresh} windowed />
         {config.version && <span className="app-version">{config.version}</span>}
       </main>
     );

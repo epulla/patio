@@ -219,3 +219,19 @@ func mustAbs(path string) string {
 	}
 	return abs
 }
+
+func TestOpenPathArg(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"patio"}, ""},
+		{[]string{"patio", "-d", "x.db", "-open", "/boards/b"}, "/boards/b"},
+		{[]string{"patio", "-unknown", "-open", "/boards/b"}, ""},
+		{nil, ""},
+	} {
+		if got := openPathArg(tc.args); got != tc.want {
+			t.Errorf("openPathArg(%v) = %q, want %q", tc.args, got, tc.want)
+		}
+	}
+}

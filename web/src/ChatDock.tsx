@@ -197,7 +197,6 @@ export default function ChatDock({
         compact
         focused={focusRequest === current}
         context={context}
-        otherWindow={chats.find((chat) => chat.id === current)?.other_window}
         onChanged={() => undefined}
       />
       ) : (
