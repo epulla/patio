@@ -45,14 +45,17 @@ func TestCalendarScheduledOccurrences(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPost, "/api/scheduled-tasks", input, &task); code != http.StatusCreated {
 		t.Fatalf("create task = %d", code)
 	}
-	past := "2026-10-10T09:00:00.000Z"
+	// Dates are relative to now: the calendar only lists cron occurrences that are still upcoming.
+	now := time.Now().UTC()
+	past := time.Date(now.Year(), now.Month(), now.Day()-5, 9, 0, 0, 0, time.UTC).Format("2006-01-02T15:04:05.000Z")
+	rangeQuery := "from=" + now.AddDate(0, 0, -10).Format(time.DateOnly) + "&to=" + now.AddDate(0, 0, 10).Format(time.DateOnly)
 	if _, err := database.Exec(`INSERT INTO scheduled_task_run(id,task_id,scheduled_for,status,late,created_at) VALUES('past-run',?,?,?,0,?)`, task.ID, past, "done", past); err != nil {
 		t.Fatal(err)
 	}
 	var result struct {
 		Scheduled []scheduledCalendarItem `json:"scheduled"`
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/calendar?from=2026-10-01&to=2026-10-31", nil, &result); code != http.StatusOK {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/calendar?"+rangeQuery, nil, &result); code != http.StatusOK {
 		t.Fatalf("calendar = %d", code)
 	}
 	if len(result.Scheduled) < 2 {
@@ -70,7 +73,7 @@ func TestCalendarScheduledOccurrences(t *testing.T) {
 	if !foundRun || !foundUpcoming {
 		t.Fatalf("scheduled = %#v", result.Scheduled)
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/calendar?from=2026-10-01&to=2026-10-31&board_id=board", nil, &result); code != http.StatusOK || len(result.Scheduled) != 0 {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/calendar?"+rangeQuery+"&board_id=board", nil, &result); code != http.StatusOK || len(result.Scheduled) != 0 {
 		t.Fatalf("board-filtered scheduled = %d %#v", code, result.Scheduled)
 	}
 }
