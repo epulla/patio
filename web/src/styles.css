@@ -372,13 +372,16 @@ a {
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
 }
 .app-version {
-  padding: 0 4px;
+  padding: 0 8px;
   color: var(--muted);
   font: 11px var(--mono);
-  text-align: center;
 }
 .sidebar.collapsed .sidebar-head {
   justify-content: center;
+}
+.sidebar.collapsed .app-version {
+  padding: 0 4px;
+  text-align: center;
 }
 main {
   min-width: 0;
