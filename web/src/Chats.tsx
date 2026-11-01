@@ -937,7 +937,7 @@ export default function Chats({
                         <span className={chat.scheduled_late ? "scheduled-clock late" : "scheduled-clock"}>
                           <Icon name="clock" />
                         </span>{" "}
-                        {chat.scheduled_late ? `${t.scheduled} (${t.late})` : t.scheduled}
+                        {chat.scheduled_late ? t.late : t.scheduled}
                       </>
                     )}
                   </small>
