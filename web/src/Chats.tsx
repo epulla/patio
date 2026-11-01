@@ -281,12 +281,12 @@ export default function Chats({
   const loadingMore = useRef(false);
   const existingPins = useRef(new Set<string>());
   // The rail scrolls, which would clip a CSS [data-tip] tooltip, so it is positioned fixed instead.
-  const [tip, setTip] = useState<{ text: string; top: number; left: number; focus: boolean }>();
+  const [tip, setTip] = useState<{ text: string; top: number; left: number; focus: boolean; wide?: boolean }>();
 
-  function showTip(button: HTMLElement, text: string, focus: boolean) {
+  function showTip(button: HTMLElement, text: string, focus: boolean, wide = false) {
     if (focus && !button.matches(":focus-visible")) return;
     const rect = button.getBoundingClientRect();
-    setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 8, focus });
+    setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 8, focus, wide });
   }
 
   // With a single connector the dialog has nothing to choose, so create the chat with its defaults.
@@ -747,7 +747,7 @@ export default function Chats({
           </nav>
         )}
         {tip && (
-          <div className={tip.focus ? "rail-tip focus" : "rail-tip"} aria-hidden="true" style={{ top: tip.top, left: tip.left }}>
+          <div className={`rail-tip${tip.wide ? " wide" : ""}${tip.focus ? " focus" : ""}`} aria-hidden="true" style={{ top: tip.top, left: tip.left }}>
             {tip.text}
           </div>
         )}
@@ -935,7 +935,12 @@ export default function Chats({
                       <>
                         {" · "}
                         {chat.scheduled_late ? (
-                          <span className="late-clock" title={`${t.ranLate}. ${t.lateTitle}`}>
+                          // The list clips CSS tooltips, so this uses the fixed rail tip.
+                          <span
+                            className="late-clock"
+                            onMouseEnter={(event) => showTip(event.currentTarget, `${t.ranLate}. ${t.lateTitle}`, false, true)}
+                            onMouseLeave={() => setTip(undefined)}
+                          >
                             <Icon name="clock" />
                             <span className="sr-only">{t.ranLate}</span>
                           </span>
