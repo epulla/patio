@@ -248,6 +248,16 @@ Patio's MCP tools cover work management, calendar items, scheduled tasks, monito
 
 The built-in MCP tool set does not expose deletion of boards, tickets, ticket types, connectors, or MCP servers. It does allow removing empty columns, calendar items, scheduled tasks, monitors, skills, and ticket links. `update_settings_defaults` cannot change Auto-allow. These limits describe Patio's MCP tools; a connected CLI may have additional tools of its own.
 
+## Connect Telegram
+
+Chat with Patio from your phone through a Telegram bot. Patio polls Telegram for new messages, so it needs no public address, but it must be running.
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token it gives you.
+2. In **Settings › Telegram**, paste the token, press **Save token**, then **Test** to see the bot's name, and turn on **Answer Telegram messages**.
+3. Message your bot. It answers with your Telegram user ID; add that ID to **Allowed Telegram user IDs**.
+
+Each Telegram conversation maps to a Patio chat that uses your default connector and bot. Send text, photos, or files; replies come back as text, including replies to messages you type in that chat inside Patio. Approval requests show **Allow** and **Deny** buttons, and questions show their options as buttons. Send `/new` to start a fresh chat and `/chat` to see which chat you are in. Messages from accounts that aren't allowed never reach Patio. The token is kept in the OS credential store.
+
 ## Data and permissions
 
 ### Your application data

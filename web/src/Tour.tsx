@@ -45,7 +45,7 @@ const text = {
       monitors: ["Monitors", "Run an MCP tool on a schedule and get notified when its result changes."],
       scheduled: ["Scheduled tasks", "Run a prompt on a schedule, like a daily summary of your boards. The play button runs a task right away. A gray clock and \"late\" on a chat mean it ran late because Patio was closed at the scheduled time."],
       patioMcp: ["Use Patio from other AI apps", "Patio is an MCP server too. Copy this setup into Claude Desktop, Claude Code or another client to manage your boards from there."],
-      foot: ["Settings and notifications", `Settings, theme and notifications live here. A dot on the gear and a banner in Settings mean a new Patio version is out. If your computer blocks desktop alerts, the bell tells you how to turn them on. Long dropdowns have a search box: start typing to filter them. Press ${key("/")} anytime for every shortcut, and replay this tour from Settings.`],
+      foot: ["Settings and notifications", `Settings, theme and notifications live here. A dot on the gear and a banner in Settings mean a new Patio version is out. If your computer blocks desktop alerts, the bell tells you how to turn them on. Connect a Telegram bot in Settings to chat with Patio from your phone. Long dropdowns have a search box: start typing to filter them. Press ${key("/")} anytime for every shortcut, and replay this tour from Settings.`],
     },
   },
   es: {
@@ -83,7 +83,7 @@ const text = {
       monitors: ["Monitores", "Ejecuta una herramienta MCP según un horario y recibe un aviso cuando su resultado cambia."],
       scheduled: ["Tareas programadas", "Ejecuta un prompt según un horario, como un resumen diario de tus tableros. El botón de reproducir ejecuta una tarea al instante. Un reloj gris y \"tarde\" en un chat indican que se ejecutó tarde porque Patio estaba cerrado a la hora programada."],
       patioMcp: ["Usa Patio desde otras apps de IA", "Patio también es un servidor MCP. Copia esta configuración en Claude Desktop, Claude Code u otro cliente para manejar tus tableros desde ahí."],
-      foot: ["Ajustes y avisos", `Aquí están los ajustes, el tema y las notificaciones. Un punto en el engranaje y un aviso en Ajustes indican que hay una nueva versión de Patio. Si tu equipo bloquea los avisos de escritorio, la campana te dice cómo activarlos. Las listas desplegables largas tienen buscador: empieza a escribir para filtrarlas. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Ajustes.`],
+      foot: ["Ajustes y avisos", `Aquí están los ajustes, el tema y las notificaciones. Un punto en el engranaje y un aviso en Ajustes indican que hay una nueva versión de Patio. Si tu equipo bloquea los avisos de escritorio, la campana te dice cómo activarlos. Conecta un bot de Telegram en Ajustes para chatear con Patio desde tu teléfono. Las listas desplegables largas tienen buscador: empieza a escribir para filtrarlas. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Ajustes.`],
     },
   },
 };
