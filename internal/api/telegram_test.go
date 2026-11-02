@@ -1,11 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +26,9 @@ type fakeTelegram struct {
 	mu    sync.Mutex
 	calls []fakeTelegramCall
 	file  []byte
+	// fileStarted and fileGate, when set, pause file downloads until the test lets them go.
+	fileStarted chan struct{}
+	fileGate    chan struct{}
 	// onCall, when set, runs before the reply and may write its own response.
 	onCall func(method string, w http.ResponseWriter) bool
 }
@@ -45,6 +51,10 @@ func newFakeTelegram(t *testing.T) *fakeTelegram {
 	f := &fakeTelegram{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/file/bottoken/") {
+			if f.fileGate != nil {
+				f.fileStarted <- struct{}{}
+				<-f.fileGate
+			}
 			_, _ = w.Write(f.file)
 			return
 		}
@@ -222,29 +232,51 @@ func TestTelegramChatUsesDefaultBotConnectorAndModel(t *testing.T) {
 	}
 }
 
-func TestTelegramOffsetAndSettingsDontOverwriteEachOther(t *testing.T) {
+func putTelegram(handler http.Handler, body map[string]any) int {
+	encoded, _ := json.Marshal(body)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/settings/telegram", bytes.NewReader(encoded)))
+	return rec.Code
+}
+
+func TestTelegramSettingsAndOffsetSavesTakeTurns(t *testing.T) {
 	keyring.MockInit()
-	database, handler, root := chatAPI(t)
-	s := New(database, "local", false, "dev", root)
-	put := func(body map[string]any) {
-		if code := requestJSON(t, handler, http.MethodPut, "/api/settings/telegram", body, nil); code != 200 {
-			t.Fatalf("put status %d", code)
-		}
+	_, handler, _ := chatAPI(t)
+	s := handler.(*Server)
+	if code := putTelegram(s, map[string]any{"enabled": true, "allowed_user_ids": []int64{5}, "token": "token"}); code != 200 {
+		t.Fatalf("put status %d", code)
 	}
-	put(map[string]any{"enabled": true, "allowed_user_ids": []int64{5}, "token": "old"})
-	if err := s.saveTelegramOffset("old", 9); err != nil {
+	s.telegramMu.Lock()
+	putDone, offsetDone := make(chan int), make(chan error)
+	go func() {
+		putDone <- putTelegram(s, map[string]any{"enabled": false, "allowed_user_ids": []int64{5, 6}, "token": nil})
+	}()
+	go func() { offsetDone <- s.saveTelegramOffset("token", 9) }()
+	select {
+	case <-putDone:
+		t.Fatal("settings saved without the lock")
+	case <-offsetDone:
+		t.Fatal("offset saved without the lock")
+	case <-time.After(200 * time.Millisecond):
+	}
+	s.telegramMu.Unlock()
+	if code := <-putDone; code != 200 {
+		t.Fatalf("put status %d", code)
+	}
+	if err := <-offsetDone; err != nil {
 		t.Fatal(err)
 	}
-	put(map[string]any{"enabled": false, "allowed_user_ids": []int64{5, 6}, "token": nil})
-	if err := s.saveTelegramOffset("old", 4); err != nil {
+	if err := s.saveTelegramOffset("token", 4); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := s.readTelegramSettings()
 	if err != nil || cfg.UpdateOffset != 9 || cfg.Enabled || len(cfg.AllowedUserIDs) != 2 {
 		t.Fatalf("settings = %#v, %v", cfg, err)
 	}
-	put(map[string]any{"enabled": true, "allowed_user_ids": []int64{5}, "token": "new"})
-	if err := s.saveTelegramOffset("old", 20); err != nil {
+	if code := putTelegram(s, map[string]any{"enabled": true, "allowed_user_ids": []int64{5}, "token": "new"}); code != 200 {
+		t.Fatalf("put status %d", code)
+	}
+	if err := s.saveTelegramOffset("token", 20); err != nil {
 		t.Fatal(err)
 	}
 	if cfg, err = s.readTelegramSettings(); err != nil || cfg.UpdateOffset != 0 {
@@ -309,39 +341,112 @@ func TestTelegramRunnerProcessesAndPersistsOffset(t *testing.T) {
 	}
 }
 
-func TestTelegramRunnerStopsWhenDisabledMidBatch(t *testing.T) {
-	keyring.MockInit()
-	database, _, root := chatAPI(t)
-	s := New(database, "local", false, "dev", root)
-	fake := newFakeTelegram(t)
-	if err := s.saveTelegramSettings(telegramTestCfg); err != nil {
-		t.Fatal(err)
+// pollOffset is the offset the runner asked for in its nth getUpdates call (1-based).
+func (f *fakeTelegram) pollOffset(n int) float64 {
+	polls := f.sent("getUpdates")
+	if len(polls) < n {
+		return -1
 	}
-	polled := make(chan struct{}, 1)
+	return polls[n-1]["offset"].(float64)
+}
+
+func TestTelegramRunnerLeavesUpdateWhenDisabledMidBatch(t *testing.T) {
+	keyring.MockInit()
+	database, handler, _ := chatAPI(t)
+	s := handler.(*Server)
+	fake := newFakeTelegram(t)
+	if code := putTelegram(s, map[string]any{"enabled": true, "allowed_user_ids": []int64{12}, "token": nil}); code != 200 {
+		t.Fatalf("put status %d", code)
+	}
+	var polls int
+	polled := make(chan struct{})
 	fake.onCall = func(method string, w http.ResponseWriter) bool {
 		if method != "getUpdates" {
 			return false
 		}
-		// The user turns the bridge off while this batch is in flight.
-		if err := s.saveTelegramSettings(telegramSettings{AllowedUserIDs: []int64{12}}); err != nil {
-			t.Error(err)
+		polls++
+		if polls == 1 {
+			// Turned off while this batch is in flight; saved without a wake-up so the poll isn't cancelled
+			// and the batch itself must notice.
+			if err := s.saveTelegramSettings(telegramSettings{AllowedUserIDs: []int64{12}}); err != nil {
+				t.Error(err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":41,"message":{"message_id":1,"text":"hi","chat":{"id":77},"from":{"id":12}}}]}`))
+			close(polled)
+			return true
 		}
-		_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":41,"message":{"message_id":1,"text":"hi","chat":{"id":77},"from":{"id":12}}}]}`))
-		select {
-		case polled <- struct{}{}:
-		default:
-		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
 		return true
 	}
 	stop := runTelegramBridge(t, s)
 	<-polled
-	stop()
+	stop() // returns once the batch is handled
 	var chats int
 	if err := database.QueryRow(`SELECT count(*) FROM chat`).Scan(&chats); err != nil || chats != 0 {
 		t.Fatalf("chats = %d, %v", chats, err)
 	}
+	defer runTelegramBridge(t, s)()
+	if code := putTelegram(s, map[string]any{"enabled": true, "allowed_user_ids": []int64{12}, "token": nil}); code != 200 {
+		t.Fatalf("put status %d", code)
+	}
+	waitFor(t, func() bool { return fake.pollOffset(2) >= 0 })
+	if got := fake.pollOffset(2); got != 0 {
+		t.Fatalf("next poll offset = %v, want update 41 not acknowledged", got)
+	}
+}
+
+func TestTelegramRunnerLeavesUpdateWhenDisabledDuringDownload(t *testing.T) {
+	database, root, chatID, s, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		writeSSE(w, `{"choices":[{"delta":{"content":"Nice"}}]}`)
+	})
+	fake := newFakeTelegram(t)
+	// Finish background Telegram replies before the fake server goes away.
+	t.Cleanup(func() { _ = s.Close() })
+	fake.file = append([]byte("\xff\xd8\xff\xe0"), make([]byte, 64)...)
+	fake.fileStarted, fake.fileGate = make(chan struct{}, 2), make(chan struct{})
+	mapTelegramChat(t, s, chatID)
+	var polls int
+	fake.onCall = func(method string, w http.ResponseWriter) bool {
+		if method != "getUpdates" {
+			return false
+		}
+		polls++
+		if polls <= 2 {
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":41,"message":{"message_id":1,"caption":"look","photo":[{"file_id":"p"}],"chat":{"id":77},"from":{"id":12}}}]}`))
+		} else {
+			_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
+		}
+		return true
+	}
+	stop := runTelegramBridge(t, s)
+	<-fake.fileStarted
+	if code := putTelegram(s, map[string]any{"enabled": false, "allowed_user_ids": []int64{12}, "token": nil}); code != 200 {
+		t.Fatalf("put status %d", code)
+	}
+	close(fake.fileGate)
+	stop()
+	var messages int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=?`, chatID).Scan(&messages); err != nil || messages != 0 {
+		t.Fatalf("messages after abort = %d, %v", messages, err)
+	}
+	if files, _ := os.ReadDir(filepath.Join(root, "chats", chatID, "attachments")); len(files) != 0 {
+		t.Fatalf("files after abort = %v", files)
+	}
 	if cfg, err := s.readTelegramSettings(); err != nil || cfg.UpdateOffset != 0 {
-		t.Fatalf("offset = %d, %v", cfg.UpdateOffset, err)
+		t.Fatalf("offset after abort = %d, %v", cfg.UpdateOffset, err)
+	}
+	// Turned back on, the same bot gets the update again and it goes through.
+	defer runTelegramBridge(t, s)()
+	if code := putTelegram(s, map[string]any{"enabled": true, "allowed_user_ids": []int64{12}, "token": nil}); code != 200 {
+		t.Fatalf("put status %d", code)
+	}
+	waitLocalDone(t, events)
+	if got := fake.pollOffset(2); got != 0 {
+		t.Fatalf("second poll offset = %v", got)
+	}
+	var content string
+	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user'`, chatID).Scan(&content); err != nil || content != "look" {
+		t.Fatalf("message = %q, %v", content, err)
 	}
 }
 

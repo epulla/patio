@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -9,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -147,7 +145,11 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			if !ok {
 				break
 			}
-			if err := s.processTelegramUpdate(ctx, token, latest, update); err != nil {
+			err := s.processTelegramUpdate(ctx, token, latest, update)
+			if errors.Is(err, errTelegramAborted) || ctx.Err() != nil {
+				break
+			}
+			if err != nil {
 				log.Printf("process Telegram update %d: %v", update.UpdateID, err)
 			}
 			offset = max(offset, update.UpdateID+1)
@@ -157,6 +159,9 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 		}
 	}
 }
+
+// errTelegramAborted means settings changed while an update was handled; it stays unacknowledged.
+var errTelegramAborted = errors.New("Telegram bridge settings changed")
 
 // telegramActive returns current settings while the bridge is enabled and token is still the stored token.
 func (s *Server) telegramActive(token string) (telegramSettings, bool) {
@@ -283,7 +288,7 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	// Downloads can be slow: recheck that the bridge is still on and the sender still allowed.
 	if latest, ok := s.telegramActive(token); !ok || !telegramAllowed(latest, m.From.ID) {
 		s.removeTelegramFiles(c, attachments)
-		return nil
+		return errTelegramAborted
 	}
 	s.attachmentsMu.Lock()
 	message, queued, err := s.sendOrQueueChatMessage(c, kind, dir, text, attachments, nil)
@@ -324,26 +329,11 @@ func (s *Server) downloadTelegramFile(ctx context.Context, token string, c chat,
 	return s.storeChatAttachment(c, name, resp.Body)
 }
 
-// createTelegramChat goes through the app's create chat handler, so it gets the same defaults
-// (default bot with its connector and model) and validation.
+// createTelegramChat uses the app's chat creation, so it gets the same defaults (default bot
+// with its connector and model) and validation.
 func (s *Server) createTelegramChat(title string) (string, error) {
-	body, err := json.Marshal(map[string]string{"title": title})
-	if err != nil {
-		return "", err
-	}
-	rec := httptest.NewRecorder()
-	s.createChat(rec, httptest.NewRequest(http.MethodPost, "/api/chats", bytes.NewReader(body)))
-	var created struct {
-		ID    string `json:"id"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
-		return "", err
-	}
-	if rec.Code != http.StatusCreated {
-		return "", fmt.Errorf("create chat: %s", created.Error)
-	}
-	return created.ID, nil
+	c, _, err := s.newChat(createChatInput{Title: title})
+	return c.ID, err
 }
 
 func (s *Server) removeTelegramFiles(c chat, attachments []ChatAttachment) {

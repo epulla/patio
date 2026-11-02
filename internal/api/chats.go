@@ -320,25 +320,36 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"chats": out, "next_cursor": nil})
 }
 
+type createChatInput struct {
+	ConnectorID  json.RawMessage `json:"connector_id"`
+	Title        string          `json:"title"`
+	Model        string          `json:"model"`
+	Folder       json.RawMessage `json:"folder"`
+	AutoAllow    *bool           `json:"auto_allow"`
+	Thinking     *bool           `json:"thinking"`
+	ShowThinking *bool           `json:"show_thinking"`
+	BotID        *string         `json:"bot_id"`
+}
+
 func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		ConnectorID  json.RawMessage `json:"connector_id"`
-		Title        string          `json:"title"`
-		Model        string          `json:"model"`
-		Folder       json.RawMessage `json:"folder"`
-		AutoAllow    *bool           `json:"auto_allow"`
-		Thinking     *bool           `json:"thinking"`
-		ShowThinking *bool           `json:"show_thinking"`
-		BotID        *string         `json:"bot_id"`
-	}
+	var in createChatInput
 	if decode(r, &in) != nil {
 		errw(w, 400, "valid chat required")
 		return
 	}
+	c, code, err := s.newChat(in)
+	if err != nil {
+		errw(w, code, err.Error())
+		return
+	}
+	write(w, code, c)
+}
+
+// newChat creates a chat from in and the chat defaults; on error it also returns the HTTP status.
+func (s *Server) newChat(in createChatInput) (chat, int, error) {
 	defaults, err := s.chatDefaults()
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return chat{}, 500, err
 	}
 	botID := in.BotID
 	if botID == nil && defaults.DefaultBotID != "none" {
@@ -352,8 +363,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	botModel := ""
 	if botID != nil {
 		if err := s.db.QueryRow(`SELECT connector_id,model FROM "user" WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, *botID).Scan(&botConnector, &botModel); err != nil {
-			errw(w, 400, "bot not found")
-			return
+			return chat{}, 400, errors.New("bot not found")
 		}
 	}
 	if len(in.ConnectorID) == 0 && botConnector != nil {
@@ -365,18 +375,15 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	var connectorID string
 	if len(in.ConnectorID) > 0 {
 		if err := json.Unmarshal(in.ConnectorID, &connectorID); err != nil || !required(connectorID) {
-			errw(w, 400, "connector_id required")
-			return
+			return chat{}, 400, errors.New("connector_id required")
 		}
 	} else if defaults.ConnectorID != nil {
 		connectorID = *defaults.ConnectorID
 	} else if err := s.db.QueryRow(`SELECT id FROM connector ORDER BY created_at,rowid LIMIT 1`).Scan(&connectorID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			errw(w, 400, "connector_id required")
-		} else {
-			errw(w, 500, err.Error())
+			return chat{}, 400, errors.New("connector_id required")
 		}
-		return
+		return chat{}, 500, err
 	}
 	folder := defaults.Folder
 	if len(in.Folder) > 0 {
@@ -385,8 +392,7 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		} else {
 			var value string
 			if err := json.Unmarshal(in.Folder, &value); err != nil {
-				errw(w, 400, "folder must be an allowed folder or null")
-				return
+				return chat{}, 400, errors.New("folder must be an allowed folder or null")
 			}
 			folder = &value
 		}
@@ -403,11 +409,9 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	}
 	var kind string
 	if err := s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, connectorID).Scan(&kind); errors.Is(err, sql.ErrNoRows) {
-		errw(w, 400, "connector not found")
-		return
+		return chat{}, 400, errors.New("connector not found")
 	} else if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return chat{}, 500, err
 	}
 	if in.Title == "" {
 		in.Title = "New chat"
@@ -416,18 +420,15 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		in.Model = defaults.Model
 	}
 	if !required(in.Title) {
-		errw(w, 400, "title required")
-		return
+		return chat{}, 400, errors.New("title required")
 	}
 	if folder != nil {
 		cleaned, allowed, err := s.allowedFolderPath(*folder)
 		if err != nil {
-			errw(w, 500, err.Error())
-			return
+			return chat{}, 500, err
 		}
 		if !allowed {
-			errw(w, 400, "folder is not allowed")
-			return
+			return chat{}, 400, errors.New("folder is not allowed")
 		}
 		folder = &cleaned
 	}
@@ -437,12 +438,10 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	if folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			errw(w, 500, err.Error())
-			return
+			return chat{}, 500, err
 		}
 		if err := os.Chmod(dir, 0o700); err != nil {
-			errw(w, 500, cleanupConnectorDir(dir, err).Error())
-			return
+			return chat{}, 500, cleanupConnectorDir(dir, err)
 		}
 	}
 	c.BotID = botID
@@ -450,11 +449,10 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		if folder == nil {
 			err = cleanupConnectorDir(s.chatWorkdir(c), err)
 		}
-		errw(w, 500, err.Error())
-		return
+		return chat{}, 500, err
 	}
 	c.Workdir = s.chatWorkdir(c)
-	write(w, 201, c)
+	return c, 201, nil
 }
 
 func (s *Server) getChatToolResult(w http.ResponseWriter, r *http.Request) {
