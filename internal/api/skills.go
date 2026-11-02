@@ -154,26 +154,6 @@ func SkillVisible(db *sql.DB, name, botID string) (Skill, error) {
 	return Skill{}, sql.ErrNoRows
 }
 
-func EnabledSkills(db *sql.DB) ([]Skill, error) {
-	rows, err := db.Query(skillSelect + ` WHERE enabled=1 ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	skills := []Skill{}
-	for rows.Next() {
-		skill, err := scanSkill(rows)
-		if err != nil {
-			return nil, err
-		}
-		if err := loadSkillBotIDs(db, &skill); err != nil {
-			return nil, err
-		}
-		skills = append(skills, skill)
-	}
-	return skills, rows.Err()
-}
-
 func (s *Server) loadSkill(id string) (Skill, error) {
 	sk, err := scanSkill(s.db.QueryRow(skillSelect+` WHERE id=?`, id))
 	if err == nil {

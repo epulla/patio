@@ -131,7 +131,7 @@ func TestSkillCRUDAndImportExport(t *testing.T) {
 	if imported.Name != "zebra-copy" || imported.Description != created.Description || imported.Body != created.Body {
 		t.Fatalf("round trip skill = %#v; source %#v", imported, created)
 	}
-	enabled, err := EnabledSkills(database)
+	enabled, err := SkillsForBot(database, "")
 	if err != nil || len(enabled) != 2 || enabled[0].Name != "alpha" || enabled[1].Name != "zebra-copy" {
 		t.Fatalf("enabled skills = %#v, %v", enabled, err)
 	}
