@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -109,11 +110,17 @@ func TestTicketAttachmentTraversalNameSafe(t *testing.T) {
 	if err := json.Unmarshal(r.Body.Bytes(), &a); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(a.Name, "/") || filepath.Dir(a.Path) != filepath.Join(root, "attachments", ticket.ID) {
+	// sanitizeChatAttachmentName drops path separators, so the name stays inside the ticket folder.
+	if a.Name != "..escape.txt" || a.Path != filepath.Join(root, "attachments", ticket.ID, "..escape.txt") {
 		t.Fatalf("unsafe stored name/path: %q %q", a.Name, a.Path)
 	}
 	if _, err := os.Stat(a.Path); err != nil {
 		t.Fatal(err)
+	}
+	for _, outside := range []string{filepath.Join(root, "attachments", "escape.txt"), filepath.Join(root, "escape.txt")} {
+		if _, err := os.Stat(outside); !os.IsNotExist(err) {
+			t.Fatalf("file written outside ticket folder: %s", outside)
+		}
 	}
 }
 
@@ -156,6 +163,64 @@ func TestTicketAttachmentTicketDeleteCleansFilesAndRows(t *testing.T) {
 	var n int
 	if e := db.QueryRow("SELECT count(*) FROM ticket_attachment WHERE ticket_id=?", ticket.ID).Scan(&n); e != nil || n != 0 {
 		t.Fatalf("rows=%d err=%v", n, e)
+	}
+}
+
+func TestTicketAttachmentDeleteDoesNotFollowAttachmentsSymlink(t *testing.T) {
+	_, h, _, ticket, root := ticketAttachmentFixture(t)
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(outside, ticket.ID), 0700); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(outside, ticket.ID, "keep.txt")
+	if err := os.WriteFile(keep, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "attachments")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if code := requestJSON(t, h, http.MethodDelete, "/api/tickets/"+ticket.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete=%d", code)
+	}
+	if data, err := os.ReadFile(keep); err != nil || string(data) != "keep" {
+		t.Fatalf("outside file data=%q err=%v", data, err)
+	}
+}
+
+func TestTicketAttachmentConcurrentUploadsRespectLimit(t *testing.T) {
+	db, h, _, ticket, _ := ticketAttachmentFixture(t)
+	for i := 0; i < 19; i++ {
+		if _, err := db.Exec(`INSERT INTO ticket_attachment(id,ticket_id,name,original_name,mime,kind,size,created_at) VALUES(?,?,?,?,?,?,?,?)`, uid(), ticket.ID, fmt.Sprintf("existing-%d.txt", i), "existing.txt", "text/plain", "text", 1, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	statuses := make(chan int, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			statuses <- postTicketAttachment(t, h, ticket.ID, fmt.Sprintf("concurrent-%d.txt", i), []byte("ok")).Code
+		}(i)
+	}
+	wg.Wait()
+	close(statuses)
+	success, rejected := 0, 0
+	for code := range statuses {
+		if code == http.StatusCreated {
+			success++
+		} else if code == http.StatusBadRequest {
+			rejected++
+		} else {
+			t.Fatalf("unexpected status %d", code)
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM ticket_attachment WHERE ticket_id=?`, ticket.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if success != 1 || rejected != 1 || count != 20 {
+		t.Fatalf("success=%d rejected=%d count=%d", success, rejected, count)
 	}
 }
 

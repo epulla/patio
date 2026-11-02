@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -578,9 +579,44 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	} else if e != nil {
 		errw(w, 500, e.Error())
 	} else {
-		_ = os.RemoveAll(filepath.Join(s.dbDir, "attachments", id))
+		if err := s.removeTicketAttachments(id); err != nil {
+			log.Printf("remove attachments for deleted ticket %s: %v", id, err)
+		}
 		noContent(w)
 	}
+}
+
+func (s *Server) removeTicketAttachments(id string) error {
+	root, err := chatAttachmentsDir(s.dbDir, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(root, id)
+	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return errChatAttachmentUnsafe
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return err
+	}
+	inside, err := pathWithin(root, resolved)
+	if err != nil {
+		return err
+	}
+	if !inside || filepath.Clean(resolved) != filepath.Join(root, id) {
+		return errChatAttachmentUnsafe
+	}
+	return os.RemoveAll(resolved)
 }
 
 // Matches a ticket by UUID, code, or old code, like getTicket; MCP tools pass codes.

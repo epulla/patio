@@ -135,10 +135,22 @@ func (s *Server) uploadTicketAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	t := now()
-	_, e = s.db.Exec(`INSERT INTO ticket_attachment(id,ticket_id,name,original_name,mime,kind,size,created_at) VALUES(?,?,?,?,?,?,?,?)`, uid(), id, stored, original, contentType, kind, size, t)
+	result, e := s.db.Exec(`INSERT INTO ticket_attachment(id,ticket_id,name,original_name,mime,kind,size,created_at)
+		SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM ticket_attachment WHERE ticket_id=?) < ?`, uid(), id, stored, original, contentType, kind, size, t, id, maxTicketAttachments)
 	if e != nil {
 		_ = os.Remove(filepath.Join(dir, stored))
 		errw(w, 500, e.Error())
+		return
+	}
+	inserted, e := result.RowsAffected()
+	if e != nil {
+		_ = os.Remove(filepath.Join(dir, stored))
+		errw(w, 500, e.Error())
+		return
+	}
+	if inserted == 0 {
+		_ = os.Remove(filepath.Join(dir, stored))
+		errw(w, 400, "at most 20 attachments are allowed")
 		return
 	}
 	write(w, 201, ticketAttachment{stored, original, kind, contentType, size, t, filepath.Join(dir, stored)})
