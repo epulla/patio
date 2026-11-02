@@ -1228,9 +1228,16 @@ a:has(> .svg-icon) {
   background: var(--base-100);
   font-weight: 400;
 }
+.picker {
+  min-width: 0;
+}
+.picker-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .picker-trigger .type {
   font-weight: 400;
-  overflow: hidden;
   /* Room for the dot's 1px ring, which overflow would clip. */
   padding: 1px;
   margin: -1px;
