@@ -11,6 +11,7 @@ import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Picker from "./Picker";
 import History from "./History";
+import { ConnectionsHeading } from "./Connections";
 import { lang, locale, useText } from "./i18n";
 import { isDesktop, openURL } from "./desktop";
 
@@ -86,15 +87,14 @@ export default function Connectors({ refresh, embedded }: { refresh: number; emb
   return (
     <div className="stack">
       {!embedded && (
-        <div className="page-heading">
-          <div>
-            <p className="eyebrow">AI</p>
-            <h1>{t.connectors}</h1>
-          </div>
-          <button className="primary" onClick={() => setEditing("new")}>
-            <Icon name="plus" /> {t.add}
-          </button>
-        </div>
+        <ConnectionsHeading
+          tab="connectors"
+          actions={
+            <button className="primary" onClick={() => setEditing("new")}>
+              <Icon name="plus" /> {t.add}
+            </button>
+          }
+        />
       )}
       <p className="muted">
         {t.intro}

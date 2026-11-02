@@ -6,6 +6,7 @@ import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
 import Picker from "./Picker";
 import History from "./History";
+import { ConnectionsHeading } from "./Connections";
 import { lang, useText } from "./i18n";
 
 const text = {
@@ -50,15 +51,14 @@ export default function McpServers({ refresh }: { refresh: number }) {
 
   return (
     <div className="stack">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">AI</p>
-          <h1>{t.title}</h1>
-        </div>
-        <button className="primary" onClick={() => setEditing("new")}>
-          <Icon name="plus" /> {t.addServer}
-        </button>
-      </div>
+      <ConnectionsHeading
+        tab="mcp"
+        actions={
+          <button className="primary" onClick={() => setEditing("new")}>
+            <Icon name="plus" /> {t.addServer}
+          </button>
+        }
+      />
       <p className="muted">
         {t.intro}{" "}
         <a
