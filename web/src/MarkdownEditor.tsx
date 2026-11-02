@@ -13,19 +13,25 @@ const text = {
 const linePrefix = /^(#{1,3} |[-*] |\d+\. )/;
 
 // Files pasted before the ticket exists, keyed by their placeholder id; see uploadPendingFiles.
-export type PendingFiles = Map<string, File>;
+// Values are promises because images are still being shrunk when the placeholder goes in.
+export type PendingFiles = Map<string, Promise<File>>;
+
+const failure = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
 // Uploads the files whose placeholders are still in `description` and swaps each placeholder for its link,
 // or for a visible error note when the upload fails. Returns the new description.
 export async function uploadPendingFiles(ticketId: string, description: string, pending: PendingFiles) {
   const t = text[lang()];
-  for (const [id, file] of pending) {
+  for (const [id, prepared] of pending) {
     if (!hasPending(description, id)) continue;
+    const file = await prepared;
     let replacement: string;
     try {
+      const problem = ticketFileProblem(file);
+      if (problem) throw new Error(t[problem](file.name));
       replacement = await uploadTicketFile(ticketId, file);
     } catch (reason) {
-      replacement = `_⚠️ ${t.failed(file.name, reason instanceof Error ? reason.message : String(reason))}_`;
+      replacement = `_⚠️ ${t.failed(file.name, failure(reason))}_`;
     }
     description = replacePending(description, id, replacement);
   }
@@ -69,38 +75,50 @@ export default function MarkdownEditor({
     return next;
   }
 
-  async function addFiles(picked: File[]) {
+  // Placeholders go in right away, at the caret, so a submit or blur during shrinking or upload sees them.
+  function addFiles(picked: File[]) {
     setUploadError("");
-    const files = await Promise.all(picked.map(shrinkImage));
-    for (const file of files) {
-      const problem = ticketFileProblem(file);
-      if (problem) return setUploadError(t[problem](file.name));
-    }
-    if (pendingFiles && pendingFiles.size + files.length > maxTicketAttachments) return setUploadError(t.tooMany(maxTicketAttachments));
-    const ids = files.map(() => crypto.randomUUID());
+    if (pendingFiles && pendingFiles.size + picked.length > maxTicketAttachments) return setUploadError(t.tooMany(maxTicketAttachments));
+    const ids = picked.map(() => crypto.randomUUID());
     const el = ref.current;
     const current = latest.current.value;
     const start = el?.selectionStart ?? current.length;
     const end = el?.selectionEnd ?? current.length;
     const before = current.slice(0, start);
-    const inserted = (before && !before.endsWith("\n") ? "\n" : "") + files.map((file, i) => pendingLink(ids[i], ticketId ? t.uploading(file.name) : file.name)).join("\n") + "\n";
-    const next = before + inserted + current.slice(end);
-    latest.current.value = next;
-    latest.current.onChange(next);
+    const inserted = (before && !before.endsWith("\n") ? "\n" : "") + picked.map((file, i) => pendingLink(ids[i], ticketId ? t.uploading(file.name) : file.name)).join("\n") + "\n";
+    latest.current.value = before + inserted + current.slice(end);
+    latest.current.onChange(latest.current.value);
     const caret = start + inserted.length;
     requestAnimationFrame(() => ref.current?.setSelectionRange(caret, caret));
+    const prepared = picked.map(async (file, i) => {
+      const shrunk = await shrinkImage(file);
+      const problem = ticketFileProblem(shrunk);
+      if (!problem) return shrunk;
+      pendingFiles?.delete(ids[i]);
+      replaceLatest(ids[i], "");
+      setUploadError(t[problem](file.name));
+      throw new Error(t[problem](file.name));
+    });
     if (!ticketId) {
-      files.forEach((file, i) => pendingFiles!.set(ids[i], file));
+      // A rejected file already removed its placeholder; uploadPendingFiles skips it.
+      prepared.forEach((file, i) => pendingFiles!.set(ids[i], file.catch(() => picked[i])));
       return;
     }
-    setUploading((n) => n + files.length);
-    let saved = next;
+    void upload(ticketId, ids, prepared);
+  }
+
+  async function upload(ticketId: string, ids: string[], prepared: Promise<File>[]) {
+    setUploading((n) => n + ids.length);
+    // A rejected file already removed its placeholder and showed its error.
+    const files = prepared.map((file) => file.catch(() => undefined));
+    let saved = latest.current.value;
     for (const [i, file] of files.entries()) {
+      const ready = await file;
       try {
-        saved = replaceLatest(ids[i], await uploadTicketFile(ticketId, file));
+        saved = ready ? replaceLatest(ids[i], await uploadTicketFile(ticketId, ready)) : latest.current.value;
       } catch (reason) {
         saved = replaceLatest(ids[i], "");
-        setUploadError(t.failed(file.name, reason instanceof Error ? reason.message : String(reason)));
+        setUploadError(t.failed(ready!.name, failure(reason)));
       } finally {
         setUploading((n) => n - 1);
       }
@@ -113,7 +131,7 @@ export default function MarkdownEditor({
     const files = Array.from(event.clipboardData.files);
     if (!acceptsFiles || !files.length) return;
     event.preventDefault();
-    void addFiles(files.map(pastedFile));
+    addFiles(files.map(pastedFile));
   }
 
   function onDragOver(event: DragEvent<HTMLTextAreaElement>) {
@@ -125,7 +143,7 @@ export default function MarkdownEditor({
   function onDrop(event: DragEvent<HTMLTextAreaElement>) {
     if (!acceptsFiles || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    void addFiles(Array.from(event.dataTransfer.files));
+    addFiles(Array.from(event.dataTransfer.files));
   }
 
   useLayoutEffect(() => {

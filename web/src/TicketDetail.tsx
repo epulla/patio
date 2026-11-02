@@ -75,9 +75,13 @@ export default function TicketDetail({
   const [chatConnectors, setChatConnectors] = useState<Connector[]>();
   const startingChat = useRef(false);
   const previous = useRef({ id, showHidden: config.show_hidden, refresh });
+  // An upload can save and reload after the user opened another ticket; drop those stale loads.
+  const shownId = useRef(id);
+  shownId.current = id;
   async function load(preserveForm = false) {
     try {
       const current = await api.get<Ticket>(`/api/tickets/${id}`);
+      if (shownId.current !== id) return;
       setTicket(current);
       // Title and description save on blur, so keep in-progress text on live refresh.
       setForm((prev) => ({
@@ -95,6 +99,7 @@ export default function TicketDetail({
         api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
         api.get<TicketLink[]>(`/api/tickets/${current.id}/links`),
       ]);
+      if (shownId.current !== id) return;
       setBoard(boardData);
       setHistory(ticketHistory);
       setTransitions(ticketTransitions);
@@ -115,14 +120,20 @@ export default function TicketDetail({
     previous.current = { id, showHidden: config.show_hidden, refresh };
     load(preserveForm);
   }, [id, config.show_hidden, refresh]);
-  async function save(patch: unknown) {
+  // Saves run one at a time so a slow earlier save (e.g. a description with upload placeholders)
+  // can't land after a newer one. The reload keeps the form text, which is already the newest.
+  const saving = useRef(Promise.resolve());
+  function save(patch: unknown) {
     if (!ticket) return;
-    try {
-      await api.put(`/api/tickets/${ticket.id}`, patch);
-      await load();
-    } catch (reason) {
-      setError(reason);
-    }
+    const ticketId = ticket.id;
+    saving.current = saving.current.then(async () => {
+      try {
+        await api.put(`/api/tickets/${ticketId}`, patch);
+        await load(true);
+      } catch (reason) {
+        setError(reason);
+      }
+    });
   }
   // One connector: create right away; several: let the user pick in the New chat dialog.
   async function newChat() {

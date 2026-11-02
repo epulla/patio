@@ -60,8 +60,9 @@ export type TicketAttachment = {
 
 export const maxTicketAttachments = 20;
 
+// Parentheses are encoded too: an unmatched one would end the Markdown link destination early.
 export const ticketAttachmentURL = (ticketId: string, name: string) =>
-  `/api/tickets/${ticketId}/attachments/${encodeURIComponent(name)}`;
+  `/api/tickets/${ticketId}/attachments/${encodeURIComponent(name).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 
 // Matches the URLs above; Markdown only renders <img> for these.
 export const ticketAttachmentPath = /^\/api\/tickets\/[^/]+\/attachments\/[^/]+$/;

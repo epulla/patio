@@ -15,11 +15,11 @@ const appRoute =
 // Added after sanitizing; clicks are handled in onClick below.
 const copyCodeButton = (copy: string) => `<button type="button" class="icon ghost code-copy" aria-label="${copy}" data-tip="${copy}">${iconSvg("copy")}${iconSvg("check")}</button>`;
 
-// Only images stored as ticket attachments render; any other <img> could load remote content.
+// Only images stored as ticket attachments render; any other <img>, or a srcset (also on <picture> sources),
+// could load remote content.
 function keepAttachmentImages(node: Element) {
-  if (node.tagName !== "IMG") return;
-  if (!ticketAttachmentPath.test(node.getAttribute("src") ?? "")) return node.remove();
-  node.removeAttribute("srcset");
+  node.removeAttribute?.("srcset");
+  if (node.tagName === "IMG" && !ticketAttachmentPath.test(node.getAttribute("src") ?? "")) node.remove();
 }
 
 function markdownHtml(text: string) {
