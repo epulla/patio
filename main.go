@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -211,7 +212,9 @@ func main() {
 			}
 		},
 	})
+	wins.mu.Lock()
 	wins.app = app
+	wins.mu.Unlock()
 	wins.showMain(*openPath)
 	// Dock click with only chat windows open brings the main window back.
 	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
@@ -351,24 +354,33 @@ type windows struct {
 }
 
 // showMain focuses the main window, or reopens it after it was closed, at path when set.
+// Invalid paths fall back to "/": Wails treats an unparsable start URL as fatal.
 func (w *windows) showMain(path string) {
-	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+	if !api.ValidAppPath(path) {
 		path = ""
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.main != nil {
-		focusWindow(w.main)
+	if w.app == nil {
+		// A second launch arrived before startup finished; the main window is about to open anyway.
+		w.mu.Unlock()
+		return
+	}
+	if win := w.main; win != nil {
+		app := w.app
+		w.mu.Unlock()
+		focusWindow(win)
 		if path != "" {
 			// Broadcast; chat windows ignore navigate.
-			w.app.Event.Emit("navigate", path)
+			app.Event.Emit("navigate", path)
 		}
 		return
 	}
+	defer w.mu.Unlock()
 	start := "/"
 	if path != "" {
 		start = path
 	}
+	// Created under the lock so concurrent calls can't open two; close hooks run off the main thread, so this can't deadlock.
 	win := w.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Patio",
 		Width:  1280,
@@ -377,7 +389,8 @@ func (w *windows) showMain(path string) {
 		Linux:  application.LinuxWindow{Icon: appIcon, WebviewGpuPolicy: application.WebviewGpuPolicyNever},
 	})
 	w.main = win
-	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+	// A hook runs synchronously before Wails' own close listener destroys the window.
+	win.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if w.main == win {
@@ -399,11 +412,16 @@ func (w *windows) reopenMain() {
 // openChat focuses the chat's window or opens one, cascading from the right edge of the screen.
 func (w *windows) openChat(id string) error {
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	if w.app == nil {
+		w.mu.Unlock()
+		return errors.New("app is starting")
+	}
 	if win, ok := w.chats[id]; ok {
+		w.mu.Unlock()
 		focusWindow(win)
 		return nil
 	}
+	defer w.mu.Unlock()
 	var title string
 	if err := w.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
 		return err
@@ -432,7 +450,7 @@ func (w *windows) openChat(id string) error {
 	}
 	win := w.app.Window.NewWithOptions(options)
 	w.chats[id] = win
-	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+	win.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if w.chats[id] == win {

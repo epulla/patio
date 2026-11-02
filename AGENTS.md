@@ -25,7 +25,7 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 - `web/src/`: `App.tsx` (router), `AIBadge.tsx`, `BoardList.tsx`, `BoardView.tsx`, `TicketDetail.tsx`, `PrintTicket.tsx`, `Calendar.tsx`, `api.ts` (types + fetch).
 - `web/embed.go`: `//go:embed all:dist`. `web/public/.gitkeep` keeps `web/dist/` non-empty so `go build` works before a frontend build.
 - `web/src/desktop.ts`: `@wailsio/runtime` wrapper (`onEvent`, `openURL`, `isDesktop`).
-- `Makefile`: `app` (macOS `.app`), `exe` (Windows), `linux`; `-tags production`, `VERSION=` stamps `main.version`. Assets: `build/darwin/Info.plist` + `icons.icns`, `rsrc_windows_amd64.syso` (icon, DPI, manifest from `build/windows/`). No Taskfile/`wails3 dev`.
+- `Makefile`: `app` (macOS 13+ `.app`), `exe` (Windows), `linux`; `-tags production`, `VERSION=` stamps `main.version`. Assets: `build/darwin/Info.plist` + `icons.icns`, `rsrc_windows_amd64.syso` (icon, DPI, manifest from `build/windows/`). No Taskfile/`wails3 dev`.
 
 ## Domain invariants
 

@@ -59,7 +59,7 @@ Or download the build for your computer from [Releases](https://github.com/epull
 <details>
 <summary>macOS installation</summary>
 
-Patio needs macOS 12 or newer. Extract the archive and move `patio.app` to `/Applications`.
+Patio needs macOS 13 or newer. Extract the archive and move `patio.app` to `/Applications`.
 
 The macOS build is unsigned. On first launch, right-click the app and choose **Open**. If macOS still blocks it, you can remove quarantine from this app:
 

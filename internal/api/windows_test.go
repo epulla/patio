@@ -60,7 +60,7 @@ func TestMainWindowRejectsInvalidPath(t *testing.T) {
 	}
 	defer database.Close()
 	s := New(database, "local", false, "dev", t.TempDir())
-	for _, path := range []string{"relative", "//boards"} {
+	for _, path := range []string{"relative", "//boards", "/%", "/boards/%zz"} {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/windows/main", strings.NewReader(`{"path":"`+path+`"}`)))
 		if w.Code != 400 {
@@ -94,5 +94,16 @@ func TestChatTurnGuardLiveAndStale(t *testing.T) {
 	var owner string
 	if err := database.QueryRow(`SELECT window_id FROM chat_turn WHERE chat_id='c'`).Scan(&owner); err != nil || owner != "mine" {
 		t.Fatalf("owner %q, %v", owner, err)
+	}
+}
+
+func TestValidAppPath(t *testing.T) {
+	for path, want := range map[string]bool{
+		"/": true, "/boards/b": true, "/ai/chats/c?window=chat#end": true, "/boards/%20b": true,
+		"": false, "boards": false, "//host/x": false, "/%": false, "/boards/%zz": false, "https://example.com": false,
+	} {
+		if got := ValidAppPath(path); got != want {
+			t.Errorf("ValidAppPath(%q) = %v, want %v", path, got, want)
+		}
 	}
 }

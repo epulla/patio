@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -55,7 +56,7 @@ func (s *Server) openMainWindow(w http.ResponseWriter, r *http.Request) {
 	focusPath := ""
 	if in.Path != nil {
 		focusPath = *in.Path
-		if !strings.HasPrefix(focusPath, "/") || strings.HasPrefix(focusPath, "//") {
+		if !ValidAppPath(focusPath) {
 			errw(w, 400, "path must be an app path")
 			return
 		}
@@ -66,6 +67,15 @@ func (s *Server) openMainWindow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.showMain(focusPath)
 	noContent(w)
+}
+
+// ValidAppPath reports whether p is an in-app path that a window URL can load.
+func ValidAppPath(p string) bool {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+		return false
+	}
+	u, err := url.Parse(p)
+	return err == nil && u.Scheme == "" && u.Host == ""
 }
 
 func nowMinusWindowStale() string {

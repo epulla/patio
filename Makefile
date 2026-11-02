@@ -12,9 +12,10 @@ web:
 	pnpm --dir web build
 
 app: export CGO_ENABLED = 1
-app: export MACOSX_DEPLOYMENT_TARGET = 12.0
-app: export CGO_CFLAGS = -mmacosx-version-min=12.0
-app: export CGO_LDFLAGS = -mmacosx-version-min=12.0
+# Go 1.27 links for macOS 13+.
+app: export MACOSX_DEPLOYMENT_TARGET = 13.0
+app: export CGO_CFLAGS = -mmacosx-version-min=13.0
+app: export CGO_LDFLAGS = -mmacosx-version-min=13.0
 app: web
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
