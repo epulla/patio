@@ -3,7 +3,7 @@ import { IconButton } from "./icons";
 import Markdown from "./Markdown";
 import { useMentions } from "./mentions";
 import { lang, useText } from "./i18n";
-import { finishPending, hasPending, maxTicketAttachments, registerEditor, type TicketField, pastedFile, pendingLink, replacePending, shrinkImage, ticketFileProblem, uploadTicketFile } from "./attachments";
+import { finishPending, hasPending, maxTicketAttachments, registerEditor, type TicketField, keepFileDrop, pastedFile, pendingLink, replacePending, shrinkImage, ticketFileProblem, uploadTicketFile } from "./attachments";
 
 const text = {
   en: { formatting: "formatting", style: "Text style", normal: "Normal", title: "Title", heading: "Heading", subheading: "Subheading", bold: "Bold", italic: "Italic", code: "Code", link: "Link", bullets: "Bulleted list", numbered: "Numbered list", mention: "Mention a bot (@)", ticket: "Link a ticket (#)", write: "Write", preview: "Preview", nothing: "Nothing to preview", placeholder: "Markdown supported · @ to mention a bot · # to link a ticket", filePlaceholder: "Markdown supported · @ to mention a bot · # to link a ticket · paste or drop files", uploading: (name: string) => `Uploading ${name}…`, uploadingCount: (n: number) => `Uploading ${n} file${n === 1 ? "" : "s"}…`, pendingHint: "Pasted files upload when the ticket is created.", imageLarge: (name: string) => `${name} is larger than 10 MB.`, fileLarge: (name: string) => `${name} is larger than 20 MB.`, tooMany: (max: number) => `A ticket can have at most ${max} attachments.`, failed: (name: string, error: string) => `${name} failed to upload: ${error}` },
@@ -151,7 +151,7 @@ export default function MarkdownEditor({
   function onDragOver(event: DragEvent<HTMLTextAreaElement>) {
     if (!acceptsFiles || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+    keepFileDrop(event);
   }
 
   function onDrop(event: DragEvent<HTMLTextAreaElement>) {
@@ -283,6 +283,7 @@ export default function MarkdownEditor({
           onSelect={() => void mentions.update()}
           onBlur={mentions.close}
           onPaste={onPaste}
+          onDragEnter={onDragOver}
           onDragOver={onDragOver}
           onDrop={onDrop}
           placeholder={acceptsFiles ? t.filePlaceholder : t.placeholder}

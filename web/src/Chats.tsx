@@ -45,7 +45,7 @@ import { chatLink, mentionsBot, useMentions } from "./mentions";
 import { finishSend, isSending, loadDraft, onRestore, restoreDraft, saveDraft, takeDraft } from "./drafts";
 import { chatAncestors, chatTree, loadTreeOpen, saveTreeOpen } from "./chatTree";
 import Lightbox from "./Lightbox";
-import { imageTypes, pastedFile, shrinkImage } from "./attachments";
+import { imageTypes, keepFileDrop, pastedFile, shrinkImage } from "./attachments";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
 import PinTabs, { dragGhost, reorderType as pinTabType, useGroupReorder } from "./PinTabs";
@@ -1551,6 +1551,7 @@ export function Conversation({
     }
     if (!connector || !event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
+    keepFileDrop(event);
     setDragging(true);
   }
 
@@ -1886,6 +1887,7 @@ export function Conversation({
     <section
       className={dragging ? "conversation dragging" : "conversation"}
       aria-labelledby={`${uid}-title`}
+      onDragEnter={onDragOver}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}

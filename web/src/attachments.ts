@@ -39,6 +39,13 @@ export async function shrinkImage(file: File) {
   return new File([blob], `${file.name.replace(/\.[^.]*$/, "")}.${extension}`, { type: blob.type });
 }
 
+// The Wails runtime's document-level drag listeners set dropEffect to "none" (file drop is off
+// natively), which blocks the drop; claim file drags on our drop zones before they bubble there.
+export function keepFileDrop(event: { stopPropagation(): void; dataTransfer: DataTransfer }) {
+  event.stopPropagation();
+  event.dataTransfer.dropEffect = "copy";
+}
+
 export function pastedFile(file: File) {
   if (!file.type.startsWith("image/") || (file.name && file.name !== "image.png")) return file;
   const now = new Date();
