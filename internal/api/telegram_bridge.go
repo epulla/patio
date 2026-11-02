@@ -214,7 +214,7 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 		return telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": m.Chat.ID, "text": text}, nil)
 	}
 	if !telegramAllowed(cfg, m.From.ID) {
-		return reply(fmt.Sprintf("Not allowed. Your Telegram ID is %d: add it in Patio Settings › Telegram.", m.From.ID))
+		return reply(fmt.Sprintf("Not allowed. Your Telegram ID is %d: add it in Patio Connections › Channels.", m.From.ID))
 	}
 	var chatID string
 	err := s.db.QueryRow(`SELECT chat_id FROM telegram_chat WHERE telegram_chat_id=?`, m.Chat.ID).Scan(&chatID)

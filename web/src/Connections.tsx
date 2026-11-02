@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { navigate } from "./App";
 import { useText } from "./i18n";
+import Telegram from "./Telegram";
 
 const text = {
   en: {
@@ -43,6 +44,7 @@ export function Channels() {
     <div className="stack">
       <ConnectionsHeading tab="channels" />
       <p className="muted">{t.channelsIntro}</p>
+      <Telegram />
     </div>
   );
 }

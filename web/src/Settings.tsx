@@ -21,7 +21,6 @@ import { useModels } from "./Chats";
 import { openNotificationSettings, useNotificationsBlocked } from "./Notifications";
 import { locale, setLanguage, useLanguage, useText, type Language } from "./i18n";
 import { isDesktop, openURL } from "./desktop";
-import Telegram from "./Telegram";
 
 const text = {
   en: {
@@ -910,8 +909,6 @@ export default function Settings() {
       <ChatCleanup />
 
       <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
-
-      <Telegram />
 
       <section className="stack">
         <h2>{t.keyboardShortcuts}</h2>
