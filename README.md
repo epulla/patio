@@ -169,6 +169,8 @@ Write a skill in Markdown or import a `SKILL.md` file. Use the **Memory** tab in
 
 Enabled skills and memory summaries are made available to new CLI chats. Local AI can discover and load skills through its supported tools. Changes apply to new chats.
 
+Skills and memories are shared by all bots unless you limit them. Pick bots under **Available to** in a skill's editor, or use **Training** on a bot's page, and only those bots' chats list and load them; chats without a bot and other MCP clients see shared items only. Deleting a bot deletes the items only it could see.
+
 ### Make the workspace yours
 
 Choose English or Spanish, system/light/dark appearance, one of five color palettes, and a flat or gradient sidebar. Keyboard shortcuts and chat defaults are available in Settings.
