@@ -23,9 +23,12 @@ import Markdown from "./Markdown";
 import MarkdownEditor from "./MarkdownEditor";
 import Picker from "./Picker";
 import { pin } from "./pins";
+import { confirmDialog } from "./confirm";
+import { formatBytes } from "./Settings";
+import { ticketAttachmentURL, type TicketAttachment } from "./attachments";
 import { lang, locale, useText } from "./i18n";
 
-const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by", order: "Order", newest: "Newest first", oldest: "Oldest first" }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por", order: "Orden", newest: "Más recientes primero", oldest: "Más antiguos primero" } };
+const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by", order: "Order", newest: "Newest first", oldest: "Oldest first", attachments: "Attachments", showFile: (name: string) => `Show ${name} in folder`, deleteFile: (name: string) => `Delete ${name}`, confirmDeleteFile: (name: string) => `Delete ${name}? Links to it in the description or comments will break.` }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por", order: "Orden", newest: "Más recientes primero", oldest: "Más antiguos primero", attachments: "Adjuntos", showFile: (name: string) => `Mostrar ${name} en la carpeta`, deleteFile: (name: string) => `Eliminar ${name}`, confirmDeleteFile: (name: string) => `¿Eliminar ${name}? Los enlaces a este archivo en la descripción o los comentarios dejarán de funcionar.` } };
 
 const orderKey = "ticket-activity-order";
 type Order = "newest" | "oldest";
@@ -216,7 +219,7 @@ export default function TicketDetail({
               }
               onBlur={() => save({ title: form.title })}
             />
-            <div className="field">
+            <div className="field" data-tour="ticket-description">
               {t.description}
               <MarkdownEditor
                 label={t.description}
@@ -227,6 +230,7 @@ export default function TicketDetail({
               />
             </div>
             <Links ticket={ticket} links={links} onReload={load} onError={setError} />
+            <Attachments ticket={ticket} onReload={load} onError={setError} />
           </div>
           <aside className="ticket-side">
             <div className="field">
@@ -567,6 +571,48 @@ function Links({
           </button>
         </form>
       )}
+    </section>
+  );
+}
+
+function Attachments({ ticket, onReload, onError }: { ticket: Ticket; onReload: () => void; onError: (reason: unknown) => void }) {
+  const t = useText(text);
+  const attachments = ticket.attachments ?? [];
+  if (!attachments.length) return null;
+  const url = (attachment: TicketAttachment) => ticketAttachmentURL(ticket.id, attachment.name);
+  async function remove(attachment: TicketAttachment) {
+    if (!(await confirmDialog(t.confirmDeleteFile(attachment.original_name)))) return;
+    try {
+      await api.delete(url(attachment));
+      onReload();
+    } catch (reason) {
+      onError(reason);
+    }
+  }
+  return (
+    <section className="ticket-link-section" aria-labelledby={`ticket-attachments-${ticket.id}`}>
+      <div className="ticket-link-head">
+        <h2 id={`ticket-attachments-${ticket.id}`}>
+          {t.attachments} <span className="muted">{attachments.length}</span>
+        </h2>
+      </div>
+      <ul className="panel skill-list ticket-link-list">
+        {attachments.map((attachment) => (
+          <li key={attachment.name}>
+            <button
+              type="button"
+              className="ghost ticket-link-item"
+              aria-label={t.showFile(attachment.original_name)}
+              onClick={() => api.post(`${url(attachment)}/reveal`, {}).catch(onError)}
+            >
+              <Icon name={attachment.kind === "image" ? "image" : "file"} />
+              <span className="ticket-link-title">{attachment.original_name}</span>
+              <span className="muted">{formatBytes(attachment.size)}</span>
+            </button>
+            <IconButton className="ghost ticket-link-remove" icon="trash" label={t.deleteFile(attachment.original_name)} onClick={() => remove(attachment)} />
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

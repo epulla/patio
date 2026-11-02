@@ -73,6 +73,8 @@ export type Ticket = {
   ticket_type_id: string | null;
   reporter_id: string | null;
   assignee_id: string | null;
+  // Only GET /api/tickets/{id} includes it.
+  attachments?: TicketAttachment[];
 };
 export type SearchTicket = Ticket & { board_name: string; status_name: string };
 export type LinkType = "blocks" | "relates" | "duplicates";
@@ -402,3 +404,4 @@ export const api = {
     }),
 };
 import { lang } from "./i18n";
+import type { TicketAttachment } from "./attachments";

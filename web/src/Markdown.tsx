@@ -6,6 +6,8 @@ import { iconSvg } from "./icons";
 import { useText } from "./i18n";
 import LinkPreview, { previewRoute } from "./LinkPreview";
 import { isDesktop, openURL } from "./desktop";
+import { api } from "./api";
+import { ticketAttachmentPath } from "./attachments";
 
 const appRoute =
   /^(?:\/(?:tickets|boards)\/[^/]+|\/print\/tickets\/[^/]+|\/(?:tickets|calendar|settings|dashboard)|\/ai\/(?:connectors|skills|mcp|chats(?:\/[^/]+)?))$/;
@@ -13,8 +15,20 @@ const appRoute =
 // Added after sanitizing; clicks are handled in onClick below.
 const copyCodeButton = (copy: string) => `<button type="button" class="icon ghost code-copy" aria-label="${copy}" data-tip="${copy}">${iconSvg("copy")}${iconSvg("check")}</button>`;
 
+// Only images stored as ticket attachments render; any other <img> could load remote content.
+function keepAttachmentImages(node: Element) {
+  if (node.tagName !== "IMG") return;
+  if (!ticketAttachmentPath.test(node.getAttribute("src") ?? "")) return node.remove();
+  node.removeAttribute("srcset");
+}
+
 function markdownHtml(text: string) {
-  return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), { FORBID_TAGS: ["img"] });
+  DOMPurify.addHook("afterSanitizeAttributes", keepAttachmentImages);
+  try {
+    return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }));
+  } finally {
+    DOMPurify.removeHook("afterSanitizeAttributes", keepAttachmentImages);
+  }
 }
 
 // Copies rich text for apps that paste HTML (Docs, Notes, Slack) and the Markdown source for the rest.
@@ -25,6 +39,7 @@ export async function copyMarkdown(text: string) {
   doc.querySelectorAll("a").forEach((link) => {
     if (!/^(?:https?|mailto):/i.test(link.getAttribute("href") ?? "")) link.replaceWith(...link.childNodes);
   });
+  doc.querySelectorAll("img").forEach((image) => image.replaceWith(image.alt));
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -100,7 +115,8 @@ export default function Markdown({ text, onFile }: { text: string; onFile?: (pat
     event.preventDefault();
     const route = href.split(/[?#]/, 1)[0];
     const chat = route.match(/^\/ai\/chats\/([^/]+)$/);
-    if (chat) dispatchEvent(new CustomEvent("open-chat-link", { detail: chat[1] }));
+    if (ticketAttachmentPath.test(route)) void api.post(`${route}/reveal`, {}).catch(() => undefined);
+    else if (chat) dispatchEvent(new CustomEvent("open-chat-link", { detail: chat[1] }));
     else if (route === "/" || appRoute.test(route)) navigate(href);
     else if (/^https?:\/\//i.test(href)) {
       if (isDesktop) openURL(href);
