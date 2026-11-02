@@ -1106,8 +1106,11 @@ func TestMCPBotScopedSkillsAndMemoryRules(t *testing.T) {
 	if err != nil || len(created.BotIDs) != 1 || created.BotIDs[0] != "bot-b" {
 		t.Fatalf("updated named scope=%#v err=%v", created, err)
 	}
-	if got := callTool(t, a, "create_skill", map[string]any{"name": "bad-memory", "description": "memory", "body": "body", "kind": "memory", "bots": []string{"Bot-B"}}); !got.IsError || !strings.Contains(got.Content[0].(*sdk.TextContent).Text, "memories can only be limited to your own bot") {
-		t.Fatalf("cross-bot memory scope result=%#v", got.Content)
+	if got := callTool(t, a, "create_skill", map[string]any{"name": "other-bot-memory", "description": "memory", "body": "body", "kind": "memory", "bots": []string{"Bot-B"}}); got.IsError {
+		t.Fatalf("cross-bot memory scope failed: %#v", got.Content)
+	}
+	if created, err := api.SkillByName(database, "other-bot-memory"); err != nil || len(created.BotIDs) != 1 || created.BotIDs[0] != "bot-b" {
+		t.Fatalf("cross-bot memory=%#v err=%v", created, err)
 	}
 	if _, err := database.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES('memory-existing','memory-existing','memory','body',1,'memory','now','now')`); err != nil {
 		t.Fatal(err)
@@ -1115,8 +1118,11 @@ func TestMCPBotScopedSkillsAndMemoryRules(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO skill_bot(skill_id,bot_id) VALUES('memory-existing','bot-a')`); err != nil {
 		t.Fatal(err)
 	}
-	if got := callTool(t, a, "update_skill", map[string]any{"name": "memory-existing", "chat_id": "chat-a", "bots": []string{"Bot-B"}}); !got.IsError || !strings.Contains(got.Content[0].(*sdk.TextContent).Text, "memories can only be limited to your own bot") {
-		t.Fatalf("existing cross-bot memory update=%#v", got.Content)
+	if got := callTool(t, a, "update_skill", map[string]any{"name": "memory-existing", "chat_id": "chat-a", "bots": []string{"bOt-A", "Bot-B"}}); got.IsError {
+		t.Fatalf("multi-bot memory scope update failed: %#v", got.Content)
+	}
+	if memory, err := api.SkillByName(database, "memory-existing"); err != nil || len(memory.BotIDs) != 2 {
+		t.Fatalf("multi-bot memory scope=%#v err=%v", memory, err)
 	}
 	if got := callTool(t, a, "update_skill", map[string]any{"name": "memory-existing", "chat_id": "chat-a", "bots": []string{"bOt-A"}}); got.IsError {
 		t.Fatalf("own-memory scope update failed: %#v", got.Content)

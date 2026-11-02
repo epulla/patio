@@ -494,7 +494,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. Skills may be limited to chosen bots. Memories default to all bots; scope a memory to yourself (bots) only for facts about your own role. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory; the description states the fact itself in under 20 words, since chats see only that line; the body says why and how to apply it) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
+	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. Skills may be limited to chosen bots. Memories default to all bots; limit a memory to chosen bots (bots) only when it applies just to them or the user asks. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory; the description states the fact itself in under 20 words, since chats see only that line; the body says why and how to apply it) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
 	if !inApp {
 		usePersona := true
 		if database != nil {
@@ -938,16 +938,6 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
 	})
 	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"}, func(ctx context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
-		caller := skillCallerScope(database, in.ChatID, processChatID, inApp)
-		if in.Kind == "memory" && len(in.Bots) > 0 && !caller.admin {
-			ids, err := skillBotIDs(database, in.Bots)
-			if err != nil {
-				return errorResult(err), nil, nil
-			}
-			if len(ids) != 1 || ids[0] != caller.bot {
-				return errorResult(fmt.Errorf("memories can only be limited to your own bot")), nil, nil
-			}
-		}
 		body := map[string]any{"name": in.Name, "description": in.Description, "body": in.Body}
 		if in.Kind != "" {
 			body["kind"] = in.Kind
@@ -987,9 +977,6 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 				return errorResult(err), nil, nil
 			}
 			botIDs = &ids
-			if skill.Kind == "memory" && !caller.admin && len(ids) > 0 && (len(ids) != 1 || ids[0] != caller.bot) {
-				return errorResult(fmt.Errorf("memories can only be limited to your own bot")), nil, nil
-			}
 		}
 		body := struct {
 			Description *string   `json:"description,omitempty"`
