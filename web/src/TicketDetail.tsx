@@ -78,6 +78,8 @@ export default function TicketDetail({
   // An upload can save and reload after the user opened another ticket; drop those stale loads.
   const shownId = useRef(id);
   shownId.current = id;
+  const shownTicket = useRef(ticket?.id);
+  shownTicket.current = ticket?.id;
   async function load(preserveForm = false) {
     try {
       const current = await api.get<Ticket>(`/api/tickets/${id}`);
@@ -232,11 +234,15 @@ export default function TicketDetail({
             />
             <div className="field" data-tour="ticket-description">
               {t.description}
+              {/* Keyed so an upload that ends after switching tickets saves to the ticket it started on. */}
               <MarkdownEditor
+                key={ticket.id}
                 label={t.description}
                 value={form.description}
                 ticketId={ticket.id}
-                onChange={(description) => setForm((prev) => ({ ...prev, description }))}
+                onChange={(description) => {
+                  if (shownTicket.current === ticket.id) setForm((prev) => ({ ...prev, description }));
+                }}
                 onBlur={(description) => save({ description })}
               />
             </div>
