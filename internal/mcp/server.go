@@ -121,6 +121,7 @@ type createSkillArgs struct {
 	Body        string   `json:"body"`
 	Kind        string   `json:"kind,omitempty" jsonschema:"skill (default) for task instructions, or memory for a durable user preference, correction, or fact"`
 	Bots        []string `json:"bots,omitempty" jsonschema:"Bot names to scope this skill or memory to; omit for all bots"`
+	ChatID      string   `json:"chat_id,omitempty"`
 }
 type updateSkillArgs struct {
 	Name        string    `json:"name"`
@@ -422,23 +423,32 @@ func validateAskUser(in askUserArgs) error {
 }
 
 type ApprovalOptions struct {
-	DB           *sql.DB
-	ChatID       string
-	Timeout      time.Duration
-	PollInterval time.Duration
-	InApp        bool
+	DB            *sql.DB
+	ChatID        string
+	ProcessChatID string
+	Timeout       time.Duration
+	PollInterval  time.Duration
+	InApp         bool
 }
 
 func NewServer(h http.Handler, version string, database *sql.DB, inApp bool) (*sdk.Server, error) {
-	return newServer(h, version, database, nil, inApp)
+	return newServer(h, version, database, nil, inApp, "")
+}
+
+func NewServerWithChat(h http.Handler, version string, database *sql.DB, inApp bool, chatID string) (*sdk.Server, error) {
+	return newServer(h, version, database, nil, inApp, chatID)
 }
 
 func NewServerWithApproval(h http.Handler, version string, options ApprovalOptions) (*sdk.Server, error) {
-	return newServer(h, version, options.DB, &options, options.InApp)
+	processChatID := options.ProcessChatID
+	if processChatID == "" {
+		processChatID = options.ChatID
+	}
+	return newServer(h, version, options.DB, &options, options.InApp, processChatID)
 }
 
 func RegisteredToolNames() ([]string, error) {
-	server, err := newServer(nil, "", nil, nil, true)
+	server, err := newServer(nil, "", nil, nil, true, "")
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +484,7 @@ func RegisteredToolNames() ([]string, error) {
 	return names, nil
 }
 
-func newServer(h http.Handler, version string, database *sql.DB, approval *ApprovalOptions, inApp bool) (*sdk.Server, error) {
+func newServer(h http.Handler, version string, database *sql.DB, approval *ApprovalOptions, inApp bool, chatID string) (*sdk.Server, error) {
 	var skills []api.Skill
 	if database != nil {
 		var err error
@@ -798,7 +808,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
-	addSkillTools(s, h, database, skills)
+	addSkillTools(s, h, database, skills, chatID)
 	addChatMessagingTools(s, h, database)
 	s.AddTool(&sdk.Tool{Name: "ask_user", Description: "Ask the user multiple-choice questions in an interactive chat only when you truly cannot decide yourself; set multiple true when more than one option can apply. Pass required chat_id from this chat's instructions. Free-text answers are always allowed. The questions appear in a question card at the chat input; in your reply refer to \"the question card\", never above/below or arrows.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"chat_id": map[string]any{"type": "string"}, "questions": map[string]any{"type": "array", "minItems": 1, "maxItems": 7, "items": map[string]any{"type": "object", "properties": map[string]any{"header": map[string]any{"type": "string"}, "question": map[string]any{"type": "string"}, "multiple": map[string]any{"type": "boolean", "description": "Allow selecting multiple options."}, "options": map[string]any{"type": "array", "minItems": 2, "maxItems": 6, "items": map[string]any{"type": "object", "properties": map[string]any{"label": map[string]any{"type": "string", "maxLength": 40}, "description": map[string]any{"type": "string"}}, "required": []string{"label"}}}}, "required": []string{"header", "question", "options"}}}}, "required": []string{"chat_id", "questions"}}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		var in askUserArgs
@@ -856,7 +866,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	return s, nil
 }
 
-func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api.Skill) {
+func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api.Skill, processChatID string) {
 	description := "No skills are enabled."
 	if len(skills) > 0 {
 		description = "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions."
@@ -867,7 +877,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		var enabled []api.Skill
 		var err error
-		botID, _ := api.ChatBotID(database, in.ChatID)
+		botID, _ := skillCallerBotID(database, in.ChatID, processChatID)
 		if in.IncludeDisabled {
 			data, e := doJSON(ctx, h, request{http.MethodGet, "/api/skills", nil})
 			err = e
@@ -915,7 +925,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		botID, _ := api.ChatBotID(database, in.ChatID)
+		botID, _ := skillCallerBotID(database, in.ChatID, processChatID)
 		skill, err := api.SkillVisible(database, in.Name, botID)
 		if errors.Is(err, sql.ErrNoRows) || err == nil && !skill.Enabled {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
@@ -926,6 +936,16 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
 	})
 	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"}, func(ctx context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
+		callerID, _ := skillCallerBotID(database, in.ChatID, processChatID)
+		if in.Kind == "memory" && in.Bots != nil && len(in.Bots) > 0 {
+			ids, err := skillBotIDs(database, in.Bots)
+			if err != nil {
+				return errorResult(err), nil, nil
+			}
+			if len(ids) != 1 || ids[0] != callerID {
+				return errorResult(fmt.Errorf("memories can only be limited to your own bot")), nil, nil
+			}
+		}
 		body := map[string]any{"name": in.Name, "description": in.Description, "body": in.Body}
 		if in.Kind != "" {
 			body["kind"] = in.Kind
@@ -950,13 +970,22 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		botID, _ := api.ChatBotID(database, in.ChatID)
+		botID, _ := skillCallerBotID(database, in.ChatID, processChatID)
 		skill, err := api.SkillVisible(database, in.Name, botID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
 		if err != nil {
 			return errorResult(err), nil, nil
+		}
+		if skill.Kind == "memory" && in.Bots != nil && len(*in.Bots) > 0 {
+			ids, err := skillBotIDs(database, *in.Bots)
+			if err != nil {
+				return errorResult(err), nil, nil
+			}
+			if len(ids) != 1 || ids[0] != botID {
+				return errorResult(fmt.Errorf("memories can only be limited to your own bot")), nil, nil
+			}
 		}
 		body := struct {
 			Description *string   `json:"description,omitempty"`
@@ -971,7 +1000,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		botID, _ := api.ChatBotID(database, in.ChatID)
+		botID, _ := skillCallerBotID(database, in.ChatID, processChatID)
 		skill, err := api.SkillVisible(database, in.Name, botID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
@@ -994,6 +1023,16 @@ func containsString(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func skillCallerBotID(database *sql.DB, chatID, processChatID string) (string, error) {
+	if chatID == "" {
+		chatID = processChatID
+	}
+	if chatID == "" {
+		return "", nil
+	}
+	return api.ChatBotID(database, chatID)
 }
 
 func skillBotIDs(database *sql.DB, names []string) ([]string, error) {
