@@ -45,6 +45,7 @@ import { chatLink, mentionsBot, useMentions } from "./mentions";
 import { finishSend, isSending, loadDraft, onRestore, restoreDraft, saveDraft, takeDraft } from "./drafts";
 import { chatAncestors, chatTree, loadTreeOpen, saveTreeOpen } from "./chatTree";
 import Lightbox from "./Lightbox";
+import { imageTypes, pastedFile, shrinkImage } from "./attachments";
 import { markSeen, statusIcons, statusLabels, syncChatStatus, useChatStatus } from "./chatStatus";
 import { canSpeak, SpeakButton } from "./speech";
 import PinTabs, { dragGhost, reorderType as pinTabType, useGroupReorder } from "./PinTabs";
@@ -2254,8 +2255,6 @@ export function Conversation({
 }
 
 const maxAttachments = 10;
-const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
-
 function attachmentProblem(files: File[], alreadyAttached: number) {
   const t = labels[lang()];
   if (alreadyAttached + files.length > maxAttachments) return t.attachLimit(maxAttachments);
@@ -2265,50 +2264,6 @@ function attachmentProblem(files: File[], alreadyAttached: number) {
     if (!image && file.size > 1 << 30) return t.textLarge(file.name);
   }
   return "";
-}
-
-const maxImageEdge = 2000;
-const maxImageBytes = 5 << 20;
-const imageExtensions: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
-
-// Models shrink large images anyway (Claude caps them at 5 MB and ~1568 px), so shrink before upload.
-// GIFs stay as they are to keep their animation.
-async function shrinkImage(file: File) {
-  if (!imageTypes.includes(file.type) || file.type === "image/gif") return file;
-  const bitmap = await createImageBitmap(file).catch(() => undefined);
-  if (!bitmap) return file;
-  const scale = Math.min(1, maxImageEdge / Math.max(bitmap.width, bitmap.height));
-  if (scale === 1 && file.size <= maxImageBytes) {
-    bitmap.close();
-    return file;
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const context = canvas.getContext("2d")!;
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const encode = (type: string, quality?: number) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
-  let blob = file.type === "image/jpeg" ? null : await encode(file.type);
-  if (!blob || blob.size > maxImageBytes) {
-    // JPEG has no transparency, so paint white behind it.
-    context.globalCompositeOperation = "destination-over";
-    context.fillStyle = "#fff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    blob = await encode("image/jpeg", 0.85);
-  }
-  if (!blob) return file;
-  const extension = imageExtensions[blob.type] ?? "png";
-  return new File([blob], `${file.name.replace(/\.[^.]*$/, "")}.${extension}`, { type: blob.type });
-}
-
-function pastedFile(file: File) {
-  if (!file.type.startsWith("image/") || (file.name && file.name !== "image.png")) return file;
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
-  const extension = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
-  return new File([file], `pasted-${stamp}.${extension}`, { type: file.type });
 }
 
 const attachmentURL = (chatID: string, name: string) => `/api/chats/${chatID}/attachments/${encodeURIComponent(name)}`;

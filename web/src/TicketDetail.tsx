@@ -221,8 +221,9 @@ export default function TicketDetail({
               <MarkdownEditor
                 label={t.description}
                 value={form.description}
-                onChange={(description) => setForm({ ...form, description })}
-                onBlur={() => save({ description: form.description })}
+                ticketId={ticket.id}
+                onChange={(description) => setForm((prev) => ({ ...prev, description }))}
+                onBlur={(description) => save({ description })}
               />
             </div>
             <Links ticket={ticket} links={links} onReload={load} onError={setError} />
@@ -389,7 +390,8 @@ function Comments({
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   async function add() {
-    if (!content.trim() || sendingRef.current) return;
+    // Wait for pasted files to finish uploading so their links, not placeholders, are posted.
+    if (!content.trim() || content.includes("](pending:") || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     try {
@@ -405,7 +407,7 @@ function Comments({
   }
   return (
     <section className="comments">
-      <MarkdownEditor label={t.comment} value={content} onChange={setContent} onSubmit={add} />
+      <MarkdownEditor label={t.comment} value={content} onChange={setContent} onSubmit={add} ticketId={ticketId} />
       <button className="primary" onClick={add} disabled={sending} title={sendShortcut}>
         <Icon name="send" /> {t.addComment}
       </button>

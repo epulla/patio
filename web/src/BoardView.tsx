@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import DueBadge, { DueDateInput } from "./DueBadge";
-import MarkdownEditor from "./MarkdownEditor";
+import MarkdownEditor, { type PendingFiles, uploadPendingFiles } from "./MarkdownEditor";
 import Picker from "./Picker";
 import {
   api,
@@ -991,21 +991,33 @@ function TicketForm({
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const pendingFiles = useRef<PendingFiles>(new Map());
+  const [creating, setCreating] = useState(false);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (creating) return;
+    setCreating(true);
+    let ticket: Ticket;
     try {
-      onCreated(
-        await api.post<Ticket>(`/api/boards/${data.board.id}/tickets`, {
-          title,
-          description,
-          ...(statusId ? { status_id: statusId } : {}),
-          ticket_type_id: type || null,
-          due_date: dueDate || null,
-        }),
-      );
+      ticket = await api.post<Ticket>(`/api/boards/${data.board.id}/tickets`, {
+        title,
+        description,
+        ...(statusId ? { status_id: statusId } : {}),
+        ticket_type_id: type || null,
+        due_date: dueDate || null,
+      });
+    } catch (error) {
+      setCreating(false);
+      return onError(error);
+    }
+    // Files pasted before the ticket existed upload now; a failed one never blocks creation.
+    try {
+      const uploaded = await uploadPendingFiles(ticket.id, description, pendingFiles.current);
+      if (uploaded !== description) ticket = await api.put<Ticket>(`/api/tickets/${ticket.id}`, { description: uploaded });
     } catch (error) {
       onError(error);
     }
+    onCreated(ticket);
   }
   return (
     <form className={embedded ? "ticket-form" : "panel ticket-form"} onSubmit={submit}>
@@ -1032,7 +1044,7 @@ function TicketForm({
       </label>
       <div className="field">
         {t.description}
-        <MarkdownEditor label={t.description} value={description} onChange={setDescription} />
+        <MarkdownEditor label={t.description} value={description} onChange={setDescription} pendingFiles={pendingFiles.current} />
       </div>
       <div className="two">
         <div className="field">
@@ -1044,7 +1056,7 @@ function TicketForm({
           <DueDateInput value={dueDate} onChange={setDueDate} />
         </label>
       </div>
-      <button className="primary">
+      <button className="primary" disabled={creating}>
         <Icon name="plus" /> {t.createTicket}
       </button>
     </form>

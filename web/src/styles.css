@@ -794,6 +794,12 @@ a:has(> .svg-icon) {
   resize: vertical;
   font-family: inherit;
 }
+.md-status {
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
 .md-mentions {
   position: absolute;
   z-index: 20;

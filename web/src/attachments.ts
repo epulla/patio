@@ -1,0 +1,88 @@
+import { api } from "./api";
+
+const linkText = (text: string) => text.replace(/[[\]\\]/g, "\\$&");
+
+export const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+const maxImageEdge = 2000;
+const maxImageBytes = 5 << 20;
+const imageExtensions: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+
+// Models shrink large images anyway (Claude caps them at 5 MB and ~1568 px), so shrink before upload.
+// GIFs stay as they are to keep their animation.
+export async function shrinkImage(file: File) {
+  if (!imageTypes.includes(file.type) || file.type === "image/gif") return file;
+  const bitmap = await createImageBitmap(file).catch(() => undefined);
+  if (!bitmap) return file;
+  const scale = Math.min(1, maxImageEdge / Math.max(bitmap.width, bitmap.height));
+  if (scale === 1 && file.size <= maxImageBytes) {
+    bitmap.close();
+    return file;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext("2d")!;
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const encode = (type: string, quality?: number) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+  let blob = file.type === "image/jpeg" ? null : await encode(file.type);
+  if (!blob || blob.size > maxImageBytes) {
+    // JPEG has no transparency, so paint white behind it.
+    context.globalCompositeOperation = "destination-over";
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    blob = await encode("image/jpeg", 0.85);
+  }
+  if (!blob) return file;
+  const extension = imageExtensions[blob.type] ?? "png";
+  return new File([blob], `${file.name.replace(/\.[^.]*$/, "")}.${extension}`, { type: blob.type });
+}
+
+export function pastedFile(file: File) {
+  if (!file.type.startsWith("image/") || (file.name && file.name !== "image.png")) return file;
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+  const extension = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+  return new File([file], `pasted-${stamp}.${extension}`, { type: file.type });
+}
+
+export type TicketAttachment = {
+  name: string;
+  original_name: string;
+  kind: string;
+  mime: string;
+  size: number;
+  created_at: string;
+  path: string;
+};
+
+export const maxTicketAttachments = 20;
+
+export const ticketAttachmentURL = (ticketId: string, name: string) =>
+  `/api/tickets/${ticketId}/attachments/${encodeURIComponent(name)}`;
+
+// Matches the URLs above; Markdown only renders <img> for these.
+export const ticketAttachmentPath = /^\/api\/tickets\/[^/]+\/attachments\/[^/]+$/;
+
+// Returns a problem key for files the server would reject anyway, so they fail before upload.
+export function ticketFileProblem(file: File): "imageLarge" | "fileLarge" | "" {
+  const image = imageTypes.includes(file.type);
+  if (image && file.size > 10 << 20) return "imageLarge";
+  if (!image && file.size > 20 << 20) return "fileLarge";
+  return "";
+}
+
+export async function uploadTicketFile(ticketId: string, file: File) {
+  const attachment = await api.upload<TicketAttachment>(`/api/tickets/${ticketId}/attachments`, file);
+  const link = `[${linkText(attachment.original_name || attachment.name)}](${ticketAttachmentURL(ticketId, attachment.name)})`;
+  return attachment.kind === "image" ? `!${link}` : link;
+}
+
+// Placeholder for a file that is still uploading or waits for its ticket to exist.
+export const pendingLink = (id: string, label: string) => `![${linkText(label)}](pending:${id})`;
+const pendingPattern = (id: string) => new RegExp(`!\\[(?:[^\\]\\\\]|\\\\.)*\\]\\(pending:${id}\\)`);
+export const hasPending = (text: string, id: string) => pendingPattern(id).test(text);
+export const replacePending = (text: string, id: string, replacement: string) =>
+  text.replace(pendingPattern(id), () => replacement);
