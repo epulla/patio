@@ -23,7 +23,6 @@ const text = {
     connected: (name: string) => `Connected as @${name}`,
     notConnected: "Not connected",
     checking: "Checking…",
-    channel: "Channel",
     loading: "Loading…",
   },
   es: {
@@ -42,7 +41,6 @@ const text = {
     connected: (name: string) => `Conectado como @${name}`,
     notConnected: "Sin conectar",
     checking: "Comprobando…",
-    channel: "Canal",
     loading: "Cargando…",
   },
 };
@@ -122,68 +120,65 @@ export default function Telegram() {
     }
   }
 
-  const state = testing ? "pending" : bot ? "up" : testError ? "down" : "";
+  const state = bot ? "up" : testError ? "down" : "pending";
   const label = testing ? t.checking : bot ? t.connected(bot) : (testError ?? t.notConnected);
 
   return (
-    <article className={`panel connector-card ${state}`} aria-labelledby="telegram-title">
-      <header className="connector-head">
-        <div>
-          <p className="eyebrow">{t.channel}</p>
-          <h2 id="telegram-title">{t.telegram}</h2>
-        </div>
-        <div className="connector-actions">
-          <button type="button" disabled={testing || (!token.trim() && !settings?.has_token)} onClick={() => test(token.trim() || null)}>
-            {testing ? t.testing : t.test}
-          </button>
-        </div>
-      </header>
-      <p className="connector-state" role="status">
-        <span className="state-dot" aria-hidden="true" />
-        <span>{label}</span>
-      </p>
+    <section className="stack">
+      <h2>{t.telegram}</h2>
       <p className="muted">{t.help}</p>
-      {settings ? (
-        <>
-          <form className="inline-form" onSubmit={saveToken}>
-            <label className="grow">
-              {t.token}
-              <input
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={settings.has_token ? t.tokenSaved : ""}
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-              />
-            </label>
-            <button disabled={!token.trim()}>{t.saveToken}</button>
-            {settings.has_token && (
-              <button type="button" className="danger-text" onClick={() => save({ token: "" })}>
-                {t.removeToken}
-              </button>
-            )}
-          </form>
-          <div className="inline-form">
-            <label className="grow">
-              {t.allowed}
-              <input
-                inputMode="numeric"
-                spellCheck={false}
-                value={ids}
-                onChange={(event) => setIds(event.target.value)}
-                onBlur={saveIds}
-                onKeyDown={(event) => event.key === "Enter" && saveIds()}
-              />
-              <small className="muted">{t.allowedHelp}</small>
-            </label>
-          </div>
-          <Switch label={t.enabled} checked={settings.enabled} onChange={(enabled) => save({ enabled })} />
-        </>
-      ) : (
-        !error && <p className="muted" role="status">{t.loading}</p>
-      )}
-      <ErrorText error={error} />
-    </article>
+      <section className={`panel mcp-status ${state}`}>
+        <span className="status-dot" aria-hidden="true" />
+        <div className="mcp-status-text" role="status" aria-live="polite">
+          <strong>{label}</strong>
+        </div>
+        <button type="button" disabled={testing || (!token.trim() && !settings?.has_token)} onClick={() => test(token.trim() || null)}>
+          {testing ? t.testing : t.test}
+        </button>
+      </section>
+      <section className="panel stack defaults-panel">
+        {settings ? (
+          <>
+            <form className="inline-form" onSubmit={saveToken}>
+              <label className="grow">
+                {t.token}
+                <input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={settings.has_token ? t.tokenSaved : ""}
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                />
+              </label>
+              <button disabled={!token.trim()}>{t.saveToken}</button>
+              {settings.has_token && (
+                <button type="button" className="danger-text" onClick={() => save({ token: "" })}>
+                  {t.removeToken}
+                </button>
+              )}
+            </form>
+            <div className="inline-form">
+              <label className="grow">
+                {t.allowed}
+                <input
+                  inputMode="numeric"
+                  spellCheck={false}
+                  value={ids}
+                  onChange={(event) => setIds(event.target.value)}
+                  onBlur={saveIds}
+                  onKeyDown={(event) => event.key === "Enter" && saveIds()}
+                />
+                <small className="muted">{t.allowedHelp}</small>
+              </label>
+            </div>
+            <Switch label={t.enabled} checked={settings.enabled} onChange={(enabled) => save({ enabled })} />
+          </>
+        ) : (
+          !error && <p className="muted" role="status">{t.loading}</p>
+        )}
+        <ErrorText error={error} />
+      </section>
+    </section>
   );
 }
