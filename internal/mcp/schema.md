@@ -28,6 +28,7 @@ erDiagram
   chat_approval { TEXT id; TEXT chat_id; TEXT tool_name; TEXT input_json; TEXT status; TEXT created_at; TEXT answered_at; INTEGER auto }
   mcp_server { TEXT id; TEXT name; TEXT kind; TEXT command; TEXT args_json; TEXT env_keys_json; TEXT url; TEXT auth; INTEGER enabled; TEXT created_at; TEXT oauth_client_id; TEXT oauth_scopes }
   skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at; TEXT kind }
+  skill_bot { TEXT skill_id; TEXT bot_id }
   app_setting { TEXT key; TEXT value }
   scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT bot_id; TEXT model; TEXT folder; INTEGER thinking; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
   scheduled_task_run { TEXT id; TEXT task_id; TEXT chat_id; TEXT scheduled_for; TEXT status; INTEGER late; TEXT error; TEXT created_at }
@@ -38,6 +39,8 @@ erDiagram
   chat_turn { TEXT chat_id; TEXT window_id; TEXT started_at }
   notification { TEXT id; TEXT kind; TEXT title; TEXT body; TEXT link; TEXT created_at; TEXT read_at }
   item_history { TEXT id; TEXT item_type; TEXT item_id; TEXT item_name; TEXT action; TEXT changes_json; TEXT snapshot_json; TEXT user_id; TEXT created_at }
+  skill ||--o{ skill_bot : scoped_to
+  user ||--o{ skill_bot : receives
 ```
 
 Ordering is stored in `board.position` and JSON arrays: `status_order`, `ticket_order`, `ticket_type_order`. Ticket codes are `<short_name>-<number>`, allocated by `board_counter`. Users with `is_ai=1` represent Martin, the AI. IDs are UUIDv4 TEXT; timestamps are ISO-8601 UTC TEXT.

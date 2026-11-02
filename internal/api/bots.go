@@ -174,14 +174,78 @@ func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "Martin cannot be deleted")
 		return
 	}
-	res, e := s.db.Exec(`UPDATE "user" SET deleted_at=?,updated_at=? WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, now(), now(), id)
+	tx, e := s.db.Begin()
 	if e != nil {
 		errw(w, 500, e.Error())
 		return
 	}
-	n, _ := res.RowsAffected()
+	defer tx.Rollback()
+	rows, e := tx.Query(`SELECT s.id FROM skill s JOIN skill_bot sb ON sb.skill_id=s.id WHERE sb.bot_id=? AND (SELECT count(*) FROM skill_bot x WHERE x.skill_id=s.id)=1`, id)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	var only []string
+	for rows.Next() {
+		var skillID string
+		if e = rows.Scan(&skillID); e != nil {
+			rows.Close()
+			errw(w, 500, e.Error())
+			return
+		}
+		only = append(only, skillID)
+	}
+	if e = rows.Err(); e != nil {
+		rows.Close()
+		errw(w, 500, e.Error())
+		return
+	}
+	rows.Close()
+	for _, skillID := range only {
+		sk, err := s.loadSkill(skillID)
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		snapshot, err := json.Marshal(historyMap(sk))
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		changes, err := json.Marshal([]historyChange{})
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if _, err = tx.Exec(`INSERT INTO item_history(id,item_type,item_id,item_name,action,changes_json,snapshot_json,user_id,created_at) VALUES(?, 'skill', ?, ?, 'deleted', ?, ?, ?, ?)`, uid(), sk.ID, sk.Name, string(changes), string(snapshot), s.userID, now()); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if _, err = tx.Exec(`DELETE FROM skill WHERE id=?`, skillID); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+	}
+	if _, e = tx.Exec(`DELETE FROM skill_bot WHERE bot_id=?`, id); e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	res, e := tx.Exec(`UPDATE "user" SET deleted_at=?,updated_at=? WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, now(), now(), id)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	n, e := res.RowsAffected()
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
 	if n == 0 {
 		errw(w, 404, "bot not found")
+		return
+	}
+	if e = tx.Commit(); e != nil {
+		errw(w, 500, e.Error())
 		return
 	}
 	noContent(w)

@@ -1260,6 +1260,16 @@ func ChatBotName(database *sql.DB, id string) (string, error) {
 	return name, err
 }
 
+// ChatBotID returns live bot id for chat, or "" when chat has no live bot.
+func ChatBotID(database *sql.DB, id string) (string, error) {
+	var botID string
+	err := database.QueryRow(`SELECT u.id FROM chat c JOIN "user" u ON u.id=c.bot_id WHERE c.id=? AND u.is_ai=1 AND u.deleted_at IS NULL`, id).Scan(&botID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return botID, err
+}
+
 // MCPActor is who MCP change notifications credit.
 func (s *Server) MCPActor() string {
 	if s.mcpActor == "" {

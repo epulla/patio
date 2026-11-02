@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -166,5 +167,35 @@ func TestSkillInvalidRequests(t *testing.T) {
 				t.Fatalf("invalid request status = %d", code)
 			}
 		})
+	}
+}
+
+func TestSkillBotScopeAndVisibility(t *testing.T) {
+	db, handler, _ := chatAPI(t)
+	var scoped Skill
+	if code := requestJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{"name": "scoped", "description": "scoped", "bot_ids": []string{"ai", "ai"}}, &scoped); code != http.StatusCreated {
+		t.Fatalf("create status %d", code)
+	}
+	if len(scoped.BotIDs) != 1 || scoped.BotIDs[0] != "ai" {
+		t.Fatalf("bot ids %#v", scoped.BotIDs)
+	}
+	if _, err := SkillVisible(db, "scoped", "other"); err != sql.ErrNoRows {
+		t.Fatalf("invisible skill error %v", err)
+	}
+	if got, err := SkillVisible(db, "scoped", "ai"); err != nil || got.ID != scoped.ID {
+		t.Fatalf("visible skill %#v %v", got, err)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/skills/"+scoped.ID, map[string]any{"description": "changed"}, &scoped); code != http.StatusOK || len(scoped.BotIDs) != 1 {
+		t.Fatalf("omitted scope update %d %#v", code, scoped)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/skills/"+scoped.ID, map[string]any{"bot_ids": []string{}}, &scoped); code != http.StatusOK || len(scoped.BotIDs) != 0 {
+		t.Fatalf("clear scope %d %#v", code, scoped)
+	}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{"name": "invalid-bot", "description": "invalid", "bot_ids": []string{"missing"}}, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid bot status %d", code)
+	}
+	visible, err := SkillsForBot(db, "")
+	if err != nil || len(visible) != 1 || visible[0].ID != scoped.ID {
+		t.Fatalf("global skills %#v %v", visible, err)
 	}
 }

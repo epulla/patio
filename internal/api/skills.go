@@ -13,22 +13,24 @@ import (
 const maxSkillBody = 64 * 1024
 
 type Skill struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Body        string `json:"body"`
-	Enabled     bool   `json:"enabled"`
-	Kind        string `json:"kind"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Body        string   `json:"body"`
+	Enabled     bool     `json:"enabled"`
+	Kind        string   `json:"kind"`
+	BotIDs      []string `json:"bot_ids"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
 }
 
 type skillInput struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Body        *string `json:"body"`
-	Enabled     *bool   `json:"enabled"`
-	Kind        *string `json:"kind"`
+	Name        *string   `json:"name"`
+	Description *string   `json:"description"`
+	Body        *string   `json:"body"`
+	Enabled     *bool     `json:"enabled"`
+	Kind        *string   `json:"kind"`
+	BotIDs      *[]string `json:"bot_ids"`
 }
 
 type skillConfig struct {
@@ -81,7 +83,75 @@ func scanSkill(row interface{ Scan(...any) error }) (Skill, error) {
 }
 
 func SkillByName(db *sql.DB, name string) (Skill, error) {
-	return scanSkill(db.QueryRow(skillSelect+` WHERE name=?`, name))
+	skill, err := scanSkill(db.QueryRow(skillSelect+` WHERE name=?`, name))
+	if err == nil {
+		err = loadSkillBotIDs(db, &skill)
+	}
+	return skill, err
+}
+
+func loadSkillBotIDs(db *sql.DB, skill *Skill) error {
+	skill.BotIDs = []string{}
+	rows, err := db.Query(`SELECT bot_id FROM skill_bot WHERE skill_id=? ORDER BY bot_id`, skill.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		skill.BotIDs = append(skill.BotIDs, id)
+	}
+	return rows.Err()
+}
+
+func SkillsForBot(db *sql.DB, botID string) ([]Skill, error) {
+	q := skillSelect + ` WHERE enabled=1 AND NOT EXISTS (SELECT 1 FROM skill_bot sb WHERE sb.skill_id=skill.id)`
+	if botID != "" {
+		q += ` OR enabled=1 AND EXISTS (SELECT 1 FROM skill_bot sb WHERE sb.skill_id=skill.id AND sb.bot_id=?)`
+	}
+	q += ` ORDER BY name`
+	var rows *sql.Rows
+	var err error
+	if botID == "" {
+		rows, err = db.Query(q)
+	} else {
+		rows, err = db.Query(q, botID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Skill{}
+	for rows.Next() {
+		sk, err := scanSkill(rows)
+		if err != nil {
+			return nil, err
+		}
+		if err = loadSkillBotIDs(db, &sk); err != nil {
+			return nil, err
+		}
+		out = append(out, sk)
+	}
+	return out, rows.Err()
+}
+
+func SkillVisible(db *sql.DB, name, botID string) (Skill, error) {
+	sk, err := SkillByName(db, name)
+	if err != nil {
+		return sk, err
+	}
+	if len(sk.BotIDs) == 0 {
+		return sk, nil
+	}
+	for _, id := range sk.BotIDs {
+		if botID != "" && id == botID {
+			return sk, nil
+		}
+	}
+	return Skill{}, sql.ErrNoRows
 }
 
 func EnabledSkills(db *sql.DB) ([]Skill, error) {
@@ -96,13 +166,20 @@ func EnabledSkills(db *sql.DB) ([]Skill, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := loadSkillBotIDs(db, &skill); err != nil {
+			return nil, err
+		}
 		skills = append(skills, skill)
 	}
 	return skills, rows.Err()
 }
 
 func (s *Server) loadSkill(id string) (Skill, error) {
-	return scanSkill(s.db.QueryRow(skillSelect+` WHERE id=?`, id))
+	sk, err := scanSkill(s.db.QueryRow(skillSelect+` WHERE id=?`, id))
+	if err == nil {
+		err = loadSkillBotIDs(s.db, &sk)
+	}
+	return sk, err
 }
 
 func (s *Server) listSkills(w http.ResponseWriter, _ *http.Request) {
@@ -117,6 +194,10 @@ func (s *Server) listSkills(w http.ResponseWriter, _ *http.Request) {
 		skill, err := scanSkill(rows)
 		if err != nil {
 			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := loadSkillBotIDs(s.db, &skill); err != nil {
+			errw(w, 500, err.Error())
 			return
 		}
 		skills = append(skills, skill)
@@ -167,7 +248,16 @@ func (s *Server) createSkill(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	skill, err := s.insertSkill(config)
+	botIDs := []string{}
+	if in.BotIDs != nil {
+		botIDs = *in.BotIDs
+	}
+	botIDs, err := s.validateSkillBots(botIDs)
+	if err != nil {
+		errw(w, 400, err.Error())
+		return
+	}
+	skill, err := s.insertSkillScoped(config, botIDs)
 	if err != nil {
 		if isSkillDuplicate(err) {
 			errw(w, http.StatusConflict, "skill name already exists")
@@ -180,10 +270,48 @@ func (s *Server) createSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) insertSkill(config skillConfig) (Skill, error) {
+	return s.insertSkillScoped(config, nil)
+}
+
+func (s *Server) validateSkillBots(ids []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		var valid int
+		err := s.db.QueryRow(`SELECT 1 FROM "user" WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, id).Scan(&valid)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("bot %s not found", id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func (s *Server) insertSkillScoped(config skillConfig, botIDs []string) (Skill, error) {
 	timestamp := now()
 	id := uid()
-	_, err := s.db.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, id, config.Name, config.Description, config.Body, config.Enabled, config.Kind, timestamp, timestamp)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return Skill{}, err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, id, config.Name, config.Description, config.Body, config.Enabled, config.Kind, timestamp, timestamp)
+	if err != nil {
+		return Skill{}, err
+	}
+	for _, botID := range botIDs {
+		if _, err = tx.Exec(`INSERT INTO skill_bot(skill_id,bot_id) VALUES(?,?)`, id, botID); err != nil {
+			return Skill{}, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		return Skill{}, err
 	}
 	return s.loadSkill(id)
@@ -229,13 +357,44 @@ func (s *Server) updateSkill(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_, err = s.db.Exec(`UPDATE skill SET name=?,description=?,body=?,enabled=?,kind=?,updated_at=? WHERE id=?`, config.Name, config.Description, config.Body, config.Enabled, config.Kind, now(), id)
+	var botIDs []string
+	if in.BotIDs != nil {
+		botIDs, err = s.validateSkillBots(*in.BotIDs)
+		if err != nil {
+			errw(w, 400, err.Error())
+			return
+		}
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`UPDATE skill SET name=?,description=?,body=?,enabled=?,kind=?,updated_at=? WHERE id=?`, config.Name, config.Description, config.Body, config.Enabled, config.Kind, now(), id)
 	if err != nil {
 		if isSkillDuplicate(err) {
 			errw(w, http.StatusConflict, "skill name already exists")
 		} else {
 			errw(w, http.StatusInternalServerError, err.Error())
 		}
+		return
+	}
+	if in.BotIDs != nil {
+		if _, err = tx.Exec(`DELETE FROM skill_bot WHERE skill_id=?`, id); err == nil {
+			for _, botID := range botIDs {
+				if _, err = tx.Exec(`INSERT INTO skill_bot(skill_id,bot_id) VALUES(?,?)`, id, botID); err != nil {
+					break
+				}
+			}
+		}
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		errw(w, 500, err.Error())
 		return
 	}
 	skill, err := s.loadSkill(id)
