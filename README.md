@@ -88,7 +88,7 @@ On Windows, open the downloaded executable.
 
 ### 2. Connect an agent
 
-Open **Connectors**, choose **Add connector**, and select an installed CLI or **Local AI**.
+Open **Connections** (the **AI** tab), choose **Add connector**, and select an installed CLI or **Local AI**.
 
 Reuse the CLI's existing login or configure a separate account where supported. Connector cards show installation and sign-in status, with plan and usage information when the provider exposes it.
 
@@ -107,6 +107,8 @@ Open a chat and try:
 Then pin the chat alongside your work, add a skill for a repeatable task, or schedule a daily review.
 
 ## Connectors
+
+Connectors live in **Connections › AI**.
 
 | Connector | What Patio connects to |
 | --- | --- |
@@ -211,7 +213,7 @@ Patio supports MCP in two directions.
 
 ### Bring external tools into Patio
 
-Add a local command-based server over stdio or a remote HTTP server. Configure authentication where needed, inspect the tools and health status, and enable the server for supported CLI chats.
+In **Connections › Tools (MCP)**, add a local command-based server over stdio or a remote HTTP server. Configure authentication where needed, inspect the tools and health status, and enable the server for supported CLI chats.
 
 Local AI uses its smaller built-in tool set.
 
@@ -253,7 +255,7 @@ The built-in MCP tool set does not expose deletion of boards, tickets, ticket ty
 Chat with Patio from your phone through a Telegram bot. Patio polls Telegram for new messages, so it needs no public address, but it must be running.
 
 1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token it gives you.
-2. In **Settings › Telegram**, paste the token, press **Save token**, then **Test** to see the bot's name, and turn on **Answer Telegram messages**.
+2. In **Connections › Channels**, paste the token, press **Save token**, then **Test** to see the bot's name, and turn on **Answer Telegram messages**.
 3. Message your bot. It answers with your Telegram user ID; add that ID to **Allowed Telegram user IDs**.
 
 Each Telegram conversation maps to a Patio chat that uses your default connector and bot. Send text, photos, or files; replies come back as text, including replies to messages you type in that chat inside Patio. Approval requests show **Allow** and **Deny** buttons, and questions show their options as buttons. Send `/new` to start a fresh chat and `/chat` to see which chat you are in. Messages from accounts that aren't allowed never reach Patio. The token is kept in the OS credential store.

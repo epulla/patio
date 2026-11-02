@@ -1,6 +1,6 @@
 ---
 name: connector-required
-description: Conventions for Patio web UI (web/src) pages that need an AI connector to do anything, such as Chats and Scheduled tasks. Use when building or changing any AI feature page, form, or empty state that picks a connector (chat, scheduled task, agent, automation, prompt runner), so users with no connectors get pointed to the Connectors page instead of an empty picker.
+description: Conventions for Patio web UI (web/src) pages that need an AI connector to do anything, such as Chats and Scheduled tasks. Use when building or changing any AI feature page, form, or empty state that picks a connector (chat, scheduled task, agent, automation, prompt runner), so users with no connectors get pointed to Connections › AI instead of an empty picker.
 ---
 
 # Connector required
@@ -17,7 +17,7 @@ import { ConnectorRequired } from "./Connectors";
 <ConnectorRequired then="create a scheduled task" />
 ```
 
-It renders a complete `.panel skill-empty` card: the `connector` icon mark, `<h2>No connectors yet</h2>`, the shared sentence "Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then <then>.", and a **Go to Connectors** button that navigates to `/ai/connectors`. Pass `then` as a lowercase verb phrase for what the page does. Don't wrap it in another panel, and don't copy the card, sentence, or button into a page; if the look or wording changes, it should change in one place.
+It renders a complete `.panel skill-empty` card: the `connector` icon mark, `<h2>No connectors yet</h2>`, the shared sentence "Add a connector first (Claude Code, Codex, Copilot, opencode, or Local AI), then <then>.", and a **Go to Connectors** button that navigates to `/ai/connectors` (the AI tab of the Connections page). Pass `then` as a lowercase verb phrase for what the page does. Don't wrap it in another panel, and don't copy the card, sentence, or button into a page; if the look or wording changes, it should change in one place.
 
 ## Where it goes
 
