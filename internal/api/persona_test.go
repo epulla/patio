@@ -66,3 +66,22 @@ func TestChatPromptPersonaListsBots(t *testing.T) {
 		}
 	}
 }
+
+func TestChatPromptTelegramNoteOnlyForTelegramChats(t *testing.T) {
+	db, _, _ := chatAPI(t)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('tg','Chat','now','now'),('app','Chat','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO telegram_chat(telegram_chat_id,chat_id,created_at) VALUES(77,'tg','now')`); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]bool{"tg": true, "app": false} {
+		prompt, err := ChatPrompt(db, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(prompt, telegramPrompt) != want {
+			t.Errorf("chat %s: Telegram note present = %v", id, !want)
+		}
+	}
+}

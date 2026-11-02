@@ -78,7 +78,7 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	}
 	opencodeV2 := opencodeV2MCPServers("/app/patio", ticket["args"].([]string), external)["servers"].(map[string]any)
 	opencodeV2Ticket := opencodeV2["patio"].(map[string]any)
-	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/patio", "mcp", "-d", "/data/test.db", "-in-app"}) {
+	if opencodeV2Ticket["type"] != "local" || opencodeV2Ticket["disabled"] != false || opencodeV2Ticket["codemode"] != false || !reflect.DeepEqual(opencodeV2Ticket["command"], []string{"/app/patio", "mcp", "-d", "/data/test.db", "-in-app"}) {
 		t.Fatalf("opencode v2 ticket config = %#v", opencodeV2Ticket)
 	}
 	opencodeV2Stdio := opencodeV2["stdio-test"].(map[string]any)
