@@ -87,8 +87,9 @@ func TestChatRuntimeActivityResetsIdleTimer(t *testing.T) {
 	waitForDriverClose(t, first)
 }
 
-func TestChatSendRestartsRuntimeAfterIdleClose(t *testing.T) {
+func TestChatSendDuringIdleCloseWaitsAndRestarts(t *testing.T) {
 	manager, c, first := newIdleTestManager(t, 40*time.Millisecond)
+	first.release = make(chan struct{})
 	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
 		t.Fatal(err)
 	}
@@ -96,20 +97,25 @@ func TestChatSendRestartsRuntimeAfterIdleClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForDriverClose(t, first)
-	// The driver closes before closeIdleRuntime clears rt.stopping; Send fails until it does.
-	rt := manager.lookupRuntime(c.ID)
-	rt.mu.Lock()
-	done := rt.stopDone
-	rt.mu.Unlock()
-	if done != nil {
-		select {
-		case <-done:
-		case <-time.After(time.Second):
-			t.Fatal("idle close did not finish")
-		}
+	sent := make(chan error, 1)
+	go func() {
+		_, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "second"})
+		sent <- err
+	}()
+	select {
+	case err := <-sent:
+		close(first.release)
+		t.Fatalf("send returned during idle close: %v", err)
+	case <-time.After(50 * time.Millisecond):
 	}
-	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "second"}); err != nil {
-		t.Fatal(err)
+	close(first.release)
+	select {
+	case err := <-sent:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("send did not finish after idle close")
 	}
 	if manager.lookupRuntime(c.ID).driver == first {
 		t.Fatal("send reused closed runtime")
@@ -199,6 +205,7 @@ type idleTestDriver struct {
 	closed     chan struct{}
 	closeOnce  sync.Once
 	closeCount atomic.Int32
+	release    chan struct{}
 }
 
 func (d *idleTestDriver) send(ChatSendRequest) error { return nil }
@@ -208,6 +215,9 @@ func (d *idleTestDriver) close() error {
 	d.closeOnce.Do(func() {
 		close(d.closed)
 	})
+	if d.release != nil {
+		<-d.release
+	}
 	return nil
 }
 

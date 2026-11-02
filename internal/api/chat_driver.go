@@ -197,6 +197,13 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	rt.mu.Lock()
 	m.mu.Unlock()
 	defer rt.mu.Unlock()
+	// No turn is running: an idle close or restart is finishing; wait and start fresh.
+	for rt.stopping && !rt.busy {
+		done := rt.stopDone
+		rt.mu.Unlock()
+		<-done
+		rt.mu.Lock()
+	}
 	if rt.busy || rt.stopping {
 		if request.Steer && rt.busy && !rt.stopping {
 			steerer, ok := rt.driver.(chatSteerer)
