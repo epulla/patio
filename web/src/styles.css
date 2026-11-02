@@ -5184,6 +5184,8 @@ button.notif-row:focus-visible,
 .tour-card {
   position: fixed;
   width: min(340px, calc(100vw - 40px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
   transition: opacity 0.15s ease;
 }

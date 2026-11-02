@@ -30,7 +30,10 @@ const text = {
       dashboard: ["Dashboard", "Your work at a glance: tickets done and created against the previous period, done per day, overdue and due-soon tickets, and what's coming up. Pick a range and a board."],
       tickets: ["All tickets", "Every ticket from every board in one list, to search, sort and filter."],
       calendar: ["Calendar", "Due dates, events, reminders and AI tasks in one place. Use the filter to choose what shows."],
-      connections: ["Connections", "Everything Patio connects to, in three tabs. AI: the CLIs (Claude Code, Codex, Copilot, opencode) and local models Patio chats through. Tools (MCP): give chats more tools, like Gmail, Slack or Jira. Channels: chat with Patio from your phone through Telegram."],
+      connections: ["Connections", "Everything Patio connects to lives here, in three tabs: AI, Tools (MCP) and Channels."],
+      connectionsAi: ["AI connectors", "The CLIs (Claude Code, Codex, Copilot, opencode) and local models Patio chats through. Add at least one to use chats and bots."],
+      connectionsTools: ["Tools (MCP)", "MCP servers give chats more tools, like Gmail, Slack or Jira. Sign in once and every chat can use them."],
+      connectionsChannels: ["Channels", "Chat with Patio from your phone. Connect a Telegram bot, allow your account, and messages go into normal chats with your default bot. Approvals and questions come with buttons."],
       chats: ["Chats", `${key("N")} starts a chat. Type # to mention a ticket. Type @, a bot's name and a task to open a chat run by that bot; the reply links it. Pick a model next to the message box, and approve file changes or commands when the AI asks. Hover a ticket, board or chat link to preview it.`],
       attachments: ["Attachments", "Attach files with the paperclip, drag and drop, or paste. Hover an image to preview it and click to enlarge it; Esc or a click outside closes it, and Show in folder opens the file."],
       chatLinks: ["Chat links", "Copy a chat's link from its header or the ⋯ menu on its row (right-click works too), type [[ in a message to pick a chat, or drag a chat from the list into the message box. Links open the chat."],
@@ -67,7 +70,10 @@ const text = {
       dashboard: ["Panel", "Tu trabajo de un vistazo: tickets hechos y creados frente al periodo anterior, hechos por día, tickets vencidos o por vencer y lo que viene. Elige un periodo y un tablero."],
       tickets: ["Todos los tickets", "Todos los tickets de todos los tableros en una lista, para buscar, ordenar y filtrar."],
       calendar: ["Calendario", "Fechas de vencimiento, eventos, recordatorios y tareas de IA en un solo lugar. Usa el filtro para elegir qué se muestra."],
-      connections: ["Conexiones", "Todo lo que Patio conecta, en tres pestañas. IA: las CLI (Claude Code, Codex, Copilot, opencode) y modelos locales con los que chatea Patio. Herramientas (MCP): da más herramientas a los chats, como Gmail, Slack o Jira. Canales: chatea con Patio desde tu teléfono por Telegram."],
+      connections: ["Conexiones", "Aquí está todo lo que Patio conecta, en tres pestañas: IA, Herramientas (MCP) y Canales."],
+      connectionsAi: ["Conectores de IA", "Las CLI (Claude Code, Codex, Copilot, opencode) y modelos locales con los que chatea Patio. Agrega al menos uno para usar chats y bots."],
+      connectionsTools: ["Herramientas (MCP)", "Los servidores MCP dan más herramientas a los chats, como Gmail, Slack o Jira. Inicia sesión una vez y todos los chats pueden usarlas."],
+      connectionsChannels: ["Canales", "Chatea con Patio desde tu teléfono. Conecta un bot de Telegram, permite tu cuenta y los mensajes llegan a chats normales con tu bot por defecto. Las aprobaciones y preguntas llegan con botones."],
       chats: ["Chats", `${key("N")} inicia un chat. Escribe # para mencionar un ticket. Escribe @, el nombre de un bot y una tarea para abrir un chat atendido por ese bot; la respuesta lo enlaza. Elige un modelo junto al cuadro de mensaje y aprueba cambios de archivos o comandos cuando la IA lo pida. Pasa el cursor sobre un enlace a un ticket, tablero o chat para verlo.`],
       attachments: ["Adjuntos", "Adjunta archivos con el clip, arrastrándolos o pegándolos. Pasa el cursor sobre una imagen para verla y haz clic para ampliarla; Esc o un clic fuera la cierra, y Mostrar en carpeta abre el archivo."],
       chatLinks: ["Enlaces a chats", "Copia el enlace de un chat desde su encabezado o el menú ⋯ de su fila (también con clic derecho), escribe [[ en un mensaje para elegir un chat, o arrastra un chat de la lista al cuadro de mensaje. Los enlaces abren el chat."],
@@ -131,6 +137,9 @@ function plan({ board, ticket }: Context): Stop[] {
     { id: "tickets", chapter: "basics", target: nav("tickets") },
     { id: "calendar", chapter: "basics", target: nav("calendar") },
     { id: "connections", chapter: "ai", target: nav("connections") },
+    { id: "connectionsAi", chapter: "ai", path: "/ai/connectors", target: nav("tab-connectors") },
+    { id: "connectionsTools", chapter: "ai", path: "/ai/mcp", target: nav("tab-mcp") },
+    { id: "connectionsChannels", chapter: "ai", path: "/ai/channels", target: nav("tab-channels") },
     { id: "chats", chapter: "ai", path: "/ai/chats", target: ["form.composer", nav("new-chat"), ".skill-empty"], ai: true },
     { id: "attachments", chapter: "ai", path: "/ai/chats", target: [nav("attach"), nav("new-chat")], ai: true },
     { id: "chatLinks", chapter: "ai", path: "/ai/chats", target: [nav("chat-row"), nav("chats")], ai: true },
@@ -174,12 +183,12 @@ function waitFor(selectors: string[], timeout = 1000): Promise<Element | null> {
 }
 
 const cardWidth = 340;
-const cardHeight = 240;
 const gap = 16;
 
 // Right of the target, else left, below, or above; else pinned to the bottom right.
-function place(rect: DOMRect) {
-  const top = Math.min(Math.max(rect.top - 8, 12), innerHeight - cardHeight);
+// cardHeight is the rendered card's height, since long steps don't fit a fixed guess.
+function place(rect: DOMRect, cardHeight: number) {
+  const top = Math.max(Math.min(rect.top - 8, innerHeight - cardHeight - 12), 12);
   const left = Math.min(Math.max(rect.left, 12), innerWidth - cardWidth - 12);
   if (innerWidth - rect.right > cardWidth + gap * 2) return { top, left: rect.right + gap };
   if (rect.left > cardWidth + gap * 2) return { top, left: rect.left - cardWidth - gap };
@@ -195,6 +204,8 @@ export default function Tour({ onClose }: { onClose: () => void }) {
   const [rect, setRect] = useState<DOMRect>();
   const [ready, setReady] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const card = useRef<HTMLElement>(null);
+  const [cardHeight, setCardHeight] = useState(240);
   const nextButton = useRef<HTMLButtonElement>(null);
   const start = useRef(location.pathname + location.search);
   const prepared = useRef(false);
@@ -272,6 +283,11 @@ export default function Tour({ onClose }: { onClose: () => void }) {
   const at = shown.current;
   const [title, body] = stop ? t.steps[stop.id] : [t.loading, ""];
 
+  useLayoutEffect(() => {
+    const height = card.current?.offsetHeight;
+    if (height && height !== cardHeight) setCardHeight(height);
+  });
+
   return (
     <dialog
       ref={dialog}
@@ -293,8 +309,9 @@ export default function Tour({ onClose }: { onClose: () => void }) {
         <div key="backdrop" className="tour-backdrop" />
       )}
       <section
+        ref={card}
         className={`panel tour-card${at ? "" : " centered"}${stop && !ready ? " pending" : ""}`}
-        style={at ? place(at) : undefined}
+        style={at ? place(at, cardHeight) : undefined}
         aria-live="polite"
       >
         {stop && (

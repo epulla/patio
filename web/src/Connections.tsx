@@ -29,7 +29,7 @@ export function ConnectionsHeading({ actions, tab }: { actions?: ReactNode; tab:
       </div>
       <div className="tabs" role="tablist">
         {(["connectors", "mcp", "channels"] as const).map((value) => (
-          <button key={value} role="tab" aria-selected={tab === value} onClick={() => navigate(`/ai/${value}`)}>
+          <button key={value} role="tab" aria-selected={tab === value} data-tour={`tab-${value}`} onClick={() => navigate(`/ai/${value}`)}>
             {t[value]}
           </button>
         ))}
