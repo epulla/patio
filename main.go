@@ -291,6 +291,13 @@ func main() {
 			}
 		}()
 		background.Add(6)
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			if err := apiServer.StartTelegramBridge(backgroundCtx); err != nil {
+				log.Printf("run Telegram bridge: %v", err)
+			}
+		}()
 		go func() {
 			defer background.Done()
 			if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
