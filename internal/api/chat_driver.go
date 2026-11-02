@@ -50,6 +50,7 @@ type chatSteerer interface {
 var runtimes = map[string]startFunc{}
 
 type chatManager struct {
+	telegramResult       func(string, string, error)
 	db                   *sql.DB
 	dbPath               string
 	dbDir                string
@@ -551,6 +552,9 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		rt.mu.Unlock()
 	}
 	message, err := InsertChatMessage(m.db, id, role, content)
+	if err == nil && m.telegramResult != nil {
+		go m.telegramResult(id, assistantText, turnErr)
+	}
 	if err == nil && (turnErr != nil || stopping) {
 		if _, holdErr := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, id); holdErr != nil {
 			err = holdErr

@@ -114,6 +114,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	s.chats.notify = s.Notify
 	s.chats.notifyMCPSignIn = s.notifyMCPSignIn
 	s.chats.reportBack = s.reportChatResult
+	s.chats.telegramResult = s.sendTelegramResult
 	s.chats.dbDir = s.dbDir
 	s.chats.enabledMCPServers = s.enabledMCPServers
 	m := http.NewServeMux()
@@ -150,6 +151,9 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/skills/import", s.tracked("skill", s.importSkill))
 	m.HandleFunc("GET /api/skills/{id}/export", s.exportSkill)
 	m.HandleFunc("GET /api/settings/folders", s.listAllowedFolders)
+	m.HandleFunc("GET /api/settings/telegram", s.getTelegramSettings)
+	m.HandleFunc("PUT /api/settings/telegram", s.putTelegramSettings)
+	m.HandleFunc("POST /api/settings/telegram/test", s.testTelegramToken)
 	m.HandleFunc("GET /api/settings/folders/browse", s.browseFolders)
 	m.HandleFunc("POST /api/settings/folders", s.addAllowedFolder)
 	m.HandleFunc("DELETE /api/settings/folders/{id}", s.deleteAllowedFolder)
