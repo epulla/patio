@@ -3,8 +3,10 @@ import { Icon } from "./icons";
 import { useText } from "./i18n";
 
 const popHeight = 280;
+// Longer lists get a search box; short ones (e.g. Newest/Oldest) stay plain.
+const searchMin = 8;
 
-export type PickerOption = { id: string; name: string; color?: string };
+export type PickerOption = { id: string; name: string; color?: string; description?: string };
 
 export default function Picker({
   id: triggerID,
@@ -24,8 +26,9 @@ export default function Picker({
   disabled?: boolean;
   onChange: (id: string) => void;
 }) {
-  const t = useText({ en: { none: "none" }, es: { none: "ninguno" } });
+  const t = useText({ en: { none: "none", search: "Search", noMatch: "No matches" }, es: { none: "ninguno", search: "Buscar", noMatch: "Sin resultados" } });
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [place, setPlace] = useState<CSSProperties>({});
   const root = useRef<HTMLDivElement>(null);
@@ -37,6 +40,10 @@ export default function Picker({
 
   const options: PickerOption[] = empty === undefined ? items : [{ id: "", name: empty }, ...items];
   const current = options.find((option) => option.id === value);
+  const searchable = options.length >= searchMin;
+  const described = options.some((option) => option.description);
+  const q = query.trim().toLowerCase();
+  const shown = q ? options.filter((option) => [option.name, option.description ?? ""].some((text) => text.toLowerCase().includes(q))) : options;
   const dots = items.some((option) => option.color);
   const text = (option?: PickerOption) =>
     dots ? (
@@ -67,7 +74,7 @@ export default function Picker({
     document.addEventListener("mousedown", outside);
     document.addEventListener("scroll", scroll, true);
     addEventListener("resize", resize);
-    list.current?.focus({ preventScroll: true });
+    if (!searchable) list.current?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("mousedown", outside);
       document.removeEventListener("scroll", scroll, true);
@@ -77,7 +84,7 @@ export default function Picker({
 
   useEffect(() => {
     if (open) document.getElementById(optionID(active))?.scrollIntoView({ block: "nearest" });
-  }, [open, active]);
+  }, [open, active, query]);
 
   function position(up?: boolean) {
     const rect = trigger.current!.getBoundingClientRect();
@@ -90,12 +97,15 @@ export default function Picker({
       left: rect.left,
       minWidth: rect.width,
       maxWidth: innerWidth - rect.left - 16,
+      // Descriptions are cut to one line, so the list needs a fixed width.
+      ...(described ? { width: Math.min(Math.max(rect.width, 280), innerWidth - rect.left - 16) } : {}),
       maxHeight: Math.min(popHeight, up ? above : below),
     });
   }
 
   function show() {
     position();
+    setQuery("");
     setActive(Math.max(0, options.findIndex((option) => option.id === value)));
     setOpen(true);
   }
@@ -128,6 +138,13 @@ export default function Picker({
   }
 
   function triggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (searchable && printable(event) && event.key !== " ") {
+      event.preventDefault();
+      show();
+      setQuery(event.key);
+      setActive(0);
+      return;
+    }
     if (printable(event) && event.key !== " ") {
       event.preventDefault();
       const index = typeAhead(event.key, Math.max(0, options.findIndex((option) => option.id === value)));
@@ -167,6 +184,45 @@ export default function Picker({
     setActive(moves[event.key]);
   }
 
+  function searchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      return close();
+    }
+    if (event.key === "Tab") return setOpen(false);
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (shown[active]) pick(shown[active].id);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    if (shown.length) setActive((active + (event.key === "ArrowDown" ? 1 : -1) + shown.length) % shown.length);
+  }
+
+  const rows = (list: PickerOption[]) =>
+    list.map((option, index) => (
+      <li
+        key={option.id}
+        id={optionID(index)}
+        role="option"
+        aria-selected={option.id === value}
+        data-active={index === active || undefined}
+        onMouseMove={() => setActive(index)}
+        onClick={() => pick(option.id)}
+      >
+        {option.description ? (
+          <span className="picker-option-text">
+            {text(option)}
+            <small className="muted">{option.description}</small>
+          </span>
+        ) : (
+          text(option)
+        )}
+        {option.id === value && <Icon name="check" />}
+      </li>
+    ));
+
   return (
     <div
       className="picker"
@@ -190,7 +246,36 @@ export default function Picker({
         {text(current)}
         <Icon name="chevronDown" />
       </button>
-      {open && (
+      {open && searchable && (
+        <div
+          className="picker-pop picker-search"
+          style={place}
+          // Keep focus in the search box when clicking options or padding; a <label> would re-click the trigger.
+          onMouseDown={(event) => event.target instanceof HTMLInputElement || event.preventDefault()}
+          onClick={(event) => event.preventDefault()}
+        >
+          <input
+            autoFocus
+            role="combobox"
+            aria-label={`${t.search}: ${label}`}
+            aria-expanded="true"
+            aria-controls={`${id}-list`}
+            aria-activedescendant={shown[active] ? optionID(active) : undefined}
+            placeholder={t.search}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActive(0);
+            }}
+            onKeyDown={searchKeyDown}
+          />
+          <ul id={`${id}-list`} role="listbox" aria-label={label}>
+            {shown.length === 0 && <li className="muted picker-empty">{t.noMatch}</li>}
+            {rows(shown)}
+          </ul>
+        </div>
+      )}
+      {open && !searchable && (
         <ul
           ref={list}
           id={`${id}-list`}
@@ -204,20 +289,7 @@ export default function Picker({
           // An enclosing <label> would otherwise re-click the trigger and reopen the list.
           onClick={(event) => event.preventDefault()}
         >
-          {options.map((option, index) => (
-            <li
-              key={option.id}
-              id={optionID(index)}
-              role="option"
-              aria-selected={option.id === value}
-              data-active={index === active || undefined}
-              onMouseMove={() => setActive(index)}
-              onClick={() => pick(option.id)}
-            >
-              {text(option)}
-              {option.id === value && <Icon name="check" />}
-            </li>
-          ))}
+          {rows(options)}
         </ul>
       )}
     </div>

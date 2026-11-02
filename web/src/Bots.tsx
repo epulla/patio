@@ -20,7 +20,7 @@ const text = {
     persona: "Persona prompt", personaPlaceholder: "You are Billy, a careful developer. Keep changes small and always run the tests.",
     color: "Color", connector: "Connector", model: "Model", loadingModels: "Loading models", noConnector: "No connector",
     save: "Save", saved: "Saved", createBot: "Create bot", delete: (name: string) => `Delete ${name}`, confirmDelete: (name: string) => `Delete bot "${name}"?`, protected: "Martin is the built-in bot; you can edit him but not delete him.",
-    training: "Training", trainingHelp: "Skills and memories only this bot (and any other bots you chose) can see. Everything else is shared by all bots.", trainingEmpty: "Nothing bot-only yet.", searchItems: "Search skills and memories", noItemMatch: (query: string) => `No skills or memories match “${query}”`, skill: "Skill", memory: "Memory",
+    training: "Training", trainingHelp: "Skills and memories only this bot (and any other bots you chose) can see. Everything else is shared by all bots.", trainingEmpty: "Nothing bot-only yet.", skill: "Skill", memory: "Memory",
     addItem: "Add a skill or memory", removeItem: (name: string) => `Remove ${name} from this bot`,
     confirmLimit: (item: string, bot: string) => `Limit "${item}" to ${bot}? Other bots and chats without a bot will stop seeing it.`,
     confirmWiden: (item: string, bot: string) => `"${item}" is only for ${bot}. Removing it makes it available to all bots. Continue?`,
@@ -32,7 +32,7 @@ const text = {
     persona: "Instrucciones de personalidad", personaPlaceholder: "Eres Billy, un desarrollador cuidadoso. Haz cambios pequeños y siempre ejecuta las pruebas.",
     color: "Color", connector: "Conector", model: "Modelo", loadingModels: "Cargando modelos", noConnector: "Sin conector",
     save: "Guardar", saved: "Guardado", createBot: "Crear bot", delete: (name: string) => `Eliminar ${name}`, confirmDelete: (name: string) => `¿Eliminar el bot "${name}"?`, protected: "Martin es el bot incluido; puedes editarlo, pero no eliminarlo.",
-    training: "Entrenamiento", trainingHelp: "Habilidades y recuerdos que solo ve este bot (y los otros bots que elegiste). Todo lo demás lo comparten todos los bots.", trainingEmpty: "Aún no hay nada exclusivo de este bot.", searchItems: "Buscar habilidades y recuerdos", noItemMatch: (query: string) => `Ninguna habilidad o recuerdo coincide con “${query}”`, skill: "Habilidad", memory: "Recuerdo",
+    training: "Entrenamiento", trainingHelp: "Habilidades y recuerdos que solo ve este bot (y los otros bots que elegiste). Todo lo demás lo comparten todos los bots.", trainingEmpty: "Aún no hay nada exclusivo de este bot.", skill: "Habilidad", memory: "Recuerdo",
     addItem: "Agregar una habilidad o recuerdo", removeItem: (name: string) => `Quitar ${name} de este bot`,
     confirmLimit: (item: string, bot: string) => `¿Limitar "${item}" a ${bot}? Los demás bots y los chats sin bot dejarán de verlo.`,
     confirmWiden: (item: string, bot: string) => `"${item}" es solo para ${bot}. Si lo quitas, estará disponible para todos los bots. ¿Continuar?`,
@@ -348,11 +348,11 @@ function BotTraining({ bot, refresh }: { bot: Bot; refresh: number }) {
         </ul>
       )}
       {others.length > 0 && (
-        <ModelPicker
-          models={others.map((skill) => ({ id: skill.id, label: skill.name, description: `${skill.kind === "memory" ? t.memory : t.skill} · ${skill.description}` }))}
+        <Picker
+          label={t.addItem}
+          empty={t.addItem}
+          options={others.map((skill) => ({ id: skill.id, name: `${skill.name} · ${skill.kind === "memory" ? t.memory : t.skill}`, description: skill.description }))}
           value=""
-          loading={false}
-          labels={{ label: t.addItem, choose: t.addItem, search: t.searchItems, noMatch: t.noItemMatch }}
           onChange={add}
         />
       )}

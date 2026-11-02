@@ -1293,6 +1293,36 @@ a:has(> .svg-icon) {
   width: 14px;
   height: 14px;
 }
+.picker-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.picker-search input {
+  flex: none;
+}
+.picker-search ul {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.picker-empty {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+/* Name on top, description cut to one line below. */
+.picker-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.picker-option-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .add-ticket,
 .add-column {
   width: 100%;
@@ -3915,9 +3945,6 @@ main.chat-window .app-version {
   padding: 0 10px 0 12px;
   background: var(--base-100);
   font-weight: 400;
-}
-.bot-training .model-trigger {
-  max-width: none;
 }
 .model-trigger-label {
   overflow: hidden;
