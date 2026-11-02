@@ -87,3 +87,33 @@ const pendingPattern = (id: string) => new RegExp(`!\\[(?:[^\\]\\\\]|\\\\.)*\\]\
 export const hasPending = (text: string, id: string) => pendingPattern(id).test(text);
 export const replacePending = (text: string, id: string, replacement: string) =>
   text.replace(pendingPattern(id), () => replacement);
+
+export type TicketField = "description" | "comment";
+export const commentDraftKey = (ticketId: string) => `ticket-comment-draft:${ticketId}`;
+
+type Swap = (id: string, replacement: string) => void;
+const editors = new Map<string, Swap>();
+
+// The editor open now for a ticket's text registers here, so an upload started in an earlier editor
+// (the user left the ticket and came back) swaps its placeholder in the current text, never in old text.
+export function registerEditor(ticketId: string, field: TicketField, swap: Swap) {
+  const key = `${ticketId}:${field}`;
+  editors.set(key, swap);
+  return () => {
+    if (editors.get(key) === swap) editors.delete(key);
+  };
+}
+
+// Without an open editor, swap the placeholder where the text is kept. A placeholder the user
+// deleted is left alone; the uploaded file stays in the ticket's attachments.
+export async function finishPending(ticketId: string, field: TicketField, id: string, replacement: string) {
+  const editor = editors.get(`${ticketId}:${field}`);
+  if (editor) return editor(id, replacement);
+  if (field === "comment") {
+    const draft = localStorage.getItem(commentDraftKey(ticketId));
+    if (draft && hasPending(draft, id)) localStorage.setItem(commentDraftKey(ticketId), replacePending(draft, id, replacement));
+    return;
+  }
+  const { description } = await api.get<{ description: string }>(`/api/tickets/${ticketId}`);
+  if (hasPending(description, id)) await api.put(`/api/tickets/${ticketId}`, { description: replacePending(description, id, replacement) });
+}

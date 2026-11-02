@@ -1,9 +1,9 @@
-import { useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { IconButton } from "./icons";
 import Markdown from "./Markdown";
 import { useMentions } from "./mentions";
 import { lang, useText } from "./i18n";
-import { hasPending, maxTicketAttachments, pastedFile, pendingLink, replacePending, shrinkImage, ticketFileProblem, uploadTicketFile } from "./attachments";
+import { finishPending, hasPending, maxTicketAttachments, registerEditor, type TicketField, pastedFile, pendingLink, replacePending, shrinkImage, ticketFileProblem, uploadTicketFile } from "./attachments";
 
 const text = {
   en: { formatting: "formatting", style: "Text style", normal: "Normal", title: "Title", heading: "Heading", subheading: "Subheading", bold: "Bold", italic: "Italic", code: "Code", link: "Link", bullets: "Bulleted list", numbered: "Numbered list", mention: "Mention a bot (@)", ticket: "Link a ticket (#)", write: "Write", preview: "Preview", nothing: "Nothing to preview", placeholder: "Markdown supported · @ to mention a bot · # to link a ticket", filePlaceholder: "Markdown supported · @ to mention a bot · # to link a ticket · paste or drop files", uploading: (name: string) => `Uploading ${name}…`, uploadingCount: (n: number) => `Uploading ${n} file${n === 1 ? "" : "s"}…`, pendingHint: "Pasted files upload when the ticket is created.", imageLarge: (name: string) => `${name} is larger than 10 MB.`, fileLarge: (name: string) => `${name} is larger than 20 MB.`, tooMany: (max: number) => `A ticket can have at most ${max} attachments.`, failed: (name: string, error: string) => `${name} failed to upload: ${error}` },
@@ -45,6 +45,7 @@ export default function MarkdownEditor({
   onSubmit,
   label,
   ticketId,
+  field,
   pendingFiles,
 }: {
   value: string;
@@ -54,6 +55,8 @@ export default function MarkdownEditor({
   label: string;
   // Pasted or dropped files upload to this ticket right away.
   ticketId?: string;
+  // Which ticket text this edits; an upload that ends after this editor closes finishes in the one open for the same field.
+  field?: TicketField;
   // Without a ticket yet, files wait here until the ticket is created.
   pendingFiles?: PendingFiles;
 }) {
@@ -68,12 +71,26 @@ export default function MarkdownEditor({
   latest.current = { value, onChange, onBlur };
   const acceptsFiles = Boolean(ticketId || pendingFiles);
 
+  // Swaps one placeholder in the current text; returns false when the user already deleted it.
   function replaceLatest(id: string, replacement: string) {
-    const next = replacePending(latest.current.value, id, replacement);
-    latest.current.value = next;
-    latest.current.onChange(next);
-    return next;
+    if (!hasPending(latest.current.value, id)) return false;
+    latest.current.value = replacePending(latest.current.value, id, replacement);
+    latest.current.onChange(latest.current.value);
+    return true;
   }
+
+  useEffect(() => {
+    if (!ticketId || !field) return;
+    // The editor saves on blur; if it isn't focused, save the finished link now.
+    return registerEditor(ticketId, field, (id, replacement) => {
+      if (replaceLatest(id, replacement) && !ref.current?.closest(".md-editor")?.contains(document.activeElement))
+        latest.current.onBlur?.(latest.current.value);
+    });
+  }, [ticketId, field]);
+
+  // Finishes in whichever editor is open for this ticket text now, which may not be this one.
+  const finish = async (id: string, replacement: string) =>
+    ticketId && field ? finishPending(ticketId, field, id, replacement) : replaceLatest(id, replacement);
 
   // Placeholders go in right away, at the caret, so a submit or blur during shrinking or upload sees them.
   function addFiles(picked: File[]) {
@@ -95,7 +112,7 @@ export default function MarkdownEditor({
       const problem = ticketFileProblem(shrunk);
       if (!problem) return shrunk;
       pendingFiles?.delete(ids[i]);
-      replaceLatest(ids[i], "");
+      void finish(ids[i], "");
       setUploadError(t[problem](file.name));
       throw new Error(t[problem](file.name));
     });
@@ -111,20 +128,17 @@ export default function MarkdownEditor({
     setUploading((n) => n + ids.length);
     // A rejected file already removed its placeholder and showed its error.
     const files = prepared.map((file) => file.catch(() => undefined));
-    let saved = latest.current.value;
     for (const [i, file] of files.entries()) {
       const ready = await file;
       try {
-        saved = ready ? replaceLatest(ids[i], await uploadTicketFile(ticketId, ready)) : latest.current.value;
+        if (ready) await finish(ids[i], await uploadTicketFile(ticketId, ready));
       } catch (reason) {
-        saved = replaceLatest(ids[i], "");
+        await finish(ids[i], "").catch(() => undefined);
         setUploadError(t.failed(ready!.name, failure(reason)));
       } finally {
         setUploading((n) => n - 1);
       }
     }
-    // The editor saves on blur; if it already lost focus, save the finished links now.
-    if (!ref.current?.closest(".md-editor")?.contains(document.activeElement)) latest.current.onBlur?.(saved);
   }
 
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
