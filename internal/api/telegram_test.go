@@ -122,6 +122,14 @@ func TestTelegramApprovalNoticeAndAllowCallback(t *testing.T) {
 	if !strings.Contains(strings.Join(methods, ","), "editMessageText") {
 		t.Fatal(fmt.Sprint(methods))
 	}
+	q.From.ID = 999
+	q.Data = "a:" + approval + ":0"
+	if err := s.processTelegramCallback(context.Background(), "token", cfg, q); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT status FROM chat_approval WHERE id=?`, approval).Scan(&status); err != nil || status != "allowed" {
+		t.Fatalf("unauthorized callback changed status=%q err=%v", status, err)
+	}
 }
 
 var count int
