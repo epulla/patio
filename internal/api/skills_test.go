@@ -78,7 +78,7 @@ func TestParseSkill(t *testing.T) {
 
 func TestSkillCRUDAndImportExport(t *testing.T) {
 	database, handler, _ := chatAPI(t)
-	create := map[string]any{"name": "zebra", "description": "  Handles: punctuation  ", "body": "# Body\n\nText"}
+	create := map[string]any{"name": "zebra", "description": "  Handles: punctuation  ", "body": "# Body\n\nText", "bot_ids": []string{"ai"}}
 	code, raw := requestRaw(t, handler, http.MethodPost, "/api/skills", create)
 	if code != http.StatusCreated {
 		t.Fatalf("create status/body = %d %s", code, raw)
@@ -139,10 +139,13 @@ func TestSkillCRUDAndImportExport(t *testing.T) {
 	if err != nil || byName.ID != imported.ID {
 		t.Fatalf("skill by name = %#v, %v", byName, err)
 	}
+	var links int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM skill_bot WHERE skill_id=?`, created.ID).Scan(&links); err != nil || links != 1 {
+		t.Fatalf("expected scoped skill link before delete, got %d, %v", links, err)
+	}
 	if code := requestJSON(t, handler, http.MethodDelete, "/api/skills/"+created.ID, nil, nil); code != http.StatusNoContent {
 		t.Fatalf("delete status = %d", code)
 	}
-	var links int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM skill_bot WHERE skill_id=?`, created.ID).Scan(&links); err != nil || links != 0 {
 		t.Fatalf("deleted skill links = %d, %v", links, err)
 	}
