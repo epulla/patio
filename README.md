@@ -169,7 +169,7 @@ Write a skill in Markdown or import a `SKILL.md` file. Use the **Memory** tab in
 
 Enabled skills and memory summaries are made available to new CLI chats. Local AI can discover and load skills through its supported tools. Changes apply to new chats.
 
-Skills and memories are shared by all bots unless you limit them. Pick bots under **Available to** in a skill's editor, or use **Training** on a bot's page, and only those bots' chats list and load them; chats without a bot and other MCP clients see shared items only. Deleting a bot deletes the items only it could see.
+Skills and memories are shared by all bots unless you limit them. Pick bots under **Available to** in a skill's editor, or use **Training** on a bot's page, and only those bots' chats list and load them. Chats without a bot get shared items in their instructions, but through the MCP tools they (and other MCP clients) can list and manage every item: `list_skills` shows each item's bots and takes an optional `bot` filter, and `create_skill`/`update_skill` take `bots`. Deleting a bot deletes the items only it could see.
 
 ### Make the workspace yours
 

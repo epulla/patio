@@ -224,6 +224,7 @@ type runWorkflowArgs struct {
 }
 type listSkillsArgs struct {
 	IncludeDisabled bool   `json:"include_disabled,omitempty"`
+	Bot             string `json:"bot,omitempty" jsonschema:"Optional bot name: only skills and memories limited to this bot"`
 	ChatID          string `json:"chat_id,omitempty"`
 }
 type listCalendarArgs struct {
@@ -871,51 +872,53 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 	if len(skills) > 0 {
 		description = "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions."
 	}
-	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills visible to this bot; pass chat_id when available, optionally include disabled skills"}, func(ctx context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills and memories you can see, with the bots each one is limited to (empty bots = all bots). Bots see shared items plus their own; chats with no bot and outside MCP clients see everything. Pass chat_id when available; optionally filter by bot or include disabled items"}, func(ctx context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		var enabled []api.Skill
-		var err error
-		botID, _ := skillCallerBotID(database, in.ChatID, processChatID, inApp)
-		if in.IncludeDisabled {
-			data, e := doJSON(ctx, h, request{http.MethodGet, "/api/skills", nil})
-			err = e
-			if err == nil {
-				err = json.Unmarshal(data, &enabled)
-			}
-			if err == nil {
-				visible := enabled[:0]
-				for _, item := range enabled {
-					if len(item.BotIDs) == 0 || containsString(item.BotIDs, botID) {
-						visible = append(visible, item)
-					}
-				}
-				enabled = visible
-			}
-		} else {
-			enabled, err = api.SkillsForBot(database, botID)
+		caller := skillCallerScope(database, in.ChatID, processChatID, inApp)
+		var all []api.Skill
+		data, err := doJSON(ctx, h, request{http.MethodGet, "/api/skills", nil})
+		if err == nil {
+			err = json.Unmarshal(data, &all)
 		}
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
-		result := make([]struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			Enabled     *bool  `json:"enabled,omitempty"`
-		}, 0, len(enabled))
-		for _, skill := range enabled {
-			item := struct {
-				Name        string `json:"name"`
-				Description string `json:"description"`
-				Enabled     *bool  `json:"enabled,omitempty"`
-			}{Name: skill.Name, Description: skill.Description}
+		filterBot := ""
+		if in.Bot != "" {
+			ids, err := skillBotIDs(database, []string{in.Bot})
+			if err != nil {
+				return errorResult(err), nil, nil
+			}
+			filterBot = ids[0]
+		}
+		names, err := botNames(database)
+		if err != nil {
+			return errorResult(err), nil, nil
+		}
+		type listed struct {
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Kind        string   `json:"kind"`
+			Bots        []string `json:"bots"`
+			Enabled     *bool    `json:"enabled,omitempty"`
+		}
+		result := []listed{}
+		for _, skill := range all {
+			if !skill.Enabled && !in.IncludeDisabled || !caller.sees(skill) || filterBot != "" && !containsString(skill.BotIDs, filterBot) {
+				continue
+			}
+			item := listed{Name: skill.Name, Description: skill.Description, Kind: skill.Kind, Bots: []string{}}
+			for _, id := range skill.BotIDs {
+				item.Bots = append(item.Bots, names[id])
+			}
 			if in.IncludeDisabled {
 				item.Enabled = &skill.Enabled
 			}
 			result = append(result, item)
 		}
-		data, err := json.Marshal(result)
+		data, err = json.Marshal(result)
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
@@ -925,8 +928,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		botID, _ := skillCallerBotID(database, in.ChatID, processChatID, inApp)
-		skill, err := api.SkillVisible(database, in.Name, botID)
+		skill, err := skillCallerScope(database, in.ChatID, processChatID, inApp).find(database, in.Name)
 		if errors.Is(err, sql.ErrNoRows) || err == nil && !skill.Enabled {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
@@ -936,13 +938,13 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
 	})
 	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"}, func(ctx context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
-		callerID, _ := skillCallerBotID(database, in.ChatID, processChatID, inApp)
-		if in.Kind == "memory" && in.Bots != nil && len(in.Bots) > 0 {
+		caller := skillCallerScope(database, in.ChatID, processChatID, inApp)
+		if in.Kind == "memory" && len(in.Bots) > 0 && !caller.admin {
 			ids, err := skillBotIDs(database, in.Bots)
 			if err != nil {
 				return errorResult(err), nil, nil
 			}
-			if len(ids) != 1 || ids[0] != callerID {
+			if len(ids) != 1 || ids[0] != caller.bot {
 				return errorResult(fmt.Errorf("memories can only be limited to your own bot")), nil, nil
 			}
 		}
@@ -970,8 +972,8 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		botID, _ := skillCallerBotID(database, in.ChatID, processChatID, inApp)
-		skill, err := api.SkillVisible(database, in.Name, botID)
+		caller := skillCallerScope(database, in.ChatID, processChatID, inApp)
+		skill, err := caller.find(database, in.Name)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
@@ -985,7 +987,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 				return errorResult(err), nil, nil
 			}
 			botIDs = &ids
-			if skill.Kind == "memory" && len(ids) > 0 && (len(ids) != 1 || ids[0] != botID) {
+			if skill.Kind == "memory" && !caller.admin && len(ids) > 0 && (len(ids) != 1 || ids[0] != caller.bot) {
 				return errorResult(fmt.Errorf("memories can only be limited to your own bot")), nil, nil
 			}
 		}
@@ -1002,8 +1004,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		botID, _ := skillCallerBotID(database, in.ChatID, processChatID, inApp)
-		skill, err := api.SkillVisible(database, in.Name, botID)
+		skill, err := skillCallerScope(database, in.ChatID, processChatID, inApp).find(database, in.Name)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
@@ -1027,14 +1028,65 @@ func containsString(values []string, value string) bool {
 	return false
 }
 
-func skillCallerBotID(database *sql.DB, chatID, processChatID string, inApp bool) (string, error) {
-	if processChatID != "" {
-		return api.ChatBotID(database, processChatID)
+// skillCaller is who calls the skill tools: a bot sees shared items plus its own; a chat with
+// no bot or an outside MCP client acts as the user and can see and manage every item.
+type skillCaller struct {
+	bot   string
+	admin bool
+}
+
+func skillCallerScope(database *sql.DB, chatID, processChatID string, inApp bool) skillCaller {
+	id := processChatID
+	if id == "" {
+		if !inApp {
+			return skillCaller{admin: true}
+		}
+		// The shared in-app process can't tell which chat is asking without chat_id: shared items only.
+		if chatID == "" {
+			return skillCaller{}
+		}
+		id = chatID
 	}
-	if !inApp || chatID == "" {
-		return "", nil
+	bot, err := api.ChatBotID(database, id)
+	if err != nil {
+		return skillCaller{}
 	}
-	return api.ChatBotID(database, chatID)
+	if bot != "" {
+		return skillCaller{bot: bot}
+	}
+	var exists bool
+	if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM chat WHERE id=?)`, id).Scan(&exists); err != nil {
+		return skillCaller{}
+	}
+	return skillCaller{admin: exists}
+}
+
+func (c skillCaller) sees(skill api.Skill) bool {
+	return c.admin || len(skill.BotIDs) == 0 || c.bot != "" && containsString(skill.BotIDs, c.bot)
+}
+
+func (c skillCaller) find(database *sql.DB, name string) (api.Skill, error) {
+	if c.admin {
+		return api.SkillByName(database, name)
+	}
+	return api.SkillVisible(database, name, c.bot)
+}
+
+func botNames(database *sql.DB) (map[string]string, error) {
+	rows, err := database.Query(`SELECT id,name FROM "user" WHERE is_ai=1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	names := map[string]string{}
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		names[id] = name
+	}
+	return names, rows.Err()
 }
 
 func skillBotIDs(database *sql.DB, names []string) ([]string, error) {

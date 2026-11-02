@@ -913,7 +913,7 @@ func TestMCPSkillTools(t *testing.T) {
 		t.Fatalf("load_skill description = %q, want %q", loadDescription, wantDescription)
 	}
 	listed := callTool(t, session, "list_skills", map[string]any{})
-	if listed.IsError || len(listed.Content) != 1 || listed.Content[0].(*sdk.TextContent).Text != `[{"name":"pirate-voice","description":"Use when the user asks for a pirate greeting."}]` {
+	if listed.IsError || len(listed.Content) != 1 || listed.Content[0].(*sdk.TextContent).Text != `[{"name":"pirate-voice","description":"Use when the user asks for a pirate greeting.","kind":"skill","bots":[]}]` {
 		t.Fatalf("list_skills result = %#v", listed)
 	}
 	loaded := callTool(t, session, "load_skill", map[string]any{"name": "pirate-voice"})
@@ -995,6 +995,9 @@ func TestMCPBotScopedSkillsAndMemoryRules(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('chat-none','chat-none','now','now')`); err != nil {
+		t.Fatal(err)
+	}
 	handler := api.New(database, "ai", true, "test", t.TempDir())
 	for _, sk := range []struct {
 		id, name string
@@ -1063,13 +1066,23 @@ func TestMCPBotScopedSkillsAndMemoryRules(t *testing.T) {
 	if got := callTool(t, global, "list_skills", map[string]any{}); strings.Contains(got.Content[0].(*sdk.TextContent).Text, "a-skill") {
 		t.Fatalf("no-chat caller saw scoped skill: %#v", got.Content)
 	}
+	// A chat with no bot acts as the user too.
+	noBot := connect("", true)
+	defer noBot.Close()
+	if got := callTool(t, noBot, "list_skills", map[string]any{"chat_id": "chat-none"}); !strings.Contains(got.Content[0].(*sdk.TextContent).Text, `"name":"a-skill"`) {
+		t.Fatalf("no-bot chat did not see bot A skill: %#v", got.Content)
+	}
+	// Outside clients act as the user: they see and manage every item, with its bots.
 	external := connect("", false)
 	defer external.Close()
-	if got := callTool(t, external, "list_skills", map[string]any{"chat_id": "chat-a"}); strings.Contains(got.Content[0].(*sdk.TextContent).Text, "a-skill") {
-		t.Fatalf("external client used chat_id for visibility: %#v", got.Content)
+	if got := callTool(t, external, "list_skills", map[string]any{"bot": "bot-a"}); !strings.Contains(got.Content[0].(*sdk.TextContent).Text, `"name":"a-skill"`) || !strings.Contains(got.Content[0].(*sdk.TextContent).Text, `"bots":["Bot-A"]`) {
+		t.Fatalf("external client list by bot: %#v", got.Content)
 	}
-	if got := callTool(t, external, "load_skill", map[string]any{"name": "a-skill", "chat_id": "chat-a"}); !got.IsError {
-		t.Fatalf("external client loaded bot A skill via chat_id: %#v", got.Content)
+	if got := callTool(t, external, "load_skill", map[string]any{"name": "a-skill"}); got.IsError {
+		t.Fatalf("external client cannot load bot A skill: %#v", got.Content)
+	}
+	if got := callTool(t, external, "update_skill", map[string]any{"name": "a-skill", "description": "by user"}); got.IsError {
+		t.Fatalf("external client cannot update bot A skill: %#v", got.Content)
 	}
 	shared := connect("", true)
 	defer shared.Close()
