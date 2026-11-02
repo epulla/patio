@@ -16,35 +16,37 @@ import (
 )
 
 type Server struct {
-	db              *sql.DB
-	mcpActor        string
-	userID          string
-	showHidden      bool
-	version         string
-	updateURL       string
-	releaseMu       sync.Mutex
-	release         releaseInfo
-	releaseAt       time.Time
-	dbDir           string
-	dbPath          string
-	logPath         string
-	chats           *chatManager
-	revealFile      func(string) error
-	openOAuthURL    func(string) error
-	notify          func(string, string, string) error
-	notesBlocked    func() bool
-	oauthMu         sync.Mutex
-	oauthLogins     map[string]*mcpOAuthLogin
-	handler         http.Handler
-	mcpCheckTimeout time.Duration
-	mcpConnect      mcpConnector
-	attachmentsMu   sync.Mutex
-	agentDeliveryMu sync.Mutex
-	attachments     map[string]map[string]ChatAttachment
-	windowID        string
-	openChat        func(string) error
-	showMain        func(string)
-	telegramWake    chan struct{}
+	db                 *sql.DB
+	mcpActor           string
+	userID             string
+	showHidden         bool
+	version            string
+	updateURL          string
+	releaseMu          sync.Mutex
+	release            releaseInfo
+	releaseAt          time.Time
+	dbDir              string
+	dbPath             string
+	logPath            string
+	chats              *chatManager
+	revealFile         func(string) error
+	openOAuthURL       func(string) error
+	notify             func(string, string, string) error
+	notesBlocked       func() bool
+	oauthMu            sync.Mutex
+	oauthLogins        map[string]*mcpOAuthLogin
+	handler            http.Handler
+	mcpCheckTimeout    time.Duration
+	mcpConnect         mcpConnector
+	attachmentsMu      sync.Mutex
+	agentDeliveryMu    sync.Mutex
+	attachments        map[string]map[string]ChatAttachment
+	windowID           string
+	openChat           func(string) error
+	showMain           func(string)
+	telegramWake       chan struct{}
+	telegramQuestionMu sync.Mutex
+	telegramQuestions  map[int64]*telegramQuestionState
 }
 
 type Options struct {

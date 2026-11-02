@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,8 +30,9 @@ func (s *Server) telegramNoticeLoop(ctx context.Context) {
 			if err != nil || token == "" {
 				continue
 			}
-			// Notices are intentionally scanned only while bridge is configured.
-			_ = token
+			if err := s.scanTelegramNotices(ctx, token, cfg); err != nil {
+				log.Printf("Telegram notices: %v", err)
+			}
 		}
 	}
 }
@@ -58,6 +61,278 @@ type telegramUpdate struct {
 			ID int64 `json:"id"`
 		} `json:"from"`
 	} `json:"message"`
+	CallbackQuery *struct {
+		ID   string `json:"id"`
+		From struct {
+			ID int64 `json:"id"`
+		} `json:"from"`
+		Data    string `json:"data"`
+		Message *struct {
+			MessageID int64 `json:"message_id"`
+			Chat      struct {
+				ID int64 `json:"id"`
+			} `json:"chat"`
+		} `json:"message"`
+	} `json:"callback_query"`
+}
+
+type telegramQuestionState struct {
+	ChatID            string
+	MessageID         string
+	Header            string
+	Multiple          bool
+	Options           []string
+	Selected          map[string]bool
+	Done              bool
+	TelegramID        int64
+	TelegramMessageID int64
+	Total             int
+}
+
+func (s *Server) scanTelegramNotices(ctx context.Context, token string, cfg telegramSettings) error {
+	rows, err := s.db.Query(`SELECT tc.telegram_chat_id,tc.chat_id FROM telegram_chat tc`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tid int64
+		var chatID string
+		if err := rows.Scan(&tid, &chatID); err != nil {
+			return err
+		}
+		items, err := s.db.Query(`SELECT a.id,a.tool_name,a.input_json FROM chat_approval a WHERE a.chat_id=? AND a.status='pending' AND NOT EXISTS(SELECT 1 FROM telegram_notice n WHERE n.item_id=a.id) UNION ALL SELECT m.id,'',m.content FROM chat_message m WHERE m.chat_id=? AND m.role='question' AND m.answered=0 AND NOT EXISTS(SELECT 1 FROM telegram_notice n WHERE n.item_id=m.id)`, chatID, chatID)
+		if err != nil {
+			return err
+		}
+		for items.Next() {
+			var id, tool, content string
+			if err := items.Scan(&id, &tool, &content); err != nil {
+				items.Close()
+				return err
+			}
+			if tool != "" {
+				var input any
+				_ = json.Unmarshal([]byte(content), &input)
+				text := "Approve " + tool + "?\n" + truncateTelegram(content, 500)
+				var sent struct {
+					MessageID int64 `json:"message_id"`
+				}
+				err = telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": tid, "text": text, "reply_markup": map[string]any{"inline_keyboard": [][]any{{map[string]string{"text": "Allow", "callback_data": "a:" + id + ":1"}, map[string]string{"text": "Deny", "callback_data": "a:" + id + ":0"}}}}}, &sent)
+				if err == nil {
+					_, err = s.db.Exec(`INSERT OR IGNORE INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,?,?)`, id, tid, sent.MessageID, now())
+				}
+			} else {
+				err = s.sendTelegramQuestionNotice(ctx, token, tid, id, content)
+			}
+			if err != nil {
+				log.Printf("Telegram notice %s: %v", id, err)
+			}
+		}
+		items.Close()
+	}
+	return rows.Err()
+}
+
+func truncateTelegram(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
+
+func (s *Server) processTelegramCallback(ctx context.Context, token string, cfg telegramSettings, q *struct {
+	ID   string `json:"id"`
+	From struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Data    string `json:"data"`
+	Message *struct {
+		MessageID int64 `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+	} `json:"message"`
+}) error {
+	answer := func(text string) error {
+		return telegramCall(ctx, token, "answerCallbackQuery", map[string]any{"callback_query_id": q.ID, "text": text}, nil)
+	}
+	if !telegramAllowed(cfg, q.From.ID) {
+		return answer("Not allowed")
+	}
+	if q.Message == nil {
+		return answer("Invalid message")
+	}
+	if strings.HasPrefix(q.Data, "a:") {
+		p := strings.Split(q.Data, ":")
+		if len(p) != 3 {
+			return answer("Invalid action")
+		}
+		status := "denied"
+		if p[2] == "1" {
+			status = "allowed"
+		}
+		res, err := s.db.Exec(`UPDATE chat_approval SET status=?,answered_at=? WHERE id=? AND status='pending'`, status, now(), p[1])
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		text := "Already answered"
+		if n == 1 {
+			if status == "allowed" {
+				text = "✅ Allowed"
+			} else {
+				text = "❌ Denied"
+			}
+		}
+		_ = telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": text}, nil)
+		return answer("")
+	}
+	if strings.HasPrefix(q.Data, "q:") {
+		p := strings.Split(q.Data, ":")
+		if len(p) != 3 {
+			return answer("Invalid choice")
+		}
+		s.telegramQuestionMu.Lock()
+		st := s.telegramQuestions[q.Message.MessageID]
+		if st == nil {
+			s.telegramQuestionMu.Unlock()
+			return answer("Question expired")
+		}
+		if p[2] == "d" {
+			if len(st.Selected) == 0 {
+				s.telegramQuestionMu.Unlock()
+				return answer("Pick at least one")
+			}
+			st.Done = true
+		} else {
+			i, err := strconv.Atoi(p[2])
+			if err != nil || i < 0 || i >= len(st.Options) {
+				s.telegramQuestionMu.Unlock()
+				return answer("Invalid choice")
+			}
+			v := st.Options[i]
+			if st.Multiple {
+				if st.Selected[v] {
+					delete(st.Selected, v)
+				} else {
+					st.Selected[v] = true
+				}
+			} else {
+				st.Selected[v] = true
+				st.Done = true
+			}
+		}
+		if st.Done {
+			sel := []string{}
+			for _, v := range st.Options {
+				if st.Selected[v] {
+					sel = append(sel, v)
+				}
+			}
+			s.telegramQuestionMu.Unlock()
+			err := s.submitTelegramQuestion(st, sel)
+			text := st.Header + ": " + strings.Join(sel, ", ")
+			if err != nil {
+				text = "Already answered"
+			}
+			_ = telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": text}, nil)
+			s.telegramQuestionMu.Lock()
+			delete(s.telegramQuestions, q.Message.MessageID)
+			s.telegramQuestionMu.Unlock()
+			return answer("")
+		}
+		rows := make([][]any, 0, len(st.Options)+1)
+		for i, v := range st.Options {
+			label := v
+			if st.Selected[v] {
+				label = "✓ " + label
+			}
+			rows = append(rows, []any{map[string]string{"text": label, "callback_data": fmt.Sprintf("q:%s:%d", p[1], i)}})
+		}
+		rows = append(rows, []any{map[string]string{"text": "Done", "callback_data": "q:" + p[1] + ":d"}})
+		s.telegramQuestionMu.Unlock()
+		if err := telegramCall(ctx, token, "editMessageReplyMarkup", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "reply_markup": map[string]any{"inline_keyboard": rows}}, nil); err != nil {
+			return err
+		}
+		return answer("")
+	}
+	return answer("Unknown action")
+}
+
+func (s *Server) submitTelegramQuestion(st *telegramQuestionState, sel []string) error {
+	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, st.ChatID))
+	if err != nil {
+		return err
+	}
+	if c.ConnectorID == nil {
+		return errChatConnectorMissing
+	}
+	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
+	if err != nil {
+		return err
+	}
+	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: st.Header + ": " + strings.Join(sel, ", ")})
+	return err
+}
+
+func (s *Server) sendTelegramQuestionNotice(ctx context.Context, token string, tid int64, id, content string) error {
+	var data struct {
+		Questions []struct {
+			Header   string `json:"header"`
+			Question string `json:"question"`
+			Multiple bool   `json:"multiple"`
+			Options  []struct {
+				Label string `json:"label"`
+			} `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		return err
+	}
+	var chatID string
+	if err := s.db.QueryRow(`SELECT chat_id FROM chat_message WHERE id=?`, id).Scan(&chatID); err != nil {
+		return err
+	}
+	for qi, q := range data.Questions {
+		item := id
+		if qi > 0 {
+			item = fmt.Sprintf("%s#%d", id, qi)
+		}
+		var existing int
+		if s.db.QueryRow(`SELECT 1 FROM telegram_notice WHERE item_id=?`, item).Scan(&existing) == nil {
+			continue
+		}
+		text := q.Header + "\n" + q.Question + "\nChoose an option; reply with text for Other."
+		keyboard := make([][]any, 0, len(q.Options)+1)
+		for oi, o := range q.Options {
+			keyboard = append(keyboard, []any{map[string]string{"text": o.Label, "callback_data": fmt.Sprintf("q:%s:%d", item, oi)}})
+		}
+		if q.Multiple {
+			keyboard = append(keyboard, []any{map[string]string{"text": "Done", "callback_data": "q:" + item + ":d"}})
+		}
+		var sent struct {
+			MessageID int64 `json:"message_id"`
+		}
+		if err := telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": tid, "text": text, "reply_markup": map[string]any{"inline_keyboard": keyboard}}, &sent); err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`INSERT INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,?,?)`, item, tid, sent.MessageID, now()); err != nil {
+			return err
+		}
+		state := &telegramQuestionState{ChatID: chatID, MessageID: id, Header: q.Header, Multiple: q.Multiple, TelegramID: tid, TelegramMessageID: sent.MessageID, Total: len(data.Questions), Selected: map[string]bool{}}
+		for _, o := range q.Options {
+			state.Options = append(state.Options, o.Label)
+		}
+		s.telegramQuestionMu.Lock()
+		if s.telegramQuestions == nil {
+			s.telegramQuestions = map[int64]*telegramQuestionState{}
+		}
+		s.telegramQuestions[sent.MessageID] = state
+		s.telegramQuestionMu.Unlock()
+	}
+	return nil
 }
 
 func (s *Server) StartTelegramBridge(ctx context.Context) error {
@@ -122,6 +397,11 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			if update.Message != nil {
 				if err := s.processTelegramMessage(ctx, token, latest, update); err != nil {
 					log.Printf("process Telegram update %d: %v", update.UpdateID, err)
+				}
+			}
+			if update.CallbackQuery != nil {
+				if err := s.processTelegramCallback(ctx, token, latest, update.CallbackQuery); err != nil {
+					log.Printf("process Telegram callback: %v", err)
 				}
 			}
 			if update.UpdateID >= cfg.UpdateOffset {
