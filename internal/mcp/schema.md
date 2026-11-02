@@ -8,6 +8,7 @@ erDiagram
   ticket_type { TEXT id; TEXT name; TEXT color; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket { TEXT id; TEXT title; TEXT description; INTEGER number; TEXT code; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT due_date; TEXT status_updated_at; TEXT status_id; TEXT board_id; TEXT ticket_type_id; TEXT reporter_id; TEXT assignee_id }
   ticket_link { TEXT id; TEXT from_ticket_id; TEXT to_ticket_id; TEXT type; TEXT created_at }
+  ticket_attachment { TEXT id; TEXT ticket_id; TEXT name; TEXT original_name; TEXT mime; TEXT kind; INTEGER size; TEXT created_at }
   ticket_history { TEXT id; TEXT content; TEXT created_at; TEXT ticket_id; TEXT user_id }
   ticket_comment { TEXT id; TEXT content; TEXT created_at; TEXT updated_at; TEXT ticket_id; TEXT user_id }
   status_order { TEXT id; TEXT status_ids; TEXT updated_at; TEXT board_id }

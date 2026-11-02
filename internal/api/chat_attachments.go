@@ -124,27 +124,10 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, "attachment is empty")
 		return
 	}
-	detected := http.DetectContentType(prefix)
-	image := detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || isWebP(prefix)
-	ext := strings.ToLower(filepath.Ext(name))
-	kind, contentType := "text", detected
-	if image {
-		kind = "image"
-		if isWebP(prefix) {
-			contentType = "image/webp"
-		}
-	} else if detected == "application/pdf" {
-		kind, contentType = "file", "application/pdf"
-	} else if ext == ".csv" {
-		kind, contentType = "file", "text/csv"
-	} else if fileType, ok := officeAttachmentTypes[ext]; ok && (detected == fileType.magic || fileType.magic == "application/x-ole-storage" && bytes.HasPrefix(prefix, []byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"))) {
-		kind, contentType = "file", fileType.mime
-	} else if detected == "application/zip" || detected == "application/x-ole-storage" || !strings.HasPrefix(detected, "text/") && detected != "application/octet-stream" {
+	kind, contentType, err := detectAttachmentType(name, prefix)
+	if err != nil {
 		writeAttachmentError(w, errChatAttachmentType)
 		return
-	}
-	if kind == "text" && contentType == "application/octet-stream" {
-		contentType = "text/plain; charset=utf-8"
 	}
 	pending := s.attachments[c.ID]
 	if len(pending)+1 > maxChatAttachments {
@@ -162,7 +145,7 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	storedName, size, err := streamChatAttachment(temp, dir, name, prefix, r.Body, kind)
+	storedName, size, err := streamChatAttachment(temp, dir, name, prefix, r.Body, kind, maxChatTextAttachment, maxChatImageAttachment)
 	if err != nil {
 		writeAttachmentError(w, err)
 		return
@@ -174,6 +157,31 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 	}
 	pending[storedName] = attachment
 	write(w, http.StatusCreated, []ChatAttachment{attachment})
+}
+
+func detectAttachmentType(name string, prefix []byte) (string, string, error) {
+	detected := http.DetectContentType(prefix)
+	image := detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || isWebP(prefix)
+	ext := strings.ToLower(filepath.Ext(name))
+	kind, contentType := "text", detected
+	if image {
+		kind = "image"
+		if isWebP(prefix) {
+			contentType = "image/webp"
+		}
+	} else if detected == "application/pdf" {
+		kind, contentType = "file", "application/pdf"
+	} else if ext == ".csv" {
+		kind, contentType = "file", "text/csv"
+	} else if fileType, ok := officeAttachmentTypes[ext]; ok && (detected == fileType.magic || fileType.magic == "application/x-ole-storage" && bytes.HasPrefix(prefix, []byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"))) {
+		kind, contentType = "file", fileType.mime
+	} else if detected == "application/zip" || detected == "application/x-ole-storage" || !strings.HasPrefix(detected, "text/") && detected != "application/octet-stream" {
+		return "", "", errChatAttachmentType
+	}
+	if kind == "text" && contentType == "application/octet-stream" {
+		contentType = "text/plain; charset=utf-8"
+	}
+	return kind, contentType, nil
 }
 
 func isWebP(data []byte) bool {
@@ -251,13 +259,13 @@ func pathWithin(root, path string) (bool, error) {
 	return rel != ".." && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, ".."+string(filepath.Separator)), nil
 }
 
-func streamChatAttachment(temp *os.File, dir, name string, prefix []byte, body io.Reader, kind string) (string, int64, error) {
+func streamChatAttachment(temp *os.File, dir, name string, prefix []byte, body io.Reader, kind string, textLimit, imageLimit int64) (string, int64, error) {
 	path := temp.Name()
 	defer os.Remove(path)
 	defer temp.Close()
-	limit := int64(maxChatTextAttachment)
+	limit := textLimit
 	if kind == "image" {
-		limit = maxChatImageAttachment
+		limit = imageLimit
 	}
 	if _, err := temp.Write(prefix); err != nil {
 		return "", 0, err
@@ -372,6 +380,14 @@ func (s *Server) attachmentPath(c chat, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return attachmentPathIn(dir, "", name)
+}
+
+func attachmentPathIn(root, subdir, name string) (string, error) {
+	if !validChatAttachmentName(name) || (subdir != "" && (filepath.Base(subdir) != subdir || subdir == "." || subdir == "..")) {
+		return "", errChatAttachmentName
+	}
+	dir := filepath.Join(root, subdir)
 	path := filepath.Join(dir, name)
 	info, err := os.Lstat(path)
 	if err != nil {

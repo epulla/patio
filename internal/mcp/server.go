@@ -661,7 +661,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "create_ticket", "Create a ticket", h, func(a createTicketArgs) request {
 		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/tickets", a}
 	})
-	addGeneric(s, "get_ticket", "Get ticket by UUID or code, including links", h, func(a ticketIDArgs) request {
+	addGeneric(s, "get_ticket", "Get ticket by UUID or code, including links and attachments (absolute file paths)", h, func(a ticketIDArgs) request {
 		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID), nil}
 	})
 	addGeneric(s, "link_tickets", "Link two tickets with blocks, relates, or duplicates", h, func(a ticketLinkArgs) request {

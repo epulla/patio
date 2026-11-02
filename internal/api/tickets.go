@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -299,6 +301,12 @@ func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result["links"] = linkItems
+	attachments, e := s.ticketAttachmentRows(t.ID)
+	if e != nil {
+		errw(w, 500, e.Error())
+		return
+	}
+	result["attachments"] = attachments
 	write(w, 200, result)
 }
 
@@ -570,6 +578,7 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	} else if e != nil {
 		errw(w, 500, e.Error())
 	} else {
+		_ = os.RemoveAll(filepath.Join(s.dbDir, "attachments", id))
 		noContent(w)
 	}
 }
