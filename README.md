@@ -177,6 +177,8 @@ Choose English or Spanish, system/light/dark appearance, one of five color palet
 
 ## Automate routine work
 
+Automations run while Patio is open. By default, closing the window keeps Patio running: it hides on macOS (click the Dock icon to bring it back) and minimizes on Windows and Linux. Quit from the app menu to stop everything, or turn this off in **Settings › Background**.
+
 ### Scheduled tasks: start with a time
 
 Give Patio a prompt, connector, model, and schedule. Choose a one-time run, a recurring preset, or an advanced cron expression.

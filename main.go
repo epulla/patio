@@ -184,11 +184,13 @@ func main() {
 	})
 	mux.HandleFunc("/", spaHandler)
 	log.Printf("database at %s", path)
+	// Read once: Wails can't change this after startup.
+	quitOnLastClose := !api.KeepRunningOnClose(database)
 	app = application.New(application.Options{
 		Name:   "Patio",
 		Icon:   appIcon,
 		Assets: application.AssetOptions{Handler: mux},
-		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: quitOnLastClose},
 		Linux:  application.LinuxOptions{ProgramName: "patio"},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: singleInstanceID(path),
@@ -197,6 +199,7 @@ func main() {
 			},
 		},
 		OnShutdown: func() {
+			wins.quitting.Store(true)
 			if stopBackground != nil {
 				stopBackground()
 			}
@@ -216,9 +219,9 @@ func main() {
 	wins.app = app
 	wins.mu.Unlock()
 	wins.showMain(*openPath)
-	// Dock click with only chat windows open brings the main window back.
+	// Dock click brings the main window back, whether it was closed or hidden.
 	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
-		wins.reopenMain()
+		wins.showMain("")
 	})
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		ctx := app.Context()
@@ -351,6 +354,8 @@ type windows struct {
 	mu    sync.Mutex
 	main  *application.WebviewWindow
 	chats map[string]*application.WebviewWindow
+	// quitting lets the app's own shutdown close the main window instead of hiding it.
+	quitting atomic.Bool
 }
 
 // showMain focuses the main window, or reopens it after it was closed, at path when set.
@@ -390,23 +395,24 @@ func (w *windows) showMain(path string) {
 	})
 	w.main = win
 	// A hook runs synchronously before Wails' own close listener destroys the window.
-	win.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
+	win.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		// Keep running so chats, scheduled tasks and bridges continue. Without a tray, other
+		// platforms minimize so the window stays reachable from the taskbar.
+		if !w.quitting.Load() && api.KeepRunningOnClose(w.db) {
+			event.Cancel()
+			if runtime.GOOS == "darwin" {
+				win.Hide()
+			} else {
+				win.Minimise()
+			}
+			return
+		}
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if w.main == win {
 			w.main = nil
 		}
 	})
-}
-
-// reopenMain recreates the main window only when it was closed.
-func (w *windows) reopenMain() {
-	w.mu.Lock()
-	closed := w.main == nil
-	w.mu.Unlock()
-	if closed {
-		w.showMain("")
-	}
 }
 
 // openChat focuses the chat's window or opens one, cascading from the right edge of the screen.

@@ -100,6 +100,10 @@ const text = {
     deleteOlderThan: "Delete chats older than",
     days: "days",
     deleteWarning: "⚠️ This permanently deletes chats. Pin any chat you want to keep.",
+    background: "Background",
+    keepRunning: "Keep Patio running when the window is closed",
+    keepRunningHelp:
+      "Closing the window hides Patio (macOS) or minimizes it (Windows, Linux), so replies, scheduled tasks, monitors and reminders keep going. Quit from the app menu (⌘Q on macOS). Turning this off takes full effect after a restart.",
     settings: "Settings",
     healthy: "Healthy",
     unhealthy: "Unhealthy",
@@ -194,6 +198,10 @@ const text = {
     deleteOlderThan: "Eliminar chats con más de",
     days: "días",
     deleteWarning: "⚠️ Esto elimina chats de forma permanente. Fija los chats que quieras conservar.",
+    background: "Segundo plano",
+    keepRunning: "Mantener Patio en ejecución al cerrar la ventana",
+    keepRunningHelp:
+      "Al cerrar la ventana, Patio se oculta (macOS) o se minimiza (Windows, Linux), así las respuestas, tareas programadas, monitores y recordatorios siguen funcionando. Sal desde el menú de la app (⌘Q en macOS). Desactivarlo surte efecto completo tras reiniciar.",
     settings: "Ajustes",
     healthy: "Funcionando",
     unhealthy: "Con problemas",
@@ -709,6 +717,44 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
   );
 }
 
+function KeepRunning() {
+  const t = useText(text);
+  const [keep, setKeep] = useState<boolean>();
+  const [error, setError] = useState<unknown>();
+
+  useEffect(() => {
+    api
+      .get<{ keep_running_on_close: boolean }>("/api/settings/keep-running")
+      .then((loaded) => setKeep(loaded.keep_running_on_close))
+      .catch(setError);
+  }, []);
+
+  async function save(next: boolean) {
+    try {
+      const saved = await api.put<{ keep_running_on_close: boolean }>("/api/settings/keep-running", { keep_running_on_close: next });
+      setKeep(saved.keep_running_on_close);
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <h2>{t.background}</h2>
+      <p className="muted">{t.keepRunningHelp}</p>
+      <section className="panel stack defaults-panel">
+        {keep === undefined ? (
+          !error && <p className="muted" role="status">{t.loading}</p>
+        ) : (
+          <Switch label={t.keepRunning} checked={keep} onChange={save} />
+        )}
+        <ErrorText error={error} />
+      </section>
+    </section>
+  );
+}
+
 type ChatCleanupSettings = { enabled: boolean; days: number };
 
 export function ChatCleanup() {
@@ -855,12 +901,15 @@ export default function Settings() {
 
       <General />
 
+      <KeepRunning />
+
       <Appearance />
 
       <Defaults foldersVersion={foldersVersion} />
       <ChatCleanup />
 
       <AllowedFolders onChange={() => setFoldersVersion((value) => value + 1)} />
+
 
       <section className="stack">
         <h2>{t.keyboardShortcuts}</h2>

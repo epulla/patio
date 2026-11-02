@@ -174,6 +174,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("PUT /api/onboarding", s.putOnboarding)
 	m.HandleFunc("GET /api/settings/chat-cleanup", s.getChatCleanup)
 	m.HandleFunc("PUT /api/settings/chat-cleanup", s.putChatCleanup)
+	m.HandleFunc("GET /api/settings/keep-running", s.getKeepRunning)
+	m.HandleFunc("PUT /api/settings/keep-running", s.putKeepRunning)
 	m.HandleFunc("POST /api/chats/cleanup", s.runChatCleanup)
 	m.HandleFunc("GET /api/settings/about", s.settingsAbout)
 	m.HandleFunc("GET /api/update", s.update)
