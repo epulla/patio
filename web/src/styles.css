@@ -392,7 +392,7 @@ a {
 /* A non-scrolling strip under the page, right-aligned. */
 .app-version {
   align-self: flex-end;
-  padding: 0 16px 1px;
+  padding: 2px 16px 6px;
   color: var(--muted);
   font: 11px/14px var(--mono);
   opacity: 0.7;
@@ -2542,7 +2542,7 @@ main.chat-window {
 main.chat-window .app-version {
   position: absolute;
   right: 0;
-  bottom: 0;
+  bottom: 4px;
 }
 .chat-dock {
   position: relative;
