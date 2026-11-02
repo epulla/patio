@@ -473,7 +473,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	var skills []api.Skill
 	if database != nil {
 		var err error
-		skills, err = api.EnabledSkills(database)
+		skills, err = api.SkillsForBot(database, "")
 		if err != nil {
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
@@ -869,7 +869,7 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 				err = json.Unmarshal(data, &enabled)
 			}
 		} else {
-			enabled, err = api.EnabledSkills(database)
+			enabled, err = api.SkillsForBot(database, "")
 		}
 		if err != nil {
 			return errorResult(err), nil, nil

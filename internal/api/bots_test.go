@@ -101,3 +101,38 @@ func TestChatPromptUsesBotPersona(t *testing.T) {
 		t.Fatalf("plain chat received persona: %q", prompt)
 	}
 }
+
+func TestChatPromptFiltersScopedSkillsByBot(t *testing.T) {
+	db, _, _ := chatAPI(t)
+	for _, botID := range []string{"prompt-a", "prompt-b"} {
+		if _, err := db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai) VALUES(?,?,?,1,1)`, botID, botID, botID+"@test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, chat := range []struct {
+		id  string
+		bot any
+	}{{"chat-a", "prompt-a"}, {"chat-b", "prompt-b"}, {"chat-neutral", nil}} {
+		if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at,bot_id) VALUES(?,?,'now','now',?)`, chat.id, chat.id, chat.bot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES('scoped-prompt','scoped-prompt','prompt skill','ONLY_FOR_A',1,'skill','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO skill_bot(skill_id,bot_id) VALUES('scoped-prompt','prompt-a')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		chat string
+		want bool
+	}{{"chat-a", true}, {"chat-b", false}, {"chat-neutral", false}} {
+		prompt, err := ChatPrompt(db, tc.chat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(prompt, "scoped-prompt") != tc.want {
+			t.Errorf("chat %s scoped skill presence=%v", tc.chat, strings.Contains(prompt, "scoped-prompt"))
+		}
+	}
+}

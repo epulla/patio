@@ -48,7 +48,11 @@ func ChatPrompt(db *sql.DB, chatID string) (string, error) {
 	var skills []Skill
 	var err error
 	if db != nil {
-		if skills, err = EnabledSkills(db); err != nil {
+		botID, e := ChatBotID(db, chatID)
+		if e != nil {
+			return "", e
+		}
+		if skills, err = SkillsForBot(db, botID); err != nil {
 			return "", err
 		}
 	}
