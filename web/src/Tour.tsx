@@ -310,7 +310,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
           </div>
         )}
         <div className="modal-actions">
-          <button type="button" className="ghost" onClick={() => close()}>
+          <button type="button" className="tour-skip" onClick={() => close()}>
             {t.skip}
           </button>
           {index > 0 && (

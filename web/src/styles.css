@@ -5095,6 +5095,31 @@ button.notif-row:focus-visible,
 .tour-card p {
   margin: 0 0 8px;
 }
+.tour-card .modal-actions {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+/* Line break so Skip sits under Back/Next and long translations fit the card. */
+.tour-card .modal-actions::after {
+  content: "";
+  order: 1;
+  flex-basis: 100%;
+}
+.tour-skip {
+  order: 2;
+  height: auto;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.tour-skip:hover {
+  background: none;
+  color: var(--content);
+  text-decoration: underline;
+}
 @media (prefers-reduced-motion: reduce) {
   .tour-card {
     transition: none;
