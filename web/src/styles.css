@@ -166,6 +166,12 @@ a {
   overflow: hidden;
 }
 /* Positioned so absolute children (e.g. .sr-only) scroll with the page instead of extending the document. */
+.page {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
 .page-scroll {
   position: relative;
   flex: 1;
@@ -382,17 +388,18 @@ a {
   font-size: 13px;
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
 }
+/* Bottom-right corner of the page, inside main's bottom padding. */
 .app-version {
-  padding: 0 8px;
+  position: absolute;
+  right: 16px;
+  bottom: 1px;
   color: var(--muted);
-  font: 11px var(--mono);
+  font: 11px/14px var(--mono);
+  opacity: 0.7;
+  pointer-events: none;
 }
 .sidebar.collapsed .sidebar-head {
   justify-content: center;
-}
-.sidebar.collapsed .app-version {
-  padding: 0 4px;
-  text-align: center;
 }
 main {
   min-width: 0;
@@ -2023,7 +2030,8 @@ label.days-field {
 main:has(> .chats) {
   max-width: none;
   height: 100%;
-  padding: 16px 8px 8px;
+  /* 16px bottom leaves room for .app-version under the composer. */
+  padding: 16px 8px 16px;
 }
 .chat-list.collapsed {
   gap: 2px;
@@ -2529,12 +2537,6 @@ main.chat-window {
   position: relative;
   height: 100%;
   padding: 16px;
-}
-main.chat-window .app-version {
-  position: absolute;
-  right: 16px;
-  bottom: 1px;
-  line-height: 14px;
 }
 .chat-dock {
   position: relative;
@@ -4317,7 +4319,8 @@ main.chat-window .app-version {
     background: #fff;
     color: #000;
   }
-  .sidebar {
+  .sidebar,
+  .app-version {
     display: none;
   }
   html,
