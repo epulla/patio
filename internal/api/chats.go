@@ -857,9 +857,11 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusAccepted, message)
 }
 
+// sendOrQueueChatMessage sends now, or reports queued when a turn is running. A nil selected
+// leaves the chat's unsent uploads alone (Telegram files never join them).
 func (s *Server) sendOrQueueChatMessage(c chat, kind, dir, text string, attachments []ChatAttachment, selected map[string]bool) (ChatMessage, bool, error) {
 	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: text, Attachments: attachments})
-	if message.ID != "" && len(selected) != 0 {
+	if message.ID != "" && selected != nil {
 		if markErr := s.markChatAttachmentsSent(c, selected); markErr != nil {
 			return message, false, markErr
 		}
@@ -1109,6 +1111,12 @@ func (s *Server) removeChat(id string) error {
 	return nil
 }
 
+var (
+	errApprovalNotFound = errors.New("approval not found")
+	errApprovalAnswered = errors.New("approval already answered")
+	errQuestionAnswered = errors.New("question already answered")
+)
+
 func (s *Server) answerChatApproval(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Allow *bool `json:"allow"`
@@ -1117,66 +1125,87 @@ func (s *Server) answerChatApproval(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "allow required")
 		return
 	}
+	status, err := s.answerApproval(idParam(r, "id"), idParam(r, "approval_id"), *in.Allow)
+	switch {
+	case errors.Is(err, errApprovalNotFound):
+		errw(w, 404, err.Error())
+	case errors.Is(err, errApprovalAnswered):
+		errw(w, 409, err.Error())
+	case err != nil:
+		errw(w, 500, err.Error())
+	default:
+		write(w, 200, map[string]string{"status": status})
+	}
+}
+
+func (s *Server) answerApproval(chatID, approvalID string, allow bool) (string, error) {
 	status := "denied"
-	if *in.Allow {
+	if allow {
 		status = "allowed"
 	}
-	res, err := s.db.Exec(`UPDATE chat_approval SET status=?,answered_at=? WHERE id=? AND chat_id=? AND status='pending'`, status, now(), idParam(r, "approval_id"), idParam(r, "id"))
+	res, err := s.db.Exec(`UPDATE chat_approval SET status=?,answered_at=? WHERE id=? AND chat_id=? AND status='pending'`, status, now(), approvalID, chatID)
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return "", err
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return "", err
 	}
 	if n == 1 {
-		write(w, 200, map[string]string{"status": status})
-		return
+		return status, nil
 	}
 	var exists int
-	err = s.db.QueryRow(`SELECT 1 FROM chat_approval WHERE id=? AND chat_id=?`, idParam(r, "approval_id"), idParam(r, "id")).Scan(&exists)
+	err = s.db.QueryRow(`SELECT 1 FROM chat_approval WHERE id=? AND chat_id=?`, approvalID, chatID).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
-		errw(w, 404, "approval not found")
-	} else if err != nil {
-		errw(w, 500, err.Error())
-	} else {
-		errw(w, 409, "approval already answered")
+		return "", errApprovalNotFound
 	}
+	if err != nil {
+		return "", err
+	}
+	return "", errApprovalAnswered
+}
+
+type questionAnswer struct {
+	Header   string   `json:"header"`
+	Selected []string `json:"selected"`
+	Other    string   `json:"other,omitempty"`
 }
 
 func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Answers []struct {
-			Header   string   `json:"header"`
-			Selected []string `json:"selected"`
-			Other    string   `json:"other,omitempty"`
-		} `json:"answers"`
+		Answers []questionAnswer `json:"answers"`
 	}
 	if decode(r, &in) != nil || len(in.Answers) == 0 {
 		errw(w, 400, "answers required")
 		return
 	}
-	id, messageID := idParam(r, "id"), idParam(r, "messageID")
+	message, code, err := s.answerQuestion(idParam(r, "id"), idParam(r, "messageID"), in.Answers)
+	if err != nil {
+		errw(w, code, err.Error())
+		return
+	}
+	write(w, http.StatusAccepted, message)
+}
+
+// answerQuestion sends answers to an ask_user question; on error it also returns the HTTP status.
+func (s *Server) answerQuestion(id, messageID string, answers []questionAnswer) (ChatMessage, int, error) {
+	fail := func(code int, message string) (ChatMessage, int, error) {
+		return ChatMessage{}, code, errors.New(message)
+	}
 	var answered bool
 	var content string
 	err := s.db.QueryRow(`SELECT answered,content FROM chat_message WHERE id=? AND chat_id=? AND role='question'`, messageID, id).Scan(&answered, &content)
 	if errors.Is(err, sql.ErrNoRows) {
-		errw(w, 404, "question not found")
-		return
+		return fail(404, "question not found")
 	}
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return fail(500, err.Error())
 	}
 	if answered {
-		errw(w, 409, "question already answered")
-		return
+		return ChatMessage{}, 409, errQuestionAnswered
 	}
 	if s.chats.Running(id) {
-		errw(w, 409, errChatTurnRunning.Error())
-		return
+		return fail(409, errChatTurnRunning.Error())
 	}
 	var questions struct {
 		Questions []struct {
@@ -1188,11 +1217,10 @@ func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
 		} `json:"questions"`
 	}
 	if err := json.Unmarshal([]byte(content), &questions); err != nil {
-		errw(w, 500, "invalid stored question")
-		return
+		return fail(500, "invalid stored question")
 	}
 	var lines []string
-	for _, answer := range in.Answers {
+	for _, answer := range answers {
 		var matched *struct {
 			Header   string `json:"header"`
 			Multiple bool   `json:"multiple"`
@@ -1207,12 +1235,10 @@ func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if matched == nil {
-			errw(w, 400, "unknown question header")
-			return
+			return fail(400, "unknown question header")
 		}
 		if !matched.Multiple && len(answer.Selected) > 1 {
-			errw(w, 400, "question allows one selection")
-			return
+			return fail(400, "question allows one selection")
 		}
 		for _, selected := range answer.Selected {
 			valid := false
@@ -1223,8 +1249,7 @@ func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !valid {
-				errw(w, 400, "unknown selected option")
-				return
+				return fail(400, "unknown selected option")
 			}
 		}
 		value := strings.Join(answer.Selected, ", ")
@@ -1235,39 +1260,32 @@ func (s *Server) answerChatQuestion(w http.ResponseWriter, r *http.Request) {
 			value += "Other — " + answer.Other
 		}
 		if value == "" {
-			errw(w, 400, "answer selection required")
-			return
+			return fail(400, "answer selection required")
 		}
 		lines = append(lines, answer.Header+": "+value)
 	}
 	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		errw(w, 404, "chat not found")
-		return
+		return fail(404, "chat not found")
 	}
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return fail(500, err.Error())
 	}
 	if c.ConnectorID == nil {
-		errw(w, 400, errChatConnectorMissing.Error())
-		return
+		return fail(400, errChatConnectorMissing.Error())
 	}
 	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
 	if err != nil {
-		errw(w, 400, err.Error())
-		return
+		return fail(400, err.Error())
 	}
 	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: strings.Join(lines, "\n")})
 	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
-		errw(w, 409, err.Error())
-		return
+		return fail(409, err.Error())
 	}
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
+		return fail(500, err.Error())
 	}
-	write(w, http.StatusAccepted, message)
+	return message, 0, nil
 }
 
 // ChatBotName is the name of the bot running chat id, or "" when it has none.

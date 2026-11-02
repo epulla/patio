@@ -14,325 +14,57 @@ import (
 	"time"
 )
 
-func (s *Server) telegramNoticeLoop(ctx context.Context) {
-	t := time.NewTicker(2 * time.Second)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			cfg, err := s.readTelegramSettings()
-			if err != nil || !cfg.Enabled {
-				continue
-			}
-			token, err := telegramToken()
-			if err != nil || token == "" {
-				continue
-			}
-			if err := s.scanTelegramNotices(ctx, token, cfg); err != nil {
-				log.Printf("Telegram notices: %v", err)
-			}
-		}
-	}
+type telegramMessage struct {
+	MessageID int64  `json:"message_id"`
+	Text      string `json:"text"`
+	Caption   string `json:"caption"`
+	Photo     []struct {
+		FileID string `json:"file_id"`
+	} `json:"photo"`
+	Document *struct {
+		FileID   string `json:"file_id"`
+		FileName string `json:"file_name"`
+	} `json:"document"`
+	Chat struct {
+		ID        int64  `json:"id"`
+		FirstName string `json:"first_name"`
+		Username  string `json:"username"`
+	} `json:"chat"`
+	From struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
 }
 
-type telegramUpdate struct {
-	UpdateID int64 `json:"update_id"`
-	Message  *struct {
-		MessageID int64  `json:"message_id"`
-		Text      string `json:"text"`
-		Caption   string `json:"caption"`
-		Photo     []struct {
-			FileID   string `json:"file_id"`
-			FileSize int64  `json:"file_size"`
-		} `json:"photo"`
-		Document *struct {
-			FileID   string `json:"file_id"`
-			FileName string `json:"file_name"`
-			FileSize int64  `json:"file_size"`
-		} `json:"document"`
-		Chat struct {
-			ID        int64  `json:"id"`
-			FirstName string `json:"first_name"`
-			Username  string `json:"username"`
-		} `json:"chat"`
-		From struct {
-			ID int64 `json:"id"`
-		} `json:"from"`
-	} `json:"message"`
-	CallbackQuery *struct {
-		ID   string `json:"id"`
-		From struct {
-			ID int64 `json:"id"`
-		} `json:"from"`
-		Data    string `json:"data"`
-		Message *struct {
-			MessageID int64 `json:"message_id"`
-			Chat      struct {
-				ID int64 `json:"id"`
-			} `json:"chat"`
-		} `json:"message"`
-	} `json:"callback_query"`
-}
-
-type telegramQuestionState struct {
-	ChatID            string
-	MessageID         string
-	Header            string
-	Multiple          bool
-	Options           []string
-	Selected          map[string]bool
-	Done              bool
-	TelegramID        int64
-	TelegramMessageID int64
-	Total             int
-}
-
-func (s *Server) scanTelegramNotices(ctx context.Context, token string, cfg telegramSettings) error {
-	rows, err := s.db.Query(`SELECT tc.telegram_chat_id,tc.chat_id FROM telegram_chat tc`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var tid int64
-		var chatID string
-		if err := rows.Scan(&tid, &chatID); err != nil {
-			return err
-		}
-		items, err := s.db.Query(`SELECT a.id,a.tool_name,a.input_json FROM chat_approval a WHERE a.chat_id=? AND a.status='pending' AND NOT EXISTS(SELECT 1 FROM telegram_notice n WHERE n.item_id=a.id) UNION ALL SELECT m.id,'',m.content FROM chat_message m WHERE m.chat_id=? AND m.role='question' AND m.answered=0 AND NOT EXISTS(SELECT 1 FROM telegram_notice n WHERE n.item_id=m.id)`, chatID, chatID)
-		if err != nil {
-			return err
-		}
-		for items.Next() {
-			var id, tool, content string
-			if err := items.Scan(&id, &tool, &content); err != nil {
-				items.Close()
-				return err
-			}
-			if tool != "" {
-				var input any
-				_ = json.Unmarshal([]byte(content), &input)
-				text := "Approve " + tool + "?\n" + truncateTelegram(content, 500)
-				var sent struct {
-					MessageID int64 `json:"message_id"`
-				}
-				err = telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": tid, "text": text, "reply_markup": map[string]any{"inline_keyboard": [][]any{{map[string]string{"text": "Allow", "callback_data": "a:" + id + ":1"}, map[string]string{"text": "Deny", "callback_data": "a:" + id + ":0"}}}}}, &sent)
-				if err == nil {
-					_, err = s.db.Exec(`INSERT OR IGNORE INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,?,?)`, id, tid, sent.MessageID, now())
-				}
-			} else {
-				err = s.sendTelegramQuestionNotice(ctx, token, tid, id, content)
-			}
-			if err != nil {
-				log.Printf("Telegram notice %s: %v", id, err)
-			}
-		}
-		items.Close()
-	}
-	return rows.Err()
-}
-
-func truncateTelegram(s string, n int) string {
-	r := []rune(s)
-	if len(r) > n {
-		return string(r[:n]) + "…"
-	}
-	return s
-}
-
-func (s *Server) processTelegramCallback(ctx context.Context, token string, cfg telegramSettings, q *struct {
+type telegramCallback struct {
 	ID   string `json:"id"`
 	From struct {
 		ID int64 `json:"id"`
 	} `json:"from"`
-	Data    string `json:"data"`
-	Message *struct {
-		MessageID int64 `json:"message_id"`
-		Chat      struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	} `json:"message"`
-}) error {
-	answer := func(text string) error {
-		return telegramCall(ctx, token, "answerCallbackQuery", map[string]any{"callback_query_id": q.ID, "text": text}, nil)
-	}
-	if !telegramAllowed(cfg, q.From.ID) {
-		return answer("Not allowed")
-	}
-	if q.Message == nil {
-		return answer("Invalid message")
-	}
-	if strings.HasPrefix(q.Data, "a:") {
-		p := strings.Split(q.Data, ":")
-		if len(p) != 3 {
-			return answer("Invalid action")
-		}
-		status := "denied"
-		if p[2] == "1" {
-			status = "allowed"
-		}
-		res, err := s.db.Exec(`UPDATE chat_approval SET status=?,answered_at=? WHERE id=? AND status='pending'`, status, now(), p[1])
-		if err != nil {
-			return err
-		}
-		n, _ := res.RowsAffected()
-		text := "Already answered"
-		if n == 1 {
-			if status == "allowed" {
-				text = "✅ Allowed"
-			} else {
-				text = "❌ Denied"
-			}
-		}
-		_ = telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": text}, nil)
-		return answer("")
-	}
-	if strings.HasPrefix(q.Data, "q:") {
-		p := strings.Split(q.Data, ":")
-		if len(p) != 3 {
-			return answer("Invalid choice")
-		}
-		s.telegramQuestionMu.Lock()
-		st := s.telegramQuestions[q.Message.MessageID]
-		if st == nil {
-			s.telegramQuestionMu.Unlock()
-			return answer("Question expired")
-		}
-		if p[2] == "d" {
-			if len(st.Selected) == 0 {
-				s.telegramQuestionMu.Unlock()
-				return answer("Pick at least one")
-			}
-			st.Done = true
-		} else {
-			i, err := strconv.Atoi(p[2])
-			if err != nil || i < 0 || i >= len(st.Options) {
-				s.telegramQuestionMu.Unlock()
-				return answer("Invalid choice")
-			}
-			v := st.Options[i]
-			if st.Multiple {
-				if st.Selected[v] {
-					delete(st.Selected, v)
-				} else {
-					st.Selected[v] = true
-				}
-			} else {
-				st.Selected[v] = true
-				st.Done = true
-			}
-		}
-		if st.Done {
-			sel := []string{}
-			for _, v := range st.Options {
-				if st.Selected[v] {
-					sel = append(sel, v)
-				}
-			}
-			s.telegramQuestionMu.Unlock()
-			err := s.submitTelegramQuestion(st, sel)
-			text := st.Header + ": " + strings.Join(sel, ", ")
-			if err != nil {
-				text = "Already answered"
-			}
-			_ = telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": text}, nil)
-			s.telegramQuestionMu.Lock()
-			delete(s.telegramQuestions, q.Message.MessageID)
-			s.telegramQuestionMu.Unlock()
-			return answer("")
-		}
-		rows := make([][]any, 0, len(st.Options)+1)
-		for i, v := range st.Options {
-			label := v
-			if st.Selected[v] {
-				label = "✓ " + label
-			}
-			rows = append(rows, []any{map[string]string{"text": label, "callback_data": fmt.Sprintf("q:%s:%d", p[1], i)}})
-		}
-		rows = append(rows, []any{map[string]string{"text": "Done", "callback_data": "q:" + p[1] + ":d"}})
-		s.telegramQuestionMu.Unlock()
-		if err := telegramCall(ctx, token, "editMessageReplyMarkup", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "reply_markup": map[string]any{"inline_keyboard": rows}}, nil); err != nil {
-			return err
-		}
-		return answer("")
-	}
-	return answer("Unknown action")
+	Data    string           `json:"data"`
+	Message *telegramMessage `json:"message"`
 }
 
-func (s *Server) submitTelegramQuestion(st *telegramQuestionState, sel []string) error {
-	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, st.ChatID))
-	if err != nil {
-		return err
-	}
-	if c.ConnectorID == nil {
-		return errChatConnectorMissing
-	}
-	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
-	if err != nil {
-		return err
-	}
-	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: st.Header + ": " + strings.Join(sel, ", ")})
-	return err
+type telegramUpdate struct {
+	UpdateID      int64             `json:"update_id"`
+	Message       *telegramMessage  `json:"message"`
+	CallbackQuery *telegramCallback `json:"callback_query"`
 }
 
-func (s *Server) sendTelegramQuestionNotice(ctx context.Context, token string, tid int64, id, content string) error {
-	var data struct {
-		Questions []struct {
-			Header   string `json:"header"`
-			Question string `json:"question"`
-			Multiple bool   `json:"multiple"`
-			Options  []struct {
-				Label string `json:"label"`
-			} `json:"options"`
-		} `json:"questions"`
-	}
-	if err := json.Unmarshal([]byte(content), &data); err != nil {
-		return err
-	}
-	var chatID string
-	if err := s.db.QueryRow(`SELECT chat_id FROM chat_message WHERE id=?`, id).Scan(&chatID); err != nil {
-		return err
-	}
-	for qi, q := range data.Questions {
-		item := id
-		if qi > 0 {
-			item = fmt.Sprintf("%s#%d", id, qi)
-		}
-		var existing int
-		if s.db.QueryRow(`SELECT 1 FROM telegram_notice WHERE item_id=?`, item).Scan(&existing) == nil {
-			continue
-		}
-		text := q.Header + "\n" + q.Question + "\nChoose an option; reply with text for Other."
-		keyboard := make([][]any, 0, len(q.Options)+1)
-		for oi, o := range q.Options {
-			keyboard = append(keyboard, []any{map[string]string{"text": o.Label, "callback_data": fmt.Sprintf("q:%s:%d", item, oi)}})
-		}
-		if q.Multiple {
-			keyboard = append(keyboard, []any{map[string]string{"text": "Done", "callback_data": "q:" + item + ":d"}})
-		}
-		var sent struct {
-			MessageID int64 `json:"message_id"`
-		}
-		if err := telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": tid, "text": text, "reply_markup": map[string]any{"inline_keyboard": keyboard}}, &sent); err != nil {
-			return err
-		}
-		if _, err := s.db.Exec(`INSERT INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,?,?)`, item, tid, sent.MessageID, now()); err != nil {
-			return err
-		}
-		state := &telegramQuestionState{ChatID: chatID, MessageID: id, Header: q.Header, Multiple: q.Multiple, TelegramID: tid, TelegramMessageID: sent.MessageID, Total: len(data.Questions), Selected: map[string]bool{}}
-		for _, o := range q.Options {
-			state.Options = append(state.Options, o.Label)
-		}
-		s.telegramQuestionMu.Lock()
-		if s.telegramQuestions == nil {
-			s.telegramQuestions = map[int64]*telegramQuestionState{}
-		}
-		s.telegramQuestions[sent.MessageID] = state
-		s.telegramQuestionMu.Unlock()
-	}
-	return nil
+// telegramPick is one ask_user question's picks made with Telegram buttons, kept until all are answered.
+type telegramPick struct {
+	labels map[string]bool
+	done   bool
+}
+
+type telegramQuestions struct {
+	Questions []struct {
+		Header   string `json:"header"`
+		Question string `json:"question"`
+		Multiple bool   `json:"multiple"`
+		Options  []struct {
+			Label string `json:"label"`
+		} `json:"options"`
+	} `json:"questions"`
 }
 
 func (s *Server) StartTelegramBridge(ctx context.Context) error {
@@ -372,7 +104,8 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			if !strings.Contains(err.Error(), "409 Conflict") {
+			// 409: another Patio polls the same bot; back off quietly instead of spamming the log.
+			if !strings.Contains(err.Error(), "Conflict") || backoff == time.Second {
 				log.Printf("Telegram getUpdates: %v", err)
 			}
 			select {
@@ -380,6 +113,7 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 				return nil
 			case <-s.telegramWakeChannel():
 				backoff = time.Second
+				continue
 			case <-time.After(backoff):
 			}
 			if backoff < 30*time.Second {
@@ -388,38 +122,49 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			continue
 		}
 		backoff = time.Second
-		for _, update := range updates {
-			latest, settingsErr := s.readTelegramSettings()
-			if settingsErr != nil {
-				log.Printf("read Telegram settings: %v", settingsErr)
-				break
-			}
-			if update.Message != nil {
-				if err := s.processTelegramMessage(ctx, token, latest, update); err != nil {
-					log.Printf("process Telegram update %d: %v", update.UpdateID, err)
-				}
-			}
-			if update.CallbackQuery != nil {
-				if err := s.processTelegramCallback(ctx, token, latest, update.CallbackQuery); err != nil {
-					log.Printf("process Telegram callback: %v", err)
-				}
-			}
-			if update.UpdateID >= cfg.UpdateOffset {
-				cfg.UpdateOffset = update.UpdateID + 1
-			}
+		if len(updates) == 0 {
+			continue
 		}
 		latest, err := s.readTelegramSettings()
 		if err != nil {
 			log.Printf("read Telegram settings: %v", err)
 			continue
 		}
-		if cfg.UpdateOffset > latest.UpdateOffset {
-			latest.UpdateOffset = cfg.UpdateOffset
+		for _, update := range updates {
+			if err := s.processTelegramUpdate(ctx, token, latest, update); err != nil {
+				log.Printf("process Telegram update %d: %v", update.UpdateID, err)
+			}
+			if update.UpdateID >= latest.UpdateOffset {
+				latest.UpdateOffset = update.UpdateID + 1
+			}
 		}
-		if err := s.saveTelegramSettings(latest); err != nil {
+		if err := s.saveTelegramOffset(latest.UpdateOffset); err != nil {
 			log.Printf("save Telegram offset: %v", err)
 		}
 	}
+}
+
+// saveTelegramOffset re-reads settings so a Settings save during processing isn't overwritten.
+func (s *Server) saveTelegramOffset(offset int64) error {
+	cfg, err := s.readTelegramSettings()
+	if err != nil {
+		return err
+	}
+	if offset <= cfg.UpdateOffset {
+		return nil
+	}
+	cfg.UpdateOffset = offset
+	return s.saveTelegramSettings(cfg)
+}
+
+func (s *Server) processTelegramUpdate(ctx context.Context, token string, cfg telegramSettings, update telegramUpdate) error {
+	if update.Message != nil {
+		return s.processTelegramMessage(ctx, token, cfg, update.Message)
+	}
+	if update.CallbackQuery != nil {
+		return s.processTelegramCallback(ctx, token, cfg, update.CallbackQuery)
+	}
+	return nil
 }
 
 func telegramAllowed(cfg telegramSettings, id int64) bool {
@@ -431,8 +176,7 @@ func telegramAllowed(cfg telegramSettings, id int64) bool {
 	return false
 }
 
-func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg telegramSettings, update telegramUpdate) error {
-	m := update.Message
+func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg telegramSettings, m *telegramMessage) error {
 	reply := func(text string) error {
 		return telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": m.Chat.ID, "text": text}, nil)
 	}
@@ -460,36 +204,27 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	} else if err != nil {
 		return err
 	}
-	if m.Text == "/chat" {
+	switch m.Text {
+	case "/new":
+		return reply("Started a new Patio chat.")
+	case "/chat":
 		var title string
 		if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, chatID).Scan(&title); err != nil {
 			return err
 		}
 		return reply(title + " (" + chatID + ")")
 	}
-	if m.Text == "/new" {
-		return reply("Started a new Patio chat.")
-	}
 	text := m.Text
 	if text == "" {
 		text = m.Caption
 	}
-	var files []struct {
-		id, name string
-		size     int64
-	}
+	type telegramFile struct{ id, name string }
+	var files []telegramFile
 	if len(m.Photo) > 0 {
-		photo := m.Photo[len(m.Photo)-1]
-		files = append(files, struct {
-			id, name string
-			size     int64
-		}{photo.FileID, "photo.jpg", photo.FileSize})
+		files = append(files, telegramFile{m.Photo[len(m.Photo)-1].FileID, "photo.jpg"})
 	}
 	if m.Document != nil {
-		files = append(files, struct {
-			id, name string
-			size     int64
-		}{m.Document.FileID, m.Document.FileName, m.Document.FileSize})
+		files = append(files, telegramFile{m.Document.FileID, m.Document.FileName})
 	}
 	if strings.TrimSpace(text) == "" && len(files) == 0 {
 		return nil
@@ -498,66 +233,61 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	if err != nil {
 		return err
 	}
+	if c.ConnectorID == nil {
+		return reply("⚠️ " + errChatConnectorMissing.Error())
+	}
 	kind, dir, err := s.chats.connectorConfig(*c.ConnectorID)
 	if err != nil {
 		return err
 	}
-	selected := make([]ChatAttachment, 0, len(files))
-	selectedNames := make(map[string]bool, len(files))
-	s.attachmentsMu.Lock()
-	defer s.attachmentsMu.Unlock()
+	attachments := make([]ChatAttachment, 0, len(files))
 	for _, file := range files {
-		if file.size > maxChatTextAttachment {
-			return reply("Patio can't take this file: attachment exceeds size limit")
+		attachment, err := s.downloadTelegramFile(ctx, token, c, file.id, file.name)
+		if errors.Is(err, errChatAttachmentType) || errors.Is(err, errChatAttachmentTooLarge) {
+			return reply("Patio can't take this file: " + err.Error())
 		}
-		var result struct {
-			FilePath string `json:"file_path"`
-		}
-		if err := telegramCall(ctx, token, "getFile", map[string]any{"file_id": file.id}, &result); err != nil {
-			return err
-		}
-		if file.name == "" {
-			file.name = filepath.Base(result.FilePath)
-		}
-		if file.name == "" || file.name == "." {
-			file.name = "photo.jpg"
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(telegramFileBase, "/")+"/file/bot"+token+"/"+result.FilePath, nil)
 		if err != nil {
 			return err
 		}
-		resp, err := (&http.Client{Timeout: 40 * time.Second}).Do(req)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			resp.Body.Close()
-			return fmt.Errorf("Telegram file download: %s", resp.Status)
-		}
-		attachment, storeErr := s.storeChatAttachment(c, file.name, resp.Body)
-		closeErr := resp.Body.Close()
-		if err := errors.Join(storeErr, closeErr); err != nil {
-			if errors.Is(err, errChatAttachmentType) || errors.Is(err, errChatAttachmentTooLarge) {
-				return reply("Patio can't take this file: " + err.Error())
-			}
-			return err
-		}
-		if s.attachments[c.ID] == nil {
-			s.attachments[c.ID] = make(map[string]ChatAttachment)
-		}
-		s.attachments[c.ID][attachment.Name] = attachment
-		selected = append(selected, attachment)
-		selectedNames[attachment.Name] = true
+		attachments = append(attachments, attachment)
 	}
-	message, queued, err := s.sendOrQueueChatMessage(c, kind, dir, text, selected, selectedNames)
+	s.attachmentsMu.Lock()
+	message, queued, err := s.sendOrQueueChatMessage(c, kind, dir, text, attachments, nil)
+	s.attachmentsMu.Unlock()
 	if queued {
-		_, err = s.queueChatMessage(chatID, text, selected)
+		_, err = s.queueChatMessage(chatID, text, attachments)
 		return err
 	}
 	if err == nil && message.ID != "" {
 		go s.telegramTyping(ctx, token, m.Chat.ID, chatID)
 	}
 	return err
+}
+
+// downloadTelegramFile stores a Telegram photo or document as a chat attachment, with the upload limits.
+func (s *Server) downloadTelegramFile(ctx context.Context, token string, c chat, fileID, name string) (ChatAttachment, error) {
+	var file struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := telegramCall(ctx, token, "getFile", map[string]any{"file_id": fileID}, &file); err != nil {
+		return ChatAttachment{}, err
+	}
+	if name == "" {
+		name = filepath.Base(file.FilePath)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(telegramFileBase, "/")+"/file/bot"+token+"/"+file.FilePath, nil)
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ChatAttachment{}, fmt.Errorf("Telegram file download: %s", resp.Status)
+	}
+	return s.storeChatAttachment(c, name, resp.Body)
 }
 
 func (s *Server) createTelegramChat(title string) (chat, error) {
@@ -582,42 +312,43 @@ func (s *Server) createTelegramChat(title string) (chat, error) {
 	return s.createChatFromDefaults(chat{ConnectorID: connectorID, Title: title, Model: defaults.Model, Folder: defaults.Folder, Thinking: defaults.Thinking, ShowThinking: defaults.ShowThinking, AutoAllow: defaults.AutoAllow, BotID: bot}, kind)
 }
 
+// telegramTyping keeps Telegram's typing status on (it clears after 5s) while the chat's turn runs.
 func (s *Server) telegramTyping(ctx context.Context, token string, telegramID int64, chatID string) {
 	ticker := time.NewTicker(4 * time.Second)
 	defer ticker.Stop()
-	deadline := time.NewTimer(10 * time.Minute)
-	defer deadline.Stop()
+	deadline := time.After(30 * time.Minute)
 	for s.chats.Running(chatID) {
+		if err := telegramCall(ctx, token, "sendChatAction", map[string]any{"chat_id": telegramID, "action": "typing"}, nil); err != nil && ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-deadline.C:
+		case <-deadline:
 			return
 		case <-ticker.C:
-		}
-		if !s.chats.Running(chatID) {
-			return
-		}
-		if err := telegramCall(ctx, token, "sendChatAction", map[string]any{"chat_id": telegramID, "action": "typing"}, nil); err != nil && ctx.Err() != nil {
-			return
 		}
 	}
 }
 
 func telegramSend(ctx context.Context, token string, chatID int64, text string) error {
-	for len([]rune(text)) > 4096 {
-		runes := []rune(text)
+	runes := []rune(text)
+	for len(runes) > 4096 {
 		if err := telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": chatID, "text": string(runes[:4096])}, nil); err != nil {
 			return err
 		}
-		text = string(runes[4096:])
+		runes = runes[4096:]
 	}
-	return telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": chatID, "text": text}, nil)
+	return telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": chatID, "text": string(runes)}, nil)
 }
 
 func (s *Server) sendTelegramResult(chatID, text string, turnErr error) {
 	var telegramID int64
 	if err := s.db.QueryRow(`SELECT telegram_chat_id FROM telegram_chat WHERE chat_id=?`, chatID).Scan(&telegramID); err != nil {
+		return
+	}
+	cfg, err := s.readTelegramSettings()
+	if err != nil || !cfg.Enabled {
 		return
 	}
 	token, err := telegramToken()
@@ -635,4 +366,323 @@ func (s *Server) sendTelegramResult(chatID, text string, turnErr error) {
 	if err := telegramSend(ctx, token, telegramID, text); err != nil {
 		log.Printf("send Telegram reply for chat %s: %v", chatID, err)
 	}
+}
+
+// telegramNoticeLoop scans the database rather than hooking requestApproval, because the MCP
+// subprocess also creates approvals.
+func (s *Server) telegramNoticeLoop(ctx context.Context) {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cfg, err := s.readTelegramSettings()
+			if err != nil || !cfg.Enabled {
+				continue
+			}
+			token, err := telegramToken()
+			if err != nil || token == "" {
+				continue
+			}
+			if err := s.scanTelegramNotices(ctx, token); err != nil {
+				log.Printf("Telegram notices: %v", err)
+			}
+		}
+	}
+}
+
+// scanTelegramNotices sends each pending approval and open question of a mapped chat once.
+func (s *Server) scanTelegramNotices(ctx context.Context, token string) error {
+	type notice struct {
+		telegramID      int64
+		id, tool, input string
+	}
+	rows, err := s.db.Query(`SELECT t.telegram_chat_id,a.id,a.tool_name,a.input_json FROM chat_approval a JOIN telegram_chat t ON t.chat_id=a.chat_id
+		WHERE a.status='pending' AND NOT EXISTS(SELECT 1 FROM telegram_notice n WHERE n.item_id=a.id)
+		UNION ALL SELECT t.telegram_chat_id,m.id,'',m.content FROM chat_message m JOIN telegram_chat t ON t.chat_id=m.chat_id
+		WHERE m.role='question' AND m.answered=0 AND NOT EXISTS(SELECT 1 FROM telegram_notice n WHERE n.item_id=m.id)`)
+	if err != nil {
+		return err
+	}
+	var notices []notice
+	for rows.Next() {
+		var n notice
+		if err := rows.Scan(&n.telegramID, &n.id, &n.tool, &n.input); err != nil {
+			rows.Close()
+			return err
+		}
+		notices = append(notices, n)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, n := range notices {
+		if n.tool != "" {
+			keyboard := [][]any{{telegramButton("Allow", "a:"+n.id+":1"), telegramButton("Deny", "a:"+n.id+":0")}}
+			err = s.sendTelegramNotice(ctx, token, n.telegramID, n.id, "Approve "+n.tool+"?\n"+truncateTelegram(n.input, 500), keyboard)
+		} else {
+			err = s.sendTelegramQuestion(ctx, token, n.telegramID, n.id, n.input)
+		}
+		if err != nil {
+			log.Printf("Telegram notice %s: %v", n.id, err)
+		}
+	}
+	return nil
+}
+
+func (s *Server) sendTelegramNotice(ctx context.Context, token string, telegramID int64, itemID, text string, keyboard [][]any) error {
+	var sent struct {
+		MessageID int64 `json:"message_id"`
+	}
+	if err := telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": telegramID, "text": text, "reply_markup": map[string]any{"inline_keyboard": keyboard}}, &sent); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,?,?)`, itemID, telegramID, sent.MessageID, now())
+	return err
+}
+
+// sendTelegramQuestion sends one message per question (item "<message id>#<index>"), then marks the
+// whole ask sent with a "<message id>" row so a failed send is retried for the missing questions only.
+func (s *Server) sendTelegramQuestion(ctx context.Context, token string, telegramID int64, messageID, content string) error {
+	var data telegramQuestions
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		return err
+	}
+	for qi := range data.Questions {
+		item := fmt.Sprintf("%s#%d", messageID, qi)
+		var exists int
+		if err := s.db.QueryRow(`SELECT 1 FROM telegram_notice WHERE item_id=?`, item).Scan(&exists); err == nil {
+			continue
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		q := data.Questions[qi]
+		text := q.Header
+		if q.Question != "" {
+			text += "\n" + q.Question
+		}
+		text += "\nTap an option, or reply with text to answer something else."
+		if q.Multiple {
+			text += " Pick one or more, then Done."
+		}
+		if err := s.sendTelegramNotice(ctx, token, telegramID, item, text, telegramOptions(item, q.Options, nil, q.Multiple)); err != nil {
+			return err
+		}
+	}
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,0,?)`, messageID, telegramID, now())
+	return err
+}
+
+func telegramOptions(item string, options []struct {
+	Label string `json:"label"`
+}, picked map[string]bool, multiple bool) [][]any {
+	keyboard := make([][]any, 0, len(options)+1)
+	for oi, option := range options {
+		label := option.Label
+		if picked[label] {
+			label = "✓ " + label
+		}
+		keyboard = append(keyboard, []any{telegramButton(label, fmt.Sprintf("q:%s:%d", item, oi))})
+	}
+	if multiple {
+		keyboard = append(keyboard, []any{telegramButton("Done", "q:"+item+":d")})
+	}
+	return keyboard
+}
+
+func telegramButton(text, data string) map[string]string {
+	return map[string]string{"text": text, "callback_data": data}
+}
+
+func truncateTelegram(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
+
+func (s *Server) processTelegramCallback(ctx context.Context, token string, cfg telegramSettings, q *telegramCallback) error {
+	toast := ""
+	defer func() {
+		if err := telegramCall(ctx, token, "answerCallbackQuery", map[string]any{"callback_query_id": q.ID, "text": toast}, nil); err != nil {
+			log.Printf("answer Telegram callback: %v", err)
+		}
+	}()
+	if !telegramAllowed(cfg, q.From.ID) {
+		toast = "Not allowed"
+		return nil
+	}
+	if q.Message == nil {
+		return nil
+	}
+	edit := func(text string) error {
+		return telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": text}, nil)
+	}
+	parts := strings.Split(q.Data, ":")
+	if len(parts) != 3 {
+		toast = "Unknown action"
+		return nil
+	}
+	if parts[0] == "a" {
+		var chatID string
+		err := s.db.QueryRow(`SELECT a.chat_id FROM chat_approval a JOIN telegram_chat t ON t.chat_id=a.chat_id WHERE a.id=? AND t.telegram_chat_id=?`, parts[1], q.Message.Chat.ID).Scan(&chatID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return edit("Approval not found")
+		}
+		if err != nil {
+			return err
+		}
+		status, err := s.answerApproval(chatID, parts[1], parts[2] == "1")
+		switch {
+		case errors.Is(err, errApprovalAnswered):
+			return edit("Already answered")
+		case err != nil:
+			return err
+		case status == "allowed":
+			return edit("✅ Allowed")
+		default:
+			return edit("❌ Denied")
+		}
+	}
+	if parts[0] == "q" {
+		return s.pickTelegramOption(ctx, token, q, parts[1], parts[2], &toast)
+	}
+	toast = "Unknown action"
+	return nil
+}
+
+// pickTelegramOption records a button tap and, once every question has a pick, answers the ask_user.
+func (s *Server) pickTelegramOption(ctx context.Context, token string, q *telegramCallback, item, choice string, toast *string) error {
+	messageID, index, ok := strings.Cut(item, "#")
+	qi, err := strconv.Atoi(index)
+	if !ok || err != nil {
+		*toast = "Unknown action"
+		return nil
+	}
+	var chatID, content string
+	var answered bool
+	err = s.db.QueryRow(`SELECT m.chat_id,m.content,m.answered FROM chat_message m JOIN telegram_chat t ON t.chat_id=m.chat_id WHERE m.id=? AND m.role='question' AND t.telegram_chat_id=?`, messageID, q.Message.Chat.ID).Scan(&chatID, &content, &answered)
+	if errors.Is(err, sql.ErrNoRows) {
+		*toast = "Question not found"
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var data telegramQuestions
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		return err
+	}
+	if qi < 0 || qi >= len(data.Questions) {
+		*toast = "Unknown action"
+		return nil
+	}
+	question := data.Questions[qi]
+	if answered {
+		s.forgetTelegramPicks(messageID)
+		return telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": "Already answered"}, nil)
+	}
+	s.telegramPicksMu.Lock()
+	if s.telegramPicks == nil {
+		s.telegramPicks = map[string]map[int]*telegramPick{}
+	}
+	if s.telegramPicks[messageID] == nil {
+		s.telegramPicks[messageID] = map[int]*telegramPick{}
+	}
+	pick := s.telegramPicks[messageID][qi]
+	if pick == nil {
+		pick = &telegramPick{labels: map[string]bool{}}
+		s.telegramPicks[messageID][qi] = pick
+	}
+	if choice == "d" {
+		if len(pick.labels) == 0 {
+			s.telegramPicksMu.Unlock()
+			*toast = "Pick at least one"
+			return nil
+		}
+		pick.done = true
+	} else {
+		oi, err := strconv.Atoi(choice)
+		if err != nil || oi < 0 || oi >= len(question.Options) {
+			s.telegramPicksMu.Unlock()
+			*toast = "Unknown action"
+			return nil
+		}
+		label := question.Options[oi].Label
+		if question.Multiple {
+			if pick.labels[label] {
+				delete(pick.labels, label)
+			} else {
+				pick.labels[label] = true
+			}
+		} else {
+			pick.labels = map[string]bool{label: true}
+			pick.done = true
+		}
+	}
+	picked := make(map[string]bool, len(pick.labels))
+	for label := range pick.labels {
+		picked[label] = true
+	}
+	done := pick.done
+	var answers []questionAnswer
+	complete := true
+	for i, other := range data.Questions {
+		p := s.telegramPicks[messageID][i]
+		if p == nil || !p.done {
+			complete = false
+			break
+		}
+		answer := questionAnswer{Header: other.Header}
+		for _, option := range other.Options {
+			if p.labels[option.Label] {
+				answer.Selected = append(answer.Selected, option.Label)
+			}
+		}
+		answers = append(answers, answer)
+	}
+	s.telegramPicksMu.Unlock()
+	chatTarget := q.Message.Chat.ID
+	if !done {
+		return telegramCall(ctx, token, "editMessageReplyMarkup", map[string]any{"chat_id": chatTarget, "message_id": q.Message.MessageID, "reply_markup": map[string]any{"inline_keyboard": telegramOptions(item, question.Options, picked, true)}}, nil)
+	}
+	if !complete {
+		var labels []string
+		for _, option := range question.Options {
+			if picked[option.Label] {
+				labels = append(labels, option.Label)
+			}
+		}
+		*toast = "Saved. Answer the other questions to send."
+		return telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": chatTarget, "message_id": q.Message.MessageID, "text": question.Header + ": " + strings.Join(labels, ", ")}, nil)
+	}
+	_, _, err = s.answerQuestion(chatID, messageID, answers)
+	if err != nil && !errors.Is(err, errQuestionAnswered) {
+		*toast = err.Error()
+		return nil
+	}
+	s.forgetTelegramPicks(messageID)
+	for i, answer := range answers {
+		var telegramMessageID int64
+		if err := s.db.QueryRow(`SELECT message_id FROM telegram_notice WHERE item_id=?`, fmt.Sprintf("%s#%d", messageID, i)).Scan(&telegramMessageID); err != nil {
+			continue
+		}
+		text := answer.Header + ": " + strings.Join(answer.Selected, ", ")
+		if err != nil {
+			text = "Already answered"
+		}
+		if editErr := telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": chatTarget, "message_id": telegramMessageID, "text": text}, nil); editErr != nil {
+			log.Printf("edit Telegram question: %v", editErr)
+		}
+	}
+	return nil
+}
+
+func (s *Server) forgetTelegramPicks(messageID string) {
+	s.telegramPicksMu.Lock()
+	delete(s.telegramPicks, messageID)
+	s.telegramPicksMu.Unlock()
 }

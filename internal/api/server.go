@@ -45,8 +45,8 @@ type Server struct {
 	openChat           func(string) error
 	showMain           func(string)
 	telegramWake       chan struct{}
-	telegramQuestionMu sync.Mutex
-	telegramQuestions  map[int64]*telegramQuestionState
+	telegramPicksMu    sync.Mutex
+	telegramPicks      map[string]map[int]*telegramPick
 }
 
 type Options struct {
