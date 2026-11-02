@@ -77,6 +77,34 @@ func TestHandoffDeferredUntilOwnHandoffsFinish(t *testing.T) {
 	}
 }
 
+func TestMutualHandoffsReportWithoutDeadlock(t *testing.T) {
+	s, implementer, reviewer, _ := newHandoffChats(t)
+	queueHandoff(t, s, implementer, reviewer, true)
+	queueHandoff(t, s, reviewer, implementer, true)
+	var sent []string
+	s.chats.reportBack = func(to, from, text string) error { sent = append(sent, to+":"+text); return nil }
+	finish := func(chat, result string) {
+		t.Helper()
+		parents, _, err := s.chats.finishHandoffs(chat, result, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range parents {
+			if err := s.chats.deliverHandoffReports(p); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	finish(implementer, "fixes done")
+	if len(sent) != 1 || !strings.HasPrefix(sent[0], reviewer+":") {
+		t.Fatalf("implementer report=%v", sent)
+	}
+	finish(reviewer, "approved")
+	if len(sent) != 2 || !strings.HasPrefix(sent[1], implementer+":") {
+		t.Fatalf("reviewer report=%v", sent)
+	}
+}
+
 func TestHandoffCombinedReportsWaitForAllChildren(t *testing.T) {
 	s, parent, first, second := newHandoffChats(t)
 	for id, title := range map[string]string{first: "First", second: "Second"} {
