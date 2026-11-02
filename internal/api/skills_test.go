@@ -192,6 +192,10 @@ func TestSkillBotScopeAndVisibility(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodPut, "/api/skills/"+scoped.ID, map[string]any{"description": "changed"}, &scoped); code != http.StatusOK || len(scoped.BotIDs) != 1 {
 		t.Fatalf("omitted scope update %d %#v", code, scoped)
 	}
+	var snapshot string
+	if err := db.QueryRow(`SELECT snapshot_json FROM item_history WHERE item_type='skill' AND item_id=? AND action='updated' ORDER BY rowid DESC LIMIT 1`, scoped.ID).Scan(&snapshot); err != nil || !strings.Contains(snapshot, `"bot_ids":["ai"]`) {
+		t.Fatalf("updated skill snapshot %q, %v", snapshot, err)
+	}
 	if code := requestJSON(t, handler, http.MethodPut, "/api/skills/"+scoped.ID, map[string]any{"bot_ids": []string{}}, &scoped); code != http.StatusOK || len(scoped.BotIDs) != 0 {
 		t.Fatalf("clear scope %d %#v", code, scoped)
 	}

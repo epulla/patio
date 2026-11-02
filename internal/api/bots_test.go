@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 	"testing"
@@ -38,6 +39,39 @@ func TestBotCRUDHistoryAndProtection(t *testing.T) {
 	}
 	if code := requestJSON(t, h, http.MethodDelete, "/api/bots/"+created.ID, nil, nil); code != http.StatusNoContent {
 		t.Fatalf("delete bot=%d", code)
+	}
+}
+
+func TestDeleteBotRemovesOnlyOwnedSkillsAndUnlinksShared(t *testing.T) {
+	db, h, _ := chatAPI(t)
+	for _, id := range []string{"bot-a", "bot-b"} {
+		if _, err := db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai) VALUES(?,?,?,1,1)`, id, id, id+"@test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	create := func(name string, ids []string) Skill {
+		t.Helper()
+		var skill Skill
+		if code := requestJSON(t, h, http.MethodPost, "/api/skills", map[string]any{"name": name, "description": name, "bot_ids": ids}, &skill); code != http.StatusCreated {
+			t.Fatalf("create %s status=%d", name, code)
+		}
+		return skill
+	}
+	only := create("only-a", []string{"bot-a"})
+	shared := create("shared-ab", []string{"bot-a", "bot-b"})
+	if code := requestJSON(t, h, http.MethodDelete, "/api/bots/bot-a", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete bot status=%d", code)
+	}
+	if _, err := SkillByName(db, only.Name); err != sql.ErrNoRows {
+		t.Fatalf("only-bot skill remains: %v", err)
+	}
+	remaining, err := SkillByName(db, shared.Name)
+	if err != nil || len(remaining.BotIDs) != 1 || remaining.BotIDs[0] != "bot-b" {
+		t.Fatalf("shared skill=%#v err=%v", remaining, err)
+	}
+	var action, snapshot string
+	if err := db.QueryRow(`SELECT action,snapshot_json FROM item_history WHERE item_type='skill' AND item_id=? ORDER BY rowid DESC LIMIT 1`, only.ID).Scan(&action, &snapshot); err != nil || action != "deleted" || !strings.Contains(snapshot, `"bot_ids":["bot-a"]`) {
+		t.Fatalf("deleted history action=%q snapshot=%s err=%v", action, snapshot, err)
 	}
 }
 

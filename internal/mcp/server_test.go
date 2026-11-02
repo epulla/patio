@@ -979,6 +979,108 @@ func TestMCPSkillTools(t *testing.T) {
 	}
 }
 
+func TestMCPBotScopedSkillsAndMemoryRules(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "bot-skills.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, bot := range []struct{ id, name string }{{"bot-a", "Bot-A"}, {"bot-b", "Bot-B"}} {
+		if _, err := database.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai) VALUES(?,?,?,1,1)`, bot.id, bot.name, bot.id+"@test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, chat := range []struct{ id, bot string }{{"chat-a", "bot-a"}, {"chat-b", "bot-b"}} {
+		if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at,bot_id) VALUES(?,?,'now','now',?)`, chat.id, chat.id, chat.bot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := api.New(database, "ai", true, "test", t.TempDir())
+	for _, sk := range []struct {
+		id, name string
+		bots     []string
+	}{{"a-skill", "a-skill", []string{"bot-a"}}, {"a-delete", "a-delete", []string{"bot-a"}}, {"global-skill", "global-skill", nil}} {
+		if _, err := database.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES(?,?,?, 'body',1,'skill','now','now')`, sk.id, sk.name, sk.name); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range sk.bots {
+			if _, err := database.Exec(`INSERT INTO skill_bot(skill_id,bot_id) VALUES(?,?)`, sk.id, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	connect := func(processChat string) *sdk.ClientSession {
+		t.Helper()
+		var server *sdk.Server
+		var e error
+		if processChat == "" {
+			server, e = NewServer(handler, "test", database, true)
+		} else {
+			server, e = NewServerWithChat(handler, "test", database, true, processChat)
+		}
+		if e != nil {
+			t.Fatal(e)
+		}
+		st, ct := sdk.NewInMemoryTransports()
+		if _, e = server.Connect(context.Background(), st, nil); e != nil {
+			t.Fatal(e)
+		}
+		session, e := sdk.NewClient(&sdk.Implementation{Name: "scope-test"}, nil).Connect(context.Background(), ct, nil)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return session
+	}
+	a := connect("chat-a")
+	defer a.Close()
+	if got := callTool(t, a, "load_skill", map[string]any{"name": "a-skill"}); got.IsError {
+		t.Fatalf("process chat A cannot load: %#v", got.Content)
+	}
+	b := connect("chat-b")
+	defer b.Close()
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{{"load_skill", map[string]any{"name": "a-skill"}}, {"update_skill", map[string]any{"name": "a-skill", "description": "x"}}, {"delete_skill", map[string]any{"name": "a-skill"}}} {
+		if got := callTool(t, b, tc.name, tc.args); !got.IsError {
+			t.Errorf("bot B %s accepted bot A skill", tc.name)
+		}
+	}
+	if got := callTool(t, b, "list_skills", map[string]any{}); strings.Contains(got.Content[0].(*sdk.TextContent).Text, "a-skill") {
+		t.Fatalf("bot B listed bot A skill: %#v", got.Content)
+	}
+	if got := callTool(t, a, "load_skill", map[string]any{"name": "a-skill", "chat_id": "chat-a"}); got.IsError {
+		t.Fatalf("chat_id A cannot load: %#v", got.Content)
+	}
+	if got := callTool(t, a, "update_skill", map[string]any{"name": "a-skill", "chat_id": "chat-a", "description": "updated"}); got.IsError {
+		t.Fatalf("chat_id A cannot update: %#v", got.Content)
+	}
+	if got := callTool(t, a, "delete_skill", map[string]any{"name": "a-delete"}); got.IsError {
+		t.Fatalf("process chat A cannot delete: %#v", got.Content)
+	}
+	global := connect("")
+	defer global.Close()
+	if got := callTool(t, global, "list_skills", map[string]any{}); strings.Contains(got.Content[0].(*sdk.TextContent).Text, "a-skill") {
+		t.Fatalf("no-chat caller saw scoped skill: %#v", got.Content)
+	}
+	if got := callTool(t, global, "create_skill", map[string]any{"name": "named-scope", "description": "test", "body": "body", "bots": []string{"bOt-A"}}); got.IsError {
+		t.Fatalf("named scope create failed: %#v", got.Content)
+	}
+	created, err := api.SkillByName(database, "named-scope")
+	if err != nil || len(created.BotIDs) != 1 || created.BotIDs[0] != "bot-a" {
+		t.Fatalf("named scope=%#v err=%v", created, err)
+	}
+	if got := callTool(t, a, "create_skill", map[string]any{"name": "bad-memory", "description": "memory", "body": "body", "kind": "memory", "bots": []string{"Bot-B"}}); !got.IsError || !strings.Contains(got.Content[0].(*sdk.TextContent).Text, "memories can only be limited to your own bot") {
+		t.Fatalf("cross-bot memory scope result=%#v", got.Content)
+	}
+	if _, err := database.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES('memory-existing','memory-existing','memory','body',1,'memory','now','now')`); err != nil {
+		t.Fatal(err)
+	}
+	if got := callTool(t, a, "update_skill", map[string]any{"name": "memory-existing", "chat_id": "chat-a", "bots": []string{"Bot-B"}}); !got.IsError || !strings.Contains(got.Content[0].(*sdk.TextContent).Text, "memories can only be limited to your own bot") {
+		t.Fatalf("existing cross-bot memory update=%#v", got.Content)
+	}
+}
+
 func TestMCPInstructions(t *testing.T) {
 	for _, inApp := range []bool{false, true} {
 		t.Run(fmt.Sprintf("in-app-%t", inApp), func(t *testing.T) {
