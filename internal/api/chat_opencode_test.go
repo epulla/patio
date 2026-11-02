@@ -88,7 +88,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	if len(fake.prompts) < 2 || strings.Contains(fake.prompts[1], "You are Martin") {
 		t.Fatalf("reused session prompt unexpectedly contains persona: %q", fake.prompts)
 	}
-	if !strings.Contains(fake.prompts[0], "When calling Patio tools that change things, pass chat_id: "+chatID+".") {
+	if !strings.Contains(fake.prompts[0], "When calling Patio tools, pass chat_id: "+chatID+", including list_skills and load_skill.") {
 		t.Fatalf("OpenCode prompt missing chat_id instruction: %q", fake.prompts[0])
 	}
 	if len(fake.directories) < 3 {
