@@ -10,6 +10,7 @@ import History from "./History";
 import { forgetMentionUsers } from "./mentions";
 import { Icon, IconButton } from "./icons";
 import { useText } from "./i18n";
+import type { Skill } from "./Skills";
 
 const text = {
   en: {
@@ -19,6 +20,10 @@ const text = {
     persona: "Persona prompt", personaPlaceholder: "You are Billy, a careful developer. Keep changes small and always run the tests.",
     color: "Color", connector: "Connector", model: "Model", loadingModels: "Loading models", noConnector: "No connector",
     save: "Save", saved: "Saved", createBot: "Create bot", delete: (name: string) => `Delete ${name}`, confirmDelete: (name: string) => `Delete bot "${name}"?`, protected: "Martin is the built-in bot; you can edit him but not delete him.",
+    training: "Training", trainingHelp: "Skills and memories only this bot (and any other bots you chose) can see. Everything else is shared by all bots.", trainingEmpty: "Nothing bot-only yet.", skill: "Skill", memory: "Memory",
+    addItem: "Add a skill or memory", removeItem: (name: string) => `Remove ${name} from this bot`,
+    confirmLimit: (item: string, bot: string) => `Limit "${item}" to ${bot}? Other bots and chats without a bot will stop seeing it.`,
+    confirmWiden: (item: string, bot: string) => `"${item}" is only for ${bot}. Removing it makes it available to all bots. Continue?`,
   },
   es: {
     title: "Bots & Flujos", bots: "Bots", workflows: "Flujos", new: "Nuevo bot", help: "Los bots son personalidades de IA con su propio nombre, instrucciones, conector y modelo. Menciona uno con @ en un chat; los chats nuevos empiezan con el bot predeterminado de Ajustes.",
@@ -27,6 +32,10 @@ const text = {
     persona: "Instrucciones de personalidad", personaPlaceholder: "Eres Billy, un desarrollador cuidadoso. Haz cambios pequeños y siempre ejecuta las pruebas.",
     color: "Color", connector: "Conector", model: "Modelo", loadingModels: "Cargando modelos", noConnector: "Sin conector",
     save: "Guardar", saved: "Guardado", createBot: "Crear bot", delete: (name: string) => `Eliminar ${name}`, confirmDelete: (name: string) => `¿Eliminar el bot "${name}"?`, protected: "Martin es el bot incluido; puedes editarlo, pero no eliminarlo.",
+    training: "Entrenamiento", trainingHelp: "Habilidades y recuerdos que solo ve este bot (y los otros bots que elegiste). Todo lo demás lo comparten todos los bots.", trainingEmpty: "Aún no hay nada exclusivo de este bot.", skill: "Habilidad", memory: "Recuerdo",
+    addItem: "Agregar una habilidad o recuerdo", removeItem: (name: string) => `Quitar ${name} de este bot`,
+    confirmLimit: (item: string, bot: string) => `¿Limitar "${item}" a ${bot}? Los demás bots y los chats sin bot dejarán de verlo.`,
+    confirmWiden: (item: string, bot: string) => `"${item}" es solo para ${bot}. Si lo quitas, estará disponible para todos los bots. ¿Continuar?`,
   },
 };
 
@@ -271,7 +280,82 @@ function BotEditor({
           {bot && bot.id !== "ai" && <IconButton type="button" className="danger-text" icon="trash" label={t.delete(bot.name)} onClick={remove} />}
         </div>
       </form>
+      {bot && <BotTraining bot={bot} refresh={refresh} />}
       {bot && <History itemType="bot" itemId={bot.id} refresh={refresh} />}
     </div>
+  );
+}
+
+function BotTraining({ bot, refresh }: { bot: Bot; refresh: number }) {
+  const t = useText(text);
+  const [skills, setSkills] = useState<Skill[]>();
+  const [error, setError] = useState<unknown>();
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    api
+      .get<Skill[]>("/api/skills")
+      .then((list) => {
+        setSkills(list);
+        setError(undefined);
+      })
+      .catch(setError);
+  }, [refresh, reload]);
+
+  const trained = skills?.filter((skill) => skill.bot_ids.includes(bot.id)) ?? [];
+  const others = skills?.filter((skill) => !skill.bot_ids.includes(bot.id)) ?? [];
+
+  async function setBots(skill: Skill, botIDs: string[]) {
+    try {
+      await api.put(`/api/skills/${skill.id}`, { bot_ids: botIDs });
+      setReload((value) => value + 1);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  async function add(id: string) {
+    const skill = skills?.find((s) => s.id === id);
+    if (!skill) return;
+    if (skill.bot_ids.length === 0 && !(await confirmDialog(t.confirmLimit(skill.name, bot.name)))) return;
+    await setBots(skill, [...skill.bot_ids, bot.id]);
+  }
+
+  async function remove(skill: Skill) {
+    if (skill.bot_ids.length === 1 && !(await confirmDialog(t.confirmWiden(skill.name, bot.name)))) return;
+    await setBots(skill, skill.bot_ids.filter((id) => id !== bot.id));
+  }
+
+  return (
+    <section className="panel bot-training" data-tour="bot-training" aria-label={t.training}>
+      <h2>{t.training}</h2>
+      <p className="muted">{t.trainingHelp}</p>
+      <ErrorText error={error} />
+      {skills && trained.length === 0 && <p className="muted">{t.trainingEmpty}</p>}
+      {trained.length > 0 && (
+        <ul className="skill-list" aria-label={t.training}>
+          {trained.map((skill) => (
+            <li key={skill.id} className={skill.enabled ? "" : "disabled"}>
+              <button className="skill-item" onClick={() => navigate(`/ai/skills/${skill.id}`)}>
+                <span className="skill-name">{skill.name}</span>
+                <span className="skill-description">
+                  {skill.kind === "memory" ? t.memory : t.skill} · {skill.description}
+                </span>
+              </button>
+              <IconButton type="button" className="ghost" icon="x" label={t.removeItem(skill.name)} onClick={() => remove(skill)} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {others.length > 0 && (
+        <Picker
+          label={t.addItem}
+          empty={t.addItem}
+          options={others.map((skill) => ({ id: skill.id, name: `${skill.name} · ${skill.kind === "memory" ? t.memory : t.skill}` }))}
+          value=""
+          onChange={add}
+        />
+      )}
+    </section>
   );
 }

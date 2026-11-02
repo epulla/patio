@@ -1,6 +1,6 @@
 import { confirmDialog } from "./confirm";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { api } from "./api";
+import { api, type Bot } from "./api";
 import { ErrorText, navigate } from "./App";
 import { Icon, IconButton } from "./icons";
 import Markdown from "./Markdown";
@@ -9,7 +9,7 @@ import Menu from "./Menu";
 import History from "./History";
 import { lang, useText } from "./i18n";
 
-const text = { en: { skills: "Skills", memory: "Memory", skill: "skill", new: "New", import: "Import SKILL.md", changes: "Changes apply to new chats.", skillsHelp: "Skills are how-to instructions for a kind of task. Every chat sees each enabled skill's name and description, and the model loads the full instructions only when a task matches.", memoriesHelp: "Memories are your preferences and facts. Every chat sees each enabled memory and follows it. The model saves new ones when you correct it or ask it to remember something.", memoriesEmpty: "No memories yet", memoriesHint: 'Tell the model "remember that…" in any chat, or add one here.', skillsEmpty: "No skills yet", skillHint: "A skill is a set of instructions the model loads when a task matches its description. Write one here or import a", countSkill: (n: number) => `${n} skill${n === 1 ? "" : "s"}`, countMemory: (n: number) => `${n} memor${n === 1 ? "y" : "ies"}`, enable: "Enable", more: "More actions for", disableSkill: "Disable skill", enableSkill: "Enable skill", edit: "Edit", remove: "Remove", recent: "Most recent", alphabetical: "Alphabetical", sort: "Sort skills", sortPrefix: "Sort:", back: "Skills", deleted: "This skill no longer exists.", delete: "Delete skill", editLabel: "Edit", name: "Name", nameTitle: "Lowercase letters, digits, and hyphens", type: "Type", description: "Description", descriptionPlaceholder: "Use when the user asks for…", instructions: "Instructions (Markdown)", preview: "Preview", nothing: "Nothing to preview yet.", enabled: "Enabled in chats", saved: "Saved", save: "Save", createSkill: "Create skill", export: "Export", previewLabel: "Preview" }, es: { skills: "Habilidades", memory: "Memoria", skill: "habilidad", new: "Nueva", import: "Importar SKILL.md", changes: "Los cambios se aplican a los chats nuevos.", skillsHelp: "Las habilidades son instrucciones para realizar tareas. Cada chat ve el nombre y la descripción de cada habilidad activa; el modelo carga las instrucciones completas solo cuando coinciden con una tarea.", memoriesHelp: "Los recuerdos contienen tus preferencias y datos. Cada chat ve y sigue cada recuerdo activo. El modelo guarda nuevos recuerdos cuando lo corriges o le pides que recuerde algo.", memoriesEmpty: "Aún no hay recuerdos", memoriesHint: 'Dile al modelo «recuerda que…» en cualquier chat, o agrega uno aquí.', skillsEmpty: "Aún no hay habilidades", skillHint: "Una habilidad es un conjunto de instrucciones que el modelo carga cuando una tarea coincide con su descripción. Escribe una aquí o importa un", countSkill: (n: number) => `${n} ${n === 1 ? "habilidad" : "habilidades"}`, countMemory: (n: number) => `${n} ${n === 1 ? "recuerdo" : "recuerdos"}`, enable: "Activar", more: "Más acciones para", disableSkill: "Desactivar habilidad", enableSkill: "Activar habilidad", edit: "Editar", remove: "Eliminar", recent: "Más recientes", alphabetical: "Alfabético", sort: "Ordenar habilidades", sortPrefix: "Ordenar:", back: "Habilidades", deleted: "Esta habilidad ya no existe.", delete: "Eliminar habilidad", editLabel: "Editar", name: "Nombre", nameTitle: "Letras minúsculas, números y guiones", type: "Tipo", description: "Descripción", descriptionPlaceholder: "Usar cuando el usuario pida…", instructions: "Instrucciones (Markdown)", preview: "Vista previa", nothing: "Aún no hay nada para previsualizar.", enabled: "Activa en chats", saved: "Guardado", save: "Guardar", createSkill: "Crear habilidad", export: "Exportar", previewLabel: "Vista previa" } };
+const text = { en: { skills: "Skills", memory: "Memory", skill: "skill", new: "New", import: "Import SKILL.md", changes: "Changes apply to new chats.", skillsHelp: "Skills are how-to instructions for a kind of task. Every chat sees each enabled skill's name and description (or only chosen bots' chats, if limited), and the model loads the full instructions only when a task matches.", memoriesHelp: "Memories are your preferences and facts. Every chat sees each enabled memory and follows it, unless it's limited to chosen bots. The model saves new ones when you correct it or ask it to remember something.", memoriesEmpty: "No memories yet", memoriesHint: 'Tell the model "remember that…" in any chat, or add one here.', skillsEmpty: "No skills yet", skillHint: "A skill is a set of instructions the model loads when a task matches its description. Write one here or import a", countSkill: (n: number) => `${n} skill${n === 1 ? "" : "s"}`, countMemory: (n: number) => `${n} memor${n === 1 ? "y" : "ies"}`, enable: "Enable", more: "More actions for", disableSkill: "Disable skill", enableSkill: "Enable skill", edit: "Edit", remove: "Remove", recent: "Most recent", alphabetical: "Alphabetical", sort: "Sort skills", sortPrefix: "Sort:", back: "Skills", deleted: "This skill no longer exists.", delete: "Delete skill", editLabel: "Edit", name: "Name", nameTitle: "Lowercase letters, digits, and hyphens", type: "Type", description: "Description", descriptionPlaceholder: "Use when the user asks for…", instructions: "Instructions (Markdown)", preview: "Preview", nothing: "Nothing to preview yet.", enabled: "Enabled in chats", saved: "Saved", save: "Save", createSkill: "Create skill", export: "Export", previewLabel: "Preview", availableTo: "Available to", allBots: "All bots", scopeHelp: "Choose bots to limit this to them; other bots and chats without a bot won't see it." }, es: { skills: "Habilidades", memory: "Memoria", skill: "habilidad", new: "Nueva", import: "Importar SKILL.md", changes: "Los cambios se aplican a los chats nuevos.", skillsHelp: "Las habilidades son instrucciones para realizar tareas. Cada chat ve el nombre y la descripción de cada habilidad activa (o solo los chats de los bots elegidos, si está limitada); el modelo carga las instrucciones completas solo cuando coinciden con una tarea.", memoriesHelp: "Los recuerdos contienen tus preferencias y datos. Cada chat ve y sigue cada recuerdo activo, salvo que esté limitado a ciertos bots. El modelo guarda nuevos recuerdos cuando lo corriges o le pides que recuerde algo.", memoriesEmpty: "Aún no hay recuerdos", memoriesHint: 'Dile al modelo «recuerda que…» en cualquier chat, o agrega uno aquí.', skillsEmpty: "Aún no hay habilidades", skillHint: "Una habilidad es un conjunto de instrucciones que el modelo carga cuando una tarea coincide con su descripción. Escribe una aquí o importa un", countSkill: (n: number) => `${n} ${n === 1 ? "habilidad" : "habilidades"}`, countMemory: (n: number) => `${n} ${n === 1 ? "recuerdo" : "recuerdos"}`, enable: "Activar", more: "Más acciones para", disableSkill: "Desactivar habilidad", enableSkill: "Activar habilidad", edit: "Editar", remove: "Eliminar", recent: "Más recientes", alphabetical: "Alfabético", sort: "Ordenar habilidades", sortPrefix: "Ordenar:", back: "Habilidades", deleted: "Esta habilidad ya no existe.", delete: "Eliminar habilidad", editLabel: "Editar", name: "Nombre", nameTitle: "Letras minúsculas, números y guiones", type: "Tipo", description: "Descripción", descriptionPlaceholder: "Usar cuando el usuario pida…", instructions: "Instrucciones (Markdown)", preview: "Vista previa", nothing: "Aún no hay nada para previsualizar.", enabled: "Activa en chats", saved: "Guardado", save: "Guardar", createSkill: "Crear habilidad", export: "Exportar", previewLabel: "Vista previa", availableTo: "Disponible para", allBots: "Todos los bots", scopeHelp: "Elige bots para limitarlo a ellos; los demás bots y los chats sin bot no lo verán." } };
 
 export type Skill = {
   id: string;
@@ -18,6 +18,7 @@ export type Skill = {
   body: string;
   enabled: boolean;
   kind: "skill" | "memory";
+  bot_ids: string[];
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +36,7 @@ type SkillSort = "recent" | "name";
 export default function Skills({ id, refresh }: { id?: string; refresh: number }) {
   const t = useText(text);
   const [skills, setSkills] = useState<Skill[]>();
+  const [bots, setBots] = useState<Bot[]>([]);
   const [sort, setSort] = useState<SkillSort>(() =>
     localStorage.getItem("skill-sort") === "name" ? "name" : "recent",
   );
@@ -52,10 +54,10 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
   }
 
   useEffect(() => {
-    api
-      .get<Skill[]>("/api/skills")
-      .then((list) => {
+    Promise.all([api.get<Skill[]>("/api/skills"), api.get<Bot[]>("/api/bots")])
+      .then(([list, botList]) => {
         setSkills(list);
+        setBots(botList);
         setError(undefined);
       })
       .catch(setError);
@@ -109,6 +111,7 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
       <SkillEditor
         key={id}
         skill={skill}
+        bots={bots}
         defaultKind={kind}
         refresh={refresh + reload}
         onSaved={(saved) => {
@@ -211,6 +214,17 @@ export default function Skills({ id, refresh }: { id?: string; refresh: number }
               <button className="skill-item" onClick={() => navigate(`/ai/skills/${skill.id}`)}>
                 <span className="skill-name">{skill.name}</span>
                 <span className="skill-description">{skill.description}</span>
+                {skill.bot_ids.length > 0 && (
+                  <span className="skill-bots">
+                    {bots
+                      .filter((bot) => skill.bot_ids.includes(bot.id))
+                      .map((bot) => (
+                        <span key={bot.id} className="chip">
+                          <span className="bot-dot" style={{ background: bot.color || "var(--muted)" }} aria-hidden="true" /> {bot.name}
+                        </span>
+                      ))}
+                  </span>
+                )}
               </button>
               <Switch
                 checked={skill.enabled}
@@ -312,12 +326,14 @@ function BackLink() {
 
 function SkillEditor({
   skill,
+  bots,
   defaultKind,
   refresh,
   onSaved,
   onDeleted,
 }: {
   skill?: Skill;
+  bots: Bot[];
   defaultKind: Skill["kind"];
   refresh: number;
   onSaved: (skill: Skill) => void;
@@ -329,6 +345,7 @@ function SkillEditor({
   const [body, setBody] = useState(skill?.body ?? "");
   const [enabled, setEnabled] = useState(skill?.enabled ?? true);
   const [kind, setKind] = useState<Skill["kind"]>(skill?.kind ?? defaultKind);
+  const [botIDs, setBotIDs] = useState<string[]>(skill?.bot_ids ?? []);
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
   const dirty =
@@ -337,12 +354,14 @@ function SkillEditor({
     description !== skill.description ||
     body !== skill.body ||
     enabled !== skill.enabled ||
-    kind !== skill.kind;
+    kind !== skill.kind ||
+    botIDs.length !== skill.bot_ids.length ||
+    botIDs.some((id) => !skill.bot_ids.includes(id));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
-      const fields = { name: name.trim(), description: description.trim(), body, enabled, kind };
+      const fields = { name: name.trim(), description: description.trim(), body, enabled, kind, bot_ids: botIDs };
       const result = skill
         ? await api.put<Skill>(`/api/skills/${skill.id}`, fields)
         : await api.post<Skill>("/api/skills", fields);
@@ -351,6 +370,7 @@ function SkillEditor({
       setBody(result.body);
       setEnabled(result.enabled);
       setKind(result.kind);
+      setBotIDs(result.bot_ids);
       setError(undefined);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1500);
@@ -409,6 +429,25 @@ function SkillEditor({
           />
         </label>
       </div>
+      <fieldset className="skill-scope">
+        <legend>{t.availableTo}</legend>
+        <div className="skill-bots">
+          <button type="button" aria-pressed={botIDs.length === 0} onClick={() => setBotIDs([])}>
+            {t.allBots}
+          </button>
+          {bots.map((bot) => (
+            <button
+              key={bot.id}
+              type="button"
+              aria-pressed={botIDs.includes(bot.id)}
+              onClick={() => setBotIDs((ids) => (ids.includes(bot.id) ? ids.filter((id) => id !== bot.id) : [...ids, bot.id]))}
+            >
+              <span className="bot-dot" style={{ background: bot.color || "var(--muted)" }} aria-hidden="true" /> {bot.name}
+            </button>
+          ))}
+        </div>
+        <p className="muted">{t.scopeHelp}</p>
+      </fieldset>
       <div className="skill-body">
         <label>
           {t.instructions}
@@ -441,6 +480,7 @@ function SkillEditor({
           onRestored={(restored) => {
             setDescription(restored.description);
             setBody(restored.body);
+            setBotIDs(restored.bot_ids);
             onSaved(restored);
           }}
         />

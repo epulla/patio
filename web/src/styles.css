@@ -2888,6 +2888,37 @@ main.chat-window .app-version {
   gap: 6px;
   white-space: nowrap;
 }
+.skill-bots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.skill-bots .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.skill-bots button {
+  gap: 6px;
+}
+.bot-training h2 {
+  margin: 0;
+}
+.bot-training .skill-list {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-box);
+}
+.skill-scope p {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
 .skill-description {
   color: var(--muted);
   font-weight: 400;
