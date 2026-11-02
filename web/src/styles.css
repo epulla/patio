@@ -1219,6 +1219,7 @@ a:has(> .svg-icon) {
 }
 .type::before {
   content: "";
+  flex: none;
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -1238,7 +1239,8 @@ a:has(> .svg-icon) {
 .picker {
   min-width: 0;
 }
-.picker-trigger > span {
+.picker-trigger > span,
+.picker-trigger .type > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

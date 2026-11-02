@@ -44,7 +44,7 @@ export default function Picker({
         className={option?.color ? "type" : "type type-none"}
         style={{ "--type-color": option?.color ?? "transparent" } as CSSProperties}
       >
-        {option?.name}
+        <span>{option?.name}</span>
       </span>
     ) : (
       <span>{option?.name}</span>
