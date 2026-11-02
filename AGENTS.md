@@ -1,6 +1,6 @@
 # AGENTS.md
 
-AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go + SQLite + Wails v2 + React UI. `patio mcp` exposes AI access over stdio. See README.md for features and usage.
+AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go + SQLite + Wails v3 + React UI. `patio mcp` exposes AI access over stdio. See README.md for features and usage.
 
 ## Rules
 
@@ -16,7 +16,7 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 
 ## Layout
 
-- `main.go`: flags (`-d`, `-show-hidden`), `mcp` subcommand, Wails app, OS-specific DB path in `dbPath`.
+- `main.go`: flags (`-d`, `-show-hidden`, `-open`), `mcp` subcommand, Wails app, OS-specific DB path in `dbPath`. One process per DB (Wails `SingleInstance` keyed by DB path); `windows` holds the main window and one window per popped-out chat (`/ai/chats/<id>?window=chat`). Closing main keeps chat windows; the last window quits.
 - `internal/db/`: `Open` applies pragmas (foreign_keys, WAL, busy_timeout) via DSN, runs embedded migrations tracked by `PRAGMA user_version`, seeds users, and `Watch` detects external writes.
 - `internal/db/migrations/`: numbered `.sql` files. Never edit an applied migration; add a new file.
 - `internal/api/`: `server.go` (routes, JSON helpers, types), `boards.go`, `tickets.go`, `transfer.go` (export/import), `calendar.go` (calendar items + due tickets).
@@ -24,7 +24,8 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 - `internal/reminder/`: claims due reminders once (`notified_at`) and fires OS notifications from the desktop app.
 - `web/src/`: `App.tsx` (router), `AIBadge.tsx`, `BoardList.tsx`, `BoardView.tsx`, `TicketDetail.tsx`, `PrintTicket.tsx`, `Calendar.tsx`, `api.ts` (types + fetch).
 - `web/embed.go`: `//go:embed all:dist`. `web/public/.gitkeep` keeps `web/dist/` non-empty so `go build` works before a frontend build.
-- `wails.json`: Wails app and pnpm frontend build configuration.
+- `web/src/desktop.ts`: `@wailsio/runtime` wrapper (`onEvent`, `openURL`, `isDesktop`).
+- `Makefile`: `app` (macOS `.app`), `exe` (Windows), `linux`; `-tags production`, `VERSION=` stamps `main.version`. Assets: `build/darwin/Info.plist` + `icons.icns`, `rsrc_windows_amd64.syso` (icon, DPI, manifest from `build/windows/`). No Taskfile/`wails3 dev`.
 
 ## Domain invariants
 
@@ -46,10 +47,12 @@ AI-first desktop app for agents, chats, scheduled tasks, and kanban tickets: Go 
 gofmt -l internal                 # must be empty
 go vet ./... && go test ./... -count=1
 pnpm --dir web build              # runs tsc
-wails build
+make app                          # build/bin/patio.app
 make release                      # CGO-free Windows compile check
 ```
 
-Install Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0`.
+Wails is pinned to v3.1.0 in `go.mod` and `web/package.json` (`@wailsio/runtime`); bump both together. The CLI is only needed to regenerate icons/syso (see `docs/branding/README.md`): `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`.
+
+Dev run: `pnpm --dir web build && go run . -d "$(mktemp -d)/dev.db"`.
 
 Smoke-test with a throwaway data dir: `build/bin/patio.app/Contents/MacOS/patio -d "$(mktemp -d)/test.db"`.

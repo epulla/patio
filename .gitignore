@@ -9,9 +9,9 @@ web/dist/*
 !/build/windows/
 /build/windows/*
 !/build/windows/icon.ico
+!/build/windows/info.json
+!/build/windows/patio.exe.manifest
 !/build/darwin/
 /build/darwin/*
 !/build/darwin/Info.plist
-!/build/darwin/Info.dev.plist
-web/wailsjs/
-web/package.json.md5
+!/build/darwin/icons.icns

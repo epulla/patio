@@ -13,10 +13,10 @@ Use this workflow for local builds and tagged GitHub releases. Never skip requir
    - `gofmt -l internal` — output must be empty.
    - `go vet ./... && go test ./... -count=1`
    - `pnpm --dir web build`
-   - `wails build`
+   - `make app` (macOS), `make exe` (Windows) or `make linux`
    - `make release` — CGO-free Windows compile check.
 2. Stop and report any failed check. Do not claim build succeeded.
-3. Optional: stamp a version with `wails build -ldflags "-X main.version=<v>"`.
+3. Optional: stamp a version with `make app VERSION=<v>`.
    Untagged builds default to `dev`.
 4. Smoke-test macOS build:
    `build/bin/patio.app/Contents/MacOS/patio -d "$(mktemp -d)/test.db"`
@@ -54,7 +54,7 @@ Use this workflow for local builds and tagged GitHub releases. Never skip requir
    - `gofmt -l internal` — output must be empty.
    - `go vet ./... && go test ./... -count=1`
    - `pnpm --dir web build`
-   - `wails build`
+   - `make app`
    - `make release`
 2. Any failure stops release. Report failing command and output; do not tag or push.
 3. Show exact tag and commit summary from `git log --oneline <last>..HEAD`
@@ -78,7 +78,7 @@ Use this workflow for local builds and tagged GitHub releases. Never skip requir
    - `patio-windows-amd64.exe`
    - `patio-linux-amd64`
 6. Workflow auto-generates release notes. Tag builds stamp version via
-   `-ldflags "-X main.version=<tag>"`; app shows version bottom-right and MCP
+   `make <target> VERSION=<tag>` (`-X main.version`, macOS `Info.plist`); app shows version bottom-right and MCP
    `serverInfo` reports it.
 7. Manual `workflow_dispatch` builds upload artifacts only, create no release,
    and use version `dev`.

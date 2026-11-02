@@ -48,4 +48,4 @@ A centered `.panel` card (see `.skill-empty`, max 640 px) with an icon mark, `<h
 - No colored accent stripes on box edges; plain `var(--border)` borders only (AGENTS.md).
 - Accessibility: every control has a visible or `sr-only` label; menus support arrow keys, Escape (returns focus to the trigger), and click-outside; respect `prefers-reduced-motion`.
 - Rendered Markdown goes through `web/src/Markdown.tsx` (DOMPurify).
-- Verify with `pnpm --dir web build` and `wails build`.
+- Verify with `pnpm --dir web build` and `make app`.

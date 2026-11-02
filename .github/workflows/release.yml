@@ -14,18 +14,22 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            platform: darwin/arm64
+            target: app
+            goarch: arm64
             artifact: patio-darwin-arm64.zip
             app: true
           - os: macos-latest
-            platform: darwin/amd64
+            target: app
+            goarch: amd64
             artifact: patio-darwin-amd64.zip
             app: true
           - os: windows-latest
-            platform: windows/amd64
+            target: exe
+            goarch: amd64
             artifact: patio-windows-amd64.exe
-          - os: ubuntu-22.04
-            platform: linux/amd64
+          - os: ubuntu-24.04
+            target: linux
+            goarch: amd64
             artifact: patio-linux-amd64
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,18 +48,21 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev build-essential pkg-config
+      - name: Install make
+        if: runner.os == 'Windows'
+        run: choco install make -y --no-progress
       - name: Test
         run: go test ./...
       - name: Build desktop app
         shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            wails build -platform "${{ matrix.platform }}" -ldflags "-X main.version=${GITHUB_REF_NAME}"
+            make ${{ matrix.target }} VERSION="${GITHUB_REF_NAME}"
           else
-            wails build -platform "${{ matrix.platform }}"
+            make ${{ matrix.target }}
           fi
       - name: Smoke-test Windows MCP initialize
         if: runner.os == 'Windows'

@@ -13,6 +13,7 @@ Paths below are relative to the repository root.
 | `docs/assets/patio-crayon-social.png` | Square social post | 1254 × 1254 |
 | `docs/assets/patio-crayon-appicon-master.png` | Original square app-icon artwork | 1254 × 1254 |
 | `build/appicon.png` | Wails app icon (macOS squircle grid, no border) | 1024 × 1024 RGBA PNG |
+| `build/darwin/icons.icns` | macOS app bundle icon, generated from `build/appicon.png` | Multiple resolutions |
 | `build/windows/icon.ico` | Windows executable icon | 16, 32, 48, 64, 128, 256 px |
 | `packaging/icons/patio.icns` | Standalone macOS export | Multiple resolutions, up to 1024 px |
 | `packaging/linux/patio.png` | Linux launcher icon | 512 × 512 |
@@ -22,41 +23,26 @@ The app icon is a separate head-and-shoulders composition on a rounded, warm yel
 
 Revision 3 redraws the hand and paper plane together from a photographic pose reference in the logo and social image. The approved warm, bordered app icon and all native icon exports are preserved exactly. The README banner is unchanged. Earlier editions remain available in their previously delivered archives.
 
-## Use the assets in another Patio checkout
+## Native icons in the build
 
-Extract the files into the root of the Patio repository, preserving their folders. The included `README.md` references the new banner.
+The primary source is `build/appicon.png`, embedded by `main.go` for the Linux window icon and the app's About box. Generated assets are committed, so builds need no Wails CLI:
 
-The working checkout used to prepare these files already contains the icon integration. To apply that integration to a different checkout, inspect and apply the supplied patch:
+| File | Used by | Regenerate with |
+| --- | --- | --- |
+| `build/darwin/icons.icns` | `make app` copies it into `patio.app/Contents/Resources` (`CFBundleIconFile` in `build/darwin/Info.plist`) | `wails3 generate icons -input build/appicon.png -macfilename build/darwin/icons.icns -windowsfilename "$(mktemp)"` |
+| `rsrc_windows_amd64.syso` | Go links it into `patio.exe`: icon, per-monitor DPI and app manifest | `wails3 generate syso -arch amd64 -icon build/windows/icon.ico -manifest build/windows/patio.exe.manifest -info build/windows/info.json -out rsrc_windows_amd64.syso` |
 
-```sh
-git apply --check docs/branding/wails-icons.patch
-git apply docs/branding/wails-icons.patch
-wails build
-```
+Install the CLI with `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`. The icons command above sends its ICO to a temporary file so the hand-made `build/windows/icon.ico` stays unchanged; when the design changes, replace that ICO too and regenerate the syso.
 
-The patch changes only `.gitignore` and `main.go`. It was prepared against commit `eb06db484cfb9a2d5187095208c8cda172154df3`. If those files have changed in your checkout, review the small patch and apply the equivalent changes manually. The PNG and ICO must be present before compiling.
-
-### Windows and macOS
-
-For this repository's Wails v2.16.0 configuration, the primary source is `build/appicon.png`. Windows embeds `build/windows/icon.ico`. Both are deliberately allowed by the updated Git ignore rules, so they can be included in source control and release builds.
-
-Wails preserves an existing Windows ICO. When updating the design in the future, replace or regenerate the matching ICO along with the PNG; changing only the PNG leaves an existing Windows ICO unchanged. A clean build does not remove that override.
-
-On macOS, Wails generates `iconfile.icns` inside the application bundle from `build/appicon.png`. That PNG is the tile interior without the orange border, clipped to an 824 px rounded square centered on the 1024 px canvas (Apple's icon grid). macOS 26 otherwise shrinks the icon onto a dark "squircle jail" plate. Windows and Linux launcher icons keep the bordered tile. The supplied `packaging/icons/patio.icns` is a convenient standalone export; it is not an input override for Wails and does not need to be copied to `build/darwin/`.
-
-After integrating the assets, use the repository's normal build:
-
-```sh
-wails build
-```
+`build/appicon.png` is the tile interior without the orange border, clipped to an 824 px rounded square centered on the 1024 px canvas (Apple's icon grid); macOS 26 otherwise shrinks the icon onto a dark "squircle jail" plate. Windows and Linux launcher icons keep the bordered tile. `packaging/icons/patio.icns` is a standalone export, not a build input.
 
 ### Linux
 
-The patch embeds the PNG in `main.go` and supplies `linux.Options.Icon`, with `ProgramName: "patio"`. It explicitly keeps `WebviewGpuPolicyNever`, preserving the previous default rendering policy.
+`main.go` sets the window icon from the embedded PNG, `ProgramName: "patio"`, and keeps `WebviewGpuPolicyNever`.
 
-Desktop-menu and GNOME Wayland icon handling also needs an installed desktop entry and icon. The current release workflow publishes a bare Linux executable; it does not install these files automatically.
+Desktop-menu and GNOME Wayland icon handling also needs an installed desktop entry and icon. The release workflow publishes a bare Linux executable; it does not install these files automatically.
 
-For a user-local installation after building on Linux:
+For a user-local installation after `make linux`:
 
 ```sh
 install -Dm755 build/bin/patio "$HOME/.local/bin/patio"
@@ -73,11 +59,9 @@ The artwork was created with the built-in image-generation tool. The [generation
 - `github.com/leaanthony/winicon v1.0.0`
 - `github.com/jackmordaunt/icns v1.0.0`
 
-Validation checks the image dimensions, readable native icon entries, alpha where intended, patch applicability, Git ignore behavior, and Go formatting. A small compile fixture checks the Linux options against Wails v2.16.0. A full Patio desktop build and on-device icon smoke tests were not run.
+Validation checks the image dimensions, readable native icon entries, alpha where intended, Git ignore behavior, and Go formatting. A small compile fixture checks the Linux options against Wails v2.16.0. A full Patio desktop build and on-device icon smoke tests were not run.
 
 ## Source references
 
-- [Wails v2.16.0 icon generation and platform packaging](https://github.com/wailsapp/wails/blob/v2.16.0/v2/pkg/commands/build/packager.go)
-- [Wails v2.16.0 Linux options and GPU default](https://github.com/wailsapp/wails/blob/v2.16.0/v2/pkg/options/linux/linux.go)
-- [Wails application options](https://v2.wails.io/docs/reference/options/)
-
+- [Wails v3.1.0 icon and syso generation](https://github.com/wailsapp/wails/tree/v3.1.0/v3/internal/commands)
+- [Wails v3.1.0 Linux window options and GPU policy](https://github.com/wailsapp/wails/blob/v3.1.0/v3/pkg/application/webview_window_options.go)

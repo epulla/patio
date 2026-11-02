@@ -59,7 +59,7 @@ Or download the build for your computer from [Releases](https://github.com/epull
 <details>
 <summary>macOS installation</summary>
 
-Extract the archive and move `patio.app` to `/Applications`.
+Patio needs macOS 12 or newer. Extract the archive and move `patio.app` to `/Applications`.
 
 The macOS build is unsigned. On first launch, right-click the app and choose **Open**. If macOS still blocks it, you can remove quarantine from this app:
 
@@ -72,10 +72,10 @@ xattr -dr com.apple.quarantine /Applications/patio.app
 <details>
 <summary>Linux installation</summary>
 
-Patio requires GTK 3 and WebKit2GTK runtime libraries. On Ubuntu 22.04:
+Patio requires GTK 4 and WebKitGTK 6.0 runtime libraries (Ubuntu 24.04 or newer). On Ubuntu 24.04:
 
 ```sh
-sudo apt install libgtk-3-0 libwebkit2gtk-4.0-37
+sudo apt install libgtk-4-1 libwebkitgtk-6.0-4
 chmod +x patio-linux-amd64
 ./patio-linux-amd64
 ```
@@ -199,7 +199,7 @@ When the condition matches, it can send a notification, create a ticket, start a
 
 For example, with a suitable MCP server configured, watch for newly reported issues and create a ticket when a new item appears. The check itself does not start an AI chat; the chat action does.
 
-**Scheduled tasks and monitors run while Patio's main application window is open.** A detached chat window does not keep them running. After reopening Patio, an overdue scheduled task runs once; missed intervals are not all replayed. An occurrence is skipped if the previous run is still working.
+**Scheduled tasks and monitors run while Patio is open**, in any window; chat windows opened with "Open in new window" count. After reopening Patio, an overdue scheduled task runs once; missed intervals are not all replayed. An occurrence is skipped if the previous run is still working.
 
 ## Connect through MCP
 
@@ -278,36 +278,37 @@ For a database backup, stop Patio and any Patio MCP processes before copying `pa
 
 The current build uses:
 
-- **Go 1.27**, as declared in [go.mod](go.mod).
-- **Node.js 22 (22.12+)** and **pnpm 11**.
-- **Wails CLI v2.16.0**, matching the Wails dependency.
+- **Go 1.27.3**, as declared in [go.mod](go.mod), with Wails v3.1.0 as a Go module.
+- **Node.js 22 (22.12+)**, **pnpm 11** and GNU make.
 
-On macOS, install the Xcode command-line tools. On Ubuntu 22.04, install the native build dependencies:
+On macOS, install the Xcode command-line tools. On Ubuntu 24.04, install the native build dependencies:
 
 ```sh
 sudo apt update
-sudo apt install libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
+sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev build-essential pkg-config
 ```
 
-Clone and build:
+Clone and build for your platform:
 
 ```sh
 git clone https://github.com/epulla/patio.git
 cd patio
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-wails build
+make app      # macOS: build/bin/patio.app (ad-hoc signed)
+make exe      # Windows (CGO-free, can cross-compile): build/bin/patio.exe
+make linux    # Linux: build/bin/patio
 ```
 
-Build output is written to `build/bin/`. Wails runs the pnpm frontend install and build commands configured in [wails.json](wails.json).
+Each target installs and builds the frontend, then runs `go build -tags production`. Pass `VERSION=vX.Y.Z` to stamp a version; untagged builds report `dev`. The Wails CLI is not needed to build.
 
 ## Development
 
 Read [AGENTS.md](AGENTS.md) for repository conventions. Use pnpm for frontend work.
 
-Start the development app:
+Run the app from source on a throwaway database (rebuild the frontend and restart after frontend changes; it is embedded at compile time):
 
 ```sh
-wails dev
+pnpm --dir web build
+go run . -d "$(mktemp -d)/dev.db"
 ```
 
 Useful checks:
@@ -317,7 +318,7 @@ go vet ./...
 go test ./... -count=1
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
-wails build
+make app
 ```
 
 `make test` runs the Go tests. `make release` performs a CGO-free Windows compilation check. Tagged releases are built and published by [GitHub Actions](.github/workflows/release.yml).
