@@ -3916,6 +3916,9 @@ main.chat-window .app-version {
   background: var(--base-100);
   font-weight: 400;
 }
+.bot-training .model-trigger {
+  max-width: none;
+}
 .model-trigger-label {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -44,6 +44,7 @@ export default function ModelPicker({
   disabled,
   up,
   pinKind,
+  labels,
   onChange,
 }: {
   models: ModelOption[];
@@ -53,9 +54,14 @@ export default function ModelPicker({
   up?: boolean;
   /** Connector kind; pinned models are remembered per kind. */
   pinKind?: string;
+  /** Overrides the model wording to pick other things (e.g. skills) with the same searchable list. */
+  labels?: { label: string; choose: string; search: string; noMatch: (query: string) => string };
   onChange: (id: string) => void;
 }) {
-  const t = useText(text);
+  const base = useText(text);
+  const t = labels
+    ? { ...base, modelLabel: labels.label, chooseModel: labels.choose, searchModels: labels.search, noMatch: labels.noMatch }
+    : base;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
