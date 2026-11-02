@@ -9,9 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/zalando/go-keyring"
@@ -27,37 +25,26 @@ type telegramSettings struct {
 
 var telegramAPIBase = "https://api.telegram.org"
 var telegramFileBase = "https://api.telegram.org"
-var telegramWake sync.Map
 
-func (s *Server) telegramWakeChannel() chan struct{} {
-	c, _ := telegramWake.LoadOrStore(s, make(chan struct{}, 1))
-	return c.(chan struct{})
-}
+func (s *Server) telegramWakeChannel() chan struct{} { return s.telegramWake }
 
 func (s *Server) readTelegramSettings() (telegramSettings, error) {
 	var cfg telegramSettings
-	err := s.db.QueryRow(`SELECT value FROM app_setting WHERE key='telegram'`).Scan(&cfgValueHolder{target: &cfg})
+	var raw string
+	err := s.db.QueryRow(`SELECT value FROM app_setting WHERE key='telegram'`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return telegramSettings{AllowedUserIDs: []int64{}}, nil
 	}
 	if err != nil {
 		return cfg, err
 	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return cfg, err
+	}
 	if cfg.AllowedUserIDs == nil {
 		cfg.AllowedUserIDs = []int64{}
 	}
 	return cfg, nil
-}
-
-// cfgValueHolder lets database/sql scan JSON directly while retaining normal errors.
-type cfgValueHolder struct{ target *telegramSettings }
-
-func (v *cfgValueHolder) Scan(src any) error {
-	raw, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("invalid telegram settings")
-	}
-	return json.Unmarshal([]byte(raw), v.target)
 }
 
 func (s *Server) saveTelegramSettings(cfg telegramSettings) error {
@@ -206,8 +193,3 @@ func telegramCall(ctx context.Context, token, method string, payload any, out an
 }
 
 func telegramToken() (string, error) { return keyring.Get(connectorService, telegramTokenKey) }
-
-func telegramInt(v any) int64 { n, _ := strconv.ParseInt(fmt.Sprint(v), 10, 64); return n }
-
-// keep compiler honest while these API calls are used by the bridge implementation.
-var _ = context.Canceled

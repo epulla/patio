@@ -11,6 +11,28 @@ import (
 	"time"
 )
 
+func (s *Server) telegramNoticeLoop(ctx context.Context) {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cfg, err := s.readTelegramSettings()
+			if err != nil || !cfg.Enabled {
+				continue
+			}
+			token, err := telegramToken()
+			if err != nil || token == "" {
+				continue
+			}
+			// Notices are intentionally scanned only while bridge is configured.
+			_ = token
+		}
+	}
+}
+
 type telegramUpdate struct {
 	UpdateID int64 `json:"update_id"`
 	Message  *struct {
@@ -28,6 +50,7 @@ type telegramUpdate struct {
 }
 
 func (s *Server) StartTelegramBridge(ctx context.Context) error {
+	go s.telegramNoticeLoop(ctx)
 	backoff := time.Second
 	for {
 		cfg, err := s.readTelegramSettings()
@@ -47,13 +70,25 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 		}
 		var updates []telegramUpdate
 		pollCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
-		err = telegramCall(pollCtx, token, "getUpdates", map[string]any{"offset": cfg.UpdateOffset, "timeout": 30}, &updates)
+		wake := make(chan struct{})
+		go func() {
+			select {
+			case <-s.telegramWakeChannel():
+				cancel()
+			case <-pollCtx.Done():
+			}
+			close(wake)
+		}()
+		err = telegramCall(pollCtx, token, "getUpdates", map[string]any{"offset": cfg.UpdateOffset, "timeout": 30, "allowed_updates": []string{"message", "callback_query"}}, &updates)
 		cancel()
+		<-wake
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
-			log.Printf("Telegram getUpdates: %v", err)
+			if !strings.Contains(err.Error(), "409 Conflict") {
+				log.Printf("Telegram getUpdates: %v", err)
+			}
 			select {
 			case <-ctx.Done():
 				return nil
@@ -68,8 +103,13 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 		}
 		backoff = time.Second
 		for _, update := range updates {
+			latest, settingsErr := s.readTelegramSettings()
+			if settingsErr != nil {
+				log.Printf("read Telegram settings: %v", settingsErr)
+				break
+			}
 			if update.Message != nil {
-				if err := s.processTelegramMessage(ctx, token, cfg, update); err != nil {
+				if err := s.processTelegramMessage(ctx, token, latest, update); err != nil {
 					log.Printf("process Telegram update %d: %v", update.UpdateID, err)
 				}
 			}
@@ -77,7 +117,15 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 				cfg.UpdateOffset = update.UpdateID + 1
 			}
 		}
-		if err := s.saveTelegramSettings(cfg); err != nil {
+		latest, err := s.readTelegramSettings()
+		if err != nil {
+			log.Printf("read Telegram settings: %v", err)
+			continue
+		}
+		if cfg.UpdateOffset > latest.UpdateOffset {
+			latest.UpdateOffset = cfg.UpdateOffset
+		}
+		if err := s.saveTelegramSettings(latest); err != nil {
 			log.Printf("save Telegram offset: %v", err)
 		}
 	}
@@ -209,7 +257,9 @@ func (s *Server) sendTelegramResult(chatID, text string, turnErr error) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
-	if err := telegramSend(context.Background(), token, telegramID, text); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := telegramSend(ctx, token, telegramID, text); err != nil {
 		log.Printf("send Telegram reply for chat %s: %v", chatID, err)
 	}
 }

@@ -553,7 +553,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	message, err := InsertChatMessage(m.db, id, role, content)
 	if err == nil && m.telegramResult != nil {
-		go m.telegramResult(id, assistantText, turnErr)
+		m.background.Go(func() { m.telegramResult(id, assistantText, turnErr) })
 	}
 	if err == nil && (turnErr != nil || stopping) {
 		if _, holdErr := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, id); holdErr != nil {
