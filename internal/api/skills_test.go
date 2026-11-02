@@ -142,6 +142,10 @@ func TestSkillCRUDAndImportExport(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodDelete, "/api/skills/"+created.ID, nil, nil); code != http.StatusNoContent {
 		t.Fatalf("delete status = %d", code)
 	}
+	var links int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM skill_bot WHERE skill_id=?`, created.ID).Scan(&links); err != nil || links != 0 {
+		t.Fatalf("deleted skill links = %d, %v", links, err)
+	}
 	if code := requestJSON(t, handler, http.MethodDelete, "/api/skills/missing", nil, nil); code != http.StatusNotFound {
 		t.Fatalf("delete missing status = %d", code)
 	}
@@ -193,6 +197,12 @@ func TestSkillBotScopeAndVisibility(t *testing.T) {
 	}
 	if code := requestJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{"name": "invalid-bot", "description": "invalid", "bot_ids": []string{"missing"}}, nil); code != http.StatusBadRequest {
 		t.Fatalf("invalid bot status %d", code)
+	}
+	if _, err := db.Exec(`UPDATE "user" SET deleted_at='now' WHERE id='ai'`); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{"name": "deleted-bot", "description": "invalid", "bot_ids": []string{"ai"}}, nil); code != http.StatusBadRequest {
+		t.Fatalf("deleted bot status %d", code)
 	}
 	visible, err := SkillsForBot(db, "")
 	if err != nil || len(visible) != 1 || visible[0].ID != scoped.ID {
