@@ -2770,9 +2770,12 @@ main.chat-window .app-version {
 .dock-dot[data-state="paused"] .svg-icon {
   fill: currentColor;
 }
-.dock-dot[data-state="approval"],
-.dock-dot[data-state="paused"] {
+.dock-dot[data-state="approval"] {
   color: var(--warning);
+}
+/* A golden take on the flow view's Paused yellow: plain --warning is too pale for a bare icon. */
+.dock-dot[data-state="paused"] {
+  color: oklch(76% 0.17 80);
 }
 .pin-kbd {
   flex: none;
