@@ -112,19 +112,23 @@ type unlinkTicketArgs struct {
 	LinkID string `json:"link_id"`
 }
 type skillArgs struct {
-	Name string `json:"name" jsonschema:"Skill name"`
+	Name   string `json:"name" jsonschema:"Skill name"`
+	ChatID string `json:"chat_id,omitempty"`
 }
 type createSkillArgs struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Body        string `json:"body"`
-	Kind        string `json:"kind,omitempty" jsonschema:"skill (default) for task instructions, or memory for a durable user preference, correction, or fact"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Body        string   `json:"body"`
+	Kind        string   `json:"kind,omitempty" jsonschema:"skill (default) for task instructions, or memory for a durable user preference, correction, or fact"`
+	Bots        []string `json:"bots,omitempty" jsonschema:"Bot names to scope this skill or memory to; omit for all bots"`
 }
 type updateSkillArgs struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
-	Body        *string `json:"body,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description,omitempty"`
+	Body        *string   `json:"body,omitempty"`
+	Enabled     *bool     `json:"enabled,omitempty"`
+	Bots        *[]string `json:"bots,omitempty"`
+	ChatID      string    `json:"chat_id,omitempty"`
 }
 type updateTicketArgs struct {
 	ID           string  `json:"id" jsonschema:"Ticket UUID"`
@@ -218,7 +222,8 @@ type runWorkflowArgs struct {
 	ChatID string `json:"chat_id,omitempty" jsonschema:"Start the workflow in this chat instead of a new one; this chat becomes the first step"`
 }
 type listSkillsArgs struct {
-	IncludeDisabled bool `json:"include_disabled,omitempty"`
+	IncludeDisabled bool   `json:"include_disabled,omitempty"`
+	ChatID          string `json:"chat_id,omitempty"`
 }
 type listCalendarArgs struct {
 	From    string `json:"from" jsonschema:"Start date in YYYY-MM-DD format"`
@@ -478,7 +483,7 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			return nil, fmt.Errorf("load enabled skills: %w", err)
 		}
 	}
-	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory; the description states the fact itself in under 20 words, since chats see only that line; the body says why and how to apply it) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
+	instructions := "Your changes are labeled AI in the app. After finishing a multi-step task likely to recur (never one-offs), call create_skill and state the skill name and description in your reply. Skills may be limited to chosen bots. Memories default to all bots; scope a memory to yourself (bots) only for facts about your own role. When the user corrects you, states a lasting preference, or shares a durable fact, save it with create_skill kind=memory (one fact per memory; the description states the fact itself in under 20 words, since chats see only that line; the body says why and how to apply it) and say so in your reply; update an existing memory with update_skill instead of adding a duplicate. Never save secrets, credentials, or personal data, or what tickets, skills, or git already record."
 	if !inApp {
 		usePersona := true
 		if database != nil {
@@ -856,20 +861,30 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 	if len(skills) > 0 {
 		description = "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions."
 	}
-	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills; optionally include disabled skills"}, func(ctx context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[listSkillsArgs, any](s, &sdk.Tool{Name: "list_skills", Description: "List enabled skills visible to this bot; pass chat_id when available, optionally include disabled skills"}, func(ctx context.Context, _ *sdk.CallToolRequest, in listSkillsArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
 		var enabled []api.Skill
 		var err error
+		botID, _ := api.ChatBotID(database, in.ChatID)
 		if in.IncludeDisabled {
 			data, e := doJSON(ctx, h, request{http.MethodGet, "/api/skills", nil})
 			err = e
 			if err == nil {
 				err = json.Unmarshal(data, &enabled)
 			}
+			if err == nil {
+				visible := enabled[:0]
+				for _, item := range enabled {
+					if len(item.BotIDs) == 0 || containsString(item.BotIDs, botID) {
+						visible = append(visible, item)
+					}
+				}
+				enabled = visible
+			}
 		} else {
-			enabled, err = api.SkillsForBot(database, "")
+			enabled, err = api.SkillsForBot(database, botID)
 		}
 		if err != nil {
 			return errorResult(err), nil, nil
@@ -896,11 +911,12 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}, nil, nil
 	})
-	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "load_skill", Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
+	sdk.AddTool[skillArgs, any](s, &sdk.Tool{Name: "load_skill", Description: description + " Pass chat_id to select caller bot."}, func(ctx context.Context, _ *sdk.CallToolRequest, in skillArgs) (*sdk.CallToolResult, any, error) {
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		skill, err := api.SkillByName(database, in.Name)
+		botID, _ := api.ChatBotID(database, in.ChatID)
+		skill, err := api.SkillVisible(database, in.Name, botID)
 		if errors.Is(err, sql.ErrNoRows) || err == nil && !skill.Enabled {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
@@ -910,7 +926,18 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "# " + skill.Name + "\n\n" + skill.Body}}}, nil, nil
 	})
 	sdk.AddTool[createSkillArgs, any](s, &sdk.Tool{Name: "create_skill", Description: "Create a skill or memory"}, func(ctx context.Context, _ *sdk.CallToolRequest, in createSkillArgs) (*sdk.CallToolResult, any, error) {
-		data, err := doJSON(ctx, h, request{http.MethodPost, "/api/skills", in})
+		body := map[string]any{"name": in.Name, "description": in.Description, "body": in.Body}
+		if in.Kind != "" {
+			body["kind"] = in.Kind
+		}
+		if in.Bots != nil {
+			ids, err := skillBotIDs(database, in.Bots)
+			if err != nil {
+				return errorResult(err), nil, nil
+			}
+			body["bot_ids"] = ids
+		}
+		data, err := doJSON(ctx, h, request{http.MethodPost, "/api/skills", body})
 		if err != nil {
 			if strings.Contains(err.Error(), "skill name already exists") {
 				err = fmt.Errorf("%w; use update_skill", err)
@@ -923,7 +950,8 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		skill, err := api.SkillByName(database, in.Name)
+		botID, _ := api.ChatBotID(database, in.ChatID)
+		skill, err := api.SkillVisible(database, in.Name, botID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
@@ -931,10 +959,11 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 			return errorResult(err), nil, nil
 		}
 		body := struct {
-			Description *string `json:"description,omitempty"`
-			Body        *string `json:"body,omitempty"`
-			Enabled     *bool   `json:"enabled,omitempty"`
-		}{in.Description, in.Body, in.Enabled}
+			Description *string   `json:"description,omitempty"`
+			Body        *string   `json:"body,omitempty"`
+			Enabled     *bool     `json:"enabled,omitempty"`
+			BotIDs      *[]string `json:"bot_ids,omitempty"`
+		}{in.Description, in.Body, in.Enabled, in.Bots}
 		result, err := do(ctx, h, request{http.MethodPut, "/api/skills/" + url.PathEscape(skill.ID), body})
 		return result, nil, err
 	})
@@ -942,7 +971,8 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		if database == nil {
 			return errorResult(fmt.Errorf("skills database unavailable")), nil, nil
 		}
-		skill, err := api.SkillByName(database, in.Name)
+		botID, _ := api.ChatBotID(database, in.ChatID)
+		skill, err := api.SkillVisible(database, in.Name, botID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorResult(fmt.Errorf("skill not found: %s", in.Name)), nil, nil
 		}
@@ -955,6 +985,30 @@ func addSkillTools(s *sdk.Server, h http.Handler, database *sql.DB, skills []api
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil, nil
 	})
+}
+
+func containsString(values []string, value string) bool {
+	for _, item := range values {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func skillBotIDs(database *sql.DB, names []string) ([]string, error) {
+	ids := make([]string, 0, len(names))
+	for _, name := range names {
+		var id string
+		err := database.QueryRow(`SELECT id FROM "user" WHERE is_ai=1 AND deleted_at IS NULL AND name=? COLLATE NOCASE`, name).Scan(&id)
+		if err != nil {
+			return nil, fmt.Errorf("unknown bot: %s", name)
+		}
+		if !containsString(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 func approvalHandler(ctx context.Context, options *ApprovalOptions, in approveArgs) (*sdk.CallToolResult, any, error) {

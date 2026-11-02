@@ -908,7 +908,7 @@ func TestMCPSkillTools(t *testing.T) {
 			loadDescription = tool.Description
 		}
 	}
-	wantDescription := "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions."
+	wantDescription := "Load a skill's instructions or a memory's details by name. Enabled skills and memories are listed in the chat instructions. Pass chat_id to select caller bot."
 	if loadDescription != wantDescription {
 		t.Fatalf("load_skill description = %q, want %q", loadDescription, wantDescription)
 	}
