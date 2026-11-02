@@ -26,8 +26,6 @@ type telegramSettings struct {
 var telegramAPIBase = "https://api.telegram.org"
 var telegramFileBase = "https://api.telegram.org"
 
-func (s *Server) telegramWakeChannel() chan struct{} { return s.telegramWake }
-
 func (s *Server) readTelegramSettings() (telegramSettings, error) {
 	var cfg telegramSettings
 	var raw string
@@ -80,6 +78,8 @@ func (s *Server) putTelegramSettings(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "valid Telegram settings required")
 		return
 	}
+	s.telegramMu.Lock()
+	defer s.telegramMu.Unlock()
 	cfg, err := s.readTelegramSettings()
 	if err != nil {
 		errw(w, 500, err.Error())
@@ -90,6 +90,10 @@ func (s *Server) putTelegramSettings(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal(in.Token, &token) != nil {
 			errw(w, 400, "token must be a string or null")
 			return
+		}
+		// Update ids belong to one bot, so a new or removed token starts over.
+		if old, _ := telegramToken(); old != token {
+			cfg.UpdateOffset = 0
 		}
 		if token == "" {
 			if err := keyring.Delete(connectorService, telegramTokenKey); err != nil && !errors.Is(err, keyring.ErrNotFound) {
@@ -110,7 +114,7 @@ func (s *Server) putTelegramSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	select {
-	case s.telegramWakeChannel() <- struct{}{}:
+	case s.telegramWake <- struct{}{}:
 	default:
 	}
 	write(w, 200, s.telegramSettingsResponse(cfg))
@@ -154,7 +158,24 @@ type telegramEnvelope struct {
 	Description string          `json:"description"`
 }
 
-func telegramCall(ctx context.Context, token, method string, payload any, out any) error {
+// telegramError hides the bot token, which net/http puts in request URLs of transport errors.
+type telegramError struct {
+	message string
+	err     error
+}
+
+func (e telegramError) Error() string { return e.message }
+func (e telegramError) Unwrap() error { return e.err }
+
+func redactTelegram(err error, token string) error {
+	if err == nil || token == "" {
+		return err
+	}
+	return telegramError{strings.ReplaceAll(err.Error(), token, "<token>"), err}
+}
+
+func telegramCall(ctx context.Context, token, method string, payload any, out any) (err error) {
+	defer func() { err = redactTelegram(err, token) }()
 	var body io.Reader
 	if payload != nil {
 		raw, err := json.Marshal(payload)

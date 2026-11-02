@@ -366,3 +366,13 @@ func TestConcurrentChatAttachmentUploads(t *testing.T) {
 		t.Fatalf("stored %d unique uploads, want %d", len(seen), count)
 	}
 }
+
+func TestChatAttachmentStorageFailureIsServerError(t *testing.T) {
+	server, created := attachmentTestChat(t)
+	if err := os.WriteFile(filepath.Join(created.Workdir, "attachments"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if response := postAttachmentFiles(t, server, created.ID, []attachmentUpload{{"note.txt", []byte("hi")}}); response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", response.Code)
+	}
+}

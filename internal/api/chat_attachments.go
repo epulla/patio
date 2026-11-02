@@ -120,7 +120,16 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attachment, err := s.storeChatAttachment(c, name, r.Body)
-	if err != nil {
+	var storage attachmentStorageError
+	switch {
+	case errors.As(err, &storage):
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	case errors.Is(err, errChatAttachmentEmpty):
+		// WebKit drops File and Blob bodies sent to the app's custom scheme, so an empty body is a failed upload.
+		errw(w, http.StatusBadRequest, err.Error())
+		return
+	case err != nil:
 		writeAttachmentError(w, err)
 		return
 	}
@@ -132,16 +141,18 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusCreated, []ChatAttachment{attachment})
 }
 
+// attachmentStorageError marks local disk failures, which are server errors rather than bad uploads.
+type attachmentStorageError struct{ error }
+
+func (e attachmentStorageError) Unwrap() error { return e.error }
+
 func (s *Server) storeChatAttachment(c chat, name string, body io.Reader) (ChatAttachment, error) {
-	if name == "" {
-		return ChatAttachment{}, errors.New("attachment name is required")
-	}
 	prefix, err := io.ReadAll(io.LimitReader(body, 512))
 	if err != nil {
 		return ChatAttachment{}, err
 	}
 	if len(prefix) == 0 {
-		return ChatAttachment{}, errors.New("attachment is empty")
+		return ChatAttachment{}, errChatAttachmentEmpty
 	}
 	kind, contentType, err := detectAttachmentType(name, prefix)
 	if err != nil {
@@ -149,12 +160,12 @@ func (s *Server) storeChatAttachment(c chat, name string, body io.Reader) (ChatA
 	}
 	dir, err := chatAttachmentsDir(c.Workdir, true)
 	if err != nil {
-		return ChatAttachment{}, err
+		return ChatAttachment{}, attachmentStorageError{err}
 	}
 	name = sanitizeChatAttachmentName(name)
 	temp, err := os.CreateTemp(dir, ".upload-*")
 	if err != nil {
-		return ChatAttachment{}, err
+		return ChatAttachment{}, attachmentStorageError{err}
 	}
 	storedName, size, err := streamChatAttachment(temp, dir, name, prefix, body, kind, maxChatTextAttachment, maxChatImageAttachment)
 	if err != nil {
@@ -195,6 +206,7 @@ func isWebP(data []byte) bool {
 var (
 	errChatAttachmentType     = errors.New("unsupported file type; upload UTF-8 text, CSV, PDF, Office documents, zip, or PNG, JPEG, GIF, or WebP images")
 	errChatAttachmentTooLarge = errors.New("attachment exceeds size limit")
+	errChatAttachmentEmpty    = errors.New("attachment is empty")
 	errChatAttachmentName     = errors.New("invalid attachment name")
 	errChatAttachmentNotFound = errors.New("attachment not found")
 	errChatAttachmentUnsafe   = errors.New("attachment path is unsafe")

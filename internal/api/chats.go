@@ -431,35 +431,30 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		}
 		folder = &cleaned
 	}
-	c := chat{ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, Thinking: thinking, ShowThinking: showThinking, AutoAllow: autoAllow, BotID: botID}
-	c, err = s.createChatFromDefaults(c, kind)
-	if err != nil {
+	id, created := uid(), now()
+	c := chat{ID: id, ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, CreatedAt: created, UpdatedAt: created, Capabilities: capabilitiesForKind(kind)}
+	c.Thinking, c.ShowThinking, c.AutoAllow = thinking, showThinking, autoAllow
+	if folder == nil {
+		dir := s.chatWorkdir(c)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			errw(w, 500, cleanupConnectorDir(dir, err).Error())
+			return
+		}
+	}
+	c.BotID = botID
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
+		if folder == nil {
+			err = cleanupConnectorDir(s.chatWorkdir(c), err)
+		}
 		errw(w, 500, err.Error())
 		return
 	}
-	write(w, 201, c)
-}
-
-func (s *Server) createChatFromDefaults(c chat, kind string) (chat, error) {
-	c.ID, c.CreatedAt, c.UpdatedAt = uid(), now(), now()
-	c.Capabilities = capabilitiesForKind(kind)
-	if c.Folder == nil {
-		dir := s.chatWorkdir(c)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return chat{}, err
-		}
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return chat{}, cleanupConnectorDir(dir, err)
-		}
-	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
-		if c.Folder == nil {
-			err = cleanupConnectorDir(s.chatWorkdir(c), err)
-		}
-		return chat{}, err
-	}
 	c.Workdir = s.chatWorkdir(c)
-	return c, nil
+	write(w, 201, c)
 }
 
 func (s *Server) getChatToolResult(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -8,6 +9,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -68,7 +71,16 @@ type telegramQuestions struct {
 }
 
 func (s *Server) StartTelegramBridge(ctx context.Context) error {
-	go s.telegramNoticeLoop(ctx)
+	ctx, stop := context.WithCancel(ctx)
+	notices := make(chan struct{})
+	go func() {
+		defer close(notices)
+		s.telegramNoticeLoop(ctx)
+	}()
+	defer func() {
+		stop()
+		<-notices
+	}()
 	backoff := time.Second
 	for {
 		cfg, err := s.readTelegramSettings()
@@ -80,7 +92,7 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-s.telegramWakeChannel():
+			case <-s.telegramWake:
 				continue
 			case <-time.After(time.Second):
 				continue
@@ -89,9 +101,11 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 		var updates []telegramUpdate
 		pollCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
 		wake := make(chan struct{})
+		woken := false
 		go func() {
 			select {
-			case <-s.telegramWakeChannel():
+			case <-s.telegramWake:
+				woken = true
 				cancel()
 			case <-pollCtx.Done():
 			}
@@ -104,6 +118,10 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil
 			}
+			if woken {
+				backoff = time.Second
+				continue
+			}
 			// 409: another Patio polls the same bot; back off quietly instead of spamming the log.
 			if !strings.Contains(err.Error(), "Conflict") || backoff == time.Second {
 				log.Printf("Telegram getUpdates: %v", err)
@@ -111,7 +129,7 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-s.telegramWakeChannel():
+			case <-s.telegramWake:
 				backoff = time.Second
 				continue
 			case <-time.After(backoff):
@@ -122,36 +140,46 @@ func (s *Server) StartTelegramBridge(ctx context.Context) error {
 			continue
 		}
 		backoff = time.Second
-		if len(updates) == 0 {
-			continue
-		}
-		latest, err := s.readTelegramSettings()
-		if err != nil {
-			log.Printf("read Telegram settings: %v", err)
-			continue
-		}
+		offset := cfg.UpdateOffset
 		for _, update := range updates {
+			// Settings may change mid-batch: stop before side effects; unhandled updates stay on Telegram.
+			latest, ok := s.telegramActive(token)
+			if !ok {
+				break
+			}
 			if err := s.processTelegramUpdate(ctx, token, latest, update); err != nil {
 				log.Printf("process Telegram update %d: %v", update.UpdateID, err)
 			}
-			if update.UpdateID >= latest.UpdateOffset {
-				latest.UpdateOffset = update.UpdateID + 1
-			}
+			offset = max(offset, update.UpdateID+1)
 		}
-		if err := s.saveTelegramOffset(latest.UpdateOffset); err != nil {
+		if err := s.saveTelegramOffset(token, offset); err != nil {
 			log.Printf("save Telegram offset: %v", err)
 		}
 	}
 }
 
-// saveTelegramOffset re-reads settings so a Settings save during processing isn't overwritten.
-func (s *Server) saveTelegramOffset(offset int64) error {
+// telegramActive returns current settings while the bridge is enabled and token is still the stored token.
+func (s *Server) telegramActive(token string) (telegramSettings, bool) {
 	cfg, err := s.readTelegramSettings()
 	if err != nil {
-		return err
+		log.Printf("read Telegram settings: %v", err)
+		return cfg, false
 	}
-	if offset <= cfg.UpdateOffset {
+	current, err := telegramToken()
+	return cfg, err == nil && cfg.Enabled && current == token
+}
+
+// saveTelegramOffset holds telegramMu like the settings PUT, so neither overwrites the other, and skips
+// offsets of a bot whose token was replaced meanwhile.
+func (s *Server) saveTelegramOffset(token string, offset int64) error {
+	s.telegramMu.Lock()
+	defer s.telegramMu.Unlock()
+	if current, err := telegramToken(); err != nil || current != token {
 		return nil
+	}
+	cfg, err := s.readTelegramSettings()
+	if err != nil || offset <= cfg.UpdateOffset {
+		return err
 	}
 	cfg.UpdateOffset = offset
 	return s.saveTelegramSettings(cfg)
@@ -193,11 +221,10 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 		if name == "" {
 			name = fmt.Sprint(m.Chat.ID)
 		}
-		c, err := s.createTelegramChat("Telegram: " + name)
+		chatID, err = s.createTelegramChat("Telegram: " + name)
 		if err != nil {
 			return err
 		}
-		chatID = c.ID
 		if _, err := s.db.Exec(`INSERT INTO telegram_chat(telegram_chat_id,chat_id,created_at) VALUES(?,?,?) ON CONFLICT(telegram_chat_id) DO UPDATE SET chat_id=excluded.chat_id`, m.Chat.ID, chatID, now()); err != nil {
 			return err
 		}
@@ -212,7 +239,7 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 		if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, chatID).Scan(&title); err != nil {
 			return err
 		}
-		return reply(title + " (" + chatID + ")")
+		return reply("You're in the Patio chat “" + title + "”. Open it in Patio › Chats.")
 	}
 	text := m.Text
 	if text == "" {
@@ -243,13 +270,20 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	attachments := make([]ChatAttachment, 0, len(files))
 	for _, file := range files {
 		attachment, err := s.downloadTelegramFile(ctx, token, c, file.id, file.name)
-		if errors.Is(err, errChatAttachmentType) || errors.Is(err, errChatAttachmentTooLarge) {
+		if errors.Is(err, errChatAttachmentType) || errors.Is(err, errChatAttachmentTooLarge) || errors.Is(err, errChatAttachmentEmpty) {
+			s.removeTelegramFiles(c, attachments)
 			return reply("Patio can't take this file: " + err.Error())
 		}
 		if err != nil {
+			s.removeTelegramFiles(c, attachments)
 			return err
 		}
 		attachments = append(attachments, attachment)
+	}
+	// Downloads can be slow: recheck that the bridge is still on and the sender still allowed.
+	if latest, ok := s.telegramActive(token); !ok || !telegramAllowed(latest, m.From.ID) {
+		s.removeTelegramFiles(c, attachments)
+		return nil
 	}
 	s.attachmentsMu.Lock()
 	message, queued, err := s.sendOrQueueChatMessage(c, kind, dir, text, attachments, nil)
@@ -277,11 +311,11 @@ func (s *Server) downloadTelegramFile(ctx context.Context, token string, c chat,
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(telegramFileBase, "/")+"/file/bot"+token+"/"+file.FilePath, nil)
 	if err != nil {
-		return ChatAttachment{}, err
+		return ChatAttachment{}, redactTelegram(err, token)
 	}
 	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
 	if err != nil {
-		return ChatAttachment{}, err
+		return ChatAttachment{}, redactTelegram(err, token)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -290,26 +324,34 @@ func (s *Server) downloadTelegramFile(ctx context.Context, token string, c chat,
 	return s.storeChatAttachment(c, name, resp.Body)
 }
 
-func (s *Server) createTelegramChat(title string) (chat, error) {
-	defaults, err := s.chatDefaults()
+// createTelegramChat goes through the app's create chat handler, so it gets the same defaults
+// (default bot with its connector and model) and validation.
+func (s *Server) createTelegramChat(title string) (string, error) {
+	body, err := json.Marshal(map[string]string{"title": title})
 	if err != nil {
-		return chat{}, err
+		return "", err
 	}
-	connectorID := defaults.ConnectorID
-	var id, kind string
-	if connectorID == nil {
-		if err := s.db.QueryRow(`SELECT id,kind FROM connector ORDER BY created_at,rowid LIMIT 1`).Scan(&id, &kind); err != nil {
-			return chat{}, err
+	rec := httptest.NewRecorder()
+	s.createChat(rec, httptest.NewRequest(http.MethodPost, "/api/chats", bytes.NewReader(body)))
+	var created struct {
+		ID    string `json:"id"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		return "", err
+	}
+	if rec.Code != http.StatusCreated {
+		return "", fmt.Errorf("create chat: %s", created.Error)
+	}
+	return created.ID, nil
+}
+
+func (s *Server) removeTelegramFiles(c chat, attachments []ChatAttachment) {
+	for _, attachment := range attachments {
+		if path, err := s.attachmentPath(c, attachment.Name); err == nil {
+			_ = os.Remove(path)
 		}
-		connectorID = &id
-	} else if err := s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, *connectorID).Scan(&kind); err != nil {
-		return chat{}, err
 	}
-	var bot *string
-	if defaults.DefaultBotID != "none" {
-		bot = &defaults.DefaultBotID
-	}
-	return s.createChatFromDefaults(chat{ConnectorID: connectorID, Title: title, Model: defaults.Model, Folder: defaults.Folder, Thinking: defaults.Thinking, ShowThinking: defaults.ShowThinking, AutoAllow: defaults.AutoAllow, BotID: bot}, kind)
 }
 
 // telegramTyping keeps Telegram's typing status on (it clears after 5s) while the chat's turn runs.
@@ -395,6 +437,7 @@ func (s *Server) telegramNoticeLoop(ctx context.Context) {
 
 // scanTelegramNotices sends each pending approval and open question of a mapped chat once.
 func (s *Server) scanTelegramNotices(ctx context.Context, token string) error {
+	s.pruneTelegramPicks()
 	type notice struct {
 		telegramID      int64
 		id, tool, input string
@@ -618,23 +661,24 @@ func (s *Server) pickTelegramOption(ctx context.Context, token string, q *telegr
 			} else {
 				pick.labels[label] = true
 			}
+			pick.done = false
 		} else {
 			pick.labels = map[string]bool{label: true}
 			pick.done = true
 		}
 	}
+	done := pick.done
 	picked := make(map[string]bool, len(pick.labels))
 	for label := range pick.labels {
 		picked[label] = true
 	}
-	done := pick.done
 	var answers []questionAnswer
-	complete := true
+	var missing []string
 	for i, other := range data.Questions {
 		p := s.telegramPicks[messageID][i]
 		if p == nil || !p.done {
-			complete = false
-			break
+			missing = append(missing, other.Header)
+			continue
 		}
 		answer := questionAnswer{Header: other.Header}
 		for _, option := range other.Options {
@@ -646,18 +690,12 @@ func (s *Server) pickTelegramOption(ctx context.Context, token string, q *telegr
 	}
 	s.telegramPicksMu.Unlock()
 	chatTarget := q.Message.Chat.ID
-	if !done {
-		return telegramCall(ctx, token, "editMessageReplyMarkup", map[string]any{"chat_id": chatTarget, "message_id": q.Message.MessageID, "reply_markup": map[string]any{"inline_keyboard": telegramOptions(item, question.Options, picked, true)}}, nil)
-	}
-	if !complete {
-		var labels []string
-		for _, option := range question.Options {
-			if picked[option.Label] {
-				labels = append(labels, option.Label)
-			}
+	// Until the whole ask is sent, keep every keyboard so picks can change (and be redone after a restart).
+	if len(missing) > 0 {
+		if done {
+			*toast = "Saved. Still to answer: " + strings.Join(missing, ", ")
 		}
-		*toast = "Saved. Answer the other questions to send."
-		return telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": chatTarget, "message_id": q.Message.MessageID, "text": question.Header + ": " + strings.Join(labels, ", ")}, nil)
+		return telegramCall(ctx, token, "editMessageReplyMarkup", map[string]any{"chat_id": chatTarget, "message_id": q.Message.MessageID, "reply_markup": map[string]any{"inline_keyboard": telegramOptions(item, question.Options, picked, question.Multiple)}}, nil)
 	}
 	_, _, err = s.answerQuestion(chatID, messageID, answers)
 	if err != nil && !errors.Is(err, errQuestionAnswered) {
@@ -679,6 +717,25 @@ func (s *Server) pickTelegramOption(ctx context.Context, token string, q *telegr
 		}
 	}
 	return nil
+}
+
+// pruneTelegramPicks drops picks of questions answered another way (text reply, the app) or deleted.
+func (s *Server) pruneTelegramPicks() {
+	s.telegramPicksMu.Lock()
+	ids := make([]string, 0, len(s.telegramPicks))
+	for id := range s.telegramPicks {
+		ids = append(ids, id)
+	}
+	s.telegramPicksMu.Unlock()
+	for _, id := range ids {
+		var open int
+		err := s.db.QueryRow(`SELECT 1 FROM chat_message WHERE id=? AND answered=0`, id).Scan(&open)
+		if errors.Is(err, sql.ErrNoRows) {
+			s.forgetTelegramPicks(id)
+		} else if err != nil {
+			log.Printf("prune Telegram picks: %v", err)
+		}
+	}
 }
 
 func (s *Server) forgetTelegramPicks(messageID string) {
