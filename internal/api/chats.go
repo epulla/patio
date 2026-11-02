@@ -337,6 +337,10 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 	if botID == nil && defaults.DefaultBotID != "none" {
 		botID = &defaults.DefaultBotID
 	}
+	// "none" picks no bot on purpose, overriding the default bot.
+	if botID != nil && *botID == "none" {
+		botID = nil
+	}
 	var botConnector *string
 	botModel := ""
 	if botID != nil {

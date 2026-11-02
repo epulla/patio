@@ -57,6 +57,14 @@ func TestCreateChatUsesDefaultBotsConnectorAndModel(t *testing.T) {
 	if created.BotID == nil || *created.BotID != "billy" || created.ConnectorID == nil || *created.ConnectorID != connector || created.Model != "b-model" {
 		t.Fatalf("chat=%#v", created)
 	}
+	var none chat
+	if code := requestJSON(t, h, http.MethodPost, "/api/chats", map[string]any{"bot_id": "none", "connector_id": connector}, &none); code != http.StatusCreated || none.BotID != nil {
+		t.Fatalf("explicit no bot = %d %#v", code, none.BotID)
+	}
+	var martin chat
+	if code := requestJSON(t, h, http.MethodPost, "/api/chats", map[string]any{"bot_id": "ai", "connector_id": connector}, &martin); code != http.StatusCreated || martin.BotID == nil || *martin.BotID != "ai" {
+		t.Fatalf("explicit bot = %d %#v", code, martin.BotID)
+	}
 }
 
 func TestChatPromptUsesBotPersona(t *testing.T) {
