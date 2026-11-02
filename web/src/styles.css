@@ -2766,10 +2766,12 @@ main.chat-window .app-version {
 .dock-dot[data-state="working"] {
   color: var(--primary);
 }
-.dock-dot[data-state="working"] .svg-icon {
+.dock-dot[data-state="working"] .svg-icon,
+.dock-dot[data-state="paused"] .svg-icon {
   fill: currentColor;
 }
-.dock-dot[data-state="approval"] {
+.dock-dot[data-state="approval"],
+.dock-dot[data-state="paused"] {
   color: var(--warning);
 }
 .pin-kbd {

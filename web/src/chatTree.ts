@@ -25,10 +25,10 @@ export function chatAncestors(chats: Chat[], id: string) {
   return found;
 }
 
-const rank: Record<ChatStatus, number> = { reply: 1, working: 2, approval: 3 };
+const rank: Record<ChatStatus, number> = { reply: 1, working: 2, paused: 3, approval: 4 };
 
 // Handoff chats nest under their parent, newest first; a child whose parent isn't loaded stays top-level.
-// Parents sort by their newest descendant and show working/approval while any descendant has it.
+// Parents sort by their newest descendant and show working/paused/approval while any descendant has it.
 export function chatTree(chats: Chat[], status: Record<string, ChatStatus | undefined>, open: Set<string>): TreeRow[] {
   const loaded = new Set(chats.map((chat) => chat.id));
   const kids = new Map<string, Chat[]>();

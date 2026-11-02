@@ -3,11 +3,11 @@ import type { Chat } from "./api";
 import type { IconName } from "./icons";
 import { onEvent } from "./desktop";
 
-export type ChatStatus = "working" | "approval" | "reply";
-export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", reply: "check" };
+export type ChatStatus = "working" | "approval" | "paused" | "reply";
+export const statusIcons: Record<ChatStatus, IconName> = { working: "dot", approval: "hand", paused: "pause", reply: "check" };
 export const statusLabels: Record<"en" | "es", Record<ChatStatus, string>> = {
-  en: { working: "working", approval: "waiting for approval", reply: "new reply" },
-  es: { working: "trabajando", approval: "esperando aprobación", reply: "respuesta nueva" },
+  en: { working: "working", approval: "waiting for approval", paused: "paused, messages queued", reply: "new reply" },
+  es: { working: "trabajando", approval: "esperando aprobación", paused: "en pausa, mensajes en cola", reply: "respuesta nueva" },
 };
 
 let current: Record<string, ChatStatus | undefined> = {};
@@ -19,13 +19,19 @@ function update(next: Record<string, ChatStatus | undefined>) {
   listeners.forEach((listener) => listener());
 }
 
-// Server state wins for working/approval; "reply" is client-only and survives until seen.
+// Server state wins for working/approval/paused; "reply" is client-only and survives until seen.
 export function syncChatStatus(chats: Chat[]) {
   update(
     Object.fromEntries(
       chats.map((chat) => [
         chat.id,
-        chat.pending_count ? "approval" : chat.running ? "working" : current[chat.id] === "reply" ? "reply" : undefined,
+        chat.pending_count
+          ? "approval"
+          : chat.running
+            ? "working"
+            : chat.paused
+              ? "paused"
+              : current[chat.id] === "reply" ? "reply" : undefined,
       ]),
     ),
   );

@@ -43,6 +43,7 @@ type chat struct {
 	Workdir         string           `json:"workdir"`
 	Running         bool             `json:"running"`
 	PendingCount    int              `json:"pending_count,omitempty"`
+	Paused          bool             `json:"paused,omitempty"`
 	Thinking        bool             `json:"thinking"`
 	ShowThinking    bool             `json:"show_thinking"`
 	AutoAllow       bool             `json:"auto_allow"`
@@ -291,6 +292,12 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 		if err := s.db.QueryRow(`SELECT COUNT(*) FROM chat_approval WHERE chat_id=? AND status='pending'`, c.ID).Scan(&c.PendingCount); err != nil {
 			errw(w, 500, err.Error())
 			return
+		}
+		if !c.Running {
+			if c.Paused, _, err = s.queuePaused(c.ID); err != nil {
+				errw(w, 500, err.Error())
+				return
+			}
 		}
 		if searching && c.ParentChatID != nil {
 			if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, *c.ParentChatID).Scan(&c.ParentTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {

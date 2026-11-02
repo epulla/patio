@@ -205,6 +205,7 @@ export type Chat = {
   workdir: string;
   running: boolean;
   pending_count?: number;
+  paused?: boolean;
   thinking: boolean;
   show_thinking: boolean;
   auto_allow: boolean;
