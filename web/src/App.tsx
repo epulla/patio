@@ -6,6 +6,7 @@ import PrintTicket from "./PrintTicket";
 import Calendar from "./Calendar";
 import Dashboard from "./Dashboard";
 import Connectors from "./Connectors";
+import { Channels } from "./Connections";
 import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
 import { isShortcutsKey, ShortcutsDialog } from "./Shortcuts";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
@@ -34,7 +35,7 @@ import { isDesktop, onEvent, openURL } from "./desktop";
 const text = {
   en: {
     never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
-    dashboard: "Dashboard", boards: "Boards", tickets: "Tickets", calendar: "Calendar", connectors: "Connectors", chats: "Chats",
+    dashboard: "Dashboard", boards: "Boards", tickets: "Tickets", calendar: "Calendar", connections: "Connections", chats: "Chats",
     bots: "Bots & Workflows", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings", settingsUpdate: "Settings (update available)",
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
     pinned: (n: number) => `Pinned chats (${n})`, approval: ", approval needed", reply: ", new reply",
@@ -44,7 +45,7 @@ const text = {
   },
   es: {
     never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
-    dashboard: "Panel", boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connectors: "Conectores", chats: "Chats",
+    dashboard: "Panel", boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connections: "Conexiones", chats: "Chats",
     bots: "Bots & Flujos", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes", settingsUpdate: "Ajustes (hay una actualización)",
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
     pinned: (n: number) => `Chats fijados (${n})`, approval: ", requiere aprobación", reply: ", nueva respuesta",
@@ -515,6 +516,7 @@ export default function App() {
   if (skillMatch)
     page = <Skills id={skillMatch[1] && decodeURIComponent(skillMatch[1])} refresh={refresh} />;
   if (path === "/ai/mcp") page = <McpServers refresh={refresh} />;
+  if (path === "/ai/channels") page = <Channels />;
   const scheduledMatch = path.match(/^\/ai\/scheduled(?:\/([^/]+))?$/);
   if (scheduledMatch)
     page = <ScheduledTasks id={scheduledMatch[1] && decodeURIComponent(scheduledMatch[1])} refresh={refresh} />;
@@ -611,15 +613,14 @@ export default function App() {
             <p className="sidebar-label nav-label">AI</p>
             {navItem(
               "/ai/connectors",
-              t.connectors,
+              t.connections,
               <Icon name="connector" />,
-              path === "/ai/connectors",
-              { "data-tour": "connectors" },
+              ["/ai/connectors", "/ai/mcp", "/ai/channels"].includes(path),
+              { "data-tour": "connections" },
             )}
             {navItem("/ai/chats", t.chats, <Icon name="chat" />, !!chatMatch, { "data-tour": "chats" })}
             {navItem("/ai/bots", t.bots, <Icon name="bot" />, !!botMatch || !!workflowMatch, { "data-tour": "bots" })}
             {navItem("/ai/skills", t.skills, <Icon name="sparkles" />, !!skillMatch, { "data-tour": "skills" })}
-            {navItem("/ai/mcp", "MCP", <Icon name="plug" />, path === "/ai/mcp", { "data-tour": "mcp" })}
           </div>
           {navItem("/ai/scheduled", t.scheduled, <Icon name="clock" />, !!scheduledMatch, { "data-tour": "scheduled" })}
           {boards.length > 0 && <p className="sidebar-label nav-label">{t.yourBoards}</p>}

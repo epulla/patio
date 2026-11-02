@@ -3,11 +3,17 @@ import { navigate } from "./App";
 import { useText } from "./i18n";
 
 const text = {
-  en: { title: "Connections", connectors: "AI", mcp: "Tools (MCP)", channels: "Channels" },
-  es: { title: "Conexiones", connectors: "IA", mcp: "Herramientas (MCP)", channels: "Canales" },
+  en: {
+    title: "Connections", connectors: "AI", mcp: "Tools (MCP)", channels: "Channels",
+    channelsIntro: "Talk to Patio from messaging apps. Messages go into normal chats with your default bot.",
+  },
+  es: {
+    title: "Conexiones", connectors: "IA", mcp: "Herramientas (MCP)", channels: "Canales",
+    channelsIntro: "Habla con Patio desde apps de mensajería. Los mensajes llegan a chats normales con tu bot por defecto.",
+  },
 };
 
-export type ConnectionsTab = keyof Omit<typeof text.en, "title">;
+type ConnectionsTab = "connectors" | "mcp" | "channels";
 
 export function ConnectionsHeading({ actions, tab }: { actions?: ReactNode; tab: ConnectionsTab }) {
   const t = useText(text);
@@ -28,5 +34,15 @@ export function ConnectionsHeading({ actions, tab }: { actions?: ReactNode; tab:
         ))}
       </div>
     </>
+  );
+}
+
+export function Channels() {
+  const t = useText(text);
+  return (
+    <div className="stack">
+      <ConnectionsHeading tab="channels" />
+      <p className="muted">{t.channelsIntro}</p>
+    </div>
   );
 }
