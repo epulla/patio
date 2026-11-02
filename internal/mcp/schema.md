@@ -39,6 +39,8 @@ erDiagram
   app_window { TEXT id; TEXT chat_id; INTEGER pid; TEXT heartbeat_at; TEXT focus_at; TEXT focus_path }
   chat_turn { TEXT chat_id; TEXT window_id; TEXT started_at }
   notification { TEXT id; TEXT kind; TEXT title; TEXT body; TEXT link; TEXT created_at; TEXT read_at }
+  telegram_chat { INTEGER telegram_chat_id; TEXT chat_id; TEXT created_at }
+  telegram_notice { TEXT item_id; INTEGER telegram_chat_id; INTEGER message_id; TEXT created_at }
   item_history { TEXT id; TEXT item_type; TEXT item_id; TEXT item_name; TEXT action; TEXT changes_json; TEXT snapshot_json; TEXT user_id; TEXT created_at }
   skill ||--o{ skill_bot : scoped_to
   user ||--o{ skill_bot : receives
