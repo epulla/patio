@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api } from "./api";
 import { ErrorText } from "./App";
 import Switch from "./Switch";
@@ -21,6 +21,9 @@ const text = {
     test: "Test",
     testing: "Testing…",
     connected: (name: string) => `Connected as @${name}`,
+    notConnected: "Not connected",
+    checking: "Checking…",
+    channel: "Channel",
     loading: "Loading…",
   },
   es: {
@@ -37,6 +40,9 @@ const text = {
     test: "Probar",
     testing: "Probando…",
     connected: (name: string) => `Conectado como @${name}`,
+    notConnected: "Sin conectar",
+    checking: "Comprobando…",
+    channel: "Canal",
     loading: "Cargando…",
   },
 };
@@ -48,6 +54,7 @@ export default function Telegram() {
   const [ids, setIds] = useState("");
   const [bot, setBot] = useState<string>();
   const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string>();
   const [error, setError] = useState<unknown>();
 
   function load(loaded: TelegramSettings) {
@@ -56,28 +63,40 @@ export default function Telegram() {
   }
 
   useEffect(() => {
-    api.get<TelegramSettings>("/api/settings/telegram").then(load).catch(setError);
+    api
+      .get<TelegramSettings>("/api/settings/telegram")
+      .then((loaded) => {
+        load(loaded);
+        if (loaded.has_token) void test(null);
+      })
+      .catch(setError);
   }, []);
 
   async function save(change: { enabled?: boolean; allowed_user_ids?: number[]; token?: string }) {
     if (!settings) return;
     try {
-      load(
-        await api.put<TelegramSettings>("/api/settings/telegram", {
-          enabled: settings.enabled,
-          allowed_user_ids: settings.allowed_user_ids,
-          token: null,
-          ...change,
-        }),
-      );
+      const saved = await api.put<TelegramSettings>("/api/settings/telegram", {
+        enabled: settings.enabled,
+        allowed_user_ids: settings.allowed_user_ids,
+        token: null,
+        ...change,
+      });
+      load(saved);
+      setError(undefined);
       if (change.token !== undefined) {
         setToken("");
         setBot(undefined);
+        setTestError(undefined);
+        if (saved.has_token) void test(null);
       }
-      setError(undefined);
     } catch (reason) {
       setError(reason);
     }
+  }
+
+  function saveToken(event: FormEvent) {
+    event.preventDefault();
+    if (token.trim()) void save({ token: token.trim() });
   }
 
   function saveIds() {
@@ -89,78 +108,82 @@ export default function Telegram() {
     void save({ allowed_user_ids: next });
   }
 
-  async function test() {
+  async function test(candidate: string | null) {
     setTesting(true);
     try {
-      const result = await api.post<{ username: string }>("/api/settings/telegram/test", { token: token || null });
+      const result = await api.post<{ username: string }>("/api/settings/telegram/test", { token: candidate });
       setBot(result.username);
-      setError(undefined);
+      setTestError(undefined);
     } catch (reason) {
       setBot(undefined);
-      setError(reason);
+      setTestError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setTesting(false);
     }
   }
 
+  const state = testing ? "pending" : bot ? "up" : testError ? "down" : "";
+  const label = testing ? t.checking : bot ? t.connected(bot) : (testError ?? t.notConnected);
+
   return (
-    <section className="stack">
-      <h2>{t.telegram}</h2>
+    <article className={`panel connector-card ${state}`} aria-labelledby="telegram-title">
+      <header className="connector-head">
+        <div>
+          <p className="eyebrow">{t.channel}</p>
+          <h2 id="telegram-title">{t.telegram}</h2>
+        </div>
+        <div className="connector-actions">
+          <button type="button" disabled={testing || (!token.trim() && !settings?.has_token)} onClick={() => test(token.trim() || null)}>
+            {testing ? t.testing : t.test}
+          </button>
+        </div>
+      </header>
+      <p className="connector-state" role="status">
+        <span className="state-dot" aria-hidden="true" />
+        <span>{label}</span>
+      </p>
       <p className="muted">{t.help}</p>
-      <section className="panel stack defaults-panel">
-        {settings ? (
-          <>
-            <Switch label={t.enabled} checked={settings.enabled} onChange={(enabled) => save({ enabled })} />
-            <div className="defaults-fields">
-              <label>
-                {t.token}
-                <input
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={settings.has_token ? t.tokenSaved : ""}
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && token.trim() && save({ token: token.trim() })}
-                />
-              </label>
-              <label>
-                {t.allowed}
-                <input
-                  inputMode="numeric"
-                  spellCheck={false}
-                  value={ids}
-                  onChange={(event) => setIds(event.target.value)}
-                  onBlur={saveIds}
-                  onKeyDown={(event) => event.key === "Enter" && saveIds()}
-                />
-                <small className="muted">{t.allowedHelp}</small>
-              </label>
-            </div>
-            <div className="actions">
-              <button type="button" disabled={!token.trim()} onClick={() => save({ token: token.trim() })}>
-                {t.saveToken}
+      {settings ? (
+        <>
+          <form className="inline-form" onSubmit={saveToken}>
+            <label className="grow">
+              {t.token}
+              <input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={settings.has_token ? t.tokenSaved : ""}
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+              />
+            </label>
+            <button disabled={!token.trim()}>{t.saveToken}</button>
+            {settings.has_token && (
+              <button type="button" className="danger-text" onClick={() => save({ token: "" })}>
+                {t.removeToken}
               </button>
-              {settings.has_token && (
-                <button type="button" onClick={() => save({ token: "" })}>
-                  {t.removeToken}
-                </button>
-              )}
-              <button type="button" disabled={testing || (!token.trim() && !settings.has_token)} onClick={test}>
-                {testing ? t.testing : t.test}
-              </button>
-              {bot && (
-                <span className="muted" role="status">
-                  {t.connected(bot)}
-                </span>
-              )}
-            </div>
-          </>
-        ) : (
-          !error && <p className="muted" role="status">{t.loading}</p>
-        )}
-        <ErrorText error={error} />
-      </section>
-    </section>
+            )}
+          </form>
+          <div className="inline-form">
+            <label className="grow">
+              {t.allowed}
+              <input
+                inputMode="numeric"
+                spellCheck={false}
+                value={ids}
+                onChange={(event) => setIds(event.target.value)}
+                onBlur={saveIds}
+                onKeyDown={(event) => event.key === "Enter" && saveIds()}
+              />
+              <small className="muted">{t.allowedHelp}</small>
+            </label>
+          </div>
+          <Switch label={t.enabled} checked={settings.enabled} onChange={(enabled) => save({ enabled })} />
+        </>
+      ) : (
+        !error && <p className="muted" role="status">{t.loading}</p>
+      )}
+      <ErrorText error={error} />
+    </article>
   );
 }
