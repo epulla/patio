@@ -13,7 +13,7 @@ const text = {
   en: {
     back: "Back", next: "Next", done: "Done", skip: "Skip tour", step: (n: number, total: number) => `${n} of ${total}`, loading: "Getting the tour ready…",
     chapters: { basics: "Basics", ai: "AI", power: "Power tools" },
-    needsConnector: "This needs a connector. Add one to try it.", goConnectors: "Go to Connectors",
+    needsConnector: "This needs a connector. Add one to try it.", goConnectors: "Go to Connections",
     steps: {
       intro: ["Welcome to Patio", "Patio keeps your work on boards of tickets, and AI chats that can read and update them. This tour walks you through the main pieces in about two minutes."],
       boards: ["Boards", "All your boards live here. Each board also gets a shortcut lower in the sidebar; drag those to reorder."],
@@ -34,7 +34,7 @@ const text = {
       chats: ["Chats", `${key("N")} starts a chat. Type # to mention a ticket. Type @, a bot's name and a task to open a chat run by that bot; the reply links it. Pick a model next to the message box, and approve file changes or commands when the AI asks. Hover a ticket, board or chat link to preview it.`],
       attachments: ["Attachments", "Attach files with the paperclip, drag and drop, or paste. Hover an image to preview it and click to enlarge it; Esc or a click outside closes it, and Show in folder opens the file."],
       chatLinks: ["Chat links", "Copy a chat's link from its header or the ⋯ menu on its row (right-click works too), type [[ in a message to pick a chat, or drag a chat from the list into the message box. Links open the chat."],
-      chatTree: ["Handoff chats", "Chats a bot hands work to sit under the chat that started them. Click the arrow before the title to show or hide them; a parent shows the running dot while any of its chats work."],
+      chatTree: ["Handoff chats", "Chats a bot hands work to sit under the chat that started them. Click the arrow before the title to show or hide them; a parent shows the running dot while any of its chats work. A yellow ⏸ means a chat paused its queued messages (after Stop, an error or too many bot hand-offs); open it and press Send now to continue."],
       aiTitles: ["AI chat titles", "After a new chat's first reply, AI gives it a short title. Rename a chat to keep your own title. Turn this off or pick the connector and model it uses here."],
       pins: ["Pins and the dock", `Pin a chat to keep it handy: ${key("⇧N", "Shift+N")} starts a pinned chat and ${key("J")} opens the side dock on any page. Group pinned chats into tabs, and drag a chat from the list onto a group to pin it there.`],
       bots: ["Bots", "Bots are AI personas with their own instructions, connector and model, like a developer or a reviewer. Martin is the first one; pick the default bot for new chats in Settings, or choose another bot when you start a chat."],
@@ -42,7 +42,7 @@ const text = {
       workflows: ["Workflows", "Draw how bots hand work to each other, like Martin → Billy → Sammy, then run it with a task, or start it in a chat with the workflow button. Steps that wait for you hand off when you say \"go\"; the bot reminds you. Each bot works in its own chat; View flow shows the whole run live."],
       skills: ["Skills and memories", "Skills are reusable instructions chats load for a task. Memories are facts and preferences the AI saves when you correct it, so you don't repeat yourself."],
       monitors: ["Monitors", "Run an MCP tool on a schedule and get notified when its result changes."],
-      scheduled: ["Scheduled tasks", "Run a prompt on a schedule, like a daily summary of your boards. The play button runs a task right away. A gray clock and \"late\" on a chat mean it ran late because Patio was closed at the scheduled time."],
+      scheduled: ["Scheduled tasks", "Run a prompt on a schedule, like a daily summary of your boards. The play button runs a task right away. A gray clock and \"late\" on a chat mean it ran late because Patio was closed at the scheduled time. Closing the window keeps Patio running (in the Dock on macOS, minimized elsewhere) so tasks, monitors and Telegram keep working; change this in Settings › Background."],
       patioMcp: ["Use Patio from other AI apps", "Patio is an MCP server too. Copy this setup into Claude Desktop, Claude Code or another client to manage your boards from there."],
       foot: ["Settings and notifications", `Settings, theme and notifications live here. A dot on the gear and a banner in Settings mean a new Patio version is out. If your computer blocks desktop alerts, the bell tells you how to turn them on. Long dropdowns have a search box: start typing to filter them. Press ${key("/")} anytime for every shortcut, and replay this tour from Settings.`],
     },
@@ -50,7 +50,7 @@ const text = {
   es: {
     back: "Atrás", next: "Siguiente", done: "Listo", skip: "Omitir recorrido", step: (n: number, total: number) => `${n} de ${total}`, loading: "Preparando el recorrido…",
     chapters: { basics: "Básico", ai: "IA", power: "Herramientas avanzadas" },
-    needsConnector: "Esto necesita un conector. Agrega uno para probarlo.", goConnectors: "Ir a Conectores",
+    needsConnector: "Esto necesita un conector. Agrega uno para probarlo.", goConnectors: "Ir a Conexiones",
     steps: {
       intro: ["Bienvenido a Patio", "Patio organiza tu trabajo en tableros de tickets, con chats de IA que pueden leerlos y actualizarlos. Este recorrido te muestra las piezas principales en unos dos minutos."],
       boards: ["Tableros", "Aquí están todos tus tableros. Cada tablero tiene además un acceso más abajo en la barra lateral; arrástralos para reordenar."],
@@ -71,7 +71,7 @@ const text = {
       chats: ["Chats", `${key("N")} inicia un chat. Escribe # para mencionar un ticket. Escribe @, el nombre de un bot y una tarea para abrir un chat atendido por ese bot; la respuesta lo enlaza. Elige un modelo junto al cuadro de mensaje y aprueba cambios de archivos o comandos cuando la IA lo pida. Pasa el cursor sobre un enlace a un ticket, tablero o chat para verlo.`],
       attachments: ["Adjuntos", "Adjunta archivos con el clip, arrastrándolos o pegándolos. Pasa el cursor sobre una imagen para verla y haz clic para ampliarla; Esc o un clic fuera la cierra, y Mostrar en carpeta abre el archivo."],
       chatLinks: ["Enlaces a chats", "Copia el enlace de un chat desde su encabezado o el menú ⋯ de su fila (también con clic derecho), escribe [[ en un mensaje para elegir un chat, o arrastra un chat de la lista al cuadro de mensaje. Los enlaces abren el chat."],
-      chatTree: ["Chats delegados", "Los chats a los que un bot delega trabajo aparecen bajo el chat que los inició. Haz clic en la flecha antes del título para mostrarlos u ocultarlos; el chat padre muestra el punto de actividad mientras alguno trabaja."],
+      chatTree: ["Chats delegados", "Los chats a los que un bot delega trabajo aparecen bajo el chat que los inició. Haz clic en la flecha antes del título para mostrarlos u ocultarlos; el chat padre muestra el punto de actividad mientras alguno trabaja. Un ⏸ amarillo indica que un chat pausó sus mensajes en cola (tras Detener, un error o demasiados traspasos entre bots); ábrelo y presiona Enviar ahora para continuar."],
       aiTitles: ["Títulos de chat con IA", "Tras la primera respuesta de un chat nuevo, la IA le da un título corto. Renombra un chat para conservar tu propio título. Desactívalo o elige aquí el conector y el modelo que usa."],
       pins: ["Chats fijados y el panel", `Fija un chat para tenerlo a mano: ${key("⇧N", "Shift+N")} inicia un chat fijado y ${key("J")} abre el panel lateral en cualquier página. Agrupa los chats fijados en pestañas y arrastra un chat de la lista a un grupo para fijarlo ahí.`],
       bots: ["Bots", "Los bots son personalidades de IA con sus propias instrucciones, conector y modelo, como un desarrollador o un revisor. Martin es el primero; elige el bot predeterminado para chats nuevos en Ajustes, o elige otro bot al iniciar un chat."],
@@ -79,7 +79,7 @@ const text = {
       workflows: ["Flujos", "Dibuja cómo se pasan el trabajo los bots, como Martin → Billy → Sammy, y ejecútalo con una tarea, o inícialo en un chat con el botón de flujos. Los pasos que esperan tu señal traspasan cuando dices \"sigue\"; el bot te lo recuerda. Cada bot trabaja en su propio chat; Ver flujo muestra toda la ejecución en vivo."],
       skills: ["Habilidades y memorias", "Las habilidades son instrucciones reutilizables que los chats cargan para una tarea. Las memorias son datos y preferencias que la IA guarda cuando la corriges, para que no te repitas."],
       monitors: ["Monitores", "Ejecuta una herramienta MCP según un horario y recibe un aviso cuando su resultado cambia."],
-      scheduled: ["Tareas programadas", "Ejecuta un prompt según un horario, como un resumen diario de tus tableros. El botón de reproducir ejecuta una tarea al instante. Un reloj gris y \"tarde\" en un chat indican que se ejecutó tarde porque Patio estaba cerrado a la hora programada."],
+      scheduled: ["Tareas programadas", "Ejecuta un prompt según un horario, como un resumen diario de tus tableros. El botón de reproducir ejecuta una tarea al instante. Un reloj gris y \"tarde\" en un chat indican que se ejecutó tarde porque Patio estaba cerrado a la hora programada. Cerrar la ventana mantiene Patio en ejecución (en el Dock en macOS, minimizado en otros sistemas) para que las tareas, los monitores y Telegram sigan funcionando; cámbialo en Ajustes › Segundo plano."],
       patioMcp: ["Usa Patio desde otras apps de IA", "Patio también es un servidor MCP. Copia esta configuración en Claude Desktop, Claude Code u otro cliente para manejar tus tableros desde ahí."],
       foot: ["Ajustes y avisos", `Aquí están los ajustes, el tema y las notificaciones. Un punto en el engranaje y un aviso en Ajustes indican que hay una nueva versión de Patio. Si tu equipo bloquea los avisos de escritorio, la campana te dice cómo activarlos. Las listas desplegables largas tienen buscador: empieza a escribir para filtrarlas. Presiona ${key("/")} cuando quieras para ver todos los atajos y repite este recorrido desde Ajustes.`],
     },
