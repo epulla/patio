@@ -114,49 +114,53 @@ func (s *Server) uploadChatAttachments(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, "attachment name is required")
 		return
 	}
-	prefix, err := io.ReadAll(io.LimitReader(r.Body, 512))
-	if err != nil {
-		writeAttachmentError(w, err)
-		return
-	}
-	// WebKit drops File and Blob bodies sent to the app's custom scheme, so an empty body is a failed upload.
-	if len(prefix) == 0 {
-		errw(w, http.StatusBadRequest, "attachment is empty")
-		return
-	}
-	kind, contentType, err := detectAttachmentType(name, prefix)
-	if err != nil {
-		writeAttachmentError(w, errChatAttachmentType)
-		return
-	}
 	pending := s.attachments[c.ID]
 	if len(pending)+1 > maxChatAttachments {
 		errw(w, http.StatusBadRequest, "at most 10 unsent attachments are allowed")
 		return
 	}
-	dir, err := chatAttachmentsDir(c.Workdir, true)
-	if err != nil {
-		errw(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	name = sanitizeChatAttachmentName(name)
-	temp, err := os.CreateTemp(dir, ".upload-*")
-	if err != nil {
-		errw(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	storedName, size, err := streamChatAttachment(temp, dir, name, prefix, r.Body, kind, maxChatTextAttachment, maxChatImageAttachment)
+	attachment, err := s.storeChatAttachment(c, name, r.Body)
 	if err != nil {
 		writeAttachmentError(w, err)
 		return
 	}
-	attachment := ChatAttachment{Name: storedName, Kind: kind, MIME: contentType, Size: size}
 	if pending == nil {
 		pending = make(map[string]ChatAttachment)
 		s.attachments[c.ID] = pending
 	}
-	pending[storedName] = attachment
+	pending[attachment.Name] = attachment
 	write(w, http.StatusCreated, []ChatAttachment{attachment})
+}
+
+func (s *Server) storeChatAttachment(c chat, name string, body io.Reader) (ChatAttachment, error) {
+	if name == "" {
+		return ChatAttachment{}, errors.New("attachment name is required")
+	}
+	prefix, err := io.ReadAll(io.LimitReader(body, 512))
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	if len(prefix) == 0 {
+		return ChatAttachment{}, errors.New("attachment is empty")
+	}
+	kind, contentType, err := detectAttachmentType(name, prefix)
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	dir, err := chatAttachmentsDir(c.Workdir, true)
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	name = sanitizeChatAttachmentName(name)
+	temp, err := os.CreateTemp(dir, ".upload-*")
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	storedName, size, err := streamChatAttachment(temp, dir, name, prefix, body, kind, maxChatTextAttachment, maxChatImageAttachment)
+	if err != nil {
+		return ChatAttachment{}, err
+	}
+	return ChatAttachment{Name: storedName, Kind: kind, MIME: contentType, Size: size}, nil
 }
 
 func detectAttachmentType(name string, prefix []byte) (string, string, error) {

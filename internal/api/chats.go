@@ -431,30 +431,35 @@ func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
 		}
 		folder = &cleaned
 	}
-	id, created := uid(), now()
-	c := chat{ID: id, ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, CreatedAt: created, UpdatedAt: created, Capabilities: capabilitiesForKind(kind)}
-	c.Thinking, c.ShowThinking, c.AutoAllow = thinking, showThinking, autoAllow
-	if folder == nil {
-		dir := s.chatWorkdir(c)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			errw(w, 500, err.Error())
-			return
-		}
-		if err := os.Chmod(dir, 0o700); err != nil {
-			errw(w, 500, cleanupConnectorDir(dir, err).Error())
-			return
-		}
-	}
-	c.BotID = botID
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
-		if folder == nil {
-			err = cleanupConnectorDir(s.chatWorkdir(c), err)
-		}
+	c := chat{ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, Thinking: thinking, ShowThinking: showThinking, AutoAllow: autoAllow, BotID: botID}
+	c, err = s.createChatFromDefaults(c, kind)
+	if err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
-	c.Workdir = s.chatWorkdir(c)
 	write(w, 201, c)
+}
+
+func (s *Server) createChatFromDefaults(c chat, kind string) (chat, error) {
+	c.ID, c.CreatedAt, c.UpdatedAt = uid(), now(), now()
+	c.Capabilities = capabilitiesForKind(kind)
+	if c.Folder == nil {
+		dir := s.chatWorkdir(c)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return chat{}, err
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return chat{}, cleanupConnectorDir(dir, err)
+		}
+	}
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
+		if c.Folder == nil {
+			err = cleanupConnectorDir(s.chatWorkdir(c), err)
+		}
+		return chat{}, err
+	}
+	c.Workdir = s.chatWorkdir(c)
+	return c, nil
 }
 
 func (s *Server) getChatToolResult(w http.ResponseWriter, r *http.Request) {
@@ -836,19 +841,9 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Text += "\n\n[Opened chats: " + strings.Join(opened, "; ") + "; include these links in your reply.]"
 	}
-	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: in.Text, Attachments: selected})
-	if message.ID != "" {
-		if err := s.markChatAttachmentsSent(c, seen); err != nil {
-			errw(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-	if errors.Is(err, errChatTurnRunning) {
-		s.queueChatMessage(w, id, in.Text, selected)
-		return
-	}
-	if errors.Is(err, errChatTurnOtherWindow) {
-		s.queueChatMessage(w, id, in.Text, selected)
+	message, queued, err := s.sendOrQueueChatMessage(c, kind, dir, in.Text, selected, seen)
+	if queued {
+		s.writeQueuedChatMessage(w, id, in.Text, selected)
 		return
 	}
 	if err != nil {
@@ -862,19 +857,37 @@ func (s *Server) sendChatMessage(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusAccepted, message)
 }
 
-func (s *Server) queueChatMessage(w http.ResponseWriter, chatID, text string, attachments []ChatAttachment) {
-	encoded, err := json.Marshal(attachments)
-	if err != nil {
-		errw(w, http.StatusInternalServerError, err.Error())
-		return
+func (s *Server) sendOrQueueChatMessage(c chat, kind, dir, text string, attachments []ChatAttachment, selected map[string]bool) (ChatMessage, bool, error) {
+	message, err := s.chats.Send(c, kind, dir, ChatSendRequest{Text: text, Attachments: attachments})
+	if message.ID != "" && len(selected) != 0 {
+		if markErr := s.markChatAttachmentsSent(c, selected); markErr != nil {
+			return message, false, markErr
+		}
 	}
-	item := chatQueueItem{ID: uid(), Text: text, Attachments: attachments, CreatedAt: now()}
-	if _, err := s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES(?,?,?,?,?)`, item.ID, chatID, text, string(encoded), item.CreatedAt); err != nil {
+	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
+		return ChatMessage{}, true, nil
+	}
+	return message, false, err
+}
+
+func (s *Server) writeQueuedChatMessage(w http.ResponseWriter, chatID, text string, attachments []ChatAttachment) {
+	item, err := s.queueChatMessage(chatID, text, attachments)
+	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	s.chats.emit(chatID, map[string]any{"type": "queue"})
 	write(w, http.StatusAccepted, map[string]any{"queued": item})
+}
+
+func (s *Server) queueChatMessage(chatID, text string, attachments []ChatAttachment) (chatQueueItem, error) {
+	encoded, err := json.Marshal(attachments)
+	if err != nil {
+		return chatQueueItem{}, err
+	}
+	item := chatQueueItem{ID: uid(), Text: text, Attachments: attachments, CreatedAt: now()}
+	_, err = s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES(?,?,?,?,?)`, item.ID, chatID, text, string(encoded), item.CreatedAt)
+	return item, err
 }
 
 func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {

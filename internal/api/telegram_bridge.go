@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
+	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -38,7 +39,17 @@ type telegramUpdate struct {
 	Message  *struct {
 		MessageID int64  `json:"message_id"`
 		Text      string `json:"text"`
-		Chat      struct {
+		Caption   string `json:"caption"`
+		Photo     []struct {
+			FileID   string `json:"file_id"`
+			FileSize int64  `json:"file_size"`
+		} `json:"photo"`
+		Document *struct {
+			FileID   string `json:"file_id"`
+			FileName string `json:"file_name"`
+			FileSize int64  `json:"file_size"`
+		} `json:"document"`
+		Chat struct {
 			ID        int64  `json:"id"`
 			FirstName string `json:"first_name"`
 			Username  string `json:"username"`
@@ -179,7 +190,28 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	if m.Text == "/new" {
 		return reply("Started a new Patio chat.")
 	}
-	if strings.TrimSpace(m.Text) == "" {
+	text := m.Text
+	if text == "" {
+		text = m.Caption
+	}
+	var files []struct {
+		id, name string
+		size     int64
+	}
+	if len(m.Photo) > 0 {
+		photo := m.Photo[len(m.Photo)-1]
+		files = append(files, struct {
+			id, name string
+			size     int64
+		}{photo.FileID, "photo.jpg", photo.FileSize})
+	}
+	if m.Document != nil {
+		files = append(files, struct {
+			id, name string
+			size     int64
+		}{m.Document.FileID, m.Document.FileName, m.Document.FileSize})
+	}
+	if strings.TrimSpace(text) == "" && len(files) == 0 {
 		return nil
 	}
 	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, chatID))
@@ -190,9 +222,60 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	if err != nil {
 		return err
 	}
-	_, err = s.chats.Send(c, kind, dir, ChatSendRequest{Text: m.Text})
-	if errors.Is(err, errChatTurnRunning) || errors.Is(err, errChatTurnOtherWindow) {
-		_, err = s.db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES(?,?,?,'[]',?)`, uid(), chatID, m.Text, now())
+	selected := make([]ChatAttachment, 0, len(files))
+	selectedNames := make(map[string]bool, len(files))
+	s.attachmentsMu.Lock()
+	defer s.attachmentsMu.Unlock()
+	for _, file := range files {
+		if file.size > maxChatTextAttachment {
+			return reply("Patio can't take this file: attachment exceeds size limit")
+		}
+		var result struct {
+			FilePath string `json:"file_path"`
+		}
+		if err := telegramCall(ctx, token, "getFile", map[string]any{"file_id": file.id}, &result); err != nil {
+			return err
+		}
+		if file.name == "" {
+			file.name = filepath.Base(result.FilePath)
+		}
+		if file.name == "" || file.name == "." {
+			file.name = "photo.jpg"
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(telegramFileBase, "/")+"/file/bot"+token+"/"+result.FilePath, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := (&http.Client{Timeout: 40 * time.Second}).Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			resp.Body.Close()
+			return fmt.Errorf("Telegram file download: %s", resp.Status)
+		}
+		attachment, storeErr := s.storeChatAttachment(c, file.name, resp.Body)
+		closeErr := resp.Body.Close()
+		if err := errors.Join(storeErr, closeErr); err != nil {
+			if errors.Is(err, errChatAttachmentType) || errors.Is(err, errChatAttachmentTooLarge) {
+				return reply("Patio can't take this file: " + err.Error())
+			}
+			return err
+		}
+		if s.attachments[c.ID] == nil {
+			s.attachments[c.ID] = make(map[string]ChatAttachment)
+		}
+		s.attachments[c.ID][attachment.Name] = attachment
+		selected = append(selected, attachment)
+		selectedNames[attachment.Name] = true
+	}
+	message, queued, err := s.sendOrQueueChatMessage(c, kind, dir, text, selected, selectedNames)
+	if queued {
+		_, err = s.queueChatMessage(chatID, text, selected)
+		return err
+	}
+	if err == nil && message.ID != "" {
+		go s.telegramTyping(ctx, token, m.Chat.ID, chatID)
 	}
 	return err
 }
@@ -202,33 +285,43 @@ func (s *Server) createTelegramChat(title string) (chat, error) {
 	if err != nil {
 		return chat{}, err
 	}
-	var connectorID, kind string
-	if defaults.ConnectorID != nil {
-		connectorID = *defaults.ConnectorID
-	} else if err = s.db.QueryRow(`SELECT id,kind FROM connector ORDER BY created_at,rowid LIMIT 1`).Scan(&connectorID, &kind); err != nil {
-		return chat{}, err
-	}
-	if kind == "" {
-		if err = s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, connectorID).Scan(&kind); err != nil {
+	connectorID := defaults.ConnectorID
+	var id, kind string
+	if connectorID == nil {
+		if err := s.db.QueryRow(`SELECT id,kind FROM connector ORDER BY created_at,rowid LIMIT 1`).Scan(&id, &kind); err != nil {
 			return chat{}, err
 		}
+		connectorID = &id
+	} else if err := s.db.QueryRow(`SELECT kind FROM connector WHERE id=?`, *connectorID).Scan(&kind); err != nil {
+		return chat{}, err
 	}
-	c := chat{ID: uid(), ConnectorID: &connectorID, Title: title, Model: defaults.Model, Folder: defaults.Folder, CreatedAt: now(), UpdatedAt: now(), Thinking: defaults.Thinking, ShowThinking: defaults.ShowThinking, AutoAllow: defaults.AutoAllow, Capabilities: capabilitiesForKind(kind)}
+	var bot *string
 	if defaults.DefaultBotID != "none" {
-		c.BotID = &defaults.DefaultBotID
+		bot = &defaults.DefaultBotID
 	}
-	if c.Folder == nil {
-		dir := s.chatWorkdir(c)
-		if err = os.MkdirAll(dir, 0700); err != nil {
-			return chat{}, err
+	return s.createChatFromDefaults(chat{ConnectorID: connectorID, Title: title, Model: defaults.Model, Folder: defaults.Folder, Thinking: defaults.Thinking, ShowThinking: defaults.ShowThinking, AutoAllow: defaults.AutoAllow, BotID: bot}, kind)
+}
+
+func (s *Server) telegramTyping(ctx context.Context, token string, telegramID int64, chatID string) {
+	ticker := time.NewTicker(4 * time.Second)
+	defer ticker.Stop()
+	deadline := time.NewTimer(10 * time.Minute)
+	defer deadline.Stop()
+	for s.chats.Running(chatID) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-deadline.C:
+			return
+		case <-ticker.C:
+		}
+		if !s.chats.Running(chatID) {
+			return
+		}
+		if err := telegramCall(ctx, token, "sendChatAction", map[string]any{"chat_id": telegramID, "action": "typing"}, nil); err != nil && ctx.Err() != nil {
+			return
 		}
 	}
-	_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID)
-	if err != nil {
-		return chat{}, err
-	}
-	c.Workdir = s.chatWorkdir(c)
-	return c, nil
 }
 
 func telegramSend(ctx context.Context, token string, chatID int64, text string) error {
