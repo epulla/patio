@@ -503,8 +503,31 @@ func TestTelegramSplitsLongReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	sent := fake.sent("sendMessage")
-	if len(sent) != 2 || len([]rune(sent[0]["text"].(string))) != 4096 || len([]rune(sent[1]["text"].(string))) != 904 {
+	if len(sent) != 2 || len([]rune(sent[0]["text"].(string))) != 3000 || len([]rune(sent[1]["text"].(string))) != 2000 {
 		t.Fatalf("sent %d messages", len(sent))
+	}
+}
+
+func TestTelegramSendsHTMLAndFallsBackToPlain(t *testing.T) {
+	keyring.MockInit()
+	fake := newFakeTelegram(t)
+	fake.onCall = func(method string, w http.ResponseWriter) bool {
+		if method != "sendMessage" || len(fake.sent("sendMessage")) > 1 {
+			return false
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"ok":false,"description":"Bad Request: can't parse entities: unexpected end tag"}`))
+		return true
+	}
+	if err := telegramSend(context.Background(), "token", 77, "**Hi** <you>"); err != nil {
+		t.Fatal(err)
+	}
+	sent := fake.sent("sendMessage")
+	if len(sent) != 2 || sent[0]["parse_mode"] != "HTML" || sent[0]["text"] != "<b>Hi</b> &lt;you&gt;" {
+		t.Fatalf("first send = %v", sent)
+	}
+	if _, html := sent[1]["parse_mode"]; html || sent[1]["text"] != "Hi <you>" {
+		t.Fatalf("fallback = %v", sent[1])
 	}
 }
 
@@ -685,5 +708,77 @@ func TestTelegramPicksDroppedWhenAnsweredElsewhere(t *testing.T) {
 	}
 	if len(s.telegramPicks) != 0 {
 		t.Fatalf("picks = %v", s.telegramPicks)
+	}
+}
+
+func TestTelegramContinueListsRecentChats(t *testing.T) {
+	keyring.MockInit()
+	database, _, root := chatAPI(t)
+	s := New(database, "local", false, "dev", root)
+	fake := newFakeTelegram(t)
+	old, recent := strings.Repeat("a", 32), strings.Repeat("b", 32)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,'Old','now','2026-01-01'),(?,?,'now','2026-02-01')`, old, recent, strings.Repeat("Long title ", 10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.processTelegramUpdate(context.Background(), "token", telegramTestCfg, telegramUpdate{Message: telegramText(12, 77, "/continue")}); err != nil {
+		t.Fatal(err)
+	}
+	sent := fake.sent("sendMessage")
+	if len(sent) != 1 {
+		t.Fatalf("replies = %v", sent)
+	}
+	rows := sent[0]["reply_markup"].(map[string]any)["inline_keyboard"].([]any)
+	first := rows[0].([]any)[0].(map[string]any)
+	if len(rows) != 2 || first["callback_data"] != "c:"+recent || len([]rune(first["text"].(string))) != 41 {
+		t.Fatalf("keyboard = %v", rows)
+	}
+}
+
+func TestTelegramContinueSwitchesAndRoutesReplies(t *testing.T) {
+	keyring.MockInit()
+	database, _, root := chatAPI(t)
+	s := New(database, "local", false, "dev", root)
+	fake := newFakeTelegram(t)
+	target := strings.Repeat("c", 32)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,'Target','now','now')`, target); err != nil {
+		t.Fatal(err)
+	}
+	mapTelegramChat(t, s, target)
+	if _, err := database.Exec(`UPDATE telegram_chat SET created_at='2026-01-01' WHERE telegram_chat_id=77`); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"/continue https://patio.local/ai/chats/" + target + "?x=1", "/continue " + strings.Repeat("d", 32)} {
+		if err := s.processTelegramUpdate(context.Background(), "token", telegramTestCfg, telegramUpdate{Message: telegramText(12, 88, text)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sent := fake.sent("sendMessage")
+	if len(sent) != 2 || sent[0]["text"] != "Continuing: Target" || sent[1]["text"] != "Chat not found." {
+		t.Fatalf("replies = %v", sent)
+	}
+	s.sendTelegramResult(target, "done", nil)
+	if sent := fake.sent("sendMessage"); len(sent) != 3 || sent[2]["chat_id"] != float64(88) {
+		t.Fatalf("reply after switch = %v", sent)
+	}
+}
+
+func TestTelegramContinueTapRemaps(t *testing.T) {
+	keyring.MockInit()
+	database, _, root := chatAPI(t)
+	s := New(database, "local", false, "dev", root)
+	fake := newFakeTelegram(t)
+	target := strings.Repeat("e", 32)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,'Target','now','now')`, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.processTelegramUpdate(context.Background(), "token", telegramTestCfg, telegramUpdate{CallbackQuery: telegramTap(12, 77, "c:"+target)}); err != nil {
+		t.Fatal(err)
+	}
+	var mapped string
+	if err := database.QueryRow(`SELECT chat_id FROM telegram_chat WHERE telegram_chat_id=77`).Scan(&mapped); err != nil || mapped != target {
+		t.Fatalf("mapped = %q, %v", mapped, err)
+	}
+	if edits := fake.sent("editMessageText"); len(edits) != 1 || edits[0]["text"] != "Continuing: Target" {
+		t.Fatalf("edits = %v", edits)
 	}
 }

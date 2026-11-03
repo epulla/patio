@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -211,10 +212,13 @@ func telegramAllowed(cfg telegramSettings, id int64) bool {
 
 func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg telegramSettings, m *telegramMessage) error {
 	reply := func(text string) error {
-		return telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": m.Chat.ID, "text": text}, nil)
+		return telegramCallMarkdown(ctx, token, "sendMessage", map[string]any{"chat_id": m.Chat.ID}, text, nil)
 	}
 	if !telegramAllowed(cfg, m.From.ID) {
 		return reply(fmt.Sprintf("Not allowed. Your Telegram ID is %d: add it in Patio Connections › Channels.", m.From.ID))
+	}
+	if command, arg, _ := strings.Cut(strings.TrimSpace(m.Text), " "); command == "/continue" {
+		return s.continueTelegramChat(ctx, token, m.Chat.ID, strings.TrimSpace(arg))
 	}
 	var chatID string
 	err := s.db.QueryRow(`SELECT chat_id FROM telegram_chat WHERE telegram_chat_id=?`, m.Chat.ID).Scan(&chatID)
@@ -230,7 +234,7 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 		if err != nil {
 			return err
 		}
-		if _, err := s.db.Exec(`INSERT INTO telegram_chat(telegram_chat_id,chat_id,created_at) VALUES(?,?,?) ON CONFLICT(telegram_chat_id) DO UPDATE SET chat_id=excluded.chat_id`, m.Chat.ID, chatID, now()); err != nil {
+		if err := s.mapTelegramChat(m.Chat.ID, chatID); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -336,6 +340,62 @@ func (s *Server) createTelegramChat(title string) (string, error) {
 	return c.ID, err
 }
 
+// mapTelegramChat points a Telegram chat at a Patio chat; created_at=now makes it the chat's newest
+// mapping, which outbound replies use.
+func (s *Server) mapTelegramChat(telegramID int64, chatID string) error {
+	_, err := s.db.Exec(`INSERT INTO telegram_chat(telegram_chat_id,chat_id,created_at) VALUES(?,?,?) ON CONFLICT(telegram_chat_id) DO UPDATE SET chat_id=excluded.chat_id,created_at=excluded.created_at`, telegramID, chatID, now())
+	return err
+}
+
+var telegramChatIDPattern = regexp.MustCompile(`[0-9a-f]{32}`)
+
+// continueTelegramChat lists recent Patio chats as buttons, or switches to the chat whose id or link is given.
+func (s *Server) continueTelegramChat(ctx context.Context, token string, telegramID int64, arg string) error {
+	if arg == "" {
+		rows, err := s.db.Query(`SELECT id,title FROM chat ORDER BY updated_at DESC LIMIT 8`)
+		if err != nil {
+			return err
+		}
+		var keyboard [][]any
+		for rows.Next() {
+			var id, title string
+			if err := rows.Scan(&id, &title); err != nil {
+				rows.Close()
+				return err
+			}
+			keyboard = append(keyboard, []any{telegramButton(truncateTelegram(title, 40), "c:"+id)})
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		if len(keyboard) == 0 {
+			return telegramCallMarkdown(ctx, token, "sendMessage", map[string]any{"chat_id": telegramID}, "No Patio chats yet.", nil)
+		}
+		return telegramCallMarkdown(ctx, token, "sendMessage", map[string]any{"chat_id": telegramID, "reply_markup": map[string]any{"inline_keyboard": keyboard}}, "Pick a Patio chat to continue:", nil)
+	}
+	text, err := s.switchTelegramChat(telegramID, telegramChatIDPattern.FindString(arg))
+	if err != nil {
+		return err
+	}
+	return telegramCallMarkdown(ctx, token, "sendMessage", map[string]any{"chat_id": telegramID}, text, nil)
+}
+
+// switchTelegramChat remaps a Telegram chat to an existing Patio chat and returns the reply text.
+func (s *Server) switchTelegramChat(telegramID int64, chatID string) (string, error) {
+	var title string
+	err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, chatID).Scan(&title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "Chat not found.", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := s.mapTelegramChat(telegramID, chatID); err != nil {
+		return "", err
+	}
+	return "Continuing: " + title, nil
+}
+
 func (s *Server) removeTelegramFiles(c chat, attachments []ChatAttachment) {
 	for _, attachment := range attachments {
 		if path, err := s.attachmentPath(c, attachment.Name); err == nil {
@@ -364,19 +424,17 @@ func (s *Server) telegramTyping(ctx context.Context, token string, telegramID in
 }
 
 func telegramSend(ctx context.Context, token string, chatID int64, text string) error {
-	runes := []rune(text)
-	for len(runes) > 4096 {
-		if err := telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": chatID, "text": string(runes[:4096])}, nil); err != nil {
+	for _, chunk := range telegramChunks(text) {
+		if err := telegramCallMarkdown(ctx, token, "sendMessage", map[string]any{"chat_id": chatID}, chunk, nil); err != nil {
 			return err
 		}
-		runes = runes[4096:]
 	}
-	return telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": chatID, "text": string(runes)}, nil)
+	return nil
 }
 
 func (s *Server) sendTelegramResult(chatID, text string, turnErr error) {
 	var telegramID int64
-	if err := s.db.QueryRow(`SELECT telegram_chat_id FROM telegram_chat WHERE chat_id=?`, chatID).Scan(&telegramID); err != nil {
+	if err := s.db.QueryRow(`SELECT telegram_chat_id FROM telegram_chat WHERE chat_id=? ORDER BY created_at DESC LIMIT 1`, chatID).Scan(&telegramID); err != nil {
 		return
 	}
 	cfg, err := s.readTelegramSettings()
@@ -454,7 +512,7 @@ func (s *Server) scanTelegramNotices(ctx context.Context, token string) error {
 	for _, n := range notices {
 		if n.tool != "" {
 			keyboard := [][]any{{telegramButton("Allow", "a:"+n.id+":1"), telegramButton("Deny", "a:"+n.id+":0")}}
-			err = s.sendTelegramNotice(ctx, token, n.telegramID, n.id, "Approve "+n.tool+"?\n"+truncateTelegram(n.input, 500), keyboard)
+			err = s.sendTelegramNotice(ctx, token, n.telegramID, n.id, "Approve `"+n.tool+"`?\n```\n"+truncateTelegram(n.input, 500)+"\n```", keyboard)
 		} else {
 			err = s.sendTelegramQuestion(ctx, token, n.telegramID, n.id, n.input)
 		}
@@ -469,7 +527,7 @@ func (s *Server) sendTelegramNotice(ctx context.Context, token string, telegramI
 	var sent struct {
 		MessageID int64 `json:"message_id"`
 	}
-	if err := telegramCall(ctx, token, "sendMessage", map[string]any{"chat_id": telegramID, "text": text, "reply_markup": map[string]any{"inline_keyboard": keyboard}}, &sent); err != nil {
+	if err := telegramCallMarkdown(ctx, token, "sendMessage", map[string]any{"chat_id": telegramID, "reply_markup": map[string]any{"inline_keyboard": keyboard}}, text, &sent); err != nil {
 		return err
 	}
 	_, err := s.db.Exec(`INSERT OR IGNORE INTO telegram_notice(item_id,telegram_chat_id,message_id,created_at) VALUES(?,?,?,?)`, itemID, telegramID, sent.MessageID, now())
@@ -552,7 +610,14 @@ func (s *Server) processTelegramCallback(ctx context.Context, token string, cfg 
 		return nil
 	}
 	edit := func(text string) error {
-		return telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": text}, nil)
+		return telegramCallMarkdown(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID}, text, nil)
+	}
+	if chatID, ok := strings.CutPrefix(q.Data, "c:"); ok {
+		text, err := s.switchTelegramChat(q.Message.Chat.ID, chatID)
+		if err != nil {
+			return err
+		}
+		return edit(text)
 	}
 	parts := strings.Split(q.Data, ":")
 	if len(parts) != 3 {
@@ -616,7 +681,7 @@ func (s *Server) pickTelegramOption(ctx context.Context, token string, q *telegr
 	question := data.Questions[qi]
 	if answered {
 		s.forgetTelegramPicks(messageID)
-		return telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID, "text": "Already answered"}, nil)
+		return telegramCallMarkdown(ctx, token, "editMessageText", map[string]any{"chat_id": q.Message.Chat.ID, "message_id": q.Message.MessageID}, "Already answered", nil)
 	}
 	s.telegramPicksMu.Lock()
 	if s.telegramPicks == nil {
@@ -702,7 +767,7 @@ func (s *Server) pickTelegramOption(ctx context.Context, token string, q *telegr
 		if err != nil {
 			text = "Already answered"
 		}
-		if editErr := telegramCall(ctx, token, "editMessageText", map[string]any{"chat_id": chatTarget, "message_id": telegramMessageID, "text": text}, nil); editErr != nil {
+		if editErr := telegramCallMarkdown(ctx, token, "editMessageText", map[string]any{"chat_id": chatTarget, "message_id": telegramMessageID}, text, nil); editErr != nil {
 			log.Printf("edit Telegram question: %v", editErr)
 		}
 	}

@@ -213,4 +213,17 @@ func telegramCall(ctx context.Context, token, method string, payload any, out an
 	return nil
 }
 
+// telegramCallMarkdown sends payload with md rendered as Telegram HTML; if Telegram rejects the
+// markup, it resends md as plain text.
+func telegramCallMarkdown(ctx context.Context, token, method string, payload map[string]any, md string, out any) error {
+	payload["text"], payload["parse_mode"] = telegramHTML(md), "HTML"
+	err := telegramCall(ctx, token, method, payload, out)
+	if err == nil || !strings.Contains(err.Error(), "can't parse entities") {
+		return err
+	}
+	delete(payload, "parse_mode")
+	payload["text"] = telegramPlain(md)
+	return telegramCall(ctx, token, method, payload, out)
+}
+
 func telegramToken() (string, error) { return keyring.Get(connectorService, telegramTokenKey) }
