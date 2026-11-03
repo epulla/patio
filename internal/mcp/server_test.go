@@ -574,7 +574,11 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if result := callTool(t, session, "unlink_tickets", map[string]any{"link_id": linkID}); result.IsError {
 		t.Fatalf("unlink tickets: %#v", result)
 	}
-	callTool(t, session, "move_ticket", map[string]any{"id": second.ID, "status": "Done"})
+	callTool(t, session, "move_ticket", map[string]any{"id": second.ID, "status": doneID})
+	var moved string
+	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' AND title LIKE '%moved%' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&moved); err != nil || !strings.HasSuffix(moved, " to Done") {
+		t.Fatalf("move by status ID notification = %q, %v", moved, err)
+	}
 	var order string
 	if err := database.QueryRow(`SELECT ticket_ids FROM ticket_order WHERE status_id=?`, doneID).Scan(&order); err != nil {
 		t.Fatal(err)

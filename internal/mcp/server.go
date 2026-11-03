@@ -1232,7 +1232,7 @@ func moveHandler(h http.Handler) func(context.Context, moveTicketArgs) (*sdk.Cal
 		status := in.Status
 		statusLabel := in.Status
 		for _, candidate := range board.Statuses {
-			if strings.EqualFold(candidate.Name, status) {
+			if candidate.ID == status || strings.EqualFold(candidate.Name, status) {
 				status = candidate.ID
 				statusLabel = candidate.Name
 				break
