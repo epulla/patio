@@ -9,7 +9,7 @@ type TelegramSettings = { enabled: boolean; allowed_user_ids: number[]; has_toke
 const text = {
   en: {
     telegram: "Telegram",
-    help: "Chat with Patio from Telegram. Create a bot with @BotFather, paste its token here, then message the bot. Patio must be running; replies use your default connector and bot.",
+    help: "Chat with Patio from Telegram. Create a bot with @BotFather, paste its token here, then message the bot. Patio must be running; replies use your default connector and bot. Commands: /new starts a fresh chat, /chat shows the current one, /continue picks a recent chat (or /continue <chat link>).",
     enabled: "Answer Telegram messages",
     token: "Bot token",
     tokenSaved: "Saved · type to replace",
@@ -27,7 +27,7 @@ const text = {
   },
   es: {
     telegram: "Telegram",
-    help: "Chatea con Patio desde Telegram. Crea un bot con @BotFather, pega aquí su token y escríbele al bot. Patio debe estar abierto; las respuestas usan tu conector y bot por defecto.",
+    help: "Chatea con Patio desde Telegram. Crea un bot con @BotFather, pega aquí su token y escríbele al bot. Patio debe estar abierto; las respuestas usan tu conector y bot por defecto. Comandos: /new inicia un chat nuevo, /chat muestra el actual, /continue elige un chat reciente (o /continue <enlace del chat>).",
     enabled: "Responder mensajes de Telegram",
     token: "Token del bot",
     tokenSaved: "Guardado · escribe para reemplazarlo",

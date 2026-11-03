@@ -258,7 +258,7 @@ Chat with Patio from your phone through a Telegram bot. Patio polls Telegram for
 2. In **Connections › Channels**, paste the token, press **Save token**, then **Test** to see the bot's name, and turn on **Answer Telegram messages**.
 3. Message your bot. It answers with your Telegram user ID; add that ID to **Allowed Telegram user IDs**.
 
-Each Telegram conversation maps to a Patio chat that uses your default connector and bot. Send text, photos, or files; replies come back as text, including replies to messages you type in that chat inside Patio. Approval requests show **Allow** and **Deny** buttons, and questions show their options as buttons. Send `/new` to start a fresh chat and `/chat` to see which chat you are in. Messages from accounts that aren't allowed never reach Patio. The token is kept in the OS credential store.
+Each Telegram conversation maps to a Patio chat that uses your default connector and bot. Send text, photos, or files; replies come back as formatted text, including replies to messages you type in that chat inside Patio. Approval requests show **Allow** and **Deny** buttons, and questions show their options as buttons. Send `/new` to start a fresh chat, `/chat` to see which chat you are in, and `/continue` to pick one of your recent Patio chats (or `/continue <chat id or link>` to jump to a specific one); its replies then come to Telegram. Messages from accounts that aren't allowed never reach Patio. The token is kept in the OS credential store.
 
 ## Data and permissions
 
