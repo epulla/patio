@@ -4661,28 +4661,21 @@ main.chat-window .app-version {
 }
 .queued-edit {
   justify-content: flex-start;
-  gap: 6px;
-  height: auto;
   min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
+  height: auto;
+  padding: 2px 6px;
+  margin-left: -6px;
   font: inherit;
   text-align: left;
-  cursor: pointer;
 }
-.queued-edit:hover {
-  background: none;
-}
-.queued-edit .queued-pencil {
-  flex: none;
-  opacity: 0;
-  color: var(--muted);
-}
-.queued-edit:hover .queued-pencil,
-.queued-edit:focus-visible .queued-pencil {
-  opacity: 1;
+/* The cancel button sits at the pane's right edge, so its tooltip opens leftward. */
+.queued-list [data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .queued-list .attachment-label {
   flex: 1;

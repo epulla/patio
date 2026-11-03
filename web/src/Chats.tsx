@@ -2091,9 +2091,6 @@ export function Conversation({
                       <Icon name="paperclip" /> {item.attachments.length}
                     </span>
                   )}
-                  <span className="queued-pencil" aria-hidden="true">
-                    <Icon name="pencil" />
-                  </span>
                 </button>
                 <IconButton
                   type="button"
