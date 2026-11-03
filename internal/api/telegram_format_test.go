@@ -68,7 +68,8 @@ func TestTelegramChunksOversizeCode(t *testing.T) {
 
 func TestTelegramChunksOversizeLineAndTable(t *testing.T) {
 	table := "|" + strings.Repeat("h", 200) + "|b|\n|---|---|\n" + strings.Repeat("|x|y|\n", 30)
-	for name, md := range map[string]string{"code line": "```\n" + strings.Repeat("x", 5000) + "\n```", "table": table} {
+	wideRow := "|a|b|\n|---|---|\n|x|y|\n|" + strings.Repeat("w ", 2500) + "|z|"
+	for name, md := range map[string]string{"wide row": wideRow, "code line": "```\n" + strings.Repeat("x", 5000) + "\n```", "table": table} {
 		chunks := telegramChunks(md)
 		if len(chunks) < 2 {
 			t.Fatalf("%s: %d chunks", name, len(chunks))

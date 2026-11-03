@@ -318,9 +318,23 @@ func telegramSplitBlock(block string) []string {
 		}
 		return pack(lines[:1], body, []string{"```"})
 	}
-	if len(lines) > 2 && telegramTableSepRE.MatchString(lines[1]) && telegramFits(strings.Join(lines[:3], "\n")) {
-		return pack(lines[:2], lines[2:], nil)
+	if len(lines) > 2 && telegramTableSepRE.MatchString(lines[1]) {
+		var pieces []string
+		for _, piece := range pack(lines[:2], lines[2:], nil) {
+			if telegramFits(piece) {
+				pieces = append(pieces, piece)
+			} else {
+				// A row too wide even alone: send the unpadded table source as code, which splits by line.
+				pieces = append(pieces, telegramSplitBlock("```\n"+piece+"\n```")...)
+			}
+		}
+		return pieces
 	}
+	return telegramCutText(block)
+}
+
+// telegramCutText cuts text at whitespace into pieces of at most 3000 runes.
+func telegramCutText(block string) []string {
 	var pieces []string
 	runes := []rune(block)
 	for len(runes) > 3000 {
