@@ -243,6 +243,23 @@ func TestMCPToolsAndAudit(t *testing.T) {
 	if listed := callTool(t, session, "list_bots", map[string]any{}); strings.Contains(listed.Content[0].(*sdk.TextContent).Text, "BotUpdated") {
 		t.Fatalf("deleted bot still listed: %#v", listed.Content)
 	}
+	rows, err := database.Query(`SELECT title,link FROM notification WHERE kind='change' AND title LIKE '%bot Bot%' ORDER BY created_at,rowid`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changes []string
+	for rows.Next() {
+		var title, link string
+		if err := rows.Scan(&title, &link); err != nil {
+			t.Fatal(err)
+		}
+		changes = append(changes, title+" "+link)
+	}
+	rows.Close()
+	want := []string{"Martin created bot BotTest /ai/bots/" + botResult.ID, "Martin updated bot BotUpdated /ai/bots/" + botResult.ID, "Martin deleted bot BotUpdated "}
+	if strings.Join(changes, "|") != strings.Join(want, "|") {
+		t.Fatalf("bot change notifications = %q, want %q", changes, want)
+	}
 	for _, id := range []string{botResult.ID, "ai"} {
 		if again := callTool(t, session, "delete_bot", map[string]any{"id": id}); !again.IsError {
 			t.Fatalf("delete_bot %s should fail", id)

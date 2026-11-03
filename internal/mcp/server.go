@@ -1270,6 +1270,8 @@ func doJSON(ctx context.Context, h http.Handler, r request) ([]byte, error) {
 			if err != nil {
 				log.Printf("read MCP target before delete %s: %v", r.path, err)
 			}
+		} else if id, ok := strings.CutPrefix(r.path, "/api/bots/"); ok {
+			prior = mcpBotSnapshot(ctx, h, id)
 		}
 	}
 	var body io.Reader
@@ -1290,7 +1292,7 @@ func doJSON(ctx context.Context, h http.Handler, r request) ([]byte, error) {
 	if res.Code < 200 || res.Code >= 300 {
 		return nil, apiError(data, res.Code)
 	}
-	if r.method == http.MethodPost || r.method == http.MethodPut || r.method == http.MethodDelete {
+	if r.method == http.MethodPost || r.method == http.MethodPut || r.method == http.MethodPatch || r.method == http.MethodDelete {
 		if notifier, ok := h.(interface {
 			Notify(string, string, string, string, bool) error
 		}); ok {
@@ -1360,6 +1362,26 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 	}
 }
 
+// mcpBotSnapshot finds a bot in the list, since bots have no single-item GET; deletes need its name.
+func mcpBotSnapshot(ctx context.Context, h http.Handler, id string) []byte {
+	data, err := doJSON(ctx, h, request{http.MethodGet, "/api/bots", nil})
+	if err != nil {
+		log.Printf("read bots before delete: %v", err)
+		return nil
+	}
+	var bots []map[string]any
+	if json.Unmarshal(data, &bots) != nil {
+		return nil
+	}
+	for _, bot := range bots {
+		if mcpValue(bot, "id") == id {
+			out, _ := json.Marshal(bot)
+			return out
+		}
+	}
+	return nil
+}
+
 func mcpSnapshotPath(path string) string {
 	parts := strings.Split(strings.SplitN(path, "?", 2)[0], "/")
 	for i, part := range parts {
@@ -1405,7 +1427,7 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 			resource = "board-order"
 		}
 	}
-	verb := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodDelete: "deleted"}[r.method]
+	verb := map[string]string{http.MethodPost: "created", http.MethodPut: "updated", http.MethodPatch: "updated", http.MethodDelete: "deleted"}[r.method]
 	target := ""
 	var result map[string]any
 	if json.Unmarshal(response, &result) != nil {
@@ -1472,7 +1494,7 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 		if id != "" {
 			return title, ticketMarkdown(code, ticketTitle, id), "/tickets/" + id, true
 		}
-	case "boards", "statuses", "ticket-types", "skills", "scheduled-tasks", "connectors", "mcp-servers", "calendar-items", "board-order", "workflows":
+	case "boards", "statuses", "ticket-types", "skills", "scheduled-tasks", "connectors", "mcp-servers", "calendar-items", "board-order", "workflows", "bots":
 		if resource == "workflows" && parts[len(parts)-1] == "run" {
 			return "", "", "", false
 		}
@@ -1517,6 +1539,8 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 				name = "calendar item " + name
 			case "workflows":
 				name = "workflow " + name
+			case "bots":
+				name = "bot " + name
 			}
 		}
 		if resource == "scheduled-tasks" && id != "" {
@@ -1539,6 +1563,9 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 		}
 		if resource == "workflows" && id != "" && r.method != http.MethodDelete {
 			target = "/ai/workflows/" + id
+		}
+		if resource == "bots" && id != "" && r.method != http.MethodDelete {
+			target = "/ai/bots/" + id
 		}
 		return actor + " " + verb + " " + name, "", target, true
 	default:
