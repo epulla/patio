@@ -213,15 +213,16 @@ export function iconSvg(name: IconName) {
 export function IconButton({
   icon,
   label,
+  tip = label,
   className = "",
   ...props
-}: { icon: IconName; label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
+}: { icon: IconName; label: string; tip?: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}
       className={`icon ${className}`}
       aria-label={label}
-      data-tip={label}
+      data-tip={tip}
     >
       <Icon name={icon} />
     </button>

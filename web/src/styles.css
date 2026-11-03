@@ -4673,9 +4673,6 @@ main.chat-window .app-version {
   left: auto;
   right: 0;
   transform: none;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .queued-list .attachment-label {
   flex: 1;
