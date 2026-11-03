@@ -1316,6 +1316,10 @@ export function Conversation({
   const [running, setRunning] = useState(false);
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
   const [editingQueued, setEditingQueued] = useState<QueuedMessage>();
+  // A message sent or cancelled while its editor is open has nothing left to edit.
+  useEffect(() => {
+    if (editingQueued && !queue.some((q) => q.id === editingQueued.id)) setEditingQueued(undefined);
+  }, [queue, editingQueued]);
   // Conversation is keyed by chat id everywhere, so the draft loads once per chat.
   const [draft] = useState(() => loadDraft(id));
   const [text, changeText] = useState(draft.text);
@@ -2087,6 +2091,9 @@ export function Conversation({
                       <Icon name="paperclip" /> {item.attachments.length}
                     </span>
                   )}
+                  <span className="queued-pencil" aria-hidden="true">
+                    <Icon name="pencil" />
+                  </span>
                 </button>
                 <IconButton
                   type="button"
