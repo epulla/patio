@@ -78,6 +78,39 @@ func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 	noContent(w)
 }
 
+// updateChatQueue edits a queued message's text before it is sent; attachments stay as they are.
+func (s *Server) updateChatQueue(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Text string `json:"text"`
+	}
+	if decode(r, &in) != nil {
+		errw(w, 400, "invalid queued message JSON")
+		return
+	}
+	text := strings.TrimSpace(in.Text)
+	res, err := s.db.Exec(`UPDATE chat_queue SET text=? WHERE id=? AND chat_id=? AND (?<>'' OR attachments<>'[]')`, text, idParam(r, "qid"), idParam(r, "id"), text)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	if n == 0 {
+		var exists int
+		if err := s.db.QueryRow(`SELECT 1 FROM chat_queue WHERE id=? AND chat_id=?`, idParam(r, "qid"), idParam(r, "id")).Scan(&exists); err == nil {
+			errw(w, 400, "message text is required")
+		} else {
+			errw(w, 404, "queued message not found")
+		}
+		return
+	}
+	s.chats.emit(idParam(r, "id"), map[string]any{"type": "queue"})
+	noContent(w)
+}
+
 func (s *Server) sendQueuedChatMessages(w http.ResponseWriter, r *http.Request) {
 	message, err := s.chats.drainQueued(idParam(r, "id"), true)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -4659,6 +4659,17 @@ main.chat-window .app-version {
 .queued-list .attachment {
   max-width: none;
 }
+.queued-edit {
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.queued-edit:hover .attachment-name {
+  text-decoration: underline;
+}
 .queued-list .attachment-label {
   flex: 1;
   min-width: 0;

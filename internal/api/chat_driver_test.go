@@ -617,6 +617,31 @@ func TestChatQueueCancel(t *testing.T) {
 	}
 }
 
+func TestChatQueueEdit(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	server := New(database, "local", false, "dev", root)
+	defer server.Close()
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('queued',?,'hello','now')`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	url := "/api/chats/" + chatID + "/queue/queued"
+	if code := requestJSON(t, server, http.MethodPatch, url, map[string]string{"text": "  hello again "}, nil); code != http.StatusNoContent {
+		t.Fatalf("edit = %d", code)
+	}
+	var text string
+	if err := database.QueryRow(`SELECT text FROM chat_queue WHERE id='queued'`).Scan(&text); err != nil || text != "hello again" {
+		t.Fatalf("text = %q, %v", text, err)
+	}
+	if code := requestJSON(t, server, http.MethodPatch, url, map[string]string{"text": " "}, nil); code != http.StatusBadRequest {
+		t.Fatalf("empty edit = %d", code)
+	}
+	if code := requestJSON(t, server, http.MethodPatch, "/api/chats/"+chatID+"/queue/gone", map[string]string{"text": "x"}, nil); code != http.StatusNotFound {
+		t.Fatalf("missing edit = %d", code)
+	}
+}
+
 func TestChatQueueSendNow(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
