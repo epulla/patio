@@ -72,6 +72,9 @@ type chatManager struct {
 	windowID    string
 	// background tracks goroutines that outlive a turn, so Close can wait for them.
 	background sync.WaitGroup
+	// turnNotes holds text added once to a chat's next turn for the model only (chat id → note), for
+	// prompt changes after the session started, such as a chat switched to Telegram.
+	turnNotes sync.Map
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
@@ -337,6 +340,9 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 			thinking := c.Thinking
 			rt.startedThinking = &thinking
 		}
+	}
+	if note, ok := m.turnNotes.LoadAndDelete(c.ID); ok {
+		request.Text = note.(string) + "\n\n" + request.Text
 	}
 	if err := rt.driver.send(request); err != nil {
 		return message, failTurn("send", fmt.Errorf("send chat message: %w", err))

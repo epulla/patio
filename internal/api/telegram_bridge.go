@@ -390,8 +390,16 @@ func (s *Server) switchTelegramChat(telegramID int64, chatID string) (string, er
 	if err != nil {
 		return "", err
 	}
+	var mapped int
+	if err := s.db.QueryRow(`SELECT count(*) FROM telegram_chat WHERE chat_id=?`, chatID).Scan(&mapped); err != nil {
+		return "", err
+	}
 	if err := s.mapTelegramChat(telegramID, chatID); err != nil {
 		return "", err
+	}
+	// Drivers apply ChatPrompt only when a session starts, so a chat new to Telegram gets the note on its next turn.
+	if mapped == 0 {
+		s.chats.turnNotes.Store(chatID, telegramPrompt)
 	}
 	return "Continuing: " + title, nil
 }

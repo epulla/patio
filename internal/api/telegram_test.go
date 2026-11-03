@@ -782,3 +782,39 @@ func TestTelegramContinueTapRemaps(t *testing.T) {
 		t.Fatalf("edits = %v", edits)
 	}
 }
+
+func TestTelegramContinueAddsNoteToNextTurnOnly(t *testing.T) {
+	s, c := attachmentTestChat(t)
+	driver := &attachmentTestDriver{}
+	previous, existed := runtimes["claude"]
+	runtimes["claude"] = func(*chatManager, chat, string, *chatRuntime) (chatRuntimeDriver, error) { return driver, nil }
+	t.Cleanup(func() {
+		if existed {
+			runtimes["claude"] = previous
+		} else {
+			delete(runtimes, "claude")
+		}
+	})
+	if _, err := s.switchTelegramChat(88, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{telegramPrompt + "\n\nhi", "again"} {
+		text := strings.TrimPrefix(want, telegramPrompt+"\n\n")
+		if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+c.ID+"/messages", map[string]any{"text": text}, nil); code != http.StatusAccepted {
+			t.Fatalf("send %d status = %d", i, code)
+		}
+		driver.mu.Lock()
+		got := driver.request.Text
+		driver.mu.Unlock()
+		if got != want {
+			t.Fatalf("turn %d driver text = %q", i, got)
+		}
+		if err := s.chats.finishTurn(c.ID, "ok", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stored string
+	if err := s.db.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='user' ORDER BY created_at LIMIT 1`, c.ID).Scan(&stored); err != nil || stored != "hi" {
+		t.Fatalf("stored = %q, %v", stored, err)
+	}
+}
