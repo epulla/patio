@@ -110,6 +110,10 @@ func TestTicketAttachmentTraversalNameSafe(t *testing.T) {
 	if err := json.Unmarshal(r.Body.Bytes(), &a); err != nil {
 		t.Fatal(err)
 	}
+	// The server reports resolved paths; Windows runners use 8.3 short temp dirs, so resolve root too.
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
 	// sanitizeChatAttachmentName drops path separators, so the name stays inside the ticket folder.
 	if a.Name != "..escape.txt" || a.Path != filepath.Join(root, "attachments", ticket.ID, "..escape.txt") {
 		t.Fatalf("unsafe stored name/path: %q %q", a.Name, a.Path)
