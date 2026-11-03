@@ -92,7 +92,7 @@ const text = {
     titleModel: "Title model",
     defaultBot: "Bot",
     noBot: "None (plain assistant)",
-    showTour: "Show tour again",
+    tourPrompt: "Lost? Take the two-minute tour again →",
     chatCleanup: "Chat cleanup",
     chatCleanupHelp:
       "Deletes chats whose last message is older than the set number of days, at startup and once a day. Pinned and running chats are kept. Ticket links to deleted chats stop working.",
@@ -190,7 +190,7 @@ const text = {
     titleModel: "Modelo de títulos",
     defaultBot: "Bot",
     noBot: "Ninguno (asistente simple)",
-    showTour: "Ver el recorrido otra vez",
+    tourPrompt: "¿Perdido? Vuelve a hacer el recorrido de dos minutos →",
     chatCleanup: "Limpieza de chats",
     chatCleanupHelp:
       "Elimina los chats cuyo último mensaje es más antiguo que la cantidad de días indicada, al iniciar y una vez al día. Los chats fijados y en ejecución se conservan. Los enlaces de tickets a chats eliminados dejan de funcionar.",
@@ -896,6 +896,16 @@ export default function Settings() {
       <div className="page-heading">
         <div>
           <h1>{t.settings}</h1>
+          <a
+            className="tour-link"
+            href="#tour"
+            onClick={(event) => {
+              event.preventDefault();
+              startTour();
+            }}
+          >
+            {t.tourPrompt}
+          </a>
         </div>
       </div>
 
@@ -914,9 +924,6 @@ export default function Settings() {
         <h2>{t.keyboardShortcuts}</h2>
         <section className="panel">
           <ShortcutList />
-          <button type="button" onClick={startTour}>
-            {t.showTour}
-          </button>
         </section>
       </section>
 
