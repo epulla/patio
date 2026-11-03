@@ -52,9 +52,8 @@ func opencodeMCPServers(exe string, ticketArgs []string, external []mcpServerSpe
 }
 
 func opencodeV2MCPServers(exe string, ticketArgs []string, external []mcpServerSpec) map[string]any {
-	// Code Mode lists only a few tools up front, so models missed ask_user; keep Patio's tools on the native list.
 	servers := map[string]any{"patio": map[string]any{
-		"type": "local", "command": append([]string{exe}, ticketArgs...), "disabled": false, "codemode": false,
+		"type": "local", "command": append([]string{exe}, ticketArgs...), "disabled": false,
 	}}
 	for _, spec := range external {
 		if spec.Kind == "stdio" {
