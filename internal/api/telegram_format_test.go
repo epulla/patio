@@ -12,7 +12,7 @@ func TestTelegramFormat(t *testing.T) {
 		{"`a < b`", "<code>a &lt; b</code>"}, {"```go\nx < y\n```", "<pre><code class=\"language-go\">x &lt; y</code></pre>"},
 		{"[site](https://example.com?a=1&b=2)", `<a href="https://example.com?a=1&amp;b=2">site</a>`}, {"[bad](javascript:x)", "bad"}, {"[ticket](/tickets/abc)", "ticket"},
 		{"# Heading", "<b>Heading</b>"}, {"> one\n> **two**", "<blockquote>one\n<b>two</b></blockquote>"}, {"- one\n  - two", "• one\n  • two"}, {"1. one", "1. one"},
-		{"|a|bb|\n|---|---|\n|x|y|", "<pre>a | bb\nx | y</pre>"}, {"---", ""}, {"a < b & c", "a &lt; b &amp; c"}, {"snake_case", "snake_case"}, {"**x", "**x"},
+		{"|a|bb|\n|---|---|\n|x|y|", "<pre>a | bb\nx | y</pre>"}, {"---", ""}, {"a < b & c", "a &lt; b &amp; c"}, {"snake_case", "snake_case"}, {"[TODO] see [docs](https://e.test)", `[TODO] see <a href="https://e.test">docs</a>`}, {"**x", "**x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
@@ -24,7 +24,7 @@ func TestTelegramFormat(t *testing.T) {
 }
 
 func TestTelegramPlain(t *testing.T) {
-	cases := []struct{ in, want string }{{"**bold** and *it*", "bold and it"}, {"[x](https://e.test)", "x (https://e.test)"}, {"[x](/tickets/abc)", "x"}, {"# Head\n> quote\n- item", "Head\nquote\n• item"}, {"`code`", "code"}}
+	cases := []struct{ in, want string }{{"**bold** and *it*", "bold and it"}, {"[x](https://e.test)", "x (https://e.test)"}, {"[x](/tickets/abc)", "x"}, {"# Head\n> quote\n- item", "Head\nquote\n• item"}, {"`code`", "code"}, {"[TODO] see [docs](https://e.test)", "[TODO] see docs (https://e.test)"}}
 	for _, tc := range cases {
 		if got := telegramPlain(tc.in); got != tc.want {
 			t.Errorf("%q: got %q want %q", tc.in, got, tc.want)
@@ -62,6 +62,21 @@ func TestTelegramChunksOversizeCode(t *testing.T) {
 		}
 		if utf8.RuneCountInString(telegramHTML(c)) > 4096 {
 			t.Fatal("oversize chunk")
+		}
+	}
+}
+
+func TestTelegramChunksOversizeLineAndTable(t *testing.T) {
+	table := "|" + strings.Repeat("h", 200) + "|b|\n|---|---|\n" + strings.Repeat("|x|y|\n", 30)
+	for name, md := range map[string]string{"code line": "```\n" + strings.Repeat("x", 5000) + "\n```", "table": table} {
+		chunks := telegramChunks(md)
+		if len(chunks) < 2 {
+			t.Fatalf("%s: %d chunks", name, len(chunks))
+		}
+		for _, c := range chunks {
+			if n := utf8.RuneCountInString(telegramPlain(c)); n > 4096 {
+				t.Fatalf("%s: chunk renders %d chars", name, n)
+			}
 		}
 	}
 }

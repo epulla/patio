@@ -9,7 +9,7 @@ import (
 var (
 	telegramFenceRE    = regexp.MustCompile("(?s)^```([^\\n`]*)\\n?(.*?)```$")
 	telegramTableSepRE = regexp.MustCompile(`^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$`)
-	telegramLinkRE     = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	telegramLinkRE     = regexp.MustCompile(`^\[([^\]]+)\]\(([^)]+)\)`)
 	telegramHeadingRE  = regexp.MustCompile(`^#{1,6}\s+(.*)$`)
 	telegramBulletRE   = regexp.MustCompile(`^(\s*)([-*+])\s+(.*)$`)
 	telegramNumberRE   = regexp.MustCompile(`^\s*(\d+)\.\s+(.*)$`)
@@ -229,8 +229,10 @@ func telegramWordByte(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
-// telegramChunks splits Markdown at blank lines outside code fences into pieces whose HTML fits
-// Telegram's 4096-character limit; an oversize code block is split by lines into several fences.
+// telegramChunks splits Markdown at blank lines outside code fences into pieces that fit Telegram's
+// 4096-character limit, measured on the rendered text (telegramPlain) with some margin. Oversize
+// blocks are split: code fences and tables by lines (long code lines are cut, table headers
+// repeated), other text at whitespace.
 func telegramChunks(md string) []string {
 	md = strings.TrimSpace(md)
 	if md == "" {
@@ -255,55 +257,79 @@ func telegramChunks(md string) []string {
 	if len(block) > 0 {
 		blocks = append(blocks, strings.Join(block, "\n"))
 	}
-	fits := func(s string) bool { return utf8.RuneCountInString(telegramHTML(s)) <= 4096 }
 	var chunks []string
 	cur := ""
 	for _, block := range blocks {
-		if cur != "" && fits(cur+"\n\n"+block) {
-			cur += "\n\n" + block
-			continue
-		}
-		if cur != "" {
-			chunks = append(chunks, cur)
-		}
-		cur = block
-		if fits(block) {
-			continue
-		}
-		cur = ""
-		if strings.HasPrefix(block, "```") {
-			lines := strings.Split(block, "\n")
-			fence := lines[0]
-			var part []string
-			for _, l := range lines[1:] {
-				if strings.TrimSpace(l) == "```" {
-					continue
-				}
-				if len(part) > 0 && !fits(fence+"\n"+strings.Join(append(part, l), "\n")+"\n```") {
-					chunks = append(chunks, fence+"\n"+strings.Join(part, "\n")+"\n```")
-					part = nil
-				}
-				part = append(part, l)
+		for _, piece := range telegramSplitBlock(block) {
+			if cur != "" && telegramFits(cur+"\n\n"+piece) {
+				cur += "\n\n" + piece
+				continue
 			}
-			if len(part) > 0 {
-				chunks = append(chunks, fence+"\n"+strings.Join(part, "\n")+"\n```")
+			if cur != "" {
+				chunks = append(chunks, cur)
 			}
-			continue
+			cur = piece
 		}
-		// Oversize text block: cut at whitespace; 3000 runes leaves room for HTML escapes.
-		runes := []rune(block)
-		for len(runes) > 3000 {
-			cut := 3000
-			if at := strings.LastIndexAny(string(runes[:cut]), " \n"); at > 0 {
-				cut = utf8.RuneCountInString(string(runes[:cut])[:at])
-			}
-			chunks = append(chunks, strings.TrimSpace(string(runes[:cut])))
-			runes = runes[cut:]
-		}
-		cur = strings.TrimSpace(string(runes))
 	}
 	if cur != "" {
 		chunks = append(chunks, cur)
 	}
 	return chunks
+}
+
+func telegramFits(md string) bool { return utf8.RuneCountInString(telegramPlain(md)) <= 4000 }
+
+func telegramSplitBlock(block string) []string {
+	if telegramFits(block) {
+		return []string{block}
+	}
+	lines := strings.Split(block, "\n")
+	// pack groups lines into pieces that fit once wrapped with head/tail.
+	pack := func(head []string, body []string, tail []string) []string {
+		var pieces, part []string
+		wrap := func(p []string) string {
+			return strings.Join(append(append(append([]string{}, head...), p...), tail...), "\n")
+		}
+		for _, l := range body {
+			if len(part) > 0 && !telegramFits(wrap(append(part, l))) {
+				pieces = append(pieces, wrap(part))
+				part = nil
+			}
+			part = append(part, l)
+		}
+		if len(part) > 0 {
+			pieces = append(pieces, wrap(part))
+		}
+		return pieces
+	}
+	if strings.HasPrefix(lines[0], "```") {
+		var body []string
+		for _, l := range lines[1:] {
+			if strings.TrimSpace(l) == "```" {
+				continue
+			}
+			for r := []rune(l); ; r = r[3000:] {
+				if len(r) <= 3000 {
+					body = append(body, string(r))
+					break
+				}
+				body = append(body, string(r[:3000]))
+			}
+		}
+		return pack(lines[:1], body, []string{"```"})
+	}
+	if len(lines) > 2 && telegramTableSepRE.MatchString(lines[1]) && telegramFits(strings.Join(lines[:3], "\n")) {
+		return pack(lines[:2], lines[2:], nil)
+	}
+	var pieces []string
+	runes := []rune(block)
+	for len(runes) > 3000 {
+		cut := 3000
+		if at := strings.LastIndexAny(string(runes[:cut]), " \n"); at > 0 {
+			cut = utf8.RuneCountInString(string(runes[:cut])[:at])
+		}
+		pieces = append(pieces, strings.TrimSpace(string(runes[:cut])))
+		runes = runes[cut:]
+	}
+	return append(pieces, strings.TrimSpace(string(runes)))
 }
