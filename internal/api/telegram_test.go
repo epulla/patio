@@ -818,3 +818,15 @@ func TestTelegramContinueAddsNoteToNextTurnOnly(t *testing.T) {
 		t.Fatalf("stored = %q, %v", stored, err)
 	}
 }
+
+func TestTelegramOversizeChunkFallsBackToPlainPieces(t *testing.T) {
+	keyring.MockInit()
+	fake := newFakeTelegram(t)
+	if err := telegramCallMarkdown(context.Background(), "token", "sendMessage", map[string]any{"chat_id": 77}, "**"+strings.Repeat("x", 5000)+"**", nil); err != nil {
+		t.Fatal(err)
+	}
+	sent := fake.sent("sendMessage")
+	if len(sent) != 2 || sent[0]["parse_mode"] != nil || len([]rune(sent[0]["text"].(string))) != 4000 || len([]rune(sent[1]["text"].(string))) != 1000 {
+		t.Fatalf("sent = %d messages", len(sent))
+	}
+}

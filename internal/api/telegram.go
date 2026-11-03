@@ -213,17 +213,28 @@ func telegramCall(ctx context.Context, token, method string, payload any, out an
 	return nil
 }
 
-// telegramCallMarkdown sends payload with md rendered as Telegram HTML; if Telegram rejects the
-// markup, it resends md as plain text.
+// telegramCallMarkdown sends payload with md rendered as Telegram HTML. If Telegram rejects the
+// markup or the text is too long, it sends md as plain text cut into pieces (edits keep the first).
 func telegramCallMarkdown(ctx context.Context, token, method string, payload map[string]any, md string, out any) error {
-	payload["text"], payload["parse_mode"] = telegramHTML(md), "HTML"
-	err := telegramCall(ctx, token, method, payload, out)
-	if err == nil || !strings.Contains(err.Error(), "can't parse entities") {
-		return err
+	plain := []rune(telegramPlain(md))
+	if len(plain) <= 4096 {
+		payload["text"], payload["parse_mode"] = telegramHTML(md), "HTML"
+		err := telegramCall(ctx, token, method, payload, out)
+		if err == nil || !strings.Contains(err.Error(), "can't parse entities") && !strings.Contains(err.Error(), "message is too long") {
+			return err
+		}
+		delete(payload, "parse_mode")
 	}
-	delete(payload, "parse_mode")
-	payload["text"] = telegramPlain(md)
-	return telegramCall(ctx, token, method, payload, out)
+	for len(plain) > 0 {
+		n := min(len(plain), 4000)
+		payload["text"] = string(plain[:n])
+		if err := telegramCall(ctx, token, method, payload, out); err != nil || method != "sendMessage" {
+			return err
+		}
+		plain = plain[n:]
+		delete(payload, "reply_markup")
+	}
+	return nil
 }
 
 func telegramToken() (string, error) { return keyring.Get(connectorService, telegramTokenKey) }

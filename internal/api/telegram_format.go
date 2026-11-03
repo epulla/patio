@@ -324,8 +324,12 @@ func telegramSplitBlock(block string) []string {
 			if telegramFits(piece) {
 				pieces = append(pieces, piece)
 			} else {
-				// A row too wide even alone: send the unpadded table source as code, which splits by line.
-				pieces = append(pieces, telegramSplitBlock("```\n"+piece+"\n```")...)
+				// A row too wide even alone: send it as plain text, cut to fit.
+				cells := telegramTableCells(strings.Split(piece, "\n")[2])
+				for i, c := range cells {
+					cells[i] = telegramPlain(c)
+				}
+				pieces = append(pieces, telegramCutText(strings.Join(cells, " | "))...)
 			}
 		}
 		return pieces
