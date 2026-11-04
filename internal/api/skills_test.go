@@ -216,3 +216,17 @@ func TestSkillBotScopeAndVisibility(t *testing.T) {
 		t.Fatalf("global skills %#v %v", visible, err)
 	}
 }
+
+func TestSkillSaveStripsLoadedNameHeadings(t *testing.T) {
+	_, handler, _ := chatAPI(t)
+	var created Skill
+	if code := requestJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{"name": "steps", "description": "d", "body": "# steps\n\n# steps\n\n# Title\n\nText"}, &created); code != http.StatusCreated || created.Body != "# Title\n\nText" {
+		t.Fatalf("create status/body = %d %q", code, created.Body)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/skills/"+created.ID, map[string]any{"body": "# steps\r\n\r\nNew"}, &created); code != http.StatusOK || created.Body != "New" {
+		t.Fatalf("update status/body = %d %q", code, created.Body)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/skills/"+created.ID, map[string]any{"name": "renamed", "body": "# renamed\n\nKept # steps"}, &created); code != http.StatusOK || created.Body != "Kept # steps" {
+		t.Fatalf("rename status/body = %d %q", code, created.Body)
+	}
+}

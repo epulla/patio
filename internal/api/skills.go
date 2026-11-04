@@ -72,6 +72,21 @@ func validateSkill(config skillConfig) error {
 	return nil
 }
 
+// stripSkillHeading drops leading "# <name>" lines that load_skill adds, so a
+// loaded skill saved back unchanged doesn't gain another heading.
+func stripSkillHeading(name, body string) string {
+	for {
+		line, rest, found := strings.Cut(body, "\n")
+		if strings.TrimSpace(line) != "# "+name {
+			return body
+		}
+		if !found {
+			return ""
+		}
+		body = strings.TrimLeft(rest, "\r\n")
+	}
+}
+
 const skillSelect = `SELECT id,name,description,body,enabled,kind,created_at,updated_at FROM skill`
 
 func scanSkill(row interface{ Scan(...any) error }) (Skill, error) {
@@ -275,6 +290,7 @@ func (s *Server) validateSkillBots(ids []string) ([]string, error) {
 }
 
 func (s *Server) insertSkillScoped(config skillConfig, botIDs []string) (Skill, error) {
+	config.Body = stripSkillHeading(config.Name, config.Body)
 	timestamp := now()
 	id := uid()
 	tx, err := s.db.Begin()
@@ -333,6 +349,7 @@ func (s *Server) updateSkill(w http.ResponseWriter, r *http.Request) {
 	if in.Kind != nil {
 		config.Kind = *in.Kind
 	}
+	config.Body = stripSkillHeading(config.Name, config.Body)
 	if err := validateSkill(config); err != nil {
 		errw(w, http.StatusBadRequest, err.Error())
 		return

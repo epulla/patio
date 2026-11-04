@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 44 {
-		t.Fatalf("migration count = %d, want 44", migrations)
+	if migrations != 45 {
+		t.Fatalf("migration count = %d, want 45", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -353,5 +353,58 @@ func TestTransactionWritesAfterReadWhileAnotherProcessWrites(t *testing.T) {
 	}
 	if err := <-otherWrite; err != nil {
 		t.Fatalf("concurrent write: %v", err)
+	}
+}
+
+func TestSkillHeadingMigrationStripsRepeatedNameHeadings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-skill-heading.db")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for version, entry := range entries[:44] {
+		script, e := migrations.ReadFile("migrations/" + entry.Name())
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = legacy.Exec(string(script)); e != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), e)
+		}
+		if _, e = legacy.Exec(fmt.Sprintf("PRAGMA user_version=%d", version+1)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	bodies := map[string]string{
+		"piled":  "# piled\n\n# piled\n\n# piled\n\nSteps",
+		"titled": "# Pretty title\n\nSteps",
+		"other":  "# piled\n\nSteps",
+	}
+	for name, body := range bodies {
+		if _, err := legacy.Exec(`INSERT INTO skill(id,name,description,body,enabled,kind,created_at,updated_at) VALUES(?,?,'d',?,1,'skill','now','now')`, name, name, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	want := map[string]string{"piled": "Steps", "titled": bodies["titled"], "other": bodies["other"]}
+	for name, body := range want {
+		var got string
+		if err := database.QueryRow(`SELECT body FROM skill WHERE name=?`, name).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != body {
+			t.Fatalf("%s body = %q, want %q", name, got, body)
+		}
 	}
 }
