@@ -2775,8 +2775,9 @@ main.chat-window .app-version {
 .dock-dot[data-state="paused"] .svg-icon {
   fill: currentColor;
 }
+/* Amber, not --warning: the pale yellow vanishes on light-theme rows. */
 .dock-dot[data-state="approval"] {
-  color: var(--warning);
+  color: oklch(68% 0.17 65);
 }
 /* A golden take on the flow view's Paused yellow: plain --warning is too pale for a bare icon. */
 .dock-dot[data-state="paused"] {
