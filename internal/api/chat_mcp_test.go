@@ -57,6 +57,9 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	if codexHTTP["url"] != httpServer.URL || codexHTTP["http_headers"].(map[string]string)["Authorization"] != token {
 		t.Fatalf("Codex HTTP config = %#v", codexHTTP)
 	}
+	if codexStdio["tool_timeout_sec"] != 600 || codexHTTP["tool_timeout_sec"] != 600 || codex["patio"].(map[string]any)["tool_timeout_sec"] != nil {
+		t.Fatalf("Codex tool timeouts = %v, %v, %v", codexStdio["tool_timeout_sec"], codexHTTP["tool_timeout_sec"], codex["patio"])
+	}
 
 	copilot := copilotMCPServers(ticket, external)
 	if len(copilot) != 1 {

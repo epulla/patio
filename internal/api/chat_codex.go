@@ -157,12 +157,13 @@ func startCodex(m *chatManager, c chat, configDir string, rt *chatRuntime) (chat
 
 func codexExternalMCPServers(external []mcpServerSpec) map[string]any {
 	servers := make(map[string]any, len(external))
+	timeout := int(externalMCPToolTimeout.Seconds())
 	for _, spec := range external {
 		if spec.Kind == "stdio" {
-			servers[spec.Name] = map[string]any{"command": spec.Command, "args": spec.Args, "env": nonNilMap(spec.Env)}
+			servers[spec.Name] = map[string]any{"command": spec.Command, "args": spec.Args, "env": nonNilMap(spec.Env), "tool_timeout_sec": timeout}
 			continue
 		}
-		servers[spec.Name] = map[string]any{"url": spec.URL, "http_headers": mcpSpecHeaders(spec)}
+		servers[spec.Name] = map[string]any{"url": spec.URL, "http_headers": mcpSpecHeaders(spec), "tool_timeout_sec": timeout}
 	}
 	return servers
 }

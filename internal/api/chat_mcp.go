@@ -2,7 +2,12 @@ package api
 
 import (
 	"sort"
+	"time"
 )
+
+// externalMCPToolTimeout caps one tool call to a user-added MCP server so a hung server can't stall
+// a chat turn. Patio's own server has no cap: ask_user and approvals wait on the user.
+const externalMCPToolTimeout = 10 * time.Minute
 
 func claudeMCPServers(ticket map[string]any, external []mcpServerSpec) map[string]any {
 	servers := map[string]any{"patio": ticket}
