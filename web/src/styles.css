@@ -828,6 +828,7 @@ a:has(> .svg-icon) {
   cursor: pointer;
 }
 .md-mentions li span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -836,6 +837,8 @@ a:has(> .svg-icon) {
   background: var(--base-300);
 }
 .md-mentions small {
+  flex: none;
+  white-space: nowrap;
   margin-left: auto;
   color: var(--muted);
 }
