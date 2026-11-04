@@ -47,6 +47,9 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	if claudeHTTP["type"] != "http" || claudeHTTP["url"] != httpServer.URL || claudeHTTP["headers"].(map[string]string)["Authorization"] != token {
 		t.Fatalf("Claude HTTP config = %#v", claudeHTTP)
 	}
+	if claudeStdio["timeout"] != int64(600000) || claudeHTTP["timeout"] != int64(600000) || claude["patio"].(map[string]any)["timeout"] != nil {
+		t.Fatalf("Claude tool timeouts = %v, %v, %v", claudeStdio["timeout"], claudeHTTP["timeout"], claude["patio"])
+	}
 
 	codex := codexMCPServers(ticket, external)
 	codexStdio := codex["stdio-test"].(map[string]any)
@@ -91,6 +94,10 @@ func TestChatDriverMCPConfigShapes(t *testing.T) {
 	opencodeV2HTTP := opencodeV2["http-test"].(map[string]any)
 	if opencodeV2HTTP["type"] != "remote" || opencodeV2HTTP["url"] != httpServer.URL || opencodeV2HTTP["headers"].(map[string]string)["Authorization"] != token {
 		t.Fatalf("opencode v2 HTTP config = %#v", opencodeV2HTTP)
+	}
+	wantTimeout := map[string]int64{"execution": 600000}
+	if !reflect.DeepEqual(opencodeV2Stdio["timeout"], wantTimeout) || !reflect.DeepEqual(opencodeV2HTTP["timeout"], wantTimeout) || opencodeV2Ticket["timeout"] != nil || opencodeStdio["timeout"] != nil {
+		t.Fatalf("opencode tool timeouts = %v, %v, %v", opencodeV2Stdio["timeout"], opencodeV2HTTP["timeout"], opencodeV2Ticket["timeout"])
 	}
 }
 

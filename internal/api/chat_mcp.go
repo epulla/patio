@@ -11,12 +11,13 @@ const externalMCPToolTimeout = 10 * time.Minute
 
 func claudeMCPServers(ticket map[string]any, external []mcpServerSpec) map[string]any {
 	servers := map[string]any{"patio": ticket}
+	timeout := externalMCPToolTimeout.Milliseconds()
 	for _, spec := range external {
 		if spec.Kind == "stdio" {
-			servers[spec.Name] = map[string]any{"command": spec.Command, "args": spec.Args, "env": nonNilMap(spec.Env)}
+			servers[spec.Name] = map[string]any{"command": spec.Command, "args": spec.Args, "env": nonNilMap(spec.Env), "timeout": timeout}
 			continue
 		}
-		servers[spec.Name] = map[string]any{"type": "http", "url": spec.URL, "headers": mcpSpecHeaders(spec)}
+		servers[spec.Name] = map[string]any{"type": "http", "url": spec.URL, "headers": mcpSpecHeaders(spec), "timeout": timeout}
 	}
 	return servers
 }
@@ -60,14 +61,15 @@ func opencodeV2MCPServers(exe string, ticketArgs []string, external []mcpServerS
 	servers := map[string]any{"patio": map[string]any{
 		"type": "local", "command": append([]string{exe}, ticketArgs...), "disabled": false,
 	}}
+	timeout := map[string]int64{"execution": externalMCPToolTimeout.Milliseconds()}
 	for _, spec := range external {
 		if spec.Kind == "stdio" {
 			servers[spec.Name] = map[string]any{
-				"type": "local", "command": append([]string{spec.Command}, spec.Args...), "environment": nonNilMap(spec.Env),
+				"type": "local", "command": append([]string{spec.Command}, spec.Args...), "environment": nonNilMap(spec.Env), "timeout": timeout,
 			}
 			continue
 		}
-		servers[spec.Name] = map[string]any{"type": "remote", "url": spec.URL, "headers": mcpSpecHeaders(spec)}
+		servers[spec.Name] = map[string]any{"type": "remote", "url": spec.URL, "headers": mcpSpecHeaders(spec), "timeout": timeout}
 	}
 	return map[string]any{"servers": servers}
 }
