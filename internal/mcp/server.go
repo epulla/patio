@@ -1470,12 +1470,18 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 		if id == "" && result != nil {
 			id = mcpValue(result, "id")
 		}
-		item := mcpTicket(ctx, h, id, firstMap(result, old))
+		fallback := firstMap(result, old)
+		if strings.Contains(r.path, "/links") {
+			fallback = old // the response is the link, not the ticket
+		}
+		item := mcpTicket(ctx, h, id, fallback)
 		code, ticketTitle := item["code"], item["title"]
 		if item["id"] != "" {
 			id = item["id"]
 		}
-		if strings.Contains(r.path, "/move") {
+		if strings.Contains(r.path, "/links") {
+			title = actor + " linked " + code
+		} else if strings.Contains(r.path, "/move") {
 			title = actor + " moved " + code
 			if parsed, err := url.Parse(r.path); err == nil && parsed.Query().Get("mcp_status_label") != "" {
 				title += " to " + parsed.Query().Get("mcp_status_label")
