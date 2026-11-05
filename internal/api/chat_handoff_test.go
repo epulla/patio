@@ -261,3 +261,21 @@ func TestSweepTimesOutHeldHandoff(t *testing.T) {
 		t.Fatalf("status=%s err=%v", status, err)
 	}
 }
+
+func TestHeldTurnReportsProgressWhileWaitingOnOwnHandoff(t *testing.T) {
+	s, parent, child, grandchild := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	queueHandoff(t, s, child, grandchild, true)
+	var sent []string
+	s.chats.reportBack = func(to, _, text string) error { sent = append(sent, to+":"+text); return nil }
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+child+"/handoff-hold", nil, nil); code != 200 {
+		t.Fatalf("hold status=%d", code)
+	}
+	if _, _, err := s.chats.finishHandoffs(child, "waiting on review", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	s.chats.background.Wait()
+	if len(sent) != 1 || sent[0] != parent+":[Progress] waiting on review" {
+		t.Fatalf("sent=%v", sent)
+	}
+}

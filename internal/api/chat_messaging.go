@@ -290,15 +290,6 @@ func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopp
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, true, err
 	}
-	// A pending handoff to a chat that is itself waiting on this one would never finish first
-	// (e.g. Reviewer sends fixes back to the Implementer that asked for the review), so it doesn't hold the report.
-	var ownPending int
-	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE from_chat_id=? AND status='pending' AND to_chat_id NOT IN (SELECT from_chat_id FROM chat_handoff WHERE to_chat_id=? AND status='pending')`, chatID, chatID).Scan(&ownPending); err != nil {
-		return nil, true, err
-	}
-	if ownPending > 0 {
-		return nil, true, nil
-	}
 	if turnErr == nil && !stopping {
 		waiting, err := s.waitingForGo(chatID)
 		if err != nil || waiting {
@@ -315,6 +306,15 @@ func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopp
 				})
 			}
 		}
+		return nil, true, nil
+	}
+	// A pending handoff to a chat that is itself waiting on this one would never finish first
+	// (e.g. Reviewer sends fixes back to the Implementer that asked for the review), so it doesn't hold the report.
+	var ownPending int
+	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE from_chat_id=? AND status='pending' AND to_chat_id NOT IN (SELECT from_chat_id FROM chat_handoff WHERE to_chat_id=? AND status='pending')`, chatID, chatID).Scan(&ownPending); err != nil {
+		return nil, true, err
+	}
+	if ownPending > 0 {
 		return nil, true, nil
 	}
 	status := "ok"
