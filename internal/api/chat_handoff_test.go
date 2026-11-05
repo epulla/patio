@@ -212,3 +212,36 @@ func TestHoldHandoffNeedsPendingHandoff(t *testing.T) {
 		t.Fatalf("held=%d err=%v", held, err)
 	}
 }
+
+func TestHeldTurnReportsProgressAndKeepsHandoffOpen(t *testing.T) {
+	s, parent, child, _ := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	var sent []string
+	s.chats.reportBack = func(to, _, text string) error { sent = append(sent, to+":"+text); return nil }
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+child+"/handoff-hold", nil, nil); code != 200 {
+		t.Fatalf("hold status=%d", code)
+	}
+	parents, tracked, err := s.chats.finishHandoffs(child, "waiting on subagent", nil, false)
+	s.chats.background.Wait()
+	if err != nil || !tracked || len(parents) != 0 {
+		t.Fatalf("held finish %v %v %v", parents, tracked, err)
+	}
+	var status string
+	var held int
+	if err := s.db.QueryRow(`SELECT status,held FROM chat_handoff WHERE to_chat_id=?`, child).Scan(&status, &held); err != nil || status != "pending" || held != 0 {
+		t.Fatalf("status=%s held=%d err=%v", status, held, err)
+	}
+	parents, _, err = s.chats.finishHandoffs(child, "final result", nil, false)
+	if err != nil || len(parents) != 1 {
+		t.Fatalf("final finish %v %v", parents, err)
+	}
+	if err := s.chats.deliverHandoffReports(parent); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT status FROM chat_handoff WHERE to_chat_id=?`, child).Scan(&status); err != nil || status != "ok" {
+		t.Fatalf("status=%s err=%v", status, err)
+	}
+	if strings.Join(sent, "|") != parent+":[Progress] waiting on subagent|"+parent+":final result" {
+		t.Fatalf("sent=%v", sent)
+	}
+}

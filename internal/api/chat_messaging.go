@@ -273,6 +273,23 @@ func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopp
 	if targetRows == 0 {
 		return nil, false, nil
 	}
+	// handoff_hold applies to one turn only, so clear it at every turn end.
+	held := map[string]bool{}
+	rows, err := s.db.Query(`UPDATE chat_handoff SET held=0 WHERE to_chat_id=? AND status='pending' AND held=1 RETURNING from_chat_id`, chatID)
+	if err != nil {
+		return nil, true, err
+	}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return nil, true, err
+		}
+		held[p] = true
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, true, err
+	}
 	// A pending handoff to a chat that is itself waiting on this one would never finish first
 	// (e.g. Reviewer sends fixes back to the Implementer that asked for the review), so it doesn't hold the report.
 	var ownPending int
@@ -287,6 +304,18 @@ func (s *chatManager) finishHandoffs(chatID, result string, turnErr error, stopp
 		if err != nil || waiting {
 			return nil, true, err
 		}
+	}
+	if len(held) > 0 && turnErr == nil && !stopping {
+		for p := range held {
+			if s.reportBack != nil {
+				s.background.Go(func() {
+					if err := s.reportBack(p, chatID, "[Progress] "+result); err != nil {
+						log.Printf("report handoff progress %s to %s: %v", chatID, p, err)
+					}
+				})
+			}
+		}
+		return nil, true, nil
 	}
 	status := "ok"
 	if stopping {
