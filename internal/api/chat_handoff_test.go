@@ -197,3 +197,18 @@ func TestSweepHandoffTimeout(t *testing.T) {
 		t.Fatalf("notifications=%d err=%v", notices, err)
 	}
 }
+
+func TestHoldHandoffNeedsPendingHandoff(t *testing.T) {
+	s, parent, child, other := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+other+"/handoff-hold", nil, nil); code != 409 {
+		t.Fatalf("no handoff status=%d", code)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+child+"/handoff-hold", nil, nil); code != 200 {
+		t.Fatalf("hold status=%d", code)
+	}
+	var held int
+	if err := s.db.QueryRow(`SELECT held FROM chat_handoff WHERE to_chat_id=?`, child).Scan(&held); err != nil || held != 1 {
+		t.Fatalf("held=%d err=%v", held, err)
+	}
+}

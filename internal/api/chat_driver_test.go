@@ -905,7 +905,7 @@ func TestAgentMessageIdleDeliveryStoresSenderAndLabel(t *testing.T) {
 			Content string `json:"content"`
 		} `json:"message"`
 	}
-	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[Message from chat_id sender-chat, title "Sender". Final reply will be sent back automatically; do not call send_to_chat to answer.]`) {
+	if err := json.Unmarshal([]byte(line), &input); err != nil || !strings.HasPrefix(input.Message.Content, `[Message from chat_id sender-chat, title "Sender". Final reply will be sent back automatically; do not call send_to_chat to answer. Call handoff_hold before ending a turn that is not your final result.]`) {
 		t.Fatalf("driver content=%q err=%v", input.Message.Content, err)
 	}
 	var sender, report sql.NullString
@@ -924,7 +924,7 @@ func TestAgentMessageLabelReportBackVariants(t *testing.T) {
 	if plain != `[Message from chat_id id, title "A\"chat". Reply with send_to_chat if needed.]`+"\n\n" {
 		t.Fatalf("plain label=%q", plain)
 	}
-	if reported != `[Message from chat_id id, title "A\"chat". Final reply will be sent back automatically; do not call send_to_chat to answer.]`+"\n\n" {
+	if reported != `[Message from chat_id id, title "A\"chat". Final reply will be sent back automatically; do not call send_to_chat to answer. Call handoff_hold before ending a turn that is not your final result.]`+"\n\n" {
 		t.Fatalf("report label=%q", reported)
 	}
 }

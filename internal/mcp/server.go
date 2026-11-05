@@ -1360,6 +1360,22 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(out)}}}, nil
 		})
 	}
+	s.AddTool(&sdk.Tool{Name: "handoff_hold", Description: "In a chat whose final reply is sent back automatically: call before ending a turn that isn't your final result (e.g. waiting on background work). The parent gets this turn's reply as progress and the handoff stays open until a turn ends without handoff_hold.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"chat_id": map[string]any{"type": "string"}}, "required": []string{"chat_id"}}}, func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		var a struct {
+			ChatID string `json:"chat_id"`
+		}
+		if err := json.Unmarshal(req.Params.Arguments, &a); err != nil {
+			return errorResult(err), nil
+		}
+		if strings.TrimSpace(a.ChatID) == "" {
+			return errorResult(errors.New("chat_id is missing or unknown")), nil
+		}
+		out, err := doJSON(ctx, h, request{http.MethodPost, "/api/chats/" + url.PathEscape(a.ChatID) + "/handoff-hold", nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(out)}}}, nil
+	})
 }
 
 // mcpBotSnapshot finds a bot in the list, since bots have no single-item GET; deletes need its name.

@@ -207,6 +207,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/{id}/messages", s.sendChatMessage)
 	m.HandleFunc("POST /api/chats/{id}/agent-messages", s.agentMessage)
 	m.HandleFunc("POST /api/chats/{id}/handoff", s.createChatHandoff)
+	m.HandleFunc("POST /api/chats/{id}/handoff-hold", s.holdHandoff)
 	m.HandleFunc("GET /api/chats/{id}/queue", s.listChatQueue)
 	m.HandleFunc("DELETE /api/chats/{id}/queue/{qid}", s.deleteChatQueue)
 	m.HandleFunc("PATCH /api/chats/{id}/queue/{qid}", s.updateChatQueue)

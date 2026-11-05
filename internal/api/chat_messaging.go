@@ -364,6 +364,25 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]string{"status": "queued"})
 }
 
+// holdHandoff marks the chat's current turn as progress: its end reports to the parent without closing the handoff.
+func (s *Server) holdHandoff(w http.ResponseWriter, r *http.Request) {
+	result, err := s.db.Exec(`UPDATE chat_handoff SET held=1 WHERE to_chat_id=? AND status='pending'`, idParam(r, "id"))
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	if n == 0 {
+		errw(w, 409, "this chat has no pending report-back handoff to hold")
+		return
+	}
+	write(w, 200, map[string]string{"status": "held"})
+}
+
 func (s *Server) notifyAgentHopCap(chatID string) error {
 	limit := agentHopLimit(s.db)
 	if limit <= 0 {
@@ -396,7 +415,7 @@ func reportTarget(report bool, id string) any {
 func agentMessageLabel(fromID, title string, reportBack bool) string {
 	label := `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Reply with send_to_chat if needed.]`
 	if reportBack {
-		label = `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Final reply will be sent back automatically; do not call send_to_chat to answer.]`
+		label = `[Message from chat_id ` + fromID + `, title ` + strconv.Quote(title) + `. Final reply will be sent back automatically; do not call send_to_chat to answer. Call handoff_hold before ending a turn that is not your final result.]`
 	}
 	return label + "\n\n"
 }
