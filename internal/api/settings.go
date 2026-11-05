@@ -24,10 +24,27 @@ type settingsDefaults struct {
 	AITitles         bool    `json:"ai_titles"`
 	TitleConnectorID *string `json:"title_connector_id"`
 	TitleModel       string  `json:"title_model"`
+	AgentHopLimit    int     `json:"agent_hop_limit"`
+}
+
+const defaultAgentHopLimit = 30
+
+// agentHopLimit is how many agent messages in a row a chat takes before its queue pauses; 0 means no limit.
+func agentHopLimit(q interface{ QueryRow(string, ...any) *sql.Row }) int {
+	limit := defaultAgentHopLimit
+	var raw string
+	if q.QueryRow(`SELECT value FROM app_setting WHERE key='agent_hop_limit'`).Scan(&raw) == nil {
+		_ = json.Unmarshal([]byte(raw), &limit)
+	}
+	return limit
+}
+
+func hopLimitReached(hops, limit int) bool {
+	return limit > 0 && hops >= limit
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Thinking: true, DefaultBotID: "ai", Language: "system", AITitles: true}
+	defaults := settingsDefaults{AutoAllow: true, Thinking: true, DefaultBotID: "ai", Language: "system", AITitles: true, AgentHopLimit: defaultAgentHopLimit}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -132,6 +149,11 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 			return defaults, err
 		}
 	}
+	if raw, ok := values["agent_hop_limit"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.AgentHopLimit); err != nil {
+			return defaults, err
+		}
+	}
 	return defaults, nil
 }
 
@@ -182,6 +204,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		AITitles         *bool           `json:"ai_titles"`
 		TitleConnectorID json.RawMessage `json:"title_connector_id"`
 		TitleModel       *string         `json:"title_model"`
+		AgentHopLimit    *int            `json:"agent_hop_limit"`
 	}
 	if decode(r, &in) != nil {
 		errw(w, http.StatusBadRequest, "invalid settings defaults JSON")
@@ -230,6 +253,14 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		titleConnectorID = &value
 	} else if string(in.TitleConnectorID) == "null" {
 		titleConnectorID = nil
+	}
+	agentHops := defaults.AgentHopLimit
+	if in.AgentHopLimit != nil {
+		agentHops = *in.AgentHopLimit
+		if agentHops < 0 || agentHops > 500 {
+			errw(w, 400, "agent_hop_limit must be 0 (no limit) to 500")
+			return
+		}
 	}
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
@@ -305,6 +336,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		"ai_titles":          aiTitles,
 		"title_connector_id": titleConnectorID,
 		"title_model":        titleModel,
+		"agent_hop_limit":    agentHops,
 	}
 	encoded := make(map[string]string, len(values))
 	for key, value := range values {
@@ -326,7 +358,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, DefaultBotID: defaultBotID, AITitles: aiTitles, TitleConnectorID: titleConnectorID, TitleModel: titleModel})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, DefaultBotID: defaultBotID, AITitles: aiTitles, TitleConnectorID: titleConnectorID, TitleModel: titleModel, AgentHopLimit: agentHops})
 }
 
 func sameConnectorID(a, b *string) bool {

@@ -157,6 +157,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 		if !manual && oldQueueHeld != 0 {
 			return sql.ErrNoRows
 		}
+		limit := agentHopLimit(tx)
 		rows, err := tx.Query(`SELECT id,text,attachments,created_at,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
 		if err != nil {
 			return err
@@ -175,7 +176,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 			if len(claimed) > 0 && (row.from != sender || len(attachments)+len(rawItems) > maxChatAttachments) {
 				break
 			}
-			if len(claimed) == 0 && !manual && row.from.Valid && oldHops >= 10 {
+			if len(claimed) == 0 && !manual && row.from.Valid && hopLimitReached(oldHops, limit) {
 				break
 			}
 			if len(claimed) == 0 {

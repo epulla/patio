@@ -219,7 +219,7 @@ func TestWorkflowChatsBypassAgentHopCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{workflowChat, ordinary} {
-		if _, err := s.db.Exec(`UPDATE chat SET agent_hops=10 WHERE id=?`, id); err != nil {
+		if _, err := s.db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, id); err != nil {
 			t.Fatal(err)
 		}
 	}

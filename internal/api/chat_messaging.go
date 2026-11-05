@@ -344,7 +344,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	if hops >= 10 && !workflowRun.Valid {
+	if hopLimitReached(hops, agentHopLimit(s.db)) && !workflowRun.Valid {
 		if err := s.queueAgentMessage(id, in); err != nil {
 			log.Printf("queue held agent message for %s: %v", id, err)
 			errw(w, 500, err.Error())
@@ -365,7 +365,11 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) notifyAgentHopCap(chatID string) error {
-	result, err := s.db.Exec(`UPDATE chat SET agent_hops_notified=1 WHERE id=? AND agent_hops>=10 AND agent_hops_notified=0 AND EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND from_chat_id IS NOT NULL)`, chatID, chatID)
+	limit := agentHopLimit(s.db)
+	if limit <= 0 {
+		return nil
+	}
+	result, err := s.db.Exec(`UPDATE chat SET agent_hops_notified=1 WHERE id=? AND agent_hops>=? AND agent_hops_notified=0 AND EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND from_chat_id IS NOT NULL)`, chatID, limit, chatID)
 	if err != nil {
 		return err
 	}
@@ -380,7 +384,7 @@ func (s *Server) notifyAgentHopCap(chatID string) error {
 	if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, chatID).Scan(&title); err != nil {
 		return err
 	}
-	return s.Notify("chat", "Chat paused: too many agent messages", title+" received 10 agent messages in a row. Open it to continue.", "/ai/chats/"+chatID, true)
+	return s.Notify("chat", "Chat paused: too many agent messages", title+" received "+strconv.Itoa(limit)+" agent messages in a row. Open it to continue.", "/ai/chats/"+chatID, true)
 }
 
 func reportTarget(report bool, id string) any {

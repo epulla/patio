@@ -1198,7 +1198,7 @@ func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('hop-sender','Sender','0','0')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE chat SET agent_hops=10 WHERE id=?`, target); err != nil {
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 10; i++ {
@@ -1234,11 +1234,50 @@ func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	if err := db.QueryRow(`SELECT agent_hops,agent_hops_notified FROM chat WHERE id=?`, target).Scan(&hops, &notifiedState); err != nil || hops != 0 || notifiedState != 0 {
 		t.Fatalf("agent_hops=%d notified=%d err=%v", hops, notifiedState, err)
 	}
-	if _, err := db.Exec(`UPDATE chat SET agent_hops=10 WHERE id=?`, target); err != nil {
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target); err != nil {
 		t.Fatal(err)
 	}
 	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "later held"}, &result); code != 200 || result["status"] != "held" || notified != 2 {
 		t.Fatalf("later cap result=%d %#v notifications=%d", code, result, notified)
+	}
+}
+
+func TestAgentHopLimitSetting(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('hop-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, "local", false, "dev", root)
+	defer s.Close()
+	for _, tc := range []struct {
+		limit, hops int
+		want        string
+	}{{5, 4, "queued"}, {5, 5, "held"}, {0, 1000, "queued"}} {
+		if code := requestJSON(t, s, http.MethodPut, "/api/settings/defaults", map[string]int{"agent_hop_limit": tc.limit}, nil); code != http.StatusOK {
+			t.Fatalf("set limit %d: %d", tc.limit, code)
+		}
+		if _, err := db.Exec(`UPDATE chat SET agent_hops=?,agent_hops_notified=0 WHERE id=?`, tc.hops, target); err != nil {
+			t.Fatal(err)
+		}
+		var result map[string]string
+		if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "hi"}, &result); code != 200 || result["status"] != tc.want {
+			t.Fatalf("limit=%d hops=%d: %d %#v", tc.limit, tc.hops, code, result)
+		}
+		if paused, _, err := s.queuePaused(target); err != nil || paused != (tc.want == "held") {
+			t.Fatalf("limit=%d hops=%d paused=%v err=%v", tc.limit, tc.hops, paused, err)
+		}
+		if _, err := db.Exec(`DELETE FROM chat_queue WHERE chat_id=?`, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var body string
+	if err := db.QueryRow(`SELECT body FROM notification WHERE link=?`, "/ai/chats/"+target).Scan(&body); err != nil || !strings.Contains(body, "received 5 agent messages") {
+		t.Fatalf("notification body = %q err=%v", body, err)
+	}
+	if code := requestJSON(t, s, http.MethodPut, "/api/settings/defaults", map[string]int{"agent_hop_limit": -1}, nil); code != http.StatusBadRequest {
+		t.Fatalf("negative limit = %d", code)
 	}
 }
 

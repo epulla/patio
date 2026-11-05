@@ -38,6 +38,7 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	limit := agentHopLimit(s.db)
 	var deliveryErrors []error
 	for _, pending := range chats {
 		if err := ctx.Err(); err != nil {
@@ -46,7 +47,7 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		if pending.queueHeld != 0 {
 			continue
 		}
-		if pending.hops >= 10 && !pending.workflow {
+		if hopLimitReached(pending.hops, limit) && !pending.workflow {
 			if err := s.notifyAgentHopCap(pending.id); err != nil {
 				deliveryErrors = append(deliveryErrors, err)
 			}

@@ -231,7 +231,7 @@ func TestFlowStatus(t *testing.T) {
 		{"waiting", `INSERT INTO chat(id,title,created_at,updated_at) VALUES('child','c','1','1'); INSERT INTO chat_handoff(id,from_chat_id,to_chat_id,created_at,deadline_at) VALUES('h',$id,'child','1','2')`, "waiting"},
 		{"queued", `INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('q',$id,'x','[]','1')`, "queued"},
 		{"held", `INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('q2',$id,'x','[]','1'); UPDATE chat SET queue_held=1 WHERE id=$id`, "held"},
-		{"hop limit", `INSERT INTO chat(id,title,created_at,updated_at) VALUES('bot','b','1','1'); INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id) VALUES('q3',$id,'x','[]','1','bot'); UPDATE chat SET agent_hops=10 WHERE id=$id`, "held"},
+		{"hop limit", `INSERT INTO chat(id,title,created_at,updated_at) VALUES('bot','b','1','1'); INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id) VALUES('q3',$id,'x','[]','1','bot'); UPDATE chat SET agent_hops=30 WHERE id=$id`, "held"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			id := createDriverTestChat(t, database, connectorID, root)

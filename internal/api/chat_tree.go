@@ -47,7 +47,7 @@ func (s *Server) queuePaused(id string) (bool, int, error) {
 	if err != nil {
 		return false, 0, err
 	}
-	return held == 1 && queued > 0 || hops >= 10 && agentQueued > 0, queued, nil
+	return held == 1 && queued > 0 || hopLimitReached(hops, agentHopLimit(s.db)) && agentQueued > 0, queued, nil
 }
 func (s *Server) chatTree(w http.ResponseWriter, r *http.Request) {
 	id := idParam(r, "id")
