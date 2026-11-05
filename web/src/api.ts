@@ -19,6 +19,7 @@ export type ChatDefaults = {
   ai_titles: boolean;
   title_connector_id: string | null;
   title_model: string;
+  agent_hop_limit: number;
 };
 export type SettingsAbout = {
   version: string;

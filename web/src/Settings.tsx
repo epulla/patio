@@ -90,6 +90,9 @@ const text = {
     titleConnector: "Title connector",
     chatConnector: "Same as the chat (cheap model when known)",
     titleModel: "Title model",
+    agentHopLimit: "Bot message limit",
+    agentHopLimitHint: "Loop guard: after this many bot messages in a row, a chat pauses its queue until you press Send now. 0 turns it off.",
+    agentHopLimitWarning: "No limit: bots can message each other forever and burn tokens.",
     defaultBot: "Bot",
     noBot: "None (plain assistant)",
     tourPrompt: "Lost? Take the two-minute tour again →",
@@ -188,6 +191,9 @@ const text = {
     titleConnector: "Conector de títulos",
     chatConnector: "El mismo del chat (modelo económico si se conoce)",
     titleModel: "Modelo de títulos",
+    agentHopLimit: "Límite de mensajes entre bots",
+    agentHopLimitHint: "Protección contra bucles: tras esta cantidad de mensajes seguidos de bots, el chat pausa su cola hasta que pulses Enviar ahora. 0 la desactiva.",
+    agentHopLimitWarning: "Sin límite: los bots pueden escribirse sin fin y gastar tokens.",
     defaultBot: "Bot",
     noBot: "Ninguno (asistente simple)",
     tourPrompt: "¿Perdido? Vuelve a hacer el recorrido de dos minutos →",
@@ -578,6 +584,7 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [folders, setFolders] = useState<AllowedFolder[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
+  const [hopLimit, setHopLimit] = useState("");
   const [error, setError] = useState<unknown>();
 
   useEffect(() => {
@@ -589,6 +596,7 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
     ])
       .then(([nextDefaults, nextConnectors, nextFolders, nextBots]) => {
         setDefaults(nextDefaults);
+        setHopLimit(String(nextDefaults.agent_hop_limit));
         setConnectors(nextConnectors);
         setFolders(nextFolders);
         setBots(nextBots);
@@ -606,6 +614,13 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
     } catch (reason) {
       setError(reason);
     }
+  }
+
+  function saveHopLimit() {
+    const value = Number(hopLimit);
+    if (!defaults || value === defaults.agent_hop_limit) return;
+    if (hopLimit.trim() === "" || !Number.isInteger(value) || value < 0 || value > 500) return setHopLimit(String(defaults.agent_hop_limit));
+    void save({ agent_hop_limit: value });
   }
 
   return (
@@ -706,6 +721,27 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
                   </div>
                 )}
               </div>
+            )}
+            <div className="defaults-fields">
+              <label>
+                {t.agentHopLimit}
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={1}
+                  value={hopLimit}
+                  onChange={(event) => setHopLimit(event.target.value)}
+                  onBlur={saveHopLimit}
+                  onKeyDown={(event) => event.key === "Enter" && saveHopLimit()}
+                />
+                <span className="muted hop-limit-hint">{t.agentHopLimitHint}</span>
+              </label>
+            </div>
+            {defaults.agent_hop_limit === 0 && (
+              <p className="callout warning" role="note">
+                {t.agentHopLimitWarning}
+              </p>
             )}
           </>
         ) : (

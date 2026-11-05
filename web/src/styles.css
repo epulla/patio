@@ -4575,6 +4575,9 @@ main.chat-window .app-version {
 .defaults-panel .switch {
   margin-right: 0;
 }
+.hop-limit-hint {
+  font-weight: 400;
+}
 .defaults-panel .days-field {
   align-self: flex-start;
 }
