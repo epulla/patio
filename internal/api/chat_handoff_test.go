@@ -38,6 +38,24 @@ func TestAgentMessageCreatesOnlyRequestedHandoff(t *testing.T) {
 	}
 }
 
+func TestRepeatedReportBackReusesPendingHandoff(t *testing.T) {
+	s, a, b, _ := newHandoffChats(t)
+	queueHandoff(t, s, a, b, true)
+	queueHandoff(t, s, a, b, true)
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE from_chat_id=? AND to_chat_id=?`, a, b).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("handoffs=%d err=%v", n, err)
+	}
+	parents, _, err := s.chats.finishHandoffs(b, "done", nil, false)
+	if err != nil || len(parents) != 1 {
+		t.Fatalf("finish %v %v", parents, err)
+	}
+	queueHandoff(t, s, a, b, true)
+	if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE from_chat_id=? AND to_chat_id=?`, a, b).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("handoffs after finish=%d err=%v", n, err)
+	}
+}
+
 func TestHandoffDeferredUntilOwnHandoffsFinish(t *testing.T) {
 	s, parent, child, grandchild := newHandoffChats(t)
 	queueHandoff(t, s, parent, child, true)

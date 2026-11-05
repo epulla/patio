@@ -469,7 +469,15 @@ func (s *Server) queueAgentMessage(id string, in agentMessageRequest) error {
 			if in.WorkflowEdge != "" {
 				edge = in.WorkflowEdge
 			}
-			_, err := tx.Exec(`INSERT INTO chat_handoff(id,run_id,from_chat_id,to_chat_id,workflow_edge,status,result,created_at,deadline_at) VALUES(?,?,?,?,?,'pending','',?,?)`, uid(), runID, in.FromChatID, id, edge, created, deadline)
+			// Re-messaging a child that still owes this parent a report reuses that handoff, so the final turn reports once.
+			res, err := tx.Exec(`UPDATE chat_handoff SET deadline_at=max(deadline_at,?) WHERE from_chat_id=? AND to_chat_id=? AND workflow_edge IS ? AND status='pending'`, deadline, in.FromChatID, id, edge)
+			if err != nil {
+				return err
+			}
+			if n, err := res.RowsAffected(); err != nil || n > 0 {
+				return err
+			}
+			_, err = tx.Exec(`INSERT INTO chat_handoff(id,run_id,from_chat_id,to_chat_id,workflow_edge,status,result,created_at,deadline_at) VALUES(?,?,?,?,?,'pending','',?,?)`, uid(), runID, in.FromChatID, id, edge, created, deadline)
 			return err
 		}
 		return nil
