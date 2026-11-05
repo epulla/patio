@@ -245,3 +245,19 @@ func TestHeldTurnReportsProgressAndKeepsHandoffOpen(t *testing.T) {
 		t.Fatalf("sent=%v", sent)
 	}
 }
+
+func TestSweepTimesOutHeldHandoff(t *testing.T) {
+	s, parent, child, _ := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	if _, err := s.db.Exec(`UPDATE chat_handoff SET held=1,created_at='2020-01-01T00:00:00.000Z',deadline_at='2020-01-01T00:01:00.000Z' WHERE to_chat_id=?`, child); err != nil {
+		t.Fatal(err)
+	}
+	s.chats.reportBack = func(_, _, _ string) error { return nil }
+	if err := s.SweepHandoffs(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := s.db.QueryRow(`SELECT status FROM chat_handoff WHERE to_chat_id=?`, child).Scan(&status); err != nil || status != "failed" {
+		t.Fatalf("status=%s err=%v", status, err)
+	}
+}
