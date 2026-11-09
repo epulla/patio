@@ -3531,6 +3531,14 @@ main.chat-window .app-version {
 .message.pending {
   opacity: 0.6;
 }
+.message.failed {
+  outline: 1px solid var(--error);
+}
+.message-failed {
+  align-self: flex-end;
+  color: var(--error);
+  font-size: 0.8em;
+}
 .message-row {
   max-width: min(760px, 100%);
   min-width: 0;

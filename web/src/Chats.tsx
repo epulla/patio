@@ -1360,6 +1360,8 @@ export function Conversation({
 
   // Every db-changed reloads; the server answers "unchanged" when this chat's version still matches.
   const loaded = useRef<{ id: string; version: string }>(undefined);
+  // The pending or failed sent message; loads keep it until a stored user message as new arrives.
+  const localSent = useRef<ChatMessage>(undefined);
   const load = () =>
     api
       .get<ChatDetail | { unchanged: true }>(
@@ -1368,10 +1370,13 @@ export function Conversation({
       .then((value) => {
         if ("unchanged" in value) return;
         loaded.current = { id, version: value.version };
-        setDetail(value);
+        const local = localSent.current;
+        if (local && (local.chat_id !== id || value.messages.some((m) => m.role === "user" && m.created_at >= local.created_at))) localSent.current = undefined;
+        setDetail(localSent.current ? { ...value, messages: [...value.messages, localSent.current] } : value);
         // An AI title arriving mid-edit must not replace what the user is typing.
         if (document.activeElement?.id !== `${uid}-title`) setTitle(value.chat.title);
-        setRunning(value.chat.running);
+        // A load that started before a send can resolve after it.
+        setRunning(value.chat.running || isSending(id));
       })
       .catch((reason) => {
         if (String(reason).includes("not found")) setMissing(true);
@@ -1673,12 +1678,14 @@ export function Conversation({
     changeText("");
     setPending([]);
     // Shown at once; a new chat's runtime can take seconds to start before the POST returns.
-    const optimistic: ChatMessage | undefined = queueing
+    const local: ChatMessage | undefined = queueing
       ? undefined
       : { id: `pending-${Date.now()}`, chat_id: id, role: "user", content: value, created_at: new Date().toISOString(), attachments: pending, answered: false };
-    const dropOptimistic = () =>
-      optimistic && setDetail((current) => current && { ...current, messages: current.messages.filter((m) => m !== optimistic) });
-    if (optimistic) setDetail((current) => current && { ...current, messages: [...current.messages, optimistic] });
+    const showLocal = (from?: ChatMessage, to?: ChatMessage) => {
+      localSent.current = to;
+      setDetail((current) => current && { ...current, messages: [...current.messages.filter((m) => m !== from), ...(to ? [to] : [])] });
+    };
+    showLocal(localSent.current, local);
     let sent = false;
     try {
       const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
@@ -1687,7 +1694,7 @@ export function Conversation({
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
       sent = true;
-      dropOptimistic();
+      if (local) showLocal(local);
       if (prefix) sentContext.set(id, context!.line);
       if (startContext) {
         localStorage.removeItem(startKey);
@@ -1707,7 +1714,7 @@ export function Conversation({
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
-      dropOptimistic();
+      if (local) showLocal(local, sent ? undefined : { ...local, id: local.id.replace("pending-", "failed-") });
       if (!sent) await restoreDraft(id).catch(setError);
       if (!queueing) setRunning(false);
       setError(reason);
@@ -2521,13 +2528,16 @@ const Timeline = memo(function Timeline({
         <div key={message.id} className={`message-row ${message.role}`}>
           {message.from_chat_id && <ChatFrom id={message.from_chat_id} title={message.from_chat_title} />}
           {(message.role !== "user" || message.content) && (
-            <div className={`message ${message.role}${message.id.startsWith("pending-") ? " pending" : ""}`}>
+            <div className={`message ${message.role}${message.id.startsWith("pending-") ? " pending" : message.id.startsWith("failed-") ? " failed" : ""}`}>
               {message.role === "assistant" || message.role === "user" ? (
                 <Markdown text={message.content} onFile={reveal} />
               ) : (
                 message.content
               )}
             </div>
+          )}
+          {message.id.startsWith("failed-") && (
+            <span className="message-failed">{t.failed}</span>
           )}
           {message.attachments.length > 0 && (
             <ul className="attachments sent" aria-label={t.attachments}>
