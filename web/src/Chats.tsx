@@ -1382,7 +1382,12 @@ export function Conversation({
           value.messages.some(
             (m) =>
               m.id === local.message.id ||
-              (local.text !== undefined && m.role === "user" && m.created_at >= local.message.created_at && m.content.startsWith(local.text)),
+              (local.text !== undefined &&
+                m.role === "user" &&
+                !m.from_chat_id &&
+                m.created_at >= local.message.created_at &&
+                m.content.startsWith(local.text) &&
+                m.attachments.map((a) => a.name).join("\n") === local.message.attachments.map((a) => a.name).join("\n")),
           );
         if (stored) localSent.current = undefined;
         setDetail(!stored && local ? { ...value, messages: [...value.messages, local.message] } : value);
