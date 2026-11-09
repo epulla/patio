@@ -1672,6 +1672,13 @@ export function Conversation({
       .finally(() => savesInFlight.current--);
     changeText("");
     setPending([]);
+    // Shown at once; a new chat's runtime can take seconds to start before the POST returns.
+    const optimistic: ChatMessage | undefined = queueing
+      ? undefined
+      : { id: `pending-${Date.now()}`, chat_id: id, role: "user", content: value, created_at: new Date().toISOString(), attachments: pending, answered: false };
+    const dropOptimistic = () =>
+      optimistic && setDetail((current) => current && { ...current, messages: current.messages.filter((m) => m !== optimistic) });
+    if (optimistic) setDetail((current) => current && { ...current, messages: [...current.messages, optimistic] });
     let sent = false;
     try {
       const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
@@ -1680,6 +1687,7 @@ export function Conversation({
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
       });
       sent = true;
+      dropOptimistic();
       if (prefix) sentContext.set(id, context!.line);
       if (startContext) {
         localStorage.removeItem(startKey);
@@ -1699,6 +1707,7 @@ export function Conversation({
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
+      dropOptimistic();
       if (!sent) await restoreDraft(id).catch(setError);
       if (!queueing) setRunning(false);
       setError(reason);
@@ -2512,7 +2521,7 @@ const Timeline = memo(function Timeline({
         <div key={message.id} className={`message-row ${message.role}`}>
           {message.from_chat_id && <ChatFrom id={message.from_chat_id} title={message.from_chat_title} />}
           {(message.role !== "user" || message.content) && (
-            <div className={`message ${message.role}`}>
+            <div className={`message ${message.role}${message.id.startsWith("pending-") ? " pending" : ""}`}>
               {message.role === "assistant" || message.role === "user" ? (
                 <Markdown text={message.content} onFile={reveal} />
               ) : (
