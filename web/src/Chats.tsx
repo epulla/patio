@@ -1386,10 +1386,15 @@ export function Conversation({
   }, [id, refresh]);
 
   // The input is read-only until the stored draft arrives, so nothing typed races it or saves over it.
+  // savedDraft is what the server acknowledged; unsaved holds newer text until a save of it succeeds.
   const savedDraft = useRef("");
+  const unsaved = useRef<{ value: string; text: string; attachments: ChatAttachment[] }>(undefined);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const flushDraft = useRef(() => {});
+  const latest = useRef({ text, pending });
+  latest.current = { text, pending };
+  // A failed load keeps the input read-only and retries on the next refresh.
   useEffect(() => {
+    if (draftLoaded) return;
     let cancelled = false;
     loadDraft(id)
       .then((draft) => {
@@ -1397,6 +1402,7 @@ export function Conversation({
         savedDraft.current = JSON.stringify({ text: draft.text, attachments: draft.attachments });
         changeText(draft.text);
         setPending(draft.attachments);
+        setDraftLoaded(true);
         if (!draft.attachments.length) return;
         // Unsent uploads live in server memory, so drop restored chips the server no longer has (e.g. after a restart).
         // Only restored chips are checked; uploads added since then stay.
@@ -1408,34 +1414,44 @@ export function Conversation({
           })
           .catch(() => undefined);
       })
-      .catch(setError)
-      .finally(() => !cancelled && setDraftLoaded(true));
+      .catch((reason) => !cancelled && setError(reason));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refresh]);
+
+  function flushDraft() {
+    clearTimeout(saveTimer.current);
+    const draft = unsaved.current;
+    if (!draft) return;
+    saveDraft(id, draft.text, draft.attachments)
+      .then(() => {
+        savedDraft.current = draft.value;
+        if (unsaved.current === draft) unsaved.current = undefined;
+      })
+      .catch(setError);
+  }
 
   // Saves after a typing pause, and right away when the composer unmounts (chat switch, window close).
   useEffect(() => {
     if (!draftLoaded) return;
-    const value = JSON.stringify({ text, attachments: pending });
-    if (value === savedDraft.current) return;
-    const save = () => {
-      clearTimeout(saveTimer.current);
-      flushDraft.current = () => {};
-      savedDraft.current = value;
-      saveDraft(id, text, pending).catch(setError);
-    };
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(save, 500);
-    flushDraft.current = save;
+    const value = JSON.stringify({ text, attachments: pending });
+    if (value === savedDraft.current) {
+      unsaved.current = undefined;
+      return;
+    }
+    unsaved.current = { value, text, attachments: pending };
+    saveTimer.current = setTimeout(flushDraft, 500);
   }, [text, pending, draftLoaded]);
-  useEffect(() => () => flushDraft.current(), []);
+  useEffect(() => () => flushDraft(), []);
 
+  // A failed send comes back only into an empty composer, so newer typing wins.
   useEffect(
     () =>
       onRestore(id, (restored) => {
-        savedDraft.current = JSON.stringify({ text: restored.text, attachments: restored.attachments });
+        if (latest.current.text || latest.current.pending.length) return;
+        savedDraft.current = "";
         changeText(restored.text);
         setPending(restored.attachments);
       }),
@@ -1641,9 +1657,13 @@ export function Conversation({
     }
     // Clear right away so reopening the chat mid-send shows an empty composer; restored on failure.
     clearTimeout(saveTimer.current);
-    flushDraft.current = () => {};
-    savedDraft.current = JSON.stringify({ text: "", attachments: [] });
-    takeDraft(id, text, pending);
+    unsaved.current = undefined;
+    const before = savedDraft.current;
+    takeDraft(id, text, pending)
+      .then(() => {
+        if (savedDraft.current === before) savedDraft.current = JSON.stringify({ text: "", attachments: [] });
+      })
+      .catch(setError);
     changeText("");
     setPending([]);
     let sent = false;
@@ -1673,7 +1693,7 @@ export function Conversation({
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
-      if (!sent) void restoreDraft(id);
+      if (!sent) await restoreDraft(id).catch(setError);
       if (!queueing) setRunning(false);
       setError(reason);
     } finally {

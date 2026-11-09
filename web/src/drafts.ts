@@ -54,21 +54,23 @@ export function isSending(chatID: string) {
 
 export function takeDraft(chatID: string, text: string, attachments: ChatAttachment[]) {
   sending.set(chatID, { text, attachments });
-  void saveDraft(chatID, "", []).catch(() => undefined);
+  return saveDraft(chatID, "", []);
 }
 
 export function finishSend(chatID: string) {
   sending.delete(chatID);
 }
 
-// Puts a failed send back unless the chat has a newer draft; mounted composers get it via onRestore.
+// Puts a failed send back: mounted composers take it if they're still empty, otherwise the stored
+// draft gets it unless the chat has a newer one. Callers hold isSending until this settles.
 export async function restoreDraft(chatID: string) {
   const draft = sending.get(chatID);
   if (!draft) return;
-  const stored = await loadDraft(chatID).catch(() => undefined);
-  if (!stored || stored.text || stored.attachments.length) return;
-  await saveDraft(chatID, draft.text, draft.attachments).catch(() => undefined);
-  listeners.get(chatID)?.forEach((listener) => listener(draft));
+  const mounted = listeners.get(chatID);
+  if (mounted?.size) return mounted.forEach((listener) => listener(draft));
+  const stored = await loadDraft(chatID);
+  if (stored.text || stored.attachments.length) return;
+  await saveDraft(chatID, draft.text, draft.attachments);
 }
 
 export function onRestore(chatID: string, listener: (draft: Draft) => void) {
