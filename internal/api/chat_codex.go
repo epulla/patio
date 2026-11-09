@@ -316,7 +316,7 @@ func (d *codexRuntime) watch() {
 	d.mu.Lock()
 	closing := d.closing
 	d.mu.Unlock()
-	if !closing && d.manager.runtime(d.chatID).busy {
+	if !closing && d.manager.runtime(d.chatID).busy.Load() {
 		err := errors.New("Codex app-server exited")
 		if finishErr := d.finish(err); finishErr != nil {
 			log.Printf("finish exited Codex chat %s: %v", d.chatID, finishErr)

@@ -1459,7 +1459,7 @@ func (d *opencodeRuntime) startAutonomousTurnLocked() bool {
 func (d *opencodeRuntime) markBusy() {
 	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
 		rt.mu.Lock()
-		rt.busy = true
+		rt.busy.Store(true)
 		d.manager.markRuntimeActiveLocked(d.chatID, rt)
 		rt.mu.Unlock()
 	}

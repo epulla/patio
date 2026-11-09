@@ -35,7 +35,7 @@ func TestChatCleanup(t *testing.T) {
 	running := addChat(old, old)
 	rt := server.chats.runtime(running)
 	rt.mu.Lock()
-	rt.busy = true
+	rt.busy.Store(true)
 	rt.mu.Unlock()
 
 	cleanup := func() int {

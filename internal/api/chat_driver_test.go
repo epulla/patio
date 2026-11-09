@@ -427,11 +427,11 @@ func TestAutoAllowResolvesPendingApprovalWhileRunning(t *testing.T) {
 	server.chats.approvalTimeout = time.Second
 	runtime := server.chats.runtime(chatID)
 	runtime.mu.Lock()
-	runtime.busy = true
+	runtime.busy.Store(true)
 	runtime.mu.Unlock()
 	defer func() {
 		runtime.mu.Lock()
-		runtime.busy = false
+		runtime.busy.Store(false)
 		runtime.mu.Unlock()
 	}()
 	result := make(chan struct {
@@ -995,7 +995,9 @@ func TestDrainQueuedLeavesQueueOpenWhenTurnRunning(t *testing.T) {
 	}
 	s := New(db, "local", false, "dev", root)
 	defer s.Close()
-	s.chats.chats[chatID] = &chatRuntime{busy: true}
+	rt := &chatRuntime{}
+	rt.busy.Store(true)
+	s.chats.chats[chatID] = rt
 	if _, err := s.chats.drainQueued(chatID, false); !errors.Is(err, errChatTurnRunning) {
 		t.Fatalf("drain err = %v, want errChatTurnRunning", err)
 	}

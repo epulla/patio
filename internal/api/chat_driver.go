@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -121,7 +122,7 @@ func mcpSpecHeaders(spec mcpServerSpec) map[string]string {
 type chatRuntime struct {
 	mu              sync.Mutex
 	driver          chatRuntimeDriver
-	busy            bool
+	busy            atomic.Bool
 	stopping        bool
 	changingModel   bool
 	stopDone        chan struct{}
@@ -168,12 +169,8 @@ func (m *chatManager) Running(id string) bool {
 	m.mu.Lock()
 	rt := m.chats[id]
 	m.mu.Unlock()
-	if rt == nil {
-		return false
-	}
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	return rt.busy
+	// Lock-free: Send holds rt.mu while a new runtime starts, which can take seconds.
+	return rt != nil && rt.busy.Load()
 }
 
 func (m *chatManager) CanSteer(id string) bool {
@@ -184,7 +181,7 @@ func (m *chatManager) CanSteer(id string) bool {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	steerer, ok := rt.driver.(chatSteerer)
-	return rt.busy && !rt.stopping && ok && steerer.canSteer()
+	return rt.busy.Load() && !rt.stopping && ok && steerer.canSteer()
 }
 
 func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendRequest) (ChatMessage, error) {
@@ -202,14 +199,14 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	m.mu.Unlock()
 	defer rt.mu.Unlock()
 	// No turn is running: an idle close or restart is finishing; wait and start fresh.
-	for rt.stopping && !rt.busy {
+	for rt.stopping && !rt.busy.Load() {
 		done := rt.stopDone
 		rt.mu.Unlock()
 		<-done
 		rt.mu.Lock()
 	}
-	if rt.busy || rt.stopping {
-		if request.Steer && rt.busy && !rt.stopping {
+	if rt.busy.Load() || rt.stopping {
+		if request.Steer && rt.busy.Load() && !rt.stopping {
 			steerer, ok := rt.driver.(chatSteerer)
 			if ok && steerer.canSteer() {
 				storedText := request.StoredText
@@ -304,7 +301,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		}
 	}
 	failTurn := func(stage string, cause error) error {
-		rt.busy = false
+		rt.busy.Store(false)
 		if _, err := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, c.ID); err != nil {
 			cause = errors.Join(cause, err)
 		}
@@ -325,7 +322,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	rt.pendingThinking.Reset()
 	rt.assistantHasText, rt.toolAfterText = false, false
 	rt.streamMu.Unlock()
-	rt.busy = true
+	rt.busy.Store(true)
 	if rt.driver == nil {
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
 		if specErr != nil {
@@ -398,7 +395,7 @@ func (m *chatManager) restartThinkingLocked(kind string, c chat, rt *chatRuntime
 	rt.mu.Lock()
 	if rt.driver == driver {
 		rt.driver = nil
-		rt.busy = false
+		rt.busy.Store(false)
 		rt.startedThinking = nil
 	}
 	rt.stopping = false
@@ -576,7 +573,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	if rt := m.lookupRuntime(id); rt != nil {
 		rt.mu.Lock()
-		rt.busy = false
+		rt.busy.Store(false)
 		rt.streamMu.Lock()
 		rt.assistantHasText, rt.toolAfterText = false, false
 		rt.streamMu.Unlock()
@@ -834,7 +831,7 @@ func (m *chatManager) Stop(id string) error {
 		}
 		return nil
 	}
-	if rt.driver == nil || !rt.busy {
+	if rt.driver == nil || !rt.busy.Load() {
 		rt.mu.Unlock()
 		return nil
 	}
@@ -851,7 +848,7 @@ func (m *chatManager) Stop(id string) error {
 	rt.mu.Lock()
 	if rt.driver == driver {
 		rt.driver = nil
-		rt.busy = false
+		rt.busy.Store(false)
 		rt.startedThinking = nil
 	}
 	rt.stopping = false
@@ -877,7 +874,7 @@ func (m *chatManager) ChangeFolder(id string, update func() error) error {
 func (m *chatManager) restart(id string, busy error, update func() error) error {
 	rt := m.runtime(id)
 	rt.mu.Lock()
-	if rt.busy || rt.stopping {
+	if rt.busy.Load() || rt.stopping {
 		rt.mu.Unlock()
 		return busy
 	}
@@ -899,7 +896,7 @@ func (m *chatManager) restart(id string, busy error, update func() error) error 
 	rt.mu.Lock()
 	if rt.driver == driver {
 		rt.driver = nil
-		rt.busy = false
+		rt.busy.Store(false)
 	}
 	rt.stopping, rt.changingModel = false, false
 	rt.stopDone = nil
@@ -912,7 +909,7 @@ func (m *chatManager) UpdateChat(id string, update func() error) error {
 	rt := m.runtime(id)
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if rt.busy || rt.stopping {
+	if rt.busy.Load() || rt.stopping {
 		return errChatThinkingChangeBusy
 	}
 	return update()
@@ -962,7 +959,7 @@ func (m *chatManager) closeRuntime(id string) error {
 	driver := rt.driver
 	m.stopRuntimeTimerLocked(rt)
 	if driver == nil {
-		rt.busy = false
+		rt.busy.Store(false)
 		rt.mu.Unlock()
 		return nil
 	}
@@ -974,7 +971,7 @@ func (m *chatManager) closeRuntime(id string) error {
 	rt.mu.Lock()
 	if rt.driver == driver {
 		rt.driver = nil
-		rt.busy = false
+		rt.busy.Store(false)
 	}
 	rt.stopping = false
 	rt.stopDone = nil
@@ -985,7 +982,7 @@ func (m *chatManager) closeRuntime(id string) error {
 
 func (m *chatManager) closeIdleRuntime(id string, rt *chatRuntime) error {
 	rt.mu.Lock()
-	if rt.driver == nil || rt.busy || rt.stopping {
+	if rt.driver == nil || rt.busy.Load() || rt.stopping {
 		rt.mu.Unlock()
 		return nil
 	}
@@ -1015,7 +1012,7 @@ func (m *chatManager) closeIdleRuntime(id string, rt *chatRuntime) error {
 	rt.mu.Lock()
 	if rt.driver == driver {
 		rt.driver = nil
-		rt.busy = false
+		rt.busy.Store(false)
 	}
 	rt.stopping = false
 	rt.stopDone = nil

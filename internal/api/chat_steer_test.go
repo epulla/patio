@@ -55,7 +55,8 @@ func TestQueueSendSteersRunningTurn(t *testing.T) {
 	steerer := &steerTestDriver{}
 	rt := server.chats.runtime(chatID)
 	rt.mu.Lock()
-	rt.busy, rt.driver = true, steerer
+	rt.busy.Store(true)
+	rt.driver = steerer
 	rt.mu.Unlock()
 	for i, text := range []string{"first", "second"} {
 		if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES(?,?,?,'[]',?)`, string(rune('a'+i)), chatID, text, string(rune('1'+i))); err != nil {
@@ -95,7 +96,8 @@ func TestQueueSendLeavesQueueWhenDriverCannotSteer(t *testing.T) {
 	defer server.Close()
 	rt := server.chats.runtime(chatID)
 	rt.mu.Lock()
-	rt.busy, rt.driver = true, &unsteerTestDriver{}
+	rt.busy.Store(true)
+	rt.driver = &unsteerTestDriver{}
 	rt.mu.Unlock()
 	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('queued',?,'pending','[]','1')`, chatID); err != nil {
 		t.Fatal(err)

@@ -645,10 +645,10 @@ func (d *copilotRuntime) watch() {
 	close(d.processDone)
 	d.runtime.mu.Lock()
 	expected := d.runtime.stopping
-	unfinished := d.runtime.busy
+	unfinished := d.runtime.busy.Load()
 	if d.runtime.driver == d {
 		d.runtime.driver = nil
-		d.runtime.busy = false
+		d.runtime.busy.Store(false)
 		if !d.runtime.changingModel && d.runtime.stopDone == nil {
 			d.runtime.stopping = false
 		}

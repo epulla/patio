@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/zalando/go-keyring"
 	"patio/internal/db"
@@ -232,7 +233,7 @@ func TestChatListRuntimeAndApproval(t *testing.T) {
 	}
 	runtime := server.chats.runtime(created.ID)
 	runtime.mu.Lock()
-	runtime.busy = true
+	runtime.busy.Store(true)
 	runtime.mu.Unlock()
 	var listed struct {
 		Chats []struct {
@@ -246,6 +247,48 @@ func TestChatListRuntimeAndApproval(t *testing.T) {
 	got := listed.Chats[0]
 	if !got.Running || got.PendingCount != 1 {
 		t.Fatalf("list status fields = %#v", got)
+	}
+}
+
+func TestChatRunningDoesNotWaitForRuntimeStart(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	server := New(database, "local", false, "dev", root)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	starting, release := make(chan struct{}), make(chan struct{})
+	runtimes["slow-start"] = func(*chatManager, chat, string, *chatRuntime) (chatRuntimeDriver, error) {
+		close(starting)
+		<-release
+		return &idleTestDriver{closed: make(chan struct{})}, nil
+	}
+	t.Cleanup(func() { delete(runtimes, "slow-start") })
+	sent := make(chan error, 1)
+	go func() {
+		_, err := server.chats.Send(chat{ID: chatID, ConnectorID: &connectorID}, "slow-start", "", ChatSendRequest{Text: "hi"})
+		sent <- err
+	}()
+	defer func() {
+		close(release)
+		if err := <-sent; err != nil {
+			t.Error(err)
+		}
+	}()
+	<-starting
+	for _, path := range []string{"/api/chats", "/api/chats/" + chatID} {
+		done := make(chan string, 1)
+		go func() {
+			recorder := httptest.NewRecorder()
+			server.handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+			done <- recorder.Body.String()
+		}()
+		select {
+		case body := <-done:
+			if !strings.Contains(body, `"running":true`) {
+				t.Fatalf("GET %s = %s", path, body)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("GET %s blocked while runtime starts", path)
+		}
 	}
 }
 
@@ -480,7 +523,7 @@ func TestChatThinkingUpdate(t *testing.T) {
 	}
 	runtime := handler.(*Server).chats.runtime(created.ID)
 	runtime.mu.Lock()
-	runtime.busy = true
+	runtime.busy.Store(true)
 	runtime.mu.Unlock()
 	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
 		t.Fatalf("unchanged thinking while running = %d", code)
@@ -490,7 +533,7 @@ func TestChatThinkingUpdate(t *testing.T) {
 		t.Fatalf("thinking change while running = %d, want %d", code, http.StatusConflict)
 	}
 	runtime.mu.Lock()
-	runtime.busy = false
+	runtime.busy.Store(false)
 	runtime.mu.Unlock()
 }
 

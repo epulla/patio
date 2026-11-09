@@ -45,10 +45,10 @@ func TestScheduledClaimLateCollapseAndOverlap(t *testing.T) {
 	if _, err := database.Exec(`UPDATE scheduled_task_run SET chat_id=? WHERE task_id=?`, chatID, id); err != nil {
 		t.Fatal(err)
 	}
-	rt := &chatRuntime{busy: true}
+	rt := &chatRuntime{}
 	s.chats.chats[chatID] = rt
 	for _, busy := range []bool{true, false} {
-		rt.busy = busy
+		rt.busy.Store(busy)
 		if _, err := database.Exec(`UPDATE scheduled_task SET next_run_at=? WHERE id=?`, started, id); err != nil {
 			t.Fatal(err)
 		}

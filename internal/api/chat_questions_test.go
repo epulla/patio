@@ -50,12 +50,12 @@ func TestAnswerQuestionRejectsBusyAndAlreadyAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := server.chats.runtime(chatID)
-	runtime.busy = true
+	runtime.busy.Store(true)
 	path := "/api/chats/" + chatID + "/questions/" + question.ID + "/answer"
 	if code := requestJSON(t, server, http.MethodPost, path, map[string]any{"answers": []any{map[string]any{"header": "Scope", "selected": []string{"Small"}}}}, nil); code != http.StatusConflict {
 		t.Fatalf("busy answer status = %d", code)
 	}
-	runtime.busy = false
+	runtime.busy.Store(false)
 	if _, err := database.Exec(`UPDATE chat_message SET answered=1 WHERE id=?`, question.ID); err != nil {
 		t.Fatal(err)
 	}
