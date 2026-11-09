@@ -32,7 +32,7 @@ const text = {
     createColumn: "Create column", cancel: "Cancel", temporaryTip: (n: number, plural: string) => `Temporary column: tickets hide ${n} day${plural} after entering it. They are not deleted.`,
     moveLeft: (name: string) => `Move ${name} left`, moveRight: (name: string) => `Move ${name} right`,
     addTicketTo: (name: string) => `Add ticket to ${name}`, deleteBoard: "Delete this board?", boardDetails: "Board details",
-    name: "Name", shortName: "Short name", saveBoard: "Save board", deleteBoardLabel: "Delete board", columns: "Columns",
+    name: "Name", shortName: "Short name", deleteBoardLabel: "Delete board", columns: "Columns",
     temporaryHelp: "Temporary: tickets auto-hide from the board N days after entering the column. They are not deleted.",
     order: "Order", columnOrder: "Column order", classic: "Classic", temporary: "Temporary", hideAfterDays: "Hide tickets after N days",
     days: "days", ticketTypes: "Ticket types", newType: "New type", color: "Color", addType: "Add type",
@@ -40,7 +40,7 @@ const text = {
     countsAsHelp: "Dashboard: Auto counts temporary columns as done (or cancelled when named like Cancelled), and ignores the rest.",
     countsAs: (name: string) => `${name} counts on the dashboard as`, countsAuto: "Dashboard: auto", countsDone: "Counts as done", countsCancelled: "Counts as cancelled", countsNone: "Not counted",
     columnType: (name: string) => `${name} type`, columnDays: (name: string) => `${name} hide after days`,
-    save: (name: string) => `Save ${name}`, delete: (name: string) => `Delete ${name}`,
+    delete: (name: string) => `Delete ${name}`,
     close: "Close", title: "Title", description: "Description", type: "Type", noType: "No type", dueDate: "Due date", createTicket: "Create ticket",
   },
   es: {
@@ -51,7 +51,7 @@ const text = {
     createColumn: "Crear columna", cancel: "Cancelar", temporaryTip: (n: number, plural: string) => `Columna temporal: los tickets se ocultan ${n} día${plural} después de entrar. No se eliminan.`,
     moveLeft: (name: string) => `Mover ${name} a la izquierda`, moveRight: (name: string) => `Mover ${name} a la derecha`,
     addTicketTo: (name: string) => `Agregar ticket a ${name}`, deleteBoard: "¿Eliminar este tablero?", boardDetails: "Detalles del tablero",
-    name: "Nombre", shortName: "Nombre corto", saveBoard: "Guardar tablero", deleteBoardLabel: "Eliminar tablero", columns: "Columnas",
+    name: "Nombre", shortName: "Nombre corto", deleteBoardLabel: "Eliminar tablero", columns: "Columnas",
     temporaryHelp: "Temporal: los tickets se ocultan automáticamente del tablero N días después de entrar en la columna. No se eliminan.",
     order: "Orden", columnOrder: "Orden de columnas", classic: "Clásica", temporary: "Temporal", hideAfterDays: "Ocultar tickets después de N días",
     days: "días", ticketTypes: "Tipos de ticket", newType: "Nuevo tipo", color: "Color", addType: "Agregar tipo",
@@ -59,7 +59,7 @@ const text = {
     countsAsHelp: "Panel: Automático cuenta las columnas temporales como hechas (o canceladas si se llaman como Cancelado) e ignora el resto.",
     countsAs: (name: string) => `${name} cuenta en el panel como`, countsAuto: "Panel: automático", countsDone: "Cuenta como hecho", countsCancelled: "Cuenta como cancelado", countsNone: "No cuenta",
     columnType: (name: string) => `Tipo de ${name}`, columnDays: (name: string) => `Ocultar ${name} después de (días)`,
-    save: (name: string) => `Guardar ${name}`, delete: (name: string) => `Eliminar ${name}`,
+    delete: (name: string) => `Eliminar ${name}`,
     close: "Cerrar", title: "Título", description: "Descripción", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", createTicket: "Crear ticket",
   },
 };
@@ -508,6 +508,12 @@ function Settings({
   const [name, setName] = useState(data.board.name);
   const [shortName, setShortName] = useState(data.board.short_name);
   async function saveBoard() {
+    if (name === data.board.name && shortName === data.board.short_name) return;
+    if (!name.trim() || !shortName.trim()) {
+      setName(data.board.name);
+      setShortName(data.board.short_name);
+      return;
+    }
     try {
       await api.put(`/api/boards/${data.board.id}`, {
         name,
@@ -516,6 +522,8 @@ function Settings({
       });
       onReload();
     } catch (error) {
+      setName(data.board.name);
+      setShortName(data.board.short_name);
       onError(error);
     }
   }
@@ -538,6 +546,8 @@ function Settings({
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
+              onBlur={saveBoard}
+              onKeyDown={blurOnEnter}
             />
           </label>
           <label>
@@ -545,9 +555,10 @@ function Settings({
             <input
               value={shortName}
               onChange={(event) => setShortName(event.target.value)}
+              onBlur={saveBoard}
+              onKeyDown={blurOnEnter}
             />
           </label>
-          <IconButton icon="check" label={t.saveBoard} onClick={saveBoard} />
           <IconButton
             className="danger-text"
             icon="trash"
@@ -656,16 +667,28 @@ function StatusRow({
     String(status.hide_after_days),
   );
   const [countsAs, setCountsAs] = useState(status.counts_as ?? "");
-  async function save() {
+  function revert() {
+    setName(status.name);
+    setType(status.type);
+    setHideAfterDays(String(status.hide_after_days));
+    setCountsAs(status.counts_as ?? "");
+  }
+  // Pickers save with their new value right away, before the state update lands.
+  async function save(change: Partial<{ type: Status["type"]; counts_as: string }> = {}) {
+    const next = { name, type, hide_after_days: Number(hideAfterDays), counts_as: countsAs, ...change };
+    if (
+      next.name === status.name &&
+      next.type === status.type &&
+      next.hide_after_days === status.hide_after_days &&
+      next.counts_as === (status.counts_as ?? "")
+    )
+      return;
+    if (!next.name.trim() || !Number.isInteger(next.hide_after_days) || next.hide_after_days < 1) return revert();
     try {
-      await api.put(`/api/statuses/${status.id}`, {
-        name,
-        type,
-        hide_after_days: Number(hideAfterDays),
-        counts_as: countsAs,
-      });
+      await api.put(`/api/statuses/${status.id}`, next);
       onReload();
     } catch (error) {
+      revert();
       onError(error);
     }
   }
@@ -684,6 +707,8 @@ function StatusRow({
         aria-label={`${status.name} name`}
         value={name}
         onChange={(event) => setName(event.target.value)}
+        onBlur={() => save()}
+        onKeyDown={blurOnEnter}
       />
       <Picker
         label={t.columnType(status.name)}
@@ -692,12 +717,16 @@ function StatusRow({
           { id: "temporary", name: t.temporary },
         ]}
         value={type}
-        onChange={(value) => setType(value as Status["type"])}
+        onChange={(value) => {
+          setType(value as Status["type"]);
+          void save({ type: value as Status["type"] });
+        }}
       />
       <DaysField
         label={t.columnDays(status.name)}
         value={hideAfterDays}
         onChange={setHideAfterDays}
+        onSave={() => save()}
         hidden={type !== "temporary"}
       />
       <Picker
@@ -709,9 +738,11 @@ function StatusRow({
           { id: "none", name: t.countsNone },
         ]}
         value={countsAs}
-        onChange={(value) => setCountsAs(value as Status["counts_as"])}
+        onChange={(value) => {
+          setCountsAs(value as Status["counts_as"]);
+          void save({ counts_as: value });
+        }}
       />
-      <IconButton icon="check" label={t.save(status.name)} onClick={save} />
       <IconButton
         className="danger-text"
         icon="trash"
@@ -722,16 +753,22 @@ function StatusRow({
   );
 }
 
+function blurOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+  if (event.key === "Enter") event.currentTarget.blur();
+}
+
 // Stays in layout when hidden so toggling Classic/Temporary doesn't shift the row.
 export function DaysField({
   label,
   value,
   onChange,
+  onSave,
   hidden,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  onSave?: () => void;
   hidden: boolean;
 }) {
   const t = useText(text);
@@ -749,6 +786,8 @@ export function DaysField({
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onSave}
+        onKeyDown={onSave && blurOnEnter}
       />
       <span>{t.days}</span>
     </label>
@@ -825,11 +864,18 @@ function TypeRow({
   const t = useText(text);
   const [name, setName] = useState(type.name);
   const [color, setColor] = useState(type.color);
+  function revert() {
+    setName(type.name);
+    setColor(type.color);
+  }
   async function save() {
+    if (name === type.name && color === type.color) return;
+    if (!name.trim()) return revert();
     try {
       await api.put(`/api/ticket-types/${type.id}`, { name, color });
       onReload();
     } catch (error) {
+      revert();
       onError(error);
     }
   }
@@ -848,14 +894,17 @@ function TypeRow({
         aria-label={`${type.name} ${t.name.toLowerCase()}`}
         value={name}
         onChange={(event) => setName(event.target.value)}
+        onBlur={save}
+        onKeyDown={blurOnEnter}
       />
+      {/* Saves on blur: onChange fires on every drag step in the color panel. */}
       <input
         aria-label={`${type.name} ${t.color.toLowerCase()}`}
         type="color"
         value={color}
         onChange={(event) => setColor(event.target.value)}
+        onBlur={save}
       />
-      <IconButton icon="check" label={t.save(type.name)} onClick={save} />
       <IconButton
         className="danger-text"
         icon="trash"
