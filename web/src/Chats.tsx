@@ -1663,11 +1663,13 @@ export function Conversation({
     clearTimeout(saveTimer.current);
     unsaved.current = undefined;
     const before = savedDraft.current;
+    savesInFlight.current++;
     takeDraft(id, text, pending)
       .then(() => {
         if (savedDraft.current === before) savedDraft.current = JSON.stringify({ text: "", attachments: [] });
       })
-      .catch(setError);
+      .catch(setError)
+      .finally(() => savesInFlight.current--);
     changeText("");
     setPending([]);
     let sent = false;
