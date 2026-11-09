@@ -1390,6 +1390,7 @@ export function Conversation({
   const savedDraft = useRef("");
   const unsaved = useRef<{ value: string; text: string; attachments: ChatAttachment[] }>(undefined);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const savesInFlight = useRef(0);
   const latest = useRef({ text, pending });
   latest.current = { text, pending };
   // A failed load keeps the input read-only and retries on the next refresh.
@@ -1424,12 +1425,14 @@ export function Conversation({
     clearTimeout(saveTimer.current);
     const draft = unsaved.current;
     if (!draft) return;
+    savesInFlight.current++;
     saveDraft(id, draft.text, draft.attachments)
       .then(() => {
         savedDraft.current = draft.value;
         if (unsaved.current === draft) unsaved.current = undefined;
       })
-      .catch(setError);
+      .catch(setError)
+      .finally(() => savesInFlight.current--);
   }
 
   // Saves after a typing pause, and right away when the composer unmounts (chat switch, window close).
@@ -1437,7 +1440,8 @@ export function Conversation({
     if (!draftLoaded) return;
     clearTimeout(saveTimer.current);
     const value = JSON.stringify({ text, attachments: pending });
-    if (value === savedDraft.current) {
+    // A save still in flight may land a different value, so the matching text is saved again after it.
+    if (value === savedDraft.current && !savesInFlight.current) {
       unsaved.current = undefined;
       return;
     }
