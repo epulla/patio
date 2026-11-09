@@ -1695,6 +1695,15 @@ export function Conversation({
       .catch(setError)
       .finally(() => savesInFlight.current--);
     changeText("");
+    // WebKit can keep the placeholder clipped to the width of the cleared text; resetting it forces a fresh layout.
+    requestAnimationFrame(() => {
+      const element = input.current;
+      if (!element) return;
+      const placeholder = element.placeholder;
+      element.placeholder = "";
+      void element.offsetWidth;
+      element.placeholder = placeholder;
+    });
     setPending([]);
     const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
     // Shown at once; a new chat's runtime can take seconds to start before the POST returns.
