@@ -22,6 +22,24 @@ func TestNormalUserMessageDeactivatesOpenQuestions(t *testing.T) {
 	}
 }
 
+func TestOtherChatMessageKeepsOpenQuestion(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	senderID := createDriverTestChat(t, database, connectorID, root)
+	question, err := InsertChatMessage(database, chatID, "question", `{"questions":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := insertChatMessage(database, chatID, "user", "progress", nil, &senderID, nil); err != nil {
+		t.Fatal(err)
+	}
+	var answered bool
+	if err := database.QueryRow(`SELECT answered FROM chat_message WHERE id=?`, question.ID).Scan(&answered); err != nil || answered {
+		t.Fatalf("question answered = %v, %v", answered, err)
+	}
+}
+
 func TestAnswerQuestionRejectsBusyAndAlreadyAnswered(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)

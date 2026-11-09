@@ -1366,7 +1366,8 @@ func insertChatMessage(database *sql.DB, chatID, role, content string, attachmen
 	}
 	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now(), Attachments: attachments, FromChatID: fromChatID}
 	err = txrun(database, func(tx *sql.Tx) error {
-		if role == "user" {
+		// Messages from other chats are also role user; only the person's own message closes the question card.
+		if role == "user" && fromChatID == nil {
 			if _, err := tx.Exec(`UPDATE chat_message SET answered=1 WHERE chat_id=? AND role='question' AND answered=0`, chatID); err != nil {
 				return err
 			}
