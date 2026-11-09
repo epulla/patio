@@ -1360,19 +1360,32 @@ export function Conversation({
 
   // Every db-changed reloads; the server answers "unchanged" when this chat's version still matches.
   const loaded = useRef<{ id: string; version: string }>(undefined);
-  // The pending or failed sent message; loads keep it until a stored user message as new arrives.
-  const localSent = useRef<ChatMessage>(undefined);
-  const load = () =>
-    api
+  // The last sent message, kept across loads until one includes it: pending (matched by its
+  // text, since the server may append to it), failed, or the stored copy (matched by id).
+  const localSent = useRef<{ message: ChatMessage; text?: string }>(undefined);
+  // Loads can resolve out of order; only the newest applied one wins.
+  const loadSeq = useRef({ started: 0, applied: 0 });
+  const load = () => {
+    const seq = ++loadSeq.current.started;
+    return api
       .get<ChatDetail | { unchanged: true }>(
         `/api/chats/${id}${loaded.current?.id === id ? `?version=${encodeURIComponent(loaded.current.version)}` : ""}`,
       )
       .then((value) => {
-        if ("unchanged" in value) return;
+        if ("unchanged" in value || seq < loadSeq.current.applied) return;
+        loadSeq.current.applied = seq;
         loaded.current = { id, version: value.version };
         const local = localSent.current;
-        if (local && (local.chat_id !== id || value.messages.some((m) => m.role === "user" && m.created_at >= local.created_at))) localSent.current = undefined;
-        setDetail(localSent.current ? { ...value, messages: [...value.messages, localSent.current] } : value);
+        const stored =
+          !local ||
+          local.message.chat_id !== id ||
+          value.messages.some(
+            (m) =>
+              m.id === local.message.id ||
+              (local.text !== undefined && m.role === "user" && m.created_at >= local.message.created_at && m.content.startsWith(local.text)),
+          );
+        if (stored) localSent.current = undefined;
+        setDetail(!stored && local ? { ...value, messages: [...value.messages, local.message] } : value);
         // An AI title arriving mid-edit must not replace what the user is typing.
         if (document.activeElement?.id !== `${uid}-title`) setTitle(value.chat.title);
         // A load that started before a send can resolve after it.
@@ -1382,6 +1395,7 @@ export function Conversation({
         if (String(reason).includes("not found")) setMissing(true);
         else setError(reason);
       });
+  };
 
   const loadQueue = () => api.get<QueuedMessage[]>(`/api/chats/${id}/queue`).then(setQueue).catch(setError);
 
@@ -1677,18 +1691,19 @@ export function Conversation({
       .finally(() => savesInFlight.current--);
     changeText("");
     setPending([]);
+    const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
     // Shown at once; a new chat's runtime can take seconds to start before the POST returns.
     const local: ChatMessage | undefined = queueing
       ? undefined
       : { id: `pending-${Date.now()}`, chat_id: id, role: "user", content: value, created_at: new Date().toISOString(), attachments: pending, answered: false };
-    const showLocal = (from?: ChatMessage, to?: ChatMessage) => {
+    const showLocal = (from?: ChatMessage, to?: { message: ChatMessage; text?: string }) => {
       localSent.current = to;
-      setDetail((current) => current && { ...current, messages: [...current.messages.filter((m) => m !== from), ...(to ? [to] : [])] });
+      setDetail((current) => current && { ...current, messages: [...current.messages.filter((m) => m !== from), ...(to ? [to.message] : [])] });
     };
-    showLocal(localSent.current, local);
+    const failed = localSent.current?.message.id.startsWith("failed-") ? localSent.current.message : undefined;
+    showLocal(failed, local && { message: local, text: prefix + value });
     let sent = false;
     try {
-      const prefix = context && contextOn && sentContext.get(id) !== context.line ? `${context.line}\n\n` : "";
       const result = await api.post<ChatMessage | { queued: QueuedMessage }>(`/api/chats/${id}/messages`, {
         text: prefix + value,
         ...(pending.length ? { attachments: pending.map((a) => a.name) } : {}),
@@ -1709,12 +1724,13 @@ export function Conversation({
       }
       const message = result;
       addSent(message);
+      if (local) localSent.current = { message };
         if (detail.chat.title === "New chat" && detail.messages.length === 0) {
         const label = (value || pending.map((a) => a.name).join(", ")).replace(/\s+/g, " ");
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
-      if (local) showLocal(local, sent ? undefined : { ...local, id: local.id.replace("pending-", "failed-") });
+      if (local && !sent) showLocal(local, { message: { ...local, id: local.id.replace("pending-", "failed-") } });
       if (!sent) await restoreDraft(id).catch(setError);
       if (!queueing) setRunning(false);
       setError(reason);
