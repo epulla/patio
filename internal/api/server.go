@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -119,6 +120,9 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	s.chats.notifyMCPSignIn = s.notifyMCPSignIn
 	s.chats.reportBack = s.reportChatResult
 	s.chats.telegramResult = s.sendTelegramResult
+	if err := s.pruneChatDrafts(); err != nil {
+		log.Printf("prune chat drafts: %v", err)
+	}
 	s.chats.dbDir = s.dbDir
 	s.chats.enabledMCPServers = s.enabledMCPServers
 	m := http.NewServeMux()
@@ -191,6 +195,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("GET /api/chats", s.listChats)
 	m.HandleFunc("POST /api/chats", s.createChat)
 	m.HandleFunc("GET /api/chats/{id}", s.getChat)
+	m.HandleFunc("GET /api/chats/{id}/draft", s.getChatDraft)
+	m.HandleFunc("PUT /api/chats/{id}/draft", s.putChatDraft)
 	m.HandleFunc("GET /api/chats/{id}/tree", s.chatTree)
 	m.HandleFunc("PUT /api/chats/{id}", s.updateChat)
 	m.HandleFunc("DELETE /api/chats/{id}", s.deleteChat)
