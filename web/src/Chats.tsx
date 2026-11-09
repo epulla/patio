@@ -1321,8 +1321,8 @@ export function Conversation({
     if (editingQueued && !queue.some((q) => q.id === editingQueued.id)) setEditingQueued(undefined);
   }, [queue, editingQueued]);
   // Conversation is keyed by chat id everywhere, so the draft loads once per chat.
-  const [draft] = useState(() => loadDraft(id));
-  const [text, changeText] = useState(draft.text);
+  const [text, changeText] = useState("");
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const botId = detail?.chat.bot_id ?? undefined;
   const mentions = useMentions(input, changeText, "above", botId);
   const [botName, setBotName] = useState<string>();
@@ -1350,7 +1350,7 @@ export function Conversation({
   const [error, setError] = useState<unknown>();
   const [missing, setMissing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
-  const [pending, setPending] = useState<ChatAttachment[]>(draft.attachments);
+  const [pending, setPending] = useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [viewing, setViewing] = useState<ChatAttachment>();
   const [dragging, setDragging] = useState(false);
@@ -1385,29 +1385,62 @@ export function Conversation({
     void loadQueue();
   }, [id, refresh]);
 
-  useEffect(() => saveDraft(id, text, pending), [text, pending]);
+  // The input is read-only until the stored draft arrives, so nothing typed races it or saves over it.
+  const savedDraft = useRef("");
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const flushDraft = useRef(() => {});
+  useEffect(() => {
+    let cancelled = false;
+    loadDraft(id)
+      .then((draft) => {
+        if (cancelled) return;
+        savedDraft.current = JSON.stringify({ text: draft.text, attachments: draft.attachments });
+        changeText(draft.text);
+        setPending(draft.attachments);
+        if (!draft.attachments.length) return;
+        // Unsent uploads live in server memory, so drop restored chips the server no longer has (e.g. after a restart).
+        // Only restored chips are checked; uploads added since then stay.
+        api
+          .get<ChatAttachment[]>(`/api/chats/${id}/attachments`)
+          .then((kept) => {
+            const gone = new Set(draft.attachments.filter((a) => !kept.some((k) => k.name === a.name)).map((a) => a.name));
+            setPending((current) => current.filter((a) => !gone.has(a.name)));
+          })
+          .catch(() => undefined);
+      })
+      .catch(setError)
+      .finally(() => !cancelled && setDraftLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Saves after a typing pause, and right away when the composer unmounts (chat switch, window close).
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const value = JSON.stringify({ text, attachments: pending });
+    if (value === savedDraft.current) return;
+    const save = () => {
+      clearTimeout(saveTimer.current);
+      flushDraft.current = () => {};
+      savedDraft.current = value;
+      saveDraft(id, text, pending).catch(setError);
+    };
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(save, 500);
+    flushDraft.current = save;
+  }, [text, pending, draftLoaded]);
+  useEffect(() => () => flushDraft.current(), []);
 
   useEffect(
     () =>
       onRestore(id, (restored) => {
+        savedDraft.current = JSON.stringify({ text: restored.text, attachments: restored.attachments });
         changeText(restored.text);
         setPending(restored.attachments);
       }),
     [],
   );
-
-  // Unsent uploads live in server memory, so drop restored chips the server no longer has (e.g. after a restart).
-  useEffect(() => {
-    if (!draft.attachments.length) return;
-    api
-      .get<ChatAttachment[]>(`/api/chats/${id}/attachments`)
-      // Only restored chips are checked; uploads added since then stay.
-      .then((kept) => {
-        const gone = new Set(draft.attachments.filter((a) => !kept.some((k) => k.name === a.name)).map((a) => a.name));
-        setPending((current) => current.filter((a) => !gone.has(a.name)));
-      })
-      .catch(() => undefined);
-  }, []);
 
   useEffect(() => {
     const unsubscribe = onEvent(`chat:${id}`, (data) => {
@@ -1607,6 +1640,9 @@ export function Conversation({
       atBottom.current = true;
     }
     // Clear right away so reopening the chat mid-send shows an empty composer; restored on failure.
+    clearTimeout(saveTimer.current);
+    flushDraft.current = () => {};
+    savedDraft.current = JSON.stringify({ text: "", attachments: [] });
     takeDraft(id, text, pending);
     changeText("");
     setPending([]);
@@ -1637,7 +1673,7 @@ export function Conversation({
         await rename(label.length > 48 ? `${label.slice(0, 48)}…` : label, true);
       }
     } catch (reason) {
-      if (!sent) restoreDraft(id);
+      if (!sent) void restoreDraft(id);
       if (!queueing) setRunning(false);
       setError(reason);
     } finally {
@@ -2140,6 +2176,7 @@ export function Conversation({
             connector ? t.placeholder : t.connectorRemovedPlaceholder
           }
           disabled={!connector}
+          readOnly={!draftLoaded}
           value={text}
           onChange={(event) => changeText(event.target.value)}
           onSelect={() => void mentions.update()}

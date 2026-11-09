@@ -1,30 +1,46 @@
-import type { ChatAttachment } from "./api";
+import { api, type ChatAttachment } from "./api";
 
-export type Draft = { text: string; attachments: ChatAttachment[]; at: number };
+export type Draft = { text: string; attachments: ChatAttachment[] };
 
-const prefix = "chat-draft:";
-const maxAge = 7 * 24 * 60 * 60 * 1000;
+const legacyPrefix = "chat-draft:";
 
-// Older drafts were stored as the plain text, and new-chat prefills still are.
-function parse(raw: string | null): Draft | undefined {
+// Saves per chat run in order, so a send's clear can't be overtaken by an earlier keystroke's save.
+const saving = new Map<string, Promise<unknown>>();
+
+export function saveDraft(chatID: string, text: string, attachments: ChatAttachment[]) {
+  const next = (saving.get(chatID) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => api.put(`/api/chats/${chatID}/draft`, { text, attachments }));
+  saving.set(chatID, next);
+  return next;
+}
+
+// Drafts used to live in localStorage (plain text or JSON); the first load moves one into the DB.
+function legacyDraft(chatID: string): Draft | undefined {
+  const raw = localStorage.getItem(legacyPrefix + chatID);
   if (raw === null) return undefined;
   try {
     const value = JSON.parse(raw);
     if (value && typeof value === "object" && typeof value.text === "string" && Array.isArray(value.attachments))
-      return value;
+      return { text: value.text, attachments: value.attachments };
   } catch {
     // plain text draft
   }
-  return { text: raw, attachments: [], at: Date.now() };
+  return { text: raw, attachments: [] };
 }
 
-export function loadDraft(chatID: string): Draft {
-  return parse(localStorage.getItem(prefix + chatID)) ?? { text: "", attachments: [], at: Date.now() };
-}
-
-export function saveDraft(chatID: string, text: string, attachments: ChatAttachment[]) {
-  if (!text && !attachments.length) return localStorage.removeItem(prefix + chatID);
-  localStorage.setItem(prefix + chatID, JSON.stringify({ text, attachments, at: Date.now() }));
+export async function loadDraft(chatID: string): Promise<Draft> {
+  await saving.get(chatID)?.catch(() => undefined);
+  const stored = await api.get<Draft>(`/api/chats/${chatID}/draft`);
+  const legacy = legacyDraft(chatID);
+  if (!legacy) return stored;
+  if (stored.text || stored.attachments.length) {
+    localStorage.removeItem(legacyPrefix + chatID);
+    return stored;
+  }
+  await saveDraft(chatID, legacy.text, legacy.attachments);
+  localStorage.removeItem(legacyPrefix + chatID);
+  return legacy;
 }
 
 // Drafts being sent: cleared from storage when the send starts, restored if it fails.
@@ -37,8 +53,8 @@ export function isSending(chatID: string) {
 }
 
 export function takeDraft(chatID: string, text: string, attachments: ChatAttachment[]) {
-  sending.set(chatID, { text, attachments, at: Date.now() });
-  saveDraft(chatID, "", []);
+  sending.set(chatID, { text, attachments });
+  void saveDraft(chatID, "", []).catch(() => undefined);
 }
 
 export function finishSend(chatID: string) {
@@ -46,11 +62,12 @@ export function finishSend(chatID: string) {
 }
 
 // Puts a failed send back unless the chat has a newer draft; mounted composers get it via onRestore.
-export function restoreDraft(chatID: string) {
+export async function restoreDraft(chatID: string) {
   const draft = sending.get(chatID);
-  const stored = loadDraft(chatID);
-  if (!draft || stored.text || stored.attachments.length) return;
-  saveDraft(chatID, draft.text, draft.attachments);
+  if (!draft) return;
+  const stored = await loadDraft(chatID).catch(() => undefined);
+  if (!stored || stored.text || stored.attachments.length) return;
+  await saveDraft(chatID, draft.text, draft.attachments).catch(() => undefined);
   listeners.get(chatID)?.forEach((listener) => listener(draft));
 }
 
@@ -62,17 +79,4 @@ export function onRestore(chatID: string, listener: (draft: Draft) => void) {
     set.delete(listener);
     if (!set.size) listeners.delete(chatID);
   };
-}
-
-export function pruneDrafts() {
-  const now = Date.now();
-  for (const key of Object.keys(localStorage)) {
-    if (!key.startsWith(prefix)) continue;
-    const raw = localStorage.getItem(key);
-    const draft = parse(raw);
-    if (!draft) continue;
-    if (now - draft.at > maxAge) localStorage.removeItem(key);
-    // Stamp plain text drafts so they age out too.
-    else if (raw !== JSON.stringify(draft)) saveDraft(key.slice(prefix.length), draft.text, draft.attachments);
-  }
 }

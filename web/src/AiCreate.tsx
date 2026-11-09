@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Chat, type Connector } from "./api";
 import { ErrorText } from "./App";
 import { Conversation, createChatWithDefaults, NewChatDialog, type PageContext } from "./Chats";
+import { saveDraft } from "./drafts";
 import { Icon } from "./icons";
 import { useText } from "./i18n";
 
@@ -25,10 +26,11 @@ export function useAiCreate() {
   async function cleanup() {
     const id = chatId.current;
     if (!id) return;
-    localStorage.removeItem(`chat-draft:${id}`);
     try {
       const detail = await api.get<{ messages: unknown[]; chat: Chat }>(`/api/chats/${id}`);
       if (!detail.messages.length && !detail.chat.running) await api.delete(`/api/chats/${id}`);
+      // Queued after the composer's unmount save, so the closed dialog leaves no draft behind.
+      else await saveDraft(id, "", []);
     } catch {
       // burnedout: assumed a failed cleanup just leaves the empty chat behind
     }
@@ -111,8 +113,9 @@ export function AskAI({
   const starting = useRef(false);
 
   function start(chat: Chat) {
-    localStorage.setItem(`chat-draft:${chat.id}`, draft);
-    ai.setChat(chat);
+    saveDraft(chat.id, draft, [])
+      .then(() => ai.setChat(chat))
+      .catch(setError);
   }
 
   // One connector starts right away; several open the usual picker with the default connector selected.
