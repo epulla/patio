@@ -207,6 +207,7 @@ export type Chat = {
   running: boolean;
   pending_count?: number;
   paused?: boolean;
+  paused_reason?: "hop_cap" | "error";
   thinking: boolean;
   show_thinking: boolean;
   auto_allow: boolean;
