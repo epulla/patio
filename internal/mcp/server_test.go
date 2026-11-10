@@ -275,7 +275,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
 		"list_monitors": true, "create_monitor": true, "update_monitor": true, "delete_monitor": true, "test_monitor": true,
 		"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true, "delete_skill": true,
-		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true,
+		"list_mcp_servers": true, "create_mcp_server": true, "update_mcp_server": true, "check_mcp_server": true, "reload_mcp_servers": true,
 		"query_db": true, "list_connectors": true, "create_connector": true,
 		"update_connector": true, "list_connector_models": true, "update_board": true, "create_column": true,
 		"list_bots": true, "create_bot": true, "update_bot": true, "delete_bot": true,
@@ -325,8 +325,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 67 {
-		t.Fatalf("tool count = %d, want 67", count)
+	if count != 68 {
+		t.Fatalf("tool count = %d, want 68", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -699,6 +699,10 @@ func TestMCPServerToolsHideSecrets(t *testing.T) {
 	}
 	if !list[1].HasBearerToken {
 		t.Fatalf("HTTP server bearer token not recorded: %#v", list[1])
+	}
+	reload := callTool(t, session, "reload_mcp_servers", map[string]any{"chat_id": "caller"})
+	if text := reload.Content[0].(*sdk.TextContent).Text; reload.IsError || !strings.Contains(text, "0 idle chat(s) restarted now, 0 busy") || !strings.Contains(text, "reconnect after this reply") {
+		t.Fatalf("reload_mcp_servers = %s", text)
 	}
 	for _, result := range []*sdk.CallToolResult{stdio, httpServer, updated, listed} {
 		text := result.Content[0].(*sdk.TextContent).Text

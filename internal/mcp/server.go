@@ -544,6 +544,19 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "check_mcp_server", "Check MCP server connectivity and list its tools", h, func(a mcpServerIDArgs) request {
 		return request{http.MethodGet, "/api/mcp-servers/" + url.PathEscape(a.ID) + "/check", nil}
 	})
+	addGenericHandler(s, "reload_mcp_servers", "Restart MCP server connections in every chat, like the Reload button on the MCP servers page. Idle chats restart now; busy chats, including this one, restart before their next message", func(ctx context.Context, _ struct{}) (*sdk.CallToolResult, error) {
+		data, err := doJSON(ctx, h, request{http.MethodPost, "/api/mcp-servers/reload", nil})
+		if err != nil {
+			return errorResult(err), nil
+		}
+		var r struct{ Closed, Pending int }
+		if err := json.Unmarshal(data, &r); err != nil {
+			return nil, err
+		}
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: fmt.Sprintf(
+			"MCP servers reloaded: %d idle chat(s) restarted now, %d busy chat(s) restart before their next message. This chat is mid-reply, so its MCP servers reconnect after this reply; the new connections apply from the next message.",
+			r.Closed, r.Pending)}}}, nil
+	})
 	addGeneric(s, "list_connectors", "List AI connectors; secrets are write-only", h, func(struct{}) request { return request{http.MethodGet, "/api/connectors", nil} })
 	addGeneric(s, "list_bots", "List AI bots", h, func(struct{}) request { return request{http.MethodGet, "/api/bots", nil} })
 	addGeneric(s, "create_bot", "Create an AI bot", h, func(a apiBotArgs) request { return request{http.MethodPost, "/api/bots", a} })
