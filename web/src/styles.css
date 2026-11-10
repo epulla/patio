@@ -181,7 +181,7 @@ a {
 }
 .sidebar {
   position: relative;
-  width: 260px;
+  width: var(--sidebar-width, 260px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -2619,6 +2619,16 @@ main.chat-window .app-version {
   left: -3px;
   width: 6px;
 }
+/* Above <main>, and only drawn on hover so the sidebar edge stays clean. */
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  z-index: 1;
+  width: 6px;
+  background: none;
+}
 .chat-dock > .conversation {
   flex: 1;
 }
@@ -4381,6 +4391,9 @@ main.chat-window .app-version {
   }
   .sidebar {
     width: auto;
+  }
+  .sidebar-resize {
+    display: none;
   }
   .sidebar .nav-label {
     display: none;

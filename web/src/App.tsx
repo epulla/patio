@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import BoardList from "./BoardList";
 import BoardView, { NewTicketPage } from "./BoardView";
 import TicketDetail from "./TicketDetail";
@@ -30,11 +30,12 @@ export type { Config } from "./api";
 import { ThemeToggle } from "./theme";
 import { Icon, IconButton, PatioMark } from "./icons";
 import { lang, locale, useText } from "./i18n";
+import { useSplitter } from "./splitter";
 import { isDesktop, onEvent, openURL } from "./desktop";
 
 const text = {
   en: {
-    never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar",
+    never: "Never", comingSoon: "Coming soon.", expand: "Expand sidebar", collapse: "Collapse sidebar", resizeSidebar: "Resize sidebar",
     dashboard: "Dashboard", boards: "Boards", tickets: "Tickets", calendar: "Calendar", connections: "Connections", chats: "Chats",
     bots: "Bots & Workflows", skills: "Skills", scheduled: "Scheduled tasks", yourBoards: "Your boards", settings: "Settings", settingsUpdate: "Settings (update available)",
     monitors: "Monitors", monitorChanges: (n: number) => `, ${n} unread change${n === 1 ? "" : "s"}`,
@@ -44,7 +45,7 @@ const text = {
     tourOffer: "All set. Take a 1-minute tour of where everything is?", takeTour: "Take the tour",
   },
   es: {
-    never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral",
+    never: "Nunca", comingSoon: "Próximamente.", expand: "Expandir barra lateral", collapse: "Contraer barra lateral", resizeSidebar: "Cambiar tamaño de la barra lateral",
     dashboard: "Panel", boards: "Tableros", tickets: "Tickets", calendar: "Calendario", connections: "Conexiones", chats: "Chats",
     bots: "Bots & Flujos", skills: "Habilidades", scheduled: "Tareas programadas", yourBoards: "Tus tableros", settings: "Ajustes", settingsUpdate: "Ajustes (hay una actualización)",
     monitors: "Monitores", monitorChanges: (n: number) => `, ${n} cambio${n === 1 ? "" : "s"} sin leer`,
@@ -144,6 +145,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar") === "closed",
   );
+  const sidebarSplitter = useSplitter({ storageKey: "sidebar-width", defaultWidth: 260, min: 200, max: 400, side: "right", label: t.resizeSidebar });
   const pins = usePins();
   const groups = usePinGroups();
   const allPinned = groups.groups.flatMap((group) => group.ids);
@@ -565,7 +567,8 @@ export default function App() {
 
   return (
     <div className="app">
-      <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+      <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} style={{ "--sidebar-width": `${sidebarSplitter.width}px` } as CSSProperties}>
+        {!collapsed && <div className="splitter sidebar-resize" {...sidebarSplitter.props} />}
         <div className="sidebar-head">
           <span className="brand nav-label">
             <PatioMark /> Patio
