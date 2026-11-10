@@ -41,14 +41,33 @@ func (s *Server) flowStatus(id string) (string, error) {
 
 // queuePaused reports whether queued messages wait for the user: after Stop or a failed turn,
 // or once bots hit the hop limit.
+func (s *Server) queuePauseReason(id string) (string, error) {
+	var held, hops, queued int
+	if err := s.db.QueryRow(`SELECT queue_held,agent_hops,(SELECT count(*) FROM chat_queue WHERE chat_id=c.id) FROM chat c WHERE id=?`, id).Scan(&held, &hops, &queued); err != nil {
+		return "", err
+	}
+	if queued > 0 && held != 0 {
+		return "error", nil
+	}
+	var sender sql.NullString
+	if err := s.db.QueryRow(`SELECT from_chat_id FROM chat_queue WHERE chat_id=? AND from_chat_id IS NOT NULL ORDER BY created_at,rowid LIMIT 1`, id).Scan(&sender); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	if sender.Valid && agentHopCapped(s.db, id, sender.String, hops, agentHopLimit(s.db)) {
+		return "hop_cap", nil
+	}
+	return "", nil
+}
 func (s *Server) queuePaused(id string) (bool, int, error) {
-	var held, hops, queued, agentQueued int
-	err := s.db.QueryRow(`SELECT c.queue_held,c.agent_hops,(SELECT count(*) FROM chat_queue q WHERE q.chat_id=c.id),(SELECT count(*) FROM chat_queue q WHERE q.chat_id=c.id AND q.from_chat_id IS NOT NULL) FROM chat c WHERE c.id=?`, id).Scan(&held, &hops, &queued, &agentQueued)
+	reason, err := s.queuePauseReason(id)
 	if err != nil {
 		return false, 0, err
 	}
-	return held == 1 && queued > 0 || hopLimitReached(hops, agentHopLimit(s.db)) && agentQueued > 0, queued, nil
+	var queued int
+	err = s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE chat_id=?`, id).Scan(&queued)
+	return reason != "", queued, err
 }
+
 func (s *Server) chatTree(w http.ResponseWriter, r *http.Request) {
 	id := idParam(r, "id")
 	var exists int

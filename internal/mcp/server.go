@@ -1321,7 +1321,8 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			properties["target_chat_id"] = map[string]any{"type": "string"}
 			properties["text"] = map[string]any{"type": "string"}
 			required = append(required, "target_chat_id", "text")
-			description = "Send message to another chat."
+			properties["mode"] = map[string]any{"type": "string", "enum": []string{"queue", "steer"}}
+			description = "Send message to another chat. mode: queue (default) delivers after the target's current turn; steer delivers into its running turn now when the runtime supports it, else queues. Result status: queued, steered, paused_hop_cap or paused_error; follow the result's next hint."
 		} else {
 			properties["connector_id"] = map[string]any{"type": "string"}
 			properties["model"] = map[string]any{"type": "string"}

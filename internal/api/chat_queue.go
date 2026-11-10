@@ -18,6 +18,12 @@ type chatQueueItem struct {
 	FromChatTitle string           `json:"from_chat_title"`
 }
 
+type pausedOutgoingChat struct {
+	ChatID string `json:"chat_id"`
+	Title  string `json:"title"`
+	Reason string `json:"reason"`
+}
+
 func (s *Server) listChatQueue(w http.ResponseWriter, r *http.Request) {
 	items, err := s.chatQueue(idParam(r, "id"))
 	if err != nil {
@@ -57,6 +63,46 @@ func (s *Server) chatQueue(chatID string) ([]chatQueueItem, error) {
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Server) pausedOutgoing(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	var exists int
+	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, id).Scan(&exists); err != nil {
+		errw(w, 404, "chat not found")
+		return
+	}
+	rows, err := s.db.Query(`SELECT DISTINCT c.id,c.title FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id=? ORDER BY c.title`, id)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	out := []pausedOutgoingChat{}
+	for rows.Next() {
+		var target pausedOutgoingChat
+		if err := rows.Scan(&target.ChatID, &target.Title); err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if s.chats.Running(target.ChatID) {
+			continue
+		}
+		reason, err := s.queuePauseReason(target.ChatID)
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		if reason != "" {
+			target.Reason = reason
+			out = append(out, target)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	write(w, 200, out)
 }
 
 func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +181,13 @@ func (s *Server) sendQueuedChatMessages(w http.ResponseWriter, r *http.Request) 
 // drainQueued sends the chat's queued messages, oldest first, as one user message.
 // Items that would push the attachments past the per-message limit stay queued.
 func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, error) {
-	if manual && m.Running(chatID) && !m.CanSteer(chatID) {
+	return m.drainQueuedMode(chatID, manual, false)
+}
+func (m *chatManager) steerQueued(chatID string) (ChatMessage, error) {
+	return m.drainQueuedMode(chatID, false, true)
+}
+func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool) (ChatMessage, error) {
+	if manual && m.Running(chatID) && !m.CanSteer(chatID) || steer && (!m.Running(chatID) || !m.CanSteer(chatID)) {
 		return ChatMessage{}, errChatTurnRunning
 	}
 	lock := m.queueLock(chatID)
@@ -176,7 +228,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 			if len(claimed) > 0 && (row.from != sender || len(attachments)+len(rawItems) > maxChatAttachments) {
 				break
 			}
-			if len(claimed) == 0 && !manual && row.from.Valid && hopLimitReached(oldHops, limit) {
+			if len(claimed) == 0 && !manual && row.from.Valid && agentHopCapped(tx, chatID, row.from.String, oldHops, limit) {
 				break
 			}
 			if len(claimed) == 0 {
@@ -218,7 +270,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 	restore := func(cause error, messageID string) error {
 		// A turn that started meanwhile drains the queue when it ends; holding it would strand the rows.
 		held := 1
-		if !manual && errors.Is(cause, errChatTurnRunning) {
+		if steer || !manual && errors.Is(cause, errChatTurnRunning) {
 			held = oldQueueHeld
 		}
 		restoreErr := txrun(m.db, func(tx *sql.Tx) error {
@@ -269,7 +321,7 @@ func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, erro
 			reportID = &reportTo.String
 		}
 	}
-	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID, AgentHopsManaged: true, Steer: manual})
+	message, err := m.Send(c, kind, dir, ChatSendRequest{Text: text, StoredText: strings.Join(texts, "\n\n"), Attachments: attachments, FromChatID: fromID, ReportToChatID: reportID, AgentHopsManaged: true, Steer: manual || steer})
 	if err != nil {
 		err = restore(err, message.ID)
 		log.Printf("queued chat send failed; restored rows for %s: %v", chatID, err)

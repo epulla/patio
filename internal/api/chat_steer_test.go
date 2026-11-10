@@ -114,6 +114,33 @@ func TestQueueSendLeavesQueueWhenDriverCannotSteer(t *testing.T) {
 	}
 }
 
+func TestAgentMessageSteerQueuesWhenRuntimeCannotSteer(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('agent-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	server := New(database, "local", false, "dev", root, Options{})
+	defer server.Close()
+	rt := server.chats.runtime(chatID)
+	rt.mu.Lock()
+	rt.busy.Store(true)
+	rt.driver = &unsteerTestDriver{}
+	rt.mu.Unlock()
+	var result map[string]string
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/agent-messages", map[string]string{"from_chat_id": "agent-sender", "text": "queued", "mode": "steer"}, &result); code != 200 || result["status"] != "queued" || result["next"] == "" {
+		t.Fatalf("response=%d %#v", code, result)
+	}
+	var count, held int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("queued=%d err=%v", count, err)
+	}
+	if err := database.QueryRow(`SELECT queue_held FROM chat WHERE id=?`, chatID).Scan(&held); err != nil || held != 0 {
+		t.Fatalf("queue_held=%d err=%v", held, err)
+	}
+}
+
 func TestCodexSteerUsesActiveTurnID(t *testing.T) {
 	client := &steerCodexClient{}
 	d := &codexRuntime{client: client, threadID: "thread", turnID: "active-turn", workdir: t.TempDir()}

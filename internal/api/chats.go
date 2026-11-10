@@ -44,6 +44,7 @@ type chat struct {
 	Running         bool             `json:"running"`
 	PendingCount    int              `json:"pending_count,omitempty"`
 	Paused          bool             `json:"paused,omitempty"`
+	PausedReason    string           `json:"paused_reason,omitempty"`
 	Thinking        bool             `json:"thinking"`
 	ShowThinking    bool             `json:"show_thinking"`
 	AutoAllow       bool             `json:"auto_allow"`
@@ -294,10 +295,11 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !c.Running {
-			if c.Paused, _, err = s.queuePaused(c.ID); err != nil {
+			if c.PausedReason, err = s.queuePauseReason(c.ID); err != nil {
 				errw(w, 500, err.Error())
 				return
 			}
+			c.Paused = c.PausedReason != ""
 		}
 		if searching && c.ParentChatID != nil {
 			if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, *c.ParentChatID).Scan(&c.ParentTitle); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -480,6 +482,14 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.Running = s.chats.Running(c.ID)
+	if !c.Running {
+		c.PausedReason, err = s.queuePauseReason(c.ID)
+		if err != nil {
+			errw(w, 500, err.Error())
+			return
+		}
+		c.Paused = c.PausedReason != ""
+	}
 	messages := []ChatMessage{}
 	rows, err := s.db.Query(`SELECT m.id,m.chat_id,m.role,m.content,m.created_at,m.attachments,m.answered,m.tool_result_size,m.tool_error,m.from_chat_id,COALESCE(sender.title,'') FROM chat_message m LEFT JOIN chat sender ON sender.id=m.from_chat_id WHERE m.chat_id=? ORDER BY m.created_at,m.rowid`, c.ID)
 	if err != nil {

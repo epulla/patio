@@ -755,6 +755,62 @@ func TestChatQueueSendNow(t *testing.T) {
 	})
 }
 
+func TestAgentMessageSteersRunningClaudeTurn(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('steer-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/messages", map[string]string{"text": "active"}, nil); code != http.StatusAccepted {
+		t.Fatalf("start=%d", code)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("initial input missing")
+	}
+	var out map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "steer-sender", "text": "correction", "mode": "steer"}, &out); code != 200 || out["status"] != "steered" || out["next"] == "" {
+		t.Fatalf("steer=%d %#v", code, out)
+	}
+	select {
+	case line := <-fake.input:
+		var control map[string]any
+		if err := json.Unmarshal([]byte(line), &control); err != nil {
+			t.Fatal(err)
+		}
+		if control["type"] == "control_request" {
+			if _, err := io.WriteString(fake.stdoutW, `{"type":"result","result":"interrupted"}`+"\n"); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case line = <-fake.input:
+			case <-time.After(time.Second):
+				t.Fatal("steer input missing after interrupt")
+			}
+		}
+		var got struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal([]byte(line), &got) != nil || got.Type != "user" || !strings.Contains(got.Message.Content, "correction") {
+			t.Fatalf("steer input=%s", line)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("steer input missing")
+	}
+	var hops int
+	if err := db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, target).Scan(&hops); err != nil || hops != 1 {
+		t.Fatalf("agent_hops=%d err=%v", hops, err)
+	}
+}
+
 func TestChatQueueDrainsAllAsOneMessageAfterSuccessfulTurn(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
@@ -993,7 +1049,8 @@ func TestDrainQueuedLeavesQueueOpenWhenTurnRunning(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('busy-row',?,'later','[]',?)`, chatID, now()); err != nil {
 		t.Fatal(err)
 	}
-	s := New(db, "local", false, "dev", root)
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer s.Close()
 	rt := &chatRuntime{}
 	rt.busy.Store(true)
@@ -1213,7 +1270,7 @@ func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	s := New(db, "local", false, "dev", root, Options{Notify: func(_, _, _ string) error { notified++; return nil }, findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer s.Close()
 	var result map[string]string
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "held"}, &result); code != 200 || result["status"] != "held" || notified != 1 {
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "held"}, &result); code != 200 || result["status"] != "paused_hop_cap" || notified != 1 {
 		t.Fatalf("held delivery=%d %#v notified=%v", code, result, notified)
 	}
 	for i := 0; i < 3; i++ {
@@ -1239,8 +1296,106 @@ func TestAgentHopCapHoldsUntilUserSend(t *testing.T) {
 	if _, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target); err != nil {
 		t.Fatal(err)
 	}
-	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "later held"}, &result); code != 200 || result["status"] != "held" || notified != 2 {
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "later held"}, &result); code != 200 || result["status"] != "paused_hop_cap" || notified != 2 {
 		t.Fatalf("later cap result=%d %#v notifications=%d", code, result, notified)
+	}
+}
+
+func TestAgentMessageModeValidationAndPausedStatus(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('mode-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, "local", false, "dev", root)
+	defer s.Close()
+	var out map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "mode-sender", "text": "x", "mode": "bogus"}, &out); code != http.StatusBadRequest {
+		t.Fatalf("invalid mode=%d", code)
+	}
+	if _, err := db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, target); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "mode-sender", "text": "x"}, &out); code != 200 || out["status"] != "paused_error" || out["next"] == "" {
+		t.Fatalf("paused response=%d %#v", code, out)
+	}
+	var paused []pausedOutgoingChat
+	if code := requestJSON(t, s, http.MethodGet, "/api/chats/mode-sender/paused-outgoing", nil, &paused); code != 200 || len(paused) != 1 || paused[0].ChatID != target || paused[0].Reason != "error" {
+		t.Fatalf("paused outgoing=%d %#v", code, paused)
+	}
+}
+
+func TestAwaitingSenderBypassesCapOnlyBelowDoubleLimit(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	for _, id := range []string{"waiting-sender", "unrelated-sender"} {
+		if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, id, id, "0", "0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('reply','waiting-sender','assistant','reply','2099-01-01','[]',?)`, target); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	var out map[string]string
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "waiting-sender", "text": "answer"}, &out); code != 200 || out["status"] != "queued" || out["next"] == "" {
+		t.Fatalf("waiting status=%d %#v", code, out)
+	}
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("waiting sender reply was not delivered")
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "unrelated-sender", "text": "unrelated"}, &out); code != 200 || out["status"] != "paused_hop_cap" || out["next"] == "" {
+		t.Fatalf("unrelated status=%d %#v", code, out)
+	}
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=60 WHERE id=?`, target); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "waiting-sender", "text": "ceiling"}, &out); code != 200 || out["status"] != "paused_hop_cap" {
+		t.Fatalf("ceiling status=%d %#v", code, out)
+	}
+	if _, err := db.Exec(`DELETE FROM chat_queue WHERE chat_id=?`, target); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodGet, "/api/chats/waiting-sender/paused-outgoing", nil, &[]pausedOutgoingChat{}); code != 200 {
+		t.Fatalf("empty outgoing=%d", code)
+	}
+}
+
+func TestDeliverAgentMessagesUserFirstQueueStillDelivers(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('row-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at) VALUES('user-first',?,'user','1')`, target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at,from_chat_id) VALUES('agent-later',?,'agent','2','row-sender')`, target); err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("queued user row prevented delivery")
 	}
 }
 
@@ -1256,7 +1411,7 @@ func TestAgentHopLimitSetting(t *testing.T) {
 	for _, tc := range []struct {
 		limit, hops int
 		want        string
-	}{{5, 4, "queued"}, {5, 5, "held"}, {0, 1000, "queued"}} {
+	}{{5, 4, "queued"}, {5, 5, "paused_hop_cap"}, {0, 1000, "queued"}} {
 		if code := requestJSON(t, s, http.MethodPut, "/api/settings/defaults", map[string]int{"agent_hop_limit": tc.limit}, nil); code != http.StatusOK {
 			t.Fatalf("set limit %d: %d", tc.limit, code)
 		}
@@ -1267,7 +1422,7 @@ func TestAgentHopLimitSetting(t *testing.T) {
 		if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+target+"/agent-messages", map[string]string{"from_chat_id": "hop-sender", "text": "hi"}, &result); code != 200 || result["status"] != tc.want {
 			t.Fatalf("limit=%d hops=%d: %d %#v", tc.limit, tc.hops, code, result)
 		}
-		if paused, _, err := s.queuePaused(target); err != nil || paused != (tc.want == "held") {
+		if paused, _, err := s.queuePaused(target); err != nil || paused != (tc.want == "paused_hop_cap") {
 			t.Fatalf("limit=%d hops=%d paused=%v err=%v", tc.limit, tc.hops, paused, err)
 		}
 		if _, err := db.Exec(`DELETE FROM chat_queue WHERE chat_id=?`, target); err != nil {

@@ -223,7 +223,7 @@ func TestWorkflowChatsBypassAgentHopCap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, tc := range []struct{ id, want string }{{workflowChat, "queued"}, {ordinary, "held"}} {
+	for _, tc := range []struct{ id, want string }{{workflowChat, "queued"}, {ordinary, "paused_hop_cap"}} {
 		var out map[string]string
 		code := requestJSON(t, s, http.MethodPost, "/api/chats/"+tc.id+"/agent-messages", map[string]string{"from_chat_id": root, "text": "message"}, &out)
 		if code != 200 || out["status"] != tc.want {

@@ -24,6 +24,7 @@ type agentMessageRequest struct {
 	ReportBack     bool   `json:"report_back"`
 	WorkflowEdge   string `json:"workflow_edge,omitempty"`
 	TimeoutMinutes int    `json:"timeout_minutes,omitempty"`
+	Mode           string `json:"mode,omitempty"`
 }
 
 func workflowModeWait(g workflowGraph, node string) int {
@@ -183,7 +184,7 @@ func fireWorkflowJoin(s *Server, run, workflowID, node string, edge workflowEdge
 		return "", err
 	}
 	if prompt, err = withStepNote(s.db, id, prompt); err == nil {
-		err = s.queueAgentMessage(id, agentMessageRequest{FromChatID: parentID, Text: prompt, ReportBack: edge.ReportBack, WorkflowEdge: edge.ID, TimeoutMinutes: edge.TimeoutMinutes})
+		_, err = s.queueAgentMessage(id, agentMessageRequest{FromChatID: parentID, Text: prompt, ReportBack: edge.ReportBack, WorkflowEdge: edge.ID, TimeoutMinutes: edge.TimeoutMinutes})
 	}
 	if err != nil {
 		_, delErr := s.db.Exec(`DELETE FROM chat WHERE id=?`, id)
@@ -354,43 +355,77 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "from_chat_id and text required")
 		return
 	}
+	if in.Mode != "" && in.Mode != "queue" && in.Mode != "steer" {
+		errw(w, 400, "mode must be queue or steer")
+		return
+	}
 	id := idParam(r, "id")
 	lock := s.chats.queueLock(id)
 	lock.Lock()
-	defer lock.Unlock()
 	var hops int
 	if err := s.db.QueryRow(`SELECT agent_hops FROM chat WHERE id=?`, id).Scan(&hops); err != nil {
+		lock.Unlock()
 		errw(w, 404, "chat not found")
 		return
 	}
-	var senderExists int
-	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, in.FromChatID).Scan(&senderExists); err != nil {
+	var exists int
+	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, in.FromChatID).Scan(&exists); err != nil {
+		lock.Unlock()
 		errw(w, 400, "sender chat not found")
 		return
 	}
-	var workflowRun sql.NullString
-	if err := s.db.QueryRow(`SELECT workflow_run_id FROM chat WHERE id=?`, id).Scan(&workflowRun); err != nil {
+	var workflow bool
+	var held int
+	if err := s.db.QueryRow(`SELECT workflow_run_id IS NOT NULL,queue_held FROM chat WHERE id=?`, id).Scan(&workflow, &held); err != nil {
+		lock.Unlock()
 		errw(w, 500, err.Error())
 		return
 	}
-	if hopLimitReached(hops, agentHopLimit(s.db)) && !workflowRun.Valid {
-		if err := s.queueAgentMessage(id, in); err != nil {
-			log.Printf("queue held agent message for %s: %v", id, err)
-			errw(w, 500, err.Error())
-			return
-		}
-		if err := s.notifyAgentHopCap(id); err != nil {
-			log.Printf("notify agent hop cap for %s: %v", id, err)
-		}
-		write(w, 200, map[string]string{"status": "held"})
-		return
-	}
-	if err := s.queueAgentMessage(id, in); err != nil {
+	capped := !workflow && agentHopCapped(s.db, id, in.FromChatID, hops, agentHopLimit(s.db))
+	rowID, err := s.queueAgentMessage(id, in)
+	lock.Unlock()
+	if err != nil {
 		log.Printf("queue agent message for %s: %v", id, err)
 		errw(w, 500, err.Error())
 		return
 	}
-	write(w, 200, map[string]string{"status": "queued"})
+	var title string
+	_ = s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title)
+	status, next := "queued", "Delivered after "+title+"'s current turn, or within seconds if it is idle."
+	if held != 0 {
+		status = "paused_error"
+		next = "Paused: " + title + "'s last turn failed or was stopped. Ask the user to click Send now in [" + title + "](/ai/chats/" + id + ")."
+	} else if capped {
+		status = "paused_hop_cap"
+		limit := agentHopLimit(s.db)
+		next = fmt.Sprintf("Paused: %s hit the agent message limit (%d in a row). Ask the user to click Send now in [%s](/ai/chats/%s).", title, limit, title, id)
+		if err := s.notifyAgentHopCap(id); err != nil {
+			log.Printf("notify agent hop cap for %s: %v", id, err)
+		}
+	} else if in.Mode == "steer" && s.chats.Running(id) && s.chats.CanSteer(id) {
+		var oldest sql.NullString
+		_ = s.db.QueryRow(`SELECT from_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid LIMIT 1`, id).Scan(&oldest)
+		if oldest.Valid && oldest.String == in.FromChatID {
+			if _, err := s.chats.steerQueued(id); err == nil {
+				var n int
+				_ = s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, rowID).Scan(&n)
+				if n == 0 {
+					status = "steered"
+					next = "Delivered into " + title + "'s running turn."
+				}
+			}
+		}
+	}
+	write(w, 200, map[string]string{"status": status, "next": next})
+}
+
+func awaitingReply(q interface{ QueryRow(string, ...any) *sql.Row }, target, sender string) bool {
+	var waiting int
+	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM (SELECT created_at FROM chat_message WHERE chat_id=? AND from_chat_id=? UNION ALL SELECT created_at FROM chat_queue WHERE chat_id=? AND from_chat_id=?) incoming WHERE NOT EXISTS(SELECT 1 FROM chat_message delivered WHERE delivered.chat_id=? AND delivered.from_chat_id=? AND delivered.created_at>=incoming.created_at))`, sender, target, sender, target, target, sender).Scan(&waiting)
+	return err == nil && waiting != 0
+}
+func agentHopCapped(q interface{ QueryRow(string, ...any) *sql.Row }, target, sender string, hops, limit int) bool {
+	return hopLimitReached(hops, limit) && !(awaitingReply(q, target, sender) && !hopLimitReached(hops, 2*limit))
 }
 
 // holdHandoff marks the chat's current turn as progress: its end reports to the parent without closing the handoff.
@@ -449,10 +484,11 @@ func agentMessageLabel(fromID, title string, reportBack bool) string {
 	return label + "\n\n"
 }
 
-func (s *Server) queueAgentMessage(id string, in agentMessageRequest) error {
+func (s *Server) queueAgentMessage(id string, in agentMessageRequest) (string, error) {
 	created := now()
+	rowID := uid()
 	err := txrun(s.db, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, uid(), id, in.Text, created, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, rowID, id, in.Text, created, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
 			return err
 		}
 		if in.ReportBack {
@@ -483,10 +519,10 @@ func (s *Server) queueAgentMessage(id string, in agentMessageRequest) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	s.chats.emit(id, map[string]any{"type": "queue"})
-	return nil
+	return rowID, nil
 }
 
 func (s *Server) reportChatResult(target, from, text string) error {
@@ -776,6 +812,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	}
 	var outcome struct {
 		Status string `json:"status"`
+		Next   string `json:"next"`
 	}
 	text, err := withStepNote(s.db, id, in.Prompt)
 	if err != nil {
@@ -809,5 +846,5 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	write(w, 200, map[string]string{"chat_id": id, "status": outcome.Status})
+	write(w, 200, map[string]string{"chat_id": id, "status": outcome.Status, "next": outcome.Next})
 }

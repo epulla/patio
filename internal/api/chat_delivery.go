@@ -12,7 +12,7 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		return nil
 	}
 	defer s.agentDeliveryMu.Unlock()
-	rows, err := s.db.Query(`SELECT DISTINCT q.chat_id,c.agent_hops,c.queue_held, c.workflow_run_id IS NOT NULL FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id IS NOT NULL ORDER BY q.chat_id`)
+	rows, err := s.db.Query(`SELECT DISTINCT q.chat_id,c.agent_hops,c.queue_held, c.workflow_run_id IS NOT NULL, (SELECT from_chat_id FROM chat_queue oldest WHERE oldest.chat_id=q.chat_id ORDER BY created_at,rowid LIMIT 1) FROM chat_queue q JOIN chat c ON c.id=q.chat_id WHERE q.from_chat_id IS NOT NULL ORDER BY q.chat_id`)
 	if err != nil {
 		return err
 	}
@@ -21,11 +21,12 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		hops      int
 		queueHeld int
 		workflow  bool
+		sender    sql.NullString
 	}
 	var chats []pendingChat
 	for rows.Next() {
 		var item pendingChat
-		if err := rows.Scan(&item.id, &item.hops, &item.queueHeld, &item.workflow); err != nil {
+		if err := rows.Scan(&item.id, &item.hops, &item.queueHeld, &item.workflow, &item.sender); err != nil {
 			rows.Close()
 			return err
 		}
@@ -47,7 +48,11 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		if pending.queueHeld != 0 {
 			continue
 		}
-		if hopLimitReached(pending.hops, limit) && !pending.workflow {
+		capped := hopLimitReached(pending.hops, limit)
+		if pending.sender.Valid {
+			capped = agentHopCapped(s.db, pending.id, pending.sender.String, pending.hops, limit)
+		}
+		if !pending.workflow && capped {
 			if err := s.notifyAgentHopCap(pending.id); err != nil {
 				deliveryErrors = append(deliveryErrors, err)
 			}
