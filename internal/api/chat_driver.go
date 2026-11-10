@@ -138,6 +138,7 @@ type chatRuntime struct {
 	lastActivity     time.Time
 	idleTimer        *time.Timer
 	mcpSpecs         []mcpServerSpec
+	reloadMCP        bool
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -261,7 +262,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		}
 		current, _ := json.Marshal(specs)
 		started, _ := json.Marshal(rt.mcpSpecs)
-		if string(current) != string(started) {
+		if rt.reloadMCP || string(current) != string(started) {
 			driver := rt.driver
 			rt.stopping = true
 			rt.stopDone = make(chan struct{})
@@ -273,6 +274,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 			if rt.driver == driver {
 				rt.driver, rt.mcpSpecs = nil, nil
 			}
+			rt.reloadMCP = false
 			rt.stopping, rt.stopDone = false, nil
 			close(done)
 			if err != nil {
@@ -324,6 +326,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	rt.streamMu.Unlock()
 	rt.busy.Store(true)
 	if rt.driver == nil {
+		rt.reloadMCP = false
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
 		if specErr != nil {
 			return message, failTurn("configuration", specErr)
@@ -940,6 +943,51 @@ func (m *chatManager) CloseConnector(id string) error {
 		joined = errors.Join(joined, m.closeRuntime(chatID))
 	}
 	return joined
+}
+
+// ReloadMCP closes idle runtimes; busy chats, including one calling this mid-turn, restart before their next turn.
+func (m *chatManager) ReloadMCP() (closed, pending int, err error) {
+	m.mu.Lock()
+	all := make([]*chatRuntime, 0, len(m.chats))
+	for _, rt := range m.chats {
+		all = append(all, rt)
+	}
+	m.mu.Unlock()
+	for _, rt := range all {
+		rt.mu.Lock()
+		if rt.stopping {
+			rt.mu.Unlock()
+			continue
+		}
+		if rt.busy.Load() {
+			rt.reloadMCP = true
+			pending++
+			rt.mu.Unlock()
+			continue
+		}
+		driver := rt.driver
+		if driver == nil {
+			rt.mu.Unlock()
+			continue
+		}
+		rt.stopping = true
+		rt.stopDone = make(chan struct{})
+		done := rt.stopDone
+		m.stopRuntimeTimerLocked(rt)
+		rt.mu.Unlock()
+		closeErr := driver.close()
+		rt.mu.Lock()
+		if rt.driver == driver {
+			rt.driver, rt.mcpSpecs = nil, nil
+			rt.busy.Store(false)
+		}
+		rt.stopping, rt.stopDone = false, nil
+		close(done)
+		rt.mu.Unlock()
+		closed++
+		err = errors.Join(err, closeErr)
+	}
+	return closed, pending, err
 }
 
 func (m *chatManager) closeRuntime(id string) error {

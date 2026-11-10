@@ -22,6 +22,69 @@ func TestChatRuntimeClosesAfterIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestReloadMCPClosesIdleRuntime(t *testing.T) {
+	m, c, d := newIdleTestManager(t, time.Hour)
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.finishTurn(c.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+	closed, pending, err := m.ReloadMCP()
+	if err != nil || closed != 1 || pending != 0 {
+		t.Fatalf("reload=(%d,%d,%v)", closed, pending, err)
+	}
+	select {
+	case <-d.closed:
+	default:
+		t.Fatal("driver not closed")
+	}
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "again"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReloadMCPDefersBusyRuntime(t *testing.T) {
+	m, c, d := newIdleTestManager(t, time.Hour)
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	closed, pending, err := m.ReloadMCP()
+	if err != nil || closed != 0 || pending != 1 {
+		t.Fatalf("reload=(%d,%d,%v)", closed, pending, err)
+	}
+	select {
+	case <-d.closed:
+		t.Fatal("busy driver closed")
+	default:
+	}
+	if err := m.finishTurn(c.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "again"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-d.closed:
+	default:
+		t.Fatal("old driver not closed")
+	}
+	var content string
+	if err := m.db.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND content=?`, c.ID, "MCP servers changed — reconnected.").Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReloadMCPHTTP(t *testing.T) {
+	db, _, root := chatAPI(t)
+	s := New(db, "local", false, "dev", root)
+	defer s.Close()
+	var result map[string]int
+	if code := requestJSON(t, s, "POST", "/api/mcp-servers/reload", nil, &result); code != 200 || result["closed"] != 0 || result["pending"] != 0 {
+		t.Fatalf("status=%d result=%v", code, result)
+	}
+}
+
 func TestFinishedChatStoresNotification(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)

@@ -840,6 +840,15 @@ func (s *Server) checkMCPServer(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, check)
 }
 
+func (s *Server) reloadMCPServers(w http.ResponseWriter, _ *http.Request) {
+	closed, pending, err := s.chats.ReloadMCP()
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string]int{"closed": closed, "pending": pending})
+}
+
 // mcpCheck connects to the server and lists its tools. A failed connection is reported in
 // check.Error; err is only for Patio-side failures such as reading secrets.
 func (s *Server) mcpCheck(ctx context.Context, server mcpServer) (check mcpServerCheck, err error) {
