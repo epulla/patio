@@ -96,6 +96,12 @@ var opencodeServers = struct {
 	byConnector map[string]*opencodeServer
 }{byConnector: make(map[string]*opencodeServer)}
 
+func retireOpenCodeServers() {
+	opencodeServers.Lock()
+	clear(opencodeServers.byConnector)
+	opencodeServers.Unlock()
+}
+
 func init() { runtimes["opencode"] = startOpenCode }
 
 func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (chatRuntimeDriver, error) {

@@ -1374,3 +1374,56 @@ func TestOpenCodeV2QueueDrainResumesSessionWithoutDeadlock(t *testing.T) {
 		t.Fatalf("queued send used session %q with %d creates; want stored session and no new one", last, fake.creates)
 	}
 }
+
+func TestReloadMCPRetiresSharedOpenCodeServer(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	if _, err := database.Exec(`UPDATE connector SET kind='opencode' WHERE id=?`, connectorID); err != nil {
+		t.Fatal(err)
+	}
+	a, b := createDriverTestChat(t, database, connectorID, root), createDriverTestChat(t, database, connectorID, root)
+	fake := newOpenCodeFake(t)
+	server := New(database, "local", false, "dev", root, Options{DBPath: filepath.Join(root, "test.db"), mcpExecutable: "/usr/bin/patio", findOpencode: func() (string, error) { return "opencode-test", nil }, opencodeMajor: func(context.Context, string, []string) (int, error) { return 1, nil }, opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) }})
+	addChatMCPTestServers(t, server)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	send := func(id string) {
+		t.Helper()
+		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+id+"/messages", map[string]string{"text": "go"}, nil); code != http.StatusAccepted {
+			t.Fatalf("send=%d", code)
+		}
+	}
+	idle := func(id string) {
+		t.Helper()
+		var sid string
+		if err := database.QueryRow(`SELECT session_id FROM chat WHERE id=?`, id).Scan(&sid); err != nil {
+			t.Fatal(err)
+		}
+		fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": sid}})
+		waitFor(t, func() bool { return !server.chats.Running(id) })
+	}
+	send(a)
+	send(b)
+	if closed, pending, err := server.chats.ReloadMCP(); err != nil || closed != 0 || pending != 2 {
+		t.Fatalf("reload=(%d,%d,%v)", closed, pending, err)
+	}
+	idle(a)
+	send(a)
+	fake.mu.Lock()
+	starts, kills := fake.serverStarts, fake.kills
+	fake.mu.Unlock()
+	if starts != 2 || kills != 0 {
+		t.Fatalf("starts=%d kills=%d while B busy", starts, kills)
+	}
+	idle(b)
+	send(b)
+	fake.mu.Lock()
+	starts, kills = fake.serverStarts, fake.kills
+	fake.mu.Unlock()
+	if starts != 2 || kills != 1 {
+		t.Fatalf("starts=%d kills=%d after B restart", starts, kills)
+	}
+}

@@ -947,6 +947,7 @@ func (m *chatManager) CloseConnector(id string) error {
 
 // ReloadMCP closes idle runtimes; busy chats, including one calling this mid-turn, restart before their next turn.
 func (m *chatManager) ReloadMCP() (closed, pending int, err error) {
+	retireOpenCodeServers()
 	m.mu.Lock()
 	all := make([]*chatRuntime, 0, len(m.chats))
 	for _, rt := range m.chats {
