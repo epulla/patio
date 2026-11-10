@@ -701,8 +701,12 @@ func TestMCPServerToolsHideSecrets(t *testing.T) {
 		t.Fatalf("HTTP server bearer token not recorded: %#v", list[1])
 	}
 	reload := callTool(t, session, "reload_mcp_servers", map[string]any{"chat_id": "caller"})
-	if text := reload.Content[0].(*sdk.TextContent).Text; reload.IsError || !strings.Contains(text, "0 idle chat(s) restarted now, 0 busy") || !strings.Contains(text, "reconnect after this reply") {
+	if text := reload.Content[0].(*sdk.TextContent).Text; reload.IsError || !strings.Contains(text, "reconnect after this reply") {
 		t.Fatalf("reload_mcp_servers = %s", text)
+	}
+	var requested int
+	if err := database.QueryRow(`SELECT count(*) FROM app_setting WHERE key='mcp_reload_requested'`).Scan(&requested); err != nil || requested != 1 {
+		t.Fatalf("reload request rows = %d, %v", requested, err)
 	}
 	for _, result := range []*sdk.CallToolResult{stdio, httpServer, updated, listed} {
 		text := result.Content[0].(*sdk.TextContent).Text

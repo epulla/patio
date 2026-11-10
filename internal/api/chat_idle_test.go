@@ -85,6 +85,40 @@ func TestReloadMCPHTTP(t *testing.T) {
 	}
 }
 
+func TestMCPReloadRequestFromToolProcessReachesAppRuntimes(t *testing.T) {
+	m, c, d := newIdleTestManager(t, time.Hour)
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	tool := New(m.db, "ai", true, "dev", m.dbDir)
+	defer tool.Close()
+	if code := requestJSON(t, tool, "POST", "/api/mcp-servers/reload-request", nil, nil); code != 202 {
+		t.Fatalf("status=%d", code)
+	}
+	app := New(m.db, "local", false, "dev", m.dbDir)
+	defer app.chats.Close()
+	app.chats = m
+	if err := app.ApplyMCPReloadRequest(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-d.closed:
+		t.Fatal("calling chat closed mid-turn")
+	default:
+	}
+	if err := m.finishTurn(c.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "again"}); err != nil {
+		t.Fatal(err)
+	}
+	waitForDriverClose(t, d)
+	var left int
+	if err := m.db.QueryRow(`SELECT count(*) FROM app_setting WHERE key=?`, mcpReloadRequestKey).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("request rows left = %d, %v", left, err)
+	}
+}
+
 func TestFinishedChatStoresNotification(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)

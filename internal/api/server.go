@@ -147,6 +147,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("DELETE /api/connectors/{id}", s.tracked("connector", s.deleteConnector))
 	m.HandleFunc("GET /api/mcp-servers", s.listMCPServers)
 	m.HandleFunc("POST /api/mcp-servers/reload", s.reloadMCPServers)
+	m.HandleFunc("POST /api/mcp-servers/reload-request", s.requestMCPReload)
 	m.HandleFunc("GET /api/mcp-servers/{id}/check", s.checkMCPServer)
 	m.HandleFunc("POST /api/mcp-servers/{id}/login", s.mcpServerLogin)
 	m.HandleFunc("POST /api/mcp-servers", s.tracked("mcp_server", s.createMCPServer))

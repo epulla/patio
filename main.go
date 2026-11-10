@@ -286,6 +286,9 @@ func main() {
 				if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
 					log.Printf("deliver queued agent messages after database change: %v", err)
 				}
+				if err := apiServer.ApplyMCPReloadRequest(); err != nil {
+					log.Printf("reload MCP servers on request: %v", err)
+				}
 			}); err != nil {
 				log.Printf("watch database changes: %v", err)
 			}

@@ -849,6 +849,31 @@ func (s *Server) reloadMCPServers(w http.ResponseWriter, _ *http.Request) {
 	write(w, http.StatusOK, map[string]int{"closed": closed, "pending": pending})
 }
 
+const mcpReloadRequestKey = "mcp_reload_requested"
+
+// requestMCPReload is for the reload_mcp_servers tool: its `patio mcp` process can't reach the
+// desktop app's chat runtimes, so it leaves a request that ApplyMCPReloadRequest runs in the app.
+func (s *Server) requestMCPReload(w http.ResponseWriter, _ *http.Request) {
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO app_setting(key,value) VALUES(?,'true')`, mcpReloadRequestKey); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusAccepted, map[string]bool{"requested": true})
+}
+
+// ApplyMCPReloadRequest runs a pending reload request once; the desktop app calls it on database changes.
+func (s *Server) ApplyMCPReloadRequest() error {
+	result, err := s.db.Exec(`DELETE FROM app_setting WHERE key=?`, mcpReloadRequestKey)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil || n == 0 {
+		return err
+	}
+	_, _, err = s.chats.ReloadMCP()
+	return err
+}
+
 // mcpCheck connects to the server and lists its tools. A failed connection is reported in
 // check.Error; err is only for Patio-side failures such as reading secrets.
 func (s *Server) mcpCheck(ctx context.Context, server mcpServer) (check mcpServerCheck, err error) {
