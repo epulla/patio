@@ -16,7 +16,7 @@ const text = {
     needsConnector: "This needs a connector. Add one to try it.", goConnectors: "Go to Connections",
     steps: {
       intro: ["Welcome to Patio", "Patio keeps your work on boards of tickets, and AI chats that can read and update them. This tour walks you through the main pieces in about two minutes."],
-      boards: ["Boards", "All your boards live here. Each board also gets a shortcut lower in the sidebar; drag those to reorder."],
+      boards: ["Boards", "All your boards live here. Each board also gets a shortcut lower in the sidebar; drag those to reorder. Drag the sidebar's right edge to resize it; double-click the edge to reset."],
       noBoard: ["Create a board first", "Tickets live on boards. Go to Boards and press Create board, then replay this tour from Settings to see tickets up close."],
       columns: ["Columns", "A board is a set of columns, one per status. Change, add or reorder columns in Board settings, and choose what each one counts as on the Dashboard."],
       newTicket: ["New ticket", "Add work here: a title, an optional description in Markdown, a type and a due date. Write @, a bot's name and a task in the description to have that bot work on it."],
@@ -56,7 +56,7 @@ const text = {
     needsConnector: "Esto necesita un conector. Agrega uno para probarlo.", goConnectors: "Ir a Conexiones",
     steps: {
       intro: ["Bienvenido a Patio", "Patio organiza tu trabajo en tableros de tickets, con chats de IA que pueden leerlos y actualizarlos. Este recorrido te muestra las piezas principales en unos dos minutos."],
-      boards: ["Tableros", "Aquí están todos tus tableros. Cada tablero tiene además un acceso más abajo en la barra lateral; arrástralos para reordenar."],
+      boards: ["Tableros", "Aquí están todos tus tableros. Cada tablero tiene además un acceso más abajo en la barra lateral; arrástralos para reordenar. Arrastra el borde derecho de la barra lateral para cambiar su ancho; haz doble clic en el borde para restablecerlo."],
       noBoard: ["Primero crea un tablero", "Los tickets viven en tableros. Ve a Tableros y presiona Crear tablero; luego repite este recorrido desde Ajustes para ver los tickets de cerca."],
       columns: ["Columnas", "Un tablero es un conjunto de columnas, una por estado. Cambia, agrega o reordena columnas en la configuración del tablero, y elige qué cuenta cada una en el Panel."],
       newTicket: ["Nuevo ticket", "Agrega trabajo aquí: un título, una descripción opcional en Markdown, un tipo y una fecha de vencimiento. Escribe @, el nombre de un bot y una tarea en la descripción para que ese bot trabaje en ella."],
