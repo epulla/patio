@@ -390,7 +390,9 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var title string
-	_ = s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title)
+	if err := s.db.QueryRow(`SELECT title FROM chat WHERE id=?`, id).Scan(&title); err != nil {
+		log.Printf("lookup agent message target %s title: %v", id, err)
+	}
 	status, next := "queued", "Delivered after "+title+"'s current turn, or within seconds if it is idle."
 	if held != 0 {
 		status = "paused_error"
@@ -403,16 +405,13 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 			log.Printf("notify agent hop cap for %s: %v", id, err)
 		}
 	} else if in.Mode == "steer" && s.chats.Running(id) && s.chats.CanSteer(id) {
-		var oldest sql.NullString
-		_ = s.db.QueryRow(`SELECT from_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid LIMIT 1`, id).Scan(&oldest)
-		if oldest.Valid && oldest.String == in.FromChatID {
-			if _, err := s.chats.steerQueued(id); err == nil {
-				var n int
-				_ = s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, rowID).Scan(&n)
-				if n == 0 {
-					status = "steered"
-					next = "Delivered into " + title + "'s running turn."
-				}
+		if _, err := s.chats.steerQueued(id, in.FromChatID); err == nil {
+			var n int
+			if err := s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, rowID).Scan(&n); err != nil {
+				log.Printf("check steered message %s: %v", rowID, err)
+			} else if n == 0 {
+				status = "steered"
+				next = "Delivered into " + title + "'s running turn."
 			}
 		}
 	}
@@ -421,11 +420,52 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 
 func awaitingReply(q interface{ QueryRow(string, ...any) *sql.Row }, target, sender string) bool {
 	var waiting int
-	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM (SELECT created_at FROM chat_message WHERE chat_id=? AND from_chat_id=? UNION ALL SELECT created_at FROM chat_queue WHERE chat_id=? AND from_chat_id=?) incoming WHERE NOT EXISTS(SELECT 1 FROM chat_message delivered WHERE delivered.chat_id=? AND delivered.from_chat_id=? AND delivered.created_at>=incoming.created_at))`, sender, target, sender, target, target, sender).Scan(&waiting)
+	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM (SELECT created_at FROM chat_message WHERE chat_id=? AND from_chat_id=? UNION ALL SELECT created_at FROM chat_queue WHERE chat_id=? AND from_chat_id=?) incoming WHERE NOT EXISTS(SELECT 1 FROM chat_message delivered WHERE delivered.chat_id=? AND delivered.from_chat_id=? AND delivered.created_at>=incoming.created_at)) OR EXISTS(SELECT 1 FROM chat_handoff h WHERE h.from_chat_id=? AND h.to_chat_id=? AND (h.status='pending' OR h.finished_at>COALESCE((SELECT max(created_at) FROM chat_message WHERE chat_id=? AND from_chat_id=?),'')))`, sender, target, sender, target, target, sender, target, sender, target, sender).Scan(&waiting)
+	if err != nil {
+		// Without an answer, keep loop protection: no bypass.
+		log.Printf("check %s awaiting reply from %s: %v", target, sender, err)
+	}
 	return err == nil && waiting != 0
 }
 func agentHopCapped(q interface{ QueryRow(string, ...any) *sql.Row }, target, sender string, hops, limit int) bool {
 	return hopLimitReached(hops, limit) && !(awaitingReply(q, target, sender) && !hopLimitReached(hops, 2*limit))
+}
+
+func queueCapBlocked(q interface {
+	Query(string, ...any) (*sql.Rows, error)
+	QueryRow(string, ...any) *sql.Row
+}, chatID string, hops, limit int) (bool, error) {
+	if !hopLimitReached(hops, limit) {
+		return false, nil
+	}
+	rows, err := q.Query(`SELECT from_chat_id FROM chat_queue WHERE chat_id=?`, chatID)
+	if err != nil {
+		return false, err
+	}
+	foundAgent := false
+	var senders []string
+	for rows.Next() {
+		var sender sql.NullString
+		if err := rows.Scan(&sender); err != nil {
+			rows.Close()
+			return false, err
+		}
+		if !sender.Valid {
+			rows.Close()
+			return false, nil
+		}
+		foundAgent = true
+		senders = append(senders, sender.String)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return false, err
+	}
+	for _, sender := range senders {
+		if !agentHopCapped(q, chatID, sender, hops, limit) {
+			return false, nil
+		}
+	}
+	return foundAgent, nil
 }
 
 // holdHandoff marks the chat's current turn as progress: its end reports to the parent without closing the handoff.

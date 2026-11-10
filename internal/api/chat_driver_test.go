@@ -1338,7 +1338,7 @@ func TestAwaitingSenderBypassesCapOnlyBelowDoubleLimit(t *testing.T) {
 	if _, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('reply','waiting-sender','assistant','reply','2099-01-01','[]',?)`, target); err != nil {
+	if _, err := db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('reply','waiting-sender','assistant','reply','2000-01-01','[]',?)`, target); err != nil {
 		t.Fatal(err)
 	}
 	fake := newPipeChatProcess()
@@ -1373,6 +1373,103 @@ func TestAwaitingSenderBypassesCapOnlyBelowDoubleLimit(t *testing.T) {
 	}
 }
 
+func TestDeliverSkipsCappedQueueRowForAwaitedSender(t *testing.T) {
+	db, _, root := chatAPI(t)
+	connector := createTestConnector(t, db)
+	target := createDriverTestChat(t, db, connector, root)
+	for _, id := range []string{"waiting-A", "unrelated-B"} {
+		if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, id, id, "0", "0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('last-reply','waiting-A','assistant','reply','2099-01-01','[]',?)`, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at,from_chat_id) VALUES('blocked-B',?,'unrelated','1','unrelated-B'),('answer-A',?,'answer','2','waiting-A')`, target, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := newPipeChatProcess()
+	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+	defer s.Close()
+	if err := s.DeliverAgentMessages(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-fake.input:
+	case <-time.After(time.Second):
+		t.Fatal("awaited answer was not delivered")
+	}
+	var answer, blocked int
+	if err := db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id='answer-A'`).Scan(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id='blocked-B'`).Scan(&blocked); err != nil {
+		t.Fatal(err)
+	}
+	if answer != 0 || blocked != 1 {
+		t.Fatalf("answer=%d unrelated=%d", answer, blocked)
+	}
+	if reason, err := s.queuePauseReason(target); err != nil || reason != "hop_cap" {
+		t.Fatalf("pause reason=%q err=%v", reason, err)
+	}
+}
+
+func TestReportBackHandoffBypassesCapUntilReportDelivered(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, finished string
+		hops                   int
+		want                   string
+	}{{"pending", "pending", "", 30, "queued"}, {"finished", "ok", "2099-01-01", 30, "queued"}, {"ceiling", "pending", "", 60, "paused_hop_cap"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, _, root := chatAPI(t)
+			connector := createTestConnector(t, db)
+			parent := createDriverTestChat(t, db, connector, root)
+			if _, err := db.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('report-child','Child','0','0')`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, tc.hops, parent); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('progress',?,'assistant','progress','2000-01-01','[]','report-child')`, parent); err != nil {
+				t.Fatal(err)
+			}
+			var finished any
+			if tc.finished != "" {
+				finished = tc.finished
+			}
+			if _, err := db.Exec(`INSERT INTO chat_handoff(id,from_chat_id,to_chat_id,status,created_at,deadline_at,finished_at) VALUES('handoff',?,'report-child',?,'1999','2100',?)`, parent, tc.status, finished); err != nil {
+				t.Fatal(err)
+			}
+			fake := newPipeChatProcess()
+			s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
+			defer s.Close()
+			var out map[string]string
+			if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+parent+"/agent-messages", map[string]string{"from_chat_id": "report-child", "text": "final report"}, &out); code != 200 || out["status"] != tc.want {
+				t.Fatalf("status=%d %#v", code, out)
+			}
+			if out["next"] == "" {
+				t.Fatal("missing next hint")
+			}
+			if tc.want == "queued" {
+				if err := s.DeliverAgentMessages(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-fake.input:
+				case <-time.After(time.Second):
+					t.Fatal("report not delivered")
+				}
+			}
+		})
+	}
+}
+
 func TestDeliverAgentMessagesUserFirstQueueStillDelivers(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
@@ -1386,11 +1483,17 @@ func TestDeliverAgentMessagesUserFirstQueueStillDelivers(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO chat_queue(id,chat_id,text,created_at,from_chat_id) VALUES('agent-later',?,'agent','2','row-sender')`, target); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`UPDATE chat SET agent_hops=30 WHERE id=?`, target); err != nil {
+		t.Fatal(err)
+	}
 	fake := newPipeChatProcess()
 	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) { return fake, nil }})
 	defer s.Close()
 	if err := s.DeliverAgentMessages(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if reason, err := s.queuePauseReason(target); err != nil || reason != "" {
+		t.Fatalf("pause reason=%q err=%v", reason, err)
 	}
 	select {
 	case <-fake.input:

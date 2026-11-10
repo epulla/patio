@@ -49,11 +49,11 @@ func (s *Server) queuePauseReason(id string) (string, error) {
 	if queued > 0 && held != 0 {
 		return "error", nil
 	}
-	var sender sql.NullString
-	if err := s.db.QueryRow(`SELECT from_chat_id FROM chat_queue WHERE chat_id=? AND from_chat_id IS NOT NULL ORDER BY created_at,rowid LIMIT 1`, id).Scan(&sender); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	blocked, err := queueCapBlocked(s.db, id, hops, agentHopLimit(s.db))
+	if err != nil {
 		return "", err
 	}
-	if sender.Valid && agentHopCapped(s.db, id, sender.String, hops, agentHopLimit(s.db)) {
+	if blocked {
 		return "hop_cap", nil
 	}
 	return "", nil

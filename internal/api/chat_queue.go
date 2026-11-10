@@ -181,12 +181,12 @@ func (s *Server) sendQueuedChatMessages(w http.ResponseWriter, r *http.Request) 
 // drainQueued sends the chat's queued messages, oldest first, as one user message.
 // Items that would push the attachments past the per-message limit stay queued.
 func (m *chatManager) drainQueued(chatID string, manual bool) (ChatMessage, error) {
-	return m.drainQueuedMode(chatID, manual, false)
+	return m.drainQueuedMode(chatID, manual, false, "")
 }
-func (m *chatManager) steerQueued(chatID string) (ChatMessage, error) {
-	return m.drainQueuedMode(chatID, false, true)
+func (m *chatManager) steerQueued(chatID, sender string) (ChatMessage, error) {
+	return m.drainQueuedMode(chatID, false, true, sender)
 }
-func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool) (ChatMessage, error) {
+func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySender string) (ChatMessage, error) {
 	if manual && m.Running(chatID) && !m.CanSteer(chatID) || steer && (!m.Running(chatID) || !m.CanSteer(chatID)) {
 		return ChatMessage{}, errChatTurnRunning
 	}
@@ -228,8 +228,11 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool) (ChatMe
 			if len(claimed) > 0 && (row.from != sender || len(attachments)+len(rawItems) > maxChatAttachments) {
 				break
 			}
-			if len(claimed) == 0 && !manual && row.from.Valid && agentHopCapped(tx, chatID, row.from.String, oldHops, limit) {
+			if len(claimed) == 0 && onlySender != "" && (!row.from.Valid || row.from.String != onlySender) {
 				break
+			}
+			if len(claimed) == 0 && !manual && row.from.Valid && agentHopCapped(tx, chatID, row.from.String, oldHops, limit) {
+				continue
 			}
 			if len(claimed) == 0 {
 				sender, reportTo = row.from, row.report

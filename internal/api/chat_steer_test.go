@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -138,6 +140,36 @@ func TestAgentMessageSteerQueuesWhenRuntimeCannotSteer(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT queue_held FROM chat WHERE id=?`, chatID).Scan(&held); err != nil || held != 0 {
 		t.Fatalf("queue_held=%d err=%v", held, err)
+	}
+}
+
+func TestSteerQueueStopsWhenDifferentSenderIsAtHead(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	server := New(database, "local", false, "dev", root, Options{})
+	defer server.Close()
+	rt := server.chats.runtime(chatID)
+	rt.mu.Lock()
+	rt.busy.Store(true)
+	rt.driver = &steerTestDriver{}
+	rt.mu.Unlock()
+	for _, sender := range []string{"A", "B"} {
+		if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,?,?,?)`, sender, sender, "0", "0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, row := range []struct{ id, sender, created string }{{"first-B", "B", "1"}, {"second-A", "A", "2"}} {
+		if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id) VALUES(?,?,?,'[]',?,?)`, row.id, chatID, row.id, row.created, row.sender); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := server.chats.steerQueued(chatID, "A"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("steer error=%v", err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("remaining rows=%d err=%v", count, err)
 	}
 }
 
