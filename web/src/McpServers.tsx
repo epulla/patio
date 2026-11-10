@@ -11,7 +11,9 @@ import { lang, useText } from "./i18n";
 
 const text = {
   en: {
-    addServer: "Add server", title: "MCP servers", settings: "Settings", intro: "Enabled servers are available in every chat, next to the built-in Patio tools (status in ",
+    addServer: "Add server", reload: "Reload", reloading: "Reloading…", reloadTitle: "Re-check every server and reconnect chats to fresh MCP servers",
+    reloaded: (pending: number) => pending ? `Reloaded. ${pending} busy chat${pending === 1 ? "" : "s"} will reconnect after the current reply.` : "Reloaded. Chats reconnect on their next message.",
+    title: "MCP servers", settings: "Settings", intro: "Enabled servers are available in every chat, next to the built-in Patio tools (status in ",
     introEnd: "). Claude Code, Copilot, and opencode ask before using their tools; Codex runs them without asking.",
     empty: "No servers yet. Add a remote URL (HTTP) or a local command (stdio).", finishLogin: "Finish signing in in your browser.",
     deleteQuestion: (name: string) => `Delete MCP server "${name}"?`, signInRequired: "Sign in required", checking: "Checking…", healthy: (latency: number, n: number) => `Healthy · ${latency} ms · ${n} tool${n === 1 ? "" : "s"}`, unreachable: "Unreachable",
@@ -20,7 +22,9 @@ const text = {
     clientId: "OAuth client ID (optional)", clientSecret: "OAuth client secret", scopes: "Scopes (space-separated)", clientNote: "Only for providers without automatic client registration, like Google. Leave empty otherwise.",
   },
   es: {
-    addServer: "Agregar servidor", title: "Servidores MCP", settings: "Ajustes", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
+    addServer: "Agregar servidor", reload: "Recargar", reloading: "Recargando…", reloadTitle: "Vuelve a comprobar todos los servidores y reconecta los chats a servidores MCP nuevos",
+    reloaded: (pending: number) => pending ? `Recargado. ${pending} chat${pending === 1 ? "" : "s"} ocupado${pending === 1 ? "" : "s"} se reconectará${pending === 1 ? "" : "n"} después de la respuesta actual.` : "Recargado. Los chats se reconectan con su próximo mensaje.",
+    title: "Servidores MCP", settings: "Ajustes", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
     introEnd: "). Claude Code, Copilot y opencode preguntan antes de usar sus herramientas; Codex las ejecuta sin preguntar.",
     empty: "Aún no hay servidores. Agrega una URL remota (HTTP) o un comando local (stdio).", finishLogin: "Termina de iniciar sesión en tu navegador.",
     deleteQuestion: (name: string) => `¿Eliminar el servidor MCP «${name}»?`, signInRequired: "Debes iniciar sesión", checking: "Comprobando…", healthy: (latency: number, n: number) => `Disponible · ${latency} ms · ${n} herramienta${n === 1 ? "" : "s"}`, unreachable: "No disponible",
@@ -36,6 +40,25 @@ export default function McpServers({ refresh }: { refresh: number }) {
   const [error, setError] = useState<unknown>();
   const [editing, setEditing] = useState<McpServer | "new">();
   const [reload, setReload] = useState(0);
+  const [recheck, setRecheck] = useState(0);
+  const [reloading, setReloading] = useState(false);
+  const [reloadPending, setReloadPending] = useState<number>();
+
+  async function reloadAll() {
+    setReloading(true);
+    setReloadPending(undefined);
+    setError(undefined);
+    try {
+      const result = await api.post<{ closed: number; pending: number }>("/api/mcp-servers/reload", {});
+      setReloadPending(result.pending);
+      setReload((value) => value + 1);
+      setRecheck((value) => value + 1);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setReloading(false);
+    }
+  }
 
   useEffect(() => {
     api
@@ -54,9 +77,14 @@ export default function McpServers({ refresh }: { refresh: number }) {
       <ConnectionsHeading
         tab="mcp"
         actions={
-          <button className="primary" onClick={() => setEditing("new")}>
-            <Icon name="plus" /> {t.addServer}
-          </button>
+          <>
+            <button className="ghost" disabled={reloading} title={t.reloadTitle} onClick={reloadAll}>
+              {reloading ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" />} {reloading ? t.reloading : t.reload}
+            </button>
+            <button className="primary" onClick={() => setEditing("new")}>
+              <Icon name="plus" /> {t.addServer}
+            </button>
+          </>
         }
       />
       <p className="muted">
@@ -72,13 +100,18 @@ export default function McpServers({ refresh }: { refresh: number }) {
         </a>
         {t.introEnd}
       </p>
+      {reloadPending !== undefined && (
+        <p className="muted" role="status">
+          {t.reloaded(reloadPending)}
+        </p>
+      )}
       <ErrorText error={error} />
       {servers.length === 0 && !error && (
         <p className="callout">{t.empty}</p>
       )}
       <div className="connector-grid">
         {servers.map((server) => (
-          <ServerCard key={server.id} server={server} onEdit={() => setEditing(server)} onChanged={changed} />
+          <ServerCard key={server.id} server={server} recheck={recheck} onEdit={() => setEditing(server)} onChanged={changed} />
         ))}
       </div>
       {editing && (
@@ -97,10 +130,12 @@ export default function McpServers({ refresh }: { refresh: number }) {
 
 function ServerCard({
   server,
+  recheck,
   onEdit,
   onChanged,
 }: {
   server: McpServer;
+  recheck: number;
   onEdit: () => void;
   onChanged: () => void;
 }) {
@@ -135,6 +170,7 @@ function ServerCard({
     server.env_keys.join(","),
     needsSignIn,
     run,
+    recheck,
   ]);
 
   useEffect(() => () => window.clearInterval(poll.current), []);
