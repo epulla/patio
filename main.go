@@ -283,11 +283,11 @@ func main() {
 			defer background.Done()
 			if err := db.Watch(backgroundCtx, database, time.Second, func() {
 				app.Event.Emit("db-changed")
-				if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
-					log.Printf("deliver queued agent messages after database change: %v", err)
-				}
 				if err := apiServer.ApplyMCPReloadRequest(); err != nil {
 					log.Printf("reload MCP servers on request: %v", err)
+				}
+				if err := apiServer.DeliverAgentMessages(backgroundCtx); err != nil {
+					log.Printf("deliver queued agent messages after database change: %v", err)
 				}
 			}); err != nil {
 				log.Printf("watch database changes: %v", err)

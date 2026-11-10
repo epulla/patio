@@ -186,6 +186,10 @@ func (m *chatManager) CanSteer(id string) bool {
 }
 
 func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendRequest) (ChatMessage, error) {
+	// A reload requested by the reload_mcp_servers tool must apply before any later turn, even ahead of the watcher.
+	if err := m.applyMCPReloadRequest(); err != nil {
+		log.Printf("apply MCP reload request: %v", err)
+	}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -943,6 +947,18 @@ func (m *chatManager) CloseConnector(id string) error {
 		joined = errors.Join(joined, m.closeRuntime(chatID))
 	}
 	return joined
+}
+
+func (m *chatManager) applyMCPReloadRequest() error {
+	result, err := m.db.Exec(`DELETE FROM app_setting WHERE key=?`, mcpReloadRequestKey)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil || n == 0 {
+		return err
+	}
+	_, _, err = m.ReloadMCP()
+	return err
 }
 
 // ReloadMCP closes idle runtimes; busy chats, including one calling this mid-turn, restart before their next turn.

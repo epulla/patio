@@ -95,17 +95,12 @@ func TestMCPReloadRequestFromToolProcessReachesAppRuntimes(t *testing.T) {
 	if code := requestJSON(t, tool, "POST", "/api/mcp-servers/reload-request", nil, nil); code != 202 {
 		t.Fatalf("status=%d", code)
 	}
-	app := New(m.db, "local", false, "dev", m.dbDir)
-	defer app.chats.Close()
-	app.chats = m
-	if err := app.ApplyMCPReloadRequest(); err != nil {
-		t.Fatal(err)
-	}
 	select {
 	case <-d.closed:
 		t.Fatal("calling chat closed mid-turn")
 	default:
 	}
+	// The next message must reconnect even if the app's database watcher hasn't applied the request yet.
 	if err := m.finishTurn(c.ID, "done", nil); err != nil {
 		t.Fatal(err)
 	}

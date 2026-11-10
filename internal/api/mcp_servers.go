@@ -862,17 +862,7 @@ func (s *Server) requestMCPReload(w http.ResponseWriter, _ *http.Request) {
 }
 
 // ApplyMCPReloadRequest runs a pending reload request once; the desktop app calls it on database changes.
-func (s *Server) ApplyMCPReloadRequest() error {
-	result, err := s.db.Exec(`DELETE FROM app_setting WHERE key=?`, mcpReloadRequestKey)
-	if err != nil {
-		return err
-	}
-	if n, err := result.RowsAffected(); err != nil || n == 0 {
-		return err
-	}
-	_, _, err = s.chats.ReloadMCP()
-	return err
-}
+func (s *Server) ApplyMCPReloadRequest() error { return s.chats.applyMCPReloadRequest() }
 
 // mcpCheck connects to the server and lists its tools. A failed connection is reported in
 // check.Error; err is only for Patio-side failures such as reading secrets.
