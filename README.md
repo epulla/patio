@@ -146,7 +146,7 @@ Attachments support up to 10 files per message: text, CSV, PDF, Office (Word, Ex
 
 ### Delegate focused work
 
-Supported CLI agents can use `create_chat` to delegate to a new child chat or `send_to_chat` to message an existing chat. A child can use another connector or model, and `report_back` can return its final result automatically.
+Supported CLI agents can use `create_chat` to delegate to a new child chat or `send_to_chat` to message an existing chat. A child can use another connector or model, and `report_back` can return its final result automatically. `send_to_chat` defaults to `mode: queue`; `mode: steer` targets a running turn when supported. Results report `queued`, `steered`, `paused_hop_cap`, or `paused_error` with a next-step hint.
 
 A handoff carries an explicit task prompt. It inherits the selected work folder and relevant chat settings, rather than copying the full conversation transcript. A child of a scratch-folder chat receives its own scratch folder.
 
