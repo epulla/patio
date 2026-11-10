@@ -7,6 +7,7 @@ import { IconButton } from "./icons";
 import PinTabs from "./PinTabs";
 import { isUnpinKey, moveTab, stepIndex, tabMoveStep, tabStep, lastPinnedChat, rememberPinnedChat, pinNumber, pinStyle, unpin, usePinGroups } from "./pins";
 import { useText } from "./i18n";
+import { useSplitter } from "./splitter";
 
 const text = {
   en: { pinnedChats: "Pinned chats", resizePinned: "Resize pinned chats", openChats: "Open in Chats", togglePinned: (shortcut: string) => `Toggle pinned chats with ${shortcut}`, closeDock: (shortcut: string) => `Close dock (${shortcut})`, emptyGroup: (name: string) => `${name} has no chats yet.` },
@@ -14,11 +15,7 @@ const text = {
 };
 
 export const dockShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
-const minWidth = 320;
-const maxWidth = 720;
-const defaultWidth = 400;
 export const linkText = (text: string) => text.replace(/[[\]\\]/g, "\\$&");
-const clampWidth = (width: number) => Math.min(maxWidth, Math.max(minWidth, Math.round(width)));
 
 export function usePinnedChats(ids: string[], refresh: number) {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -66,7 +63,7 @@ export default function ChatDock({
   const groupName = activeGroup?.name ?? "";
   const [active, setActive] = useState(() => lastPinnedChat() ?? ids[0]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
-  const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem("chat-dock-width")) || defaultWidth));
+  const splitter = useSplitter({ storageKey: "chat-dock-width", defaultWidth: 400, min: 320, max: 720, side: "left", label: t.resizePinned });
   const [focusRequest, setFocusRequest] = useState<string>();
   const [loaded, setLoaded] = useState<{ key: string; context: PageContext }>();
   const current = ids.includes(active) ? active : ids[0];
@@ -135,12 +132,6 @@ export default function ChatDock({
     unpin(id);
   }
 
-  function resize(next: number) {
-    const clamped = clampWidth(next);
-    localStorage.setItem("chat-dock-width", String(clamped));
-    setWidth(clamped);
-  }
-
   useEffect(() => {
     if (status[current] === "reply") onSeen(current);
   }, [current, status[current]]);
@@ -153,34 +144,8 @@ export default function ChatDock({
   }, [refresh]);
 
   return (
-    <aside className="chat-dock" aria-label={t.pinnedChats} style={{ width, ...(activeGroup && pinStyle(activeGroup.color)) }}>
-      <div
-        role="separator"
-        tabIndex={0}
-        aria-label={t.resizePinned}
-        aria-orientation="vertical"
-        aria-valuemin={minWidth}
-        aria-valuemax={maxWidth}
-        aria-valuenow={width}
-        className="splitter dock-resize"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          const element = event.currentTarget;
-          element.focus();
-          const start = width;
-          const origin = event.clientX;
-          element.setPointerCapture(event.pointerId);
-          element.onpointermove = (moved) => resize(start + origin - moved.clientX);
-          element.onlostpointercapture = () => (element.onpointermove = null);
-        }}
-        onDoubleClick={() => resize(defaultWidth)}
-        onKeyDown={(event) => {
-          const step = ({ ArrowLeft: 24, ArrowRight: -24 } as Record<string, number>)[event.key];
-          if (!step) return;
-          event.preventDefault();
-          resize(width + step);
-        }}
-      />
+    <aside className="chat-dock" aria-label={t.pinnedChats} style={{ width: splitter.width, ...(activeGroup && pinStyle(activeGroup.color)) }}>
+      <div className="splitter dock-resize" {...splitter.props} />
       <PinTabs chats={chats} status={status} current={current} onSelect={setActive} onUnpin={unpinChat}>
         <IconButton className="ghost" icon="externalLink" label={t.openChats} onClick={() => navigate(current ? `/ai/chats/${current}` : "/ai/chats")} />
         <kbd className="dock-kbd" title={t.togglePinned(dockShortcut)}>
