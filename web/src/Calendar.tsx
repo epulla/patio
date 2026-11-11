@@ -1,5 +1,5 @@
 import { confirmDialog } from "./confirm";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import AIBadge from "./AIBadge";
 import {
   api,
@@ -65,6 +65,14 @@ function dateTimeValue(value: string) {
   return local.toISOString().slice(0, 16);
 }
 
+type Dragged = { from: string; ticket?: Ticket; item?: CalendarItem };
+
+type DragProps = {
+  draggable: true;
+  onDragStart: (event: DragEvent) => void;
+  onDragEnd: () => void;
+};
+
 function initialDraft(item: CalendarItem | null, date: string): Draft {
   return {
     kind: item?.kind ?? "event",
@@ -101,6 +109,55 @@ export default function Calendar({ refresh }: { refresh: number }) {
   const [createDate, setCreateDate] = useState("");
   const [reload, setReload] = useState(0);
   const [shown, setShown] = useState(() => loadShown());
+  const dragged = useRef<Dragged | undefined>(undefined);
+  const [overDay, setOverDay] = useState("");
+
+  function dragProps(chip: Dragged): DragProps {
+    return {
+      draggable: true,
+      onDragStart: (event) => {
+        dragged.current = chip;
+        event.dataTransfer.setData("text/plain", chip.ticket?.id ?? chip.item?.id ?? "");
+        event.dataTransfer.effectAllowed = "move";
+      },
+      onDragEnd: () => {
+        dragged.current = undefined;
+        setOverDay("");
+      },
+    };
+  }
+
+  async function dropOn(key: string) {
+    const chip = dragged.current;
+    dragged.current = undefined;
+    setOverDay("");
+    if (!chip) return;
+    const delta = Math.round((dateFromKey(key).getTime() - dateFromKey(chip.from).getTime()) / 86400000);
+    if (!delta) return;
+    const { ticket, item } = chip;
+    try {
+      if (ticket) {
+        await api.put(`/api/tickets/${ticket.id}`, { due_date: key });
+      } else if (item?.all_day) {
+        const shift = (value: string) => dateKey(addDays(dateFromKey(value.slice(0, 10)), delta));
+        await api.put(`/api/calendar-items/${item.id}`, {
+          starts_at: shift(item.starts_at),
+          ...(item.ends_at ? { ends_at: shift(item.ends_at) } : {}),
+        });
+      } else if (item) {
+        const shift = (value: string) => {
+          const date = new Date(value);
+          date.setDate(date.getDate() + delta);
+          return date.toISOString();
+        };
+        setEditing({ ...item, starts_at: shift(item.starts_at), ends_at: item.ends_at && shift(item.ends_at) });
+        return;
+      }
+      setReload((value) => value + 1);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
 
   function toggle(kind: keyof Shown, value: boolean) {
     const next = { ...shown, [kind]: value };
@@ -256,8 +313,22 @@ export default function Calendar({ refresh }: { refresh: number }) {
           const { items, tickets, scheduled } = dayItems(key);
           return (
             <section
-              className={`calendar-day ${view === "month" && day.getMonth() !== anchor.getMonth() ? "outside-month" : ""} ${key === today ? "today" : ""}`}
+              className={`calendar-day ${view === "month" && day.getMonth() !== anchor.getMonth() ? "outside-month" : ""} ${key === today ? "today" : ""} ${overDay === key ? "drop-target" : ""}`}
               key={key}
+              onDragOver={(event) => {
+                if (!dragged.current) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setOverDay(dragged.current.from === key ? "" : key);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                  setOverDay((current) => (current === key ? "" : current));
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                dropOn(key);
+              }}
             >
               <div className="calendar-day-head">
                 <time dateTime={key}>{day.getDate()}</time>
@@ -270,13 +341,14 @@ export default function Calendar({ refresh }: { refresh: number }) {
               </div>
               <div className="calendar-chips">
                 {tickets.map((ticket) => (
-                  <TicketChip key={ticket.id} ticket={ticket} />
+                  <TicketChip key={ticket.id} ticket={ticket} drag={dragProps({ from: key, ticket })} />
                 ))}
                 {items.map((item) => (
                   <button
                     className={`calendar-chip ${item.kind}`}
                     key={item.id}
                     onClick={() => setEditing(item)}
+                    {...dragProps({ from: key, item })}
                   >
                     {!item.all_day && (
                       <time>
@@ -334,12 +406,13 @@ function ScheduledChip({ run, count }: { run: CalendarScheduled; count: number }
   );
 }
 
-function TicketChip({ ticket }: { ticket: Ticket }) {
+function TicketChip({ ticket, drag }: { ticket: Ticket; drag: DragProps }) {
   const t = useText(text);
   return (
     <button
       className="calendar-chip due"
       onClick={() => navigate(`/tickets/${ticket.id}`)}
+      {...drag}
     >
       <span className="calendar-kind">{t.due}</span> {ticket.code} {ticket.title}
     </button>

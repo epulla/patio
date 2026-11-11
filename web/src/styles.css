@@ -1803,6 +1803,14 @@ button.ticket-link-item svg {
 .week-view .calendar-day {
   min-height: 420px;
 }
+.calendar-day.drop-target {
+  background: color-mix(in oklch, var(--primary) 10%, var(--base-100));
+  outline: 2px dashed color-mix(in oklch, var(--primary) 55%, transparent);
+  outline-offset: -3px;
+}
+.calendar-chip[draggable="true"] {
+  cursor: grab;
+}
 .outside-month {
   background: var(--base-200);
   color: var(--muted);
