@@ -21,6 +21,78 @@ import (
 	"time"
 )
 
+func TestOpenCodeReconnectMCP(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		t.Run(fmt.Sprintf("other-active-%v", active), func(t *testing.T) {
+			var connects int
+			mux := http.NewServeMux()
+			mux.HandleFunc("/mcp/target/disconnect", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+			mux.HandleFunc("/mcp/target/connect", func(w http.ResponseWriter, r *http.Request) { connects++; w.WriteHeader(http.StatusNoContent) })
+			mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"target":{"status":"connected"}}`))
+			})
+			httpServer := httptest.NewServer(mux)
+			defer httpServer.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			d := &opencodeRuntime{directory: "/same", ctx: ctx, server: &opencodeServer{major: 1, baseURL: httpServer.URL, client: httpServer.Client(), chats: make(map[string]*opencodeRuntime)}}
+			other := &opencodeRuntime{directory: d.directory, active: active}
+			d.server.chats["self"], d.server.chats["other"] = d, other
+			err := d.reconnectMCP("target")
+			if active {
+				if err != errMCPReconnectDeferred || connects != 0 {
+					t.Fatalf("err=%v connects=%d", err, connects)
+				}
+			} else if err != nil || connects != 1 {
+				t.Fatalf("err=%v connects=%d", err, connects)
+			}
+		})
+	}
+}
+
+func TestOpenCodeSendWaitsForMCPReconnect(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	entered, release := make(chan struct{}), make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/mcp/target/disconnect", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("/mcp/target/connect", func(w http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/mcp", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"target":{"status":"connected"}}`))
+	})
+	mux.HandleFunc("/session/session/prompt_async", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &opencodeServer{major: 1, baseURL: httpServer.URL, client: httpServer.Client(), chats: make(map[string]*opencodeRuntime)}
+	manager := &chatManager{db: database}
+	a := &opencodeRuntime{manager: manager, chatID: chatID, directory: root, session: "session", ctx: ctx, server: s}
+	b := &opencodeRuntime{manager: manager, chatID: chatID, directory: root, session: "session", ctx: ctx, server: s}
+	s.chats["a"], s.chats["b"] = a, b
+	reconnected, sent := make(chan error, 1), make(chan error, 1)
+	go func() { reconnected <- a.reconnectMCP("target") }()
+	<-entered
+	go func() { sent <- b.send(ChatSendRequest{Text: "test"}) }()
+	select {
+	case err := <-sent:
+		t.Fatalf("send proceeded during reconnect: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	if err := <-reconnected; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-sent; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)

@@ -849,6 +849,24 @@ func (s *Server) reloadMCPServers(w http.ResponseWriter, _ *http.Request) {
 	write(w, http.StatusOK, map[string]int{"closed": closed, "pending": pending})
 }
 
+func (s *Server) reloadMCPServer(w http.ResponseWriter, r *http.Request) {
+	server, err := s.loadMCPServer(idParam(r, "id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "MCP server not found")
+		return
+	}
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	reconnected, restarted, pending, err := s.chats.ReloadMCPServer(server.Name)
+	if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string]int{"reconnected": reconnected, "restarted": restarted, "pending": pending})
+}
+
 const mcpReloadRequestKey = "mcp_reload_requested"
 
 // requestMCPReload is for the reload_mcp_servers tool: its `patio mcp` process can't reach the
