@@ -13,6 +13,8 @@ const text = {
   en: {
     addServer: "Add server", reload: "Reload", reloading: "Reloading…", reloadTitle: "Re-check every server and reconnect chats to fresh MCP servers",
     reloaded: (pending: number) => pending ? `Reloaded. ${pending} busy chat${pending === 1 ? "" : "s"} will reconnect after the current reply.` : "Reloaded. Chats reconnect on their next message.",
+    reloadServer: (name: string) => `Restart ${name} in every chat that uses it`,
+    serverReloaded: (now: number, pending: number) => now + pending === 0 ? "Reloaded. No open chat uses it yet." : `Reloaded in ${now} chat${now === 1 ? "" : "s"}${pending ? `; ${pending} busy chat${pending === 1 ? "" : "s"} after the current reply` : ""}.`,
     title: "MCP servers", settings: "Settings", intro: "Enabled servers are available in every chat, next to the built-in Patio tools (status in ",
     introEnd: "). Claude Code, Copilot, and opencode ask before using their tools; Codex runs them without asking.",
     empty: "No servers yet. Add a remote URL (HTTP) or a local command (stdio).", finishLogin: "Finish signing in in your browser.",
@@ -24,6 +26,8 @@ const text = {
   es: {
     addServer: "Agregar servidor", reload: "Recargar", reloading: "Recargando…", reloadTitle: "Vuelve a comprobar todos los servidores y reconecta los chats a servidores MCP nuevos",
     reloaded: (pending: number) => pending ? `Recargado. ${pending} chat${pending === 1 ? "" : "s"} ocupado${pending === 1 ? "" : "s"} se reconectará${pending === 1 ? "" : "n"} después de la respuesta actual.` : "Recargado. Los chats se reconectan con su próximo mensaje.",
+    reloadServer: (name: string) => `Reinicia ${name} en todos los chats que lo usan`,
+    serverReloaded: (now: number, pending: number) => now + pending === 0 ? "Recargado. Ningún chat abierto lo usa aún." : `Recargado en ${now} chat${now === 1 ? "" : "s"}${pending ? `; ${pending} chat${pending === 1 ? "" : "s"} ocupado${pending === 1 ? "" : "s"} después de la respuesta actual` : ""}.`,
     title: "Servidores MCP", settings: "Ajustes", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
     introEnd: "). Claude Code, Copilot y opencode preguntan antes de usar sus herramientas; Codex las ejecuta sin preguntar.",
     empty: "Aún no hay servidores. Agrega una URL remota (HTTP) o un comando local (stdio).", finishLogin: "Termina de iniciar sesión en tu navegador.",
@@ -145,8 +149,25 @@ function ServerCard({
   const [error, setError] = useState<unknown>();
   const [message, setMessage] = useState("");
   const [run, setRun] = useState(0);
+  const [reloading, setReloading] = useState(false);
+  const [reloaded, setReloaded] = useState<{ now: number; pending: number }>();
   const poll = useRef<number | undefined>(undefined);
   const needsSignIn = server.auth === "oauth" && !server.has_oauth_token;
+
+  async function reload() {
+    setReloading(true);
+    setReloaded(undefined);
+    setError(undefined);
+    try {
+      const result = await api.post<{ reconnected: number; restarted: number; pending: number }>(`/api/mcp-servers/${server.id}/reload`, {});
+      setReloaded({ now: result.reconnected + result.restarted, pending: result.pending });
+      setRun((value) => value + 1);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setReloading(false);
+    }
+  }
 
   useEffect(() => {
     if (needsSignIn) return setCheck(undefined);
@@ -273,6 +294,11 @@ function ServerCard({
           {message}
         </p>
       )}
+      {reloaded && (
+        <p className="muted" role="status">
+          {t.serverReloaded(reloaded.now, reloaded.pending)}
+        </p>
+      )}
       <ErrorText error={error} />
 
       <div className="connector-buttons">
@@ -282,6 +308,9 @@ function ServerCard({
         )}
         <button disabled={checking || needsSignIn} onClick={() => setRun((value) => value + 1)}>
           {t.test}
+        </button>
+        <button className="ghost" disabled={reloading || needsSignIn || !server.enabled} title={t.reloadServer(server.name)} onClick={reload}>
+          {reloading ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" />} {reloading ? t.reloading : t.reload}
         </button>
       </div>
     </article>
