@@ -1420,12 +1420,14 @@ func TestDeliverSkipsCappedQueueRowForAwaitedSender(t *testing.T) {
 	}
 }
 
-func TestReportBackHandoffBypassesCapUntilReportDelivered(t *testing.T) {
+// A chat that ever delegated to the sender takes its reports past the cap, even when a
+// delayed progress report lands after the handoff finished and before the final report.
+func TestDelegatedChatReportsBypassCap(t *testing.T) {
 	for _, tc := range []struct {
-		name, status, finished string
-		hops                   int
-		want                   string
-	}{{"pending", "pending", "", 30, "queued"}, {"finished", "ok", "2099-01-01", 30, "queued"}, {"ceiling", "pending", "", 60, "paused_hop_cap"}} {
+		name, status, finished, progress string
+		hops                             int
+		want                             string
+	}{{"pending", "pending", "", "2000-01-01", 30, "queued"}, {"progress after finish", "ok", "2000-01-02", "2000-01-03", 30, "queued"}, {"ceiling", "pending", "", "2000-01-01", 60, "paused_hop_cap"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, _, root := chatAPI(t)
 			connector := createTestConnector(t, db)
@@ -1436,7 +1438,7 @@ func TestReportBackHandoffBypassesCapUntilReportDelivered(t *testing.T) {
 			if _, err := db.Exec(`UPDATE chat SET agent_hops=? WHERE id=?`, tc.hops, parent); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('progress',?,'assistant','progress','2000-01-01','[]','report-child')`, parent); err != nil {
+			if _, err := db.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at,attachments,from_chat_id) VALUES('progress',?,'user','[Progress] working',?,'[]','report-child')`, parent, tc.progress); err != nil {
 				t.Fatal(err)
 			}
 			var finished any

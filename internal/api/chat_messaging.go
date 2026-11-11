@@ -420,7 +420,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 
 func awaitingReply(q interface{ QueryRow(string, ...any) *sql.Row }, target, sender string) bool {
 	var waiting int
-	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM (SELECT created_at FROM chat_message WHERE chat_id=? AND from_chat_id=? UNION ALL SELECT created_at FROM chat_queue WHERE chat_id=? AND from_chat_id=?) incoming WHERE NOT EXISTS(SELECT 1 FROM chat_message delivered WHERE delivered.chat_id=? AND delivered.from_chat_id=? AND delivered.created_at>=incoming.created_at)) OR EXISTS(SELECT 1 FROM chat_handoff h WHERE h.from_chat_id=? AND h.to_chat_id=? AND (h.status='pending' OR h.finished_at>COALESCE((SELECT max(created_at) FROM chat_message WHERE chat_id=? AND from_chat_id=?),'')))`, sender, target, sender, target, target, sender, target, sender, target, sender).Scan(&waiting)
+	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM (SELECT created_at FROM chat_message WHERE chat_id=? AND from_chat_id=? UNION ALL SELECT created_at FROM chat_queue WHERE chat_id=? AND from_chat_id=?) incoming WHERE NOT EXISTS(SELECT 1 FROM chat_message delivered WHERE delivered.chat_id=? AND delivered.from_chat_id=? AND delivered.created_at>=incoming.created_at)) OR EXISTS(SELECT 1 FROM chat_handoff WHERE from_chat_id=? AND to_chat_id=?)`, sender, target, sender, target, target, sender, target, sender).Scan(&waiting)
 	if err != nil {
 		// Without an answer, keep loop protection: no bypass.
 		log.Printf("check %s awaiting reply from %s: %v", target, sender, err)
