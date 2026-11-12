@@ -597,6 +597,16 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, status, err.Error())
 		return
 	}
+	// The open question can be older than the latest page.
+	var openQuestion *ChatMessage
+	question := ChatMessage{ChatID: c.ID, Role: "question", Attachments: []ChatAttachment{}}
+	err = s.db.QueryRow(`SELECT id,content,created_at FROM chat_message WHERE chat_id=? AND role='question' AND answered=0 ORDER BY created_at DESC,rowid DESC LIMIT 1`, c.ID).Scan(&question.ID, &question.Content, &question.CreatedAt)
+	if err == nil {
+		openQuestion = &question
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		errw(w, 500, err.Error())
+		return
+	}
 	approvals := []chatApproval{}
 	rows, err := s.db.Query(`SELECT id,chat_id,tool_name,input_json,status,auto,created_at,answered_at FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
@@ -657,7 +667,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	response := map[string]any{"chat": c, "messages": messages, "next_cursor": next, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals, "flow_status": flowStatus}
+	response := map[string]any{"chat": c, "messages": messages, "next_cursor": next, "open_question": openQuestion, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals, "flow_status": flowStatus}
 	data, err := json.Marshal(response)
 	if err != nil {
 		errw(w, 500, err.Error())

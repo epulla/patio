@@ -76,6 +76,7 @@ type ChatDetail = {
   flow_status?: FlowStatus;
   // Points at older messages not loaded yet; null once the first message is loaded.
   next_cursor: string | null;
+  open_question: ChatMessage | null;
 };
 type LinkedChat = { id: string; title: string };
 type ChatEvent =
@@ -1426,7 +1427,13 @@ export function Conversation({
           const fresh = new Set(next.auto_approvals?.map((a) => a.id));
           return {
             ...next,
-            messages: [...current.messages.slice(0, at), ...next.messages],
+            // Questions answered elsewhere since their page loaded close here too.
+            messages: [
+              ...current.messages
+                .slice(0, at)
+                .map((m) => (m.role === "question" && !m.answered && m.id !== next.open_question?.id ? { ...m, answered: true } : m)),
+              ...next.messages,
+            ],
             auto_approvals: [...(current.auto_approvals ?? []).filter((a) => !fresh.has(a.id)), ...(next.auto_approvals ?? [])],
             next_cursor: current.next_cursor,
           };
@@ -1979,6 +1986,7 @@ export function Conversation({
       (current) =>
         current && {
           ...current,
+          open_question: null,
           messages: [
             ...current.messages.map((m) => (m.role === "question" ? { ...m, answered: true } : m)),
             ...(current.messages.some((m) => m.id === message.id) ? [] : [message]),
@@ -2034,7 +2042,12 @@ export function Conversation({
 
   const connector = connectors.find((c) => c.id === detail.chat.connector_id);
   const folderLabel = detail.chat.folder ?? t.folderNone;
-  const openQuestion = [...detail.messages]
+  // The server reports the open question too, since it can be older than the loaded pages.
+  const asked = detail.open_question;
+  const openQuestion = [
+    ...(asked && !detail.messages.some((m) => m.id === asked.id) ? [asked] : []),
+    ...detail.messages,
+  ]
     .reverse()
     .find((m) => m.role === "question" && !m.answered && parseQuestions(m.content).length);
   const template = `minmax(0, ${splitSizes[0]}fr) 6px minmax(0, ${splitSizes[1]}fr)`;

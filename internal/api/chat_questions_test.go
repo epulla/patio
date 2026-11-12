@@ -40,6 +40,35 @@ func TestOtherChatMessageKeepsOpenQuestion(t *testing.T) {
 	}
 }
 
+func TestChatDetailOpenQuestionOlderThanPage(t *testing.T) {
+	database, handler, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	senderID := createDriverTestChat(t, database, connectorID, root)
+	question, err := InsertChatMessage(database, chatID, "question", `{"questions":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 60; i++ {
+		if _, err := insertChatMessage(database, chatID, "user", "progress", nil, &senderID, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var detail struct {
+		OpenQuestion *ChatMessage `json:"open_question"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK || detail.OpenQuestion == nil || detail.OpenQuestion.ID != question.ID {
+		t.Fatalf("open question = %d, %#v", code, detail.OpenQuestion)
+	}
+	if _, err := InsertChatMessage(database, chatID, "user", "answered elsewhere"); err != nil {
+		t.Fatal(err)
+	}
+	detail.OpenQuestion = nil
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK || detail.OpenQuestion != nil {
+		t.Fatalf("answered question = %d, %#v", code, detail.OpenQuestion)
+	}
+}
+
 func TestAnswerQuestionRejectsBusyAndAlreadyAnswered(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
