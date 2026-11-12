@@ -205,6 +205,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("GET /api/chats", s.listChats)
 	m.HandleFunc("POST /api/chats", s.createChat)
 	m.HandleFunc("GET /api/chats/{id}", s.getChat)
+	m.HandleFunc("GET /api/chats/{id}/messages", s.listChatMessages)
 	m.HandleFunc("GET /api/chats/{id}/draft", s.getChatDraft)
 	m.HandleFunc("PUT /api/chats/{id}/draft", s.putChatDraft)
 	m.HandleFunc("GET /api/chats/{id}/tree", s.chatTree)

@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -471,6 +472,80 @@ func (s *Server) getChatToolResult(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, map[string]string{"tool_result": result.String})
 }
 
+func (s *Server) chatMessagesPage(chatID, before string, limit int) ([]ChatMessage, *string, int, error) {
+	query := `SELECT m.rowid,m.id,m.chat_id,m.role,m.content,m.created_at,m.attachments,m.answered,m.tool_result_size,m.tool_error,m.from_chat_id,COALESCE(sender.title,'') FROM chat_message m LEFT JOIN chat sender ON sender.id=m.from_chat_id WHERE m.chat_id=?`
+	args := []any{chatID}
+	if before != "" {
+		createdAt, rawRowID, ok := strings.Cut(before, "|")
+		rowID, err := strconv.ParseInt(rawRowID, 10, 64)
+		if !ok || createdAt == "" || err != nil {
+			return nil, nil, http.StatusBadRequest, errors.New("invalid cursor")
+		}
+		query += ` AND (m.created_at < ? OR (m.created_at = ? AND m.rowid < ?))`
+		args = append(args, createdAt, createdAt, rowID)
+	}
+	query += ` ORDER BY m.created_at DESC,m.rowid DESC LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, nil, http.StatusInternalServerError, err
+	}
+	defer rows.Close()
+	messages := []ChatMessage{}
+	rowIDs := []int64{}
+	for rows.Next() {
+		var m ChatMessage
+		var rowID int64
+		var rawAttachments string
+		if err := rows.Scan(&rowID, &m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError, &m.FromChatID, &m.FromChatTitle); err != nil {
+			return nil, nil, http.StatusInternalServerError, err
+		}
+		if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
+			return nil, nil, http.StatusInternalServerError, errors.New("invalid chat message attachments: " + err.Error())
+		}
+		messages = append(messages, m)
+		rowIDs = append(rowIDs, rowID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, http.StatusInternalServerError, err
+	}
+	var next *string
+	if len(messages) > limit {
+		messages = messages[:limit]
+		cursor := messages[limit-1].CreatedAt + "|" + strconv.FormatInt(rowIDs[limit-1], 10)
+		next = &cursor
+	}
+	slices.Reverse(messages)
+	return messages, next, http.StatusOK, nil
+}
+
+func (s *Server) listChatMessages(w http.ResponseWriter, r *http.Request) {
+	chatID := idParam(r, "id")
+	var exists int
+	if err := s.db.QueryRow(`SELECT 1 FROM chat WHERE id=?`, chatID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+		errw(w, http.StatusNotFound, "chat not found")
+		return
+	} else if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 200 {
+			errw(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		limit = value
+	}
+	messages, next, status, err := s.chatMessagesPage(chatID, r.URL.Query().Get("before"), limit)
+	if err != nil {
+		errw(w, status, err.Error())
+		return
+	}
+	write(w, http.StatusOK, map[string]any{"messages": messages, "next_cursor": next})
+}
+
 func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, idParam(r, "id")))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -490,40 +565,13 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		}
 		c.Paused = c.PausedReason != ""
 	}
-	messages := []ChatMessage{}
-	rows, err := s.db.Query(`SELECT m.id,m.chat_id,m.role,m.content,m.created_at,m.attachments,m.answered,m.tool_result_size,m.tool_error,m.from_chat_id,COALESCE(sender.title,'') FROM chat_message m LEFT JOIN chat sender ON sender.id=m.from_chat_id WHERE m.chat_id=? ORDER BY m.created_at,m.rowid`, c.ID)
+	messages, next, status, err := s.chatMessagesPage(c.ID, "", 50)
 	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	for rows.Next() {
-		var m ChatMessage
-		var rawAttachments string
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &rawAttachments, &m.Answered, &m.ToolResultSize, &m.ToolError, &m.FromChatID, &m.FromChatTitle); err == nil {
-			if m.Attachments, err = decodeChatAttachments(rawAttachments); err != nil {
-				_ = rows.Close()
-				errw(w, 500, "invalid chat message attachments: "+err.Error())
-				return
-			}
-		} else {
-			if closeErr := rows.Close(); closeErr != nil {
-				err = errors.Join(err, closeErr)
-			}
-			errw(w, 500, err.Error())
-			return
-		}
-		messages = append(messages, m)
-	}
-	rowsErr := rows.Err()
-	if err := rows.Close(); err != nil {
-		rowsErr = errors.Join(rowsErr, err)
-	}
-	if rowsErr != nil {
-		errw(w, 500, rowsErr.Error())
+		errw(w, status, err.Error())
 		return
 	}
 	approvals := []chatApproval{}
-	rows, err = s.db.Query(`SELECT id,chat_id,tool_name,input_json,status,auto,created_at,answered_at FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY created_at,rowid`, c.ID)
+	rows, err := s.db.Query(`SELECT id,chat_id,tool_name,input_json,status,auto,created_at,answered_at FROM chat_approval WHERE chat_id=? AND status='pending' ORDER BY created_at,rowid`, c.ID)
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
@@ -537,7 +585,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		}
 		approvals = append(approvals, a)
 	}
-	rowsErr = rows.Err()
+	rowsErr := rows.Err()
 	if err := rows.Close(); err != nil {
 		rowsErr = errors.Join(rowsErr, err)
 	}
@@ -605,7 +653,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	response := map[string]any{"chat": c, "messages": messages, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals, "flow_status": flowStatus}
+	response := map[string]any{"chat": c, "messages": messages, "next_cursor": next, "parent": parent, "children": children, "pending_approvals": approvals, "auto_approvals": autoApprovals, "flow_status": flowStatus}
 	data, err := json.Marshal(response)
 	if err != nil {
 		errw(w, 500, err.Error())

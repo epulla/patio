@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -370,6 +371,47 @@ func TestChatListPagingDeletedCursorSameTimestamp(t *testing.T) {
 		if !found {
 			t.Errorf("page after deleted cursor missing chat %q: %#v", id, page.Chats)
 		}
+	}
+}
+
+func TestChatMessagesPaging(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var created chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated {
+		t.Fatalf("create chat = %d", code)
+	}
+	for i := 0; i < 120; i++ {
+		if _, err := database.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,'user',?,'same')`, uid(), created.ID, strconv.Itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var page struct {
+		Messages []ChatMessage `json:"messages"`
+		Next     *string       `json:"next_cursor"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &page); code != http.StatusOK || len(page.Messages) != 50 || page.Next == nil {
+		t.Fatalf("chat page = %d, %#v", code, page)
+	}
+	all := append([]ChatMessage(nil), page.Messages...)
+	for cursor := page.Next; cursor != nil; {
+		path := "/api/chats/" + created.ID + "/messages?before=" + url.QueryEscape(*cursor)
+		if code := requestJSON(t, handler, http.MethodGet, path, nil, &page); code != http.StatusOK {
+			t.Fatalf("older page = %d", code)
+		}
+		all = append(page.Messages, all...)
+		cursor = page.Next
+	}
+	if len(all) != 120 {
+		t.Fatalf("got %d messages, want 120", len(all))
+	}
+	for i, message := range all {
+		if message.Content != strconv.Itoa(i) {
+			t.Fatalf("message %d = %q", i, message.Content)
+		}
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID+"/messages?before=bad", nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid cursor status = %d", code)
 	}
 }
 
