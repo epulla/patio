@@ -9,6 +9,7 @@ import Connectors from "./Connectors";
 import { Channels } from "./Connections";
 import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
 import { isShortcutsKey, ShortcutsDialog } from "./Shortcuts";
+import { WhatsNewDialog } from "./WhatsNew";
 import ChatDock, { dockShortcut, usePinnedChats } from "./ChatDock";
 import { statusIcons } from "./chatStatus";
 import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, pruneSplit, setActiveGroup, shownPin, splitLeaves, usePinGroups, usePins } from "./pins";
@@ -152,6 +153,7 @@ export default function App() {
   const [pinnedDialog, setPinnedDialog] = useState<Connector[]>();
   const [notice, setNotice] = useState<string>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [whatsNew, setWhatsNew] = useState(false);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -384,7 +386,14 @@ export default function App() {
   useEffect(() => {
     api
       .get<{ show: boolean }>("/api/onboarding")
-      .then((state) => setOnboarding(state.show))
+      .then(async (state) => {
+        setOnboarding(state.show);
+        if (chatWindow || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
+        // A fresh install gets onboarding instead; otherwise wait for the notes so an offline launch retries next time.
+        if (!state.show) await api.get("/api/release-notes");
+        await api.put("/api/whats-new", {});
+        if (!state.show) setWhatsNew(true);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -698,6 +707,7 @@ export default function App() {
       )}
       {pinnedDialog && <NewChatDialog connectors={pinnedDialog} onClose={() => setPinnedDialog(undefined)} onCreated={openPinned} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {whatsNew && <WhatsNewDialog version={config.version} onClose={() => setWhatsNew(false)} />}
       {onboarding && (
         <Onboarding
           onDone={async () => {
