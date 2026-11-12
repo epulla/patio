@@ -66,6 +66,19 @@ const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 const newChatShortcut = mac ? "⌘N" : "Ctrl+N";
 const newChatAriaShortcut = mac ? "Meta+N" : "Control+N";
 const searchShortcut = mac ? "⌘F" : "Ctrl+F";
+const filesShortcut = mac ? "⌘⇧E" : "Ctrl+Shift+E";
+
+// Toggles the files panel of the focused chat (or the only chat on screen).
+addEventListener("keydown", (event) => {
+  if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== "e") return;
+  if (document.querySelector("dialog[open]")) return;
+  const panes = document.querySelectorAll(".conversation-files");
+  const pane = document.activeElement?.closest(".conversation-files") ?? (panes.length === 1 ? panes[0] : null);
+  const toggle = pane?.querySelector<HTMLButtonElement>("[data-files-toggle]");
+  if (!toggle) return;
+  event.preventDefault();
+  toggle.click();
+});
 
 type ChatDetail = {
   chat: Chat;
@@ -2516,8 +2529,9 @@ export function Conversation({
               type="button"
               className="ghost tip-up tip-wide"
               data-tour="files"
+              data-files-toggle
               icon="folder"
-              label={t.folder(folderLabel)}
+              label={`${t.folder(folderLabel)} (${filesShortcut})`}
               aria-pressed={filesOpen}
               onClick={() => setFilesOpen(!filesOpen)}
             />
