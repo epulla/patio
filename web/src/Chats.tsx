@@ -374,6 +374,18 @@ export default function Chats({
     if (!pin(chatID)) setError(new Error(t.unpinFirst(maxPins)));
   }
 
+  async function deleteChat(chat: Chat) {
+    if (!(await confirmDialog(t.deleteConfirm(chat.title)))) return;
+    try {
+      await api.delete(`/api/chats/${chat.id}`);
+      if (groupOf(chat.id)) unpin(chat.id);
+      if (chat.id === id) navigate("/ai/chats");
+      setReload((value) => value + 1);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
   function moveChat(chatID: string, groupID: string, name: string) {
     if (!moveToGroup(chatID, groupID)) setError(new Error(t.groupFull(name)));
   }
@@ -968,6 +980,16 @@ export default function Chats({
                         }}
                       >
                         <Icon name="link" /> {t.copyLink}
+                      </button>
+                      <button
+                        role="menuitem"
+                        className="danger-text"
+                        onClick={() => {
+                          close();
+                          deleteChat(chat);
+                        }}
+                      >
+                        <Icon name="trash" /> {t.deleteChat}
                       </button>
                     </>
                   )}
