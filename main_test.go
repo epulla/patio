@@ -5,8 +5,28 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+func TestThrottleCoalescesBurst(t *testing.T) {
+	var calls atomic.Int32
+	throttled := throttle(50*time.Millisecond, func() { calls.Add(1) })
+	throttled()
+	throttled()
+	throttled()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("immediate calls = %d, want 1", got)
+	}
+	deadline := time.Now().Add(time.Second)
+	for calls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("calls after trailing edge = %d, want 2", got)
+	}
+}
 
 func TestDBPath(t *testing.T) {
 	tests := []struct {

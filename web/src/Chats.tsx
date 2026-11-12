@@ -311,6 +311,7 @@ export default function Chats({
     startingChat.current = true;
     try {
       const chat = await createChatWithDefaults(connectors[0]);
+      setReload((value) => value + 1);
       navigate(`/ai/chats/${chat.id}`);
     } catch (reason) {
       setError(reason);
@@ -346,7 +347,7 @@ export default function Chats({
         }
       })
       .catch(setError);
-  }, [refresh, reload, id]);
+  }, [refresh, reload]);
 
   useEffect(() => {
     loadedCount.current = chats.length;
@@ -1292,6 +1293,7 @@ export default function Chats({
           onClose={() => setCreating(false)}
           onCreated={(chat) => {
             setCreating(false);
+            setReload((value) => value + 1);
             navigate(`/ai/chats/${chat.id}`);
           }}
         />

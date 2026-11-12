@@ -42,6 +42,32 @@ import (
 
 var version = "dev"
 
+func throttle(every time.Duration, fn func()) func() {
+	var mu sync.Mutex
+	var last time.Time
+	pending := false
+	return func() {
+		mu.Lock()
+		if last.IsZero() || time.Since(last) >= every {
+			last = time.Now()
+			mu.Unlock()
+			fn()
+			return
+		}
+		if !pending {
+			pending = true
+			time.AfterFunc(time.Until(last.Add(every)), func() {
+				mu.Lock()
+				pending = false
+				last = time.Now()
+				mu.Unlock()
+				fn()
+			})
+		}
+		mu.Unlock()
+	}
+}
+
 //go:embed build/appicon.png
 var appIcon []byte
 
@@ -282,8 +308,13 @@ func main() {
 		background.Add(1)
 		go func() {
 			defer background.Done()
+			emitDBChanged := throttle(2*time.Second, func() {
+				if backgroundCtx.Err() == nil {
+					app.Event.Emit("db-changed")
+				}
+			})
 			if err := db.Watch(backgroundCtx, database, time.Second, func() {
-				app.Event.Emit("db-changed")
+				emitDBChanged()
 				if err := apiServer.ApplyMCPReloadRequest(); err != nil {
 					log.Printf("reload MCP servers on request: %v", err)
 				}

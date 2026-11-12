@@ -24,15 +24,18 @@ export function usePinnedChats(ids: string[], refresh: number) {
 
   useEffect(() => {
     if (!key) return setChats([]);
-    // burnedout: assumed pinned chats are among the 200 most recently updated
+    let live = true;
     api
-      .get<{ chats: Chat[] }>("/api/chats?limit=200")
+      .get<{ chats: Chat[] }>(`/api/chats?ids=${encodeURIComponent(key)}`)
       .then((page) => {
-        const pinned = page.chats.filter((chat) => key.split(",").includes(chat.id));
-        setChats(pinned);
-        syncChatStatus(pinned);
+        if (!live) return;
+        setChats(page.chats);
+        syncChatStatus(page.chats);
       })
       .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   }, [key, refresh]);
 
   return { chats, status, seen: markSeen };

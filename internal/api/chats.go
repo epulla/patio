@@ -238,6 +238,15 @@ func (s *Server) chatWorkdir(c chat) string {
 const chatColumns = `id,connector_id,title,title_locked,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id,bot_id`
 
 func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
+	ids, idsPresent := r.URL.Query()["ids"]
+	byIDs := idsPresent && ids[0] != ""
+	if byIDs {
+		ids = strings.Split(ids[0], ",")
+		if len(ids) > 1000 {
+			errw(w, 400, "too many chat ids")
+			return
+		}
+	}
 	limit := 50
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		value, err := strconv.Atoi(raw)
@@ -251,7 +260,13 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	args := []any{}
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	_, searching := r.URL.Query()["q"]
-	if search != "" {
+	if byIDs {
+		query += ` WHERE id IN (` + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + `)`
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		searching = false
+	} else if search != "" {
 		query += ` WHERE title LIKE ? ESCAPE '\'`
 		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)+"%")
 	} else if values, present := r.URL.Query()["cursor"]; present {
@@ -275,8 +290,11 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 			args = append(args, updatedAt)
 		}
 	}
-	query += ` ORDER BY updated_at DESC,rowid DESC LIMIT ?`
-	args = append(args, limit+1)
+	query += ` ORDER BY updated_at DESC,rowid DESC`
+	if !byIDs {
+		query += ` LIMIT ?`
+		args = append(args, limit+1)
+	}
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		errw(w, 500, err.Error())
@@ -314,7 +332,7 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	if len(out) > limit {
+	if !byIDs && len(out) > limit {
 		out = out[:limit]
 		last := out[len(out)-1]
 		write(w, 200, map[string]any{"chats": out, "next_cursor": last.UpdatedAt + "|" + last.ID})

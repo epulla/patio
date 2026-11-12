@@ -198,6 +198,29 @@ func TestChatListPaging(t *testing.T) {
 	}
 }
 
+func TestChatListIDs(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var created [3]chat
+	for i := range created {
+		if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created[i]); code != http.StatusCreated {
+			t.Fatalf("create chat = %d", code)
+		}
+	}
+	var result struct {
+		Chats []chat  `json:"chats"`
+		Next  *string `json:"next_cursor"`
+	}
+	path := "/api/chats?ids=" + created[0].ID + "," + created[2].ID + "&q=missing&cursor=bad"
+	if code := requestJSON(t, handler, http.MethodGet, path, nil, &result); code != http.StatusOK || len(result.Chats) != 2 || result.Next != nil {
+		t.Fatalf("ids status/chats = %d, %#v", code, result)
+	}
+	got := map[string]bool{result.Chats[0].ID: true, result.Chats[1].ID: true}
+	if !got[created[0].ID] || !got[created[2].ID] {
+		t.Fatalf("ids chats = %#v", result.Chats)
+	}
+}
+
 func TestChatListSearch(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
