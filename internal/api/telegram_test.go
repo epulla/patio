@@ -115,10 +115,9 @@ func mapTelegramChat(t *testing.T, s *Server, chatID string) {
 func TestTelegramSettingsAndTokenTest(t *testing.T) {
 	keyring.MockInit()
 	_, handler := newAPI(t)
+	var paths []string
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/bottoken/getMe" {
-			t.Errorf("path = %s", r.URL.Path)
-		}
+		paths = append(paths, r.URL.Path)
 		_, _ = w.Write([]byte(`{"ok":true,"result":{"username":"patio_bot"}}`))
 	}))
 	defer fake.Close()
@@ -141,6 +140,9 @@ func TestTelegramSettingsAndTokenTest(t *testing.T) {
 	var tested map[string]string
 	if code := requestJSON(t, handler, http.MethodPost, "/api/settings/telegram/test", map[string]any{"token": nil}, &tested); code != 200 || tested["username"] != "patio_bot" {
 		t.Fatalf("test = %d %#v", code, tested)
+	}
+	if strings.Join(paths, ",") != "/bottoken/getMe,/bottoken/setMyCommands" {
+		t.Fatalf("calls = %v", paths)
 	}
 }
 
@@ -720,17 +722,22 @@ func TestTelegramContinueListsRecentChats(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES(?,'Old','now','2026-01-01'),(?,?,'now','2026-02-01')`, old, recent, strings.Repeat("Long title ", 10)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.processTelegramUpdate(context.Background(), "token", telegramTestCfg, telegramUpdate{Message: telegramText(12, 77, "/continue")}); err != nil {
-		t.Fatal(err)
+	commands := []string{"/continue", "/recents", "/recent"}
+	for _, command := range commands {
+		if err := s.processTelegramUpdate(context.Background(), "token", telegramTestCfg, telegramUpdate{Message: telegramText(12, 77, command)}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	sent := fake.sent("sendMessage")
-	if len(sent) != 1 {
+	if len(sent) != len(commands) {
 		t.Fatalf("replies = %v", sent)
 	}
-	rows := sent[0]["reply_markup"].(map[string]any)["inline_keyboard"].([]any)
-	first := rows[0].([]any)[0].(map[string]any)
-	if len(rows) != 2 || first["callback_data"] != "c:"+recent || len([]rune(first["text"].(string))) != 41 {
-		t.Fatalf("keyboard = %v", rows)
+	for _, reply := range sent {
+		rows := reply["reply_markup"].(map[string]any)["inline_keyboard"].([]any)
+		first := rows[0].([]any)[0].(map[string]any)
+		if len(rows) != 2 || first["callback_data"] != "c:"+recent || len([]rune(first["text"].(string))) != 41 {
+			t.Fatalf("keyboard = %v", rows)
+		}
 	}
 }
 

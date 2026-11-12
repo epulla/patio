@@ -217,7 +217,7 @@ func (s *Server) processTelegramMessage(ctx context.Context, token string, cfg t
 	if !telegramAllowed(cfg, m.From.ID) {
 		return reply(fmt.Sprintf("Not allowed. Your Telegram ID is %d: add it in Patio Connections › Channels.", m.From.ID))
 	}
-	if command, arg, _ := strings.Cut(strings.TrimSpace(m.Text), " "); command == "/continue" {
+	if command, arg, _ := strings.Cut(strings.TrimSpace(m.Text), " "); command == "/continue" || command == "/recents" || command == "/recent" {
 		return s.continueTelegramChat(ctx, token, m.Chat.ID, strings.TrimSpace(arg))
 	}
 	var chatID string
@@ -345,6 +345,14 @@ func (s *Server) createTelegramChat(title string) (string, error) {
 func (s *Server) mapTelegramChat(telegramID int64, chatID string) error {
 	_, err := s.db.Exec(`INSERT INTO telegram_chat(telegram_chat_id,chat_id,created_at) VALUES(?,?,?) ON CONFLICT(telegram_chat_id) DO UPDATE SET chat_id=excluded.chat_id,created_at=excluded.created_at`, telegramID, chatID, now())
 	return err
+}
+
+// telegramCommands fill Telegram's "/" menu.
+var telegramCommands = []map[string]string{
+	{"command": "new", "description": "Start a fresh chat"},
+	{"command": "chat", "description": "Show the current chat"},
+	{"command": "continue", "description": "Pick a recent chat, or pass a chat link"},
+	{"command": "recents", "description": "Pick a recent chat"},
 }
 
 var telegramChatIDPattern = regexp.MustCompile(`[0-9a-f]{32}`)

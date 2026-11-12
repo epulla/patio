@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -148,6 +149,9 @@ func (s *Server) testTelegramToken(w http.ResponseWriter, r *http.Request) {
 	if err := telegramCall(r.Context(), token, "getMe", nil, &result); err != nil {
 		errw(w, 502, err.Error())
 		return
+	}
+	if err := telegramCall(r.Context(), token, "setMyCommands", map[string]any{"commands": telegramCommands}, nil); err != nil {
+		log.Printf("Telegram setMyCommands: %v", err)
 	}
 	write(w, 200, map[string]string{"username": result.Username})
 }
