@@ -90,6 +90,7 @@ export default function BoardView({
       .catch((reason) => seq === loadSeq.current && setError(reason));
   };
   useEffect(() => {
+    loadSeq.current++;
     const timer = setTimeout(load, data ? 200 : 0);
     return () => clearTimeout(timer);
   }, [id, query, refresh]);

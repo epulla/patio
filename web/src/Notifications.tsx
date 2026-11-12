@@ -302,10 +302,14 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
 
   // The first load sets the cursor; later refreshes replace the newest page so loaded older pages stay
   // and deleted items drop out. Local read marks win: the server never marks an item unread again.
+  const refreshSeq = useRef(0);
   useEffect(() => {
+    // Overlapping refreshes: a late older page would bring back deleted items, so only the newest applies.
+    const seq = ++refreshSeq.current;
     api
       .get<Page>("/api/notifications?limit=50")
       .then((page) => {
+        if (seq !== refreshSeq.current) return;
         setError(undefined);
         if (first.current) {
           first.current = false;
@@ -321,7 +325,7 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
           return [...page.notifications.map((item) => ({ ...item, read_at: item.read_at ?? read.get(item.id) ?? null })), ...older];
         });
       })
-      .catch(setError);
+      .catch((reason) => seq === refreshSeq.current && setError(reason));
   }, [refresh]);
 
   function loadMore() {

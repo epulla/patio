@@ -87,6 +87,15 @@ export default function TicketDetail({
     try {
       const current = await api.get<Ticket>(`/api/tickets/${id}`);
       if (stale()) return;
+      const [boardData, ticketHistory, ticketTransitions, ticketComments, ticketLinks] = await Promise.all([
+        api.get<BoardData>(`/api/boards/${current.board_id}/data`),
+        api.get<History[]>(`/api/tickets/${current.id}/history`),
+        api.get<Transition[]>(`/api/tickets/${current.id}/transitions`),
+        api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
+        api.get<TicketLink[]>(`/api/tickets/${current.id}/links`),
+      ]);
+      if (stale()) return;
+      // Set together with its board, comments and links so a new ticket never shows the previous one's.
       setTicket(current);
       // Title and description save on blur, so keep in-progress text on live refresh.
       setForm((prev) => ({
@@ -97,14 +106,6 @@ export default function TicketDetail({
         status: current.status_id,
         assignee: current.assignee_id || "",
       }));
-      const [boardData, ticketHistory, ticketTransitions, ticketComments, ticketLinks] = await Promise.all([
-        api.get<BoardData>(`/api/boards/${current.board_id}/data`),
-        api.get<History[]>(`/api/tickets/${current.id}/history`),
-        api.get<Transition[]>(`/api/tickets/${current.id}/transitions`),
-        api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
-        api.get<TicketLink[]>(`/api/tickets/${current.id}/links`),
-      ]);
-      if (stale()) return;
       setBoard(boardData);
       setHistory(ticketHistory);
       setTransitions(ticketTransitions);
