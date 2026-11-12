@@ -30,6 +30,7 @@ const text = {
     saving: "Saving…",
     cancel: "Cancel",
     editTooLarge: "This file is larger than 2 MB, too large to edit here.",
+    notUTF8: "Not UTF-8 text; open in default app to edit",
     discard: "Discard your unsaved changes?",
     discardButton: "Discard",
     conflict: "This file changed on disk since you opened it.",
@@ -56,6 +57,7 @@ const text = {
     saving: "Guardando…",
     cancel: "Cancelar",
     editTooLarge: "Este archivo pesa más de 2 MB, demasiado para editarlo aquí.",
+    notUTF8: "No es texto UTF-8; ábrelo en la app predeterminada para editarlo",
     discard: "¿Descartar los cambios sin guardar?",
     discardButton: "Descartar",
     conflict: "Este archivo cambió en el disco desde que lo abriste.",
@@ -125,6 +127,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
   const [web, setWeb] = useState(false);
   const [draft, setDraft] = useState<{ text: string; original: string; modified: string; conflict?: boolean }>();
   const [saving, setSaving] = useState(false);
+  const [notUTF8, setNotUTF8] = useState(false);
   const [version, setVersion] = useState(0);
   const name = path.split("/").pop() ?? path;
   const kind = fileKind(name);
@@ -140,7 +143,13 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
     try {
       const response = await fetchFile(rawURL(chatId, path));
       if (Number(response.headers.get("content-length")) > editLimit) throw new Error(t.editTooLarge);
-      const text = await response.text();
+      let text: string;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(await response.arrayBuffer());
+      } catch {
+        setNotUTF8(true);
+        return setError(t.notUTF8);
+      }
       setDraft({ text, original: text, modified: response.headers.get("X-Modified") ?? "" });
     } catch (reason) {
       setError(reason);
@@ -202,7 +211,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
         </>
       ) : (
         editable && (
-          <button type="button" className="ghost" onClick={() => void edit()}>
+          <button type="button" className="ghost" disabled={notUTF8} data-tip={notUTF8 ? t.notUTF8 : undefined} onClick={() => void edit()}>
             <Icon name="pencil" /> {t.edit}
           </button>
         )

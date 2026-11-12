@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type chatFile struct {
@@ -225,6 +226,18 @@ func (s *Server) saveChatFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if !info.Mode().IsRegular() {
 		errw(w, 400, "path is not a regular file")
+		return
+	}
+	if info.Size() > editLimit {
+		errw(w, 413, "file too large")
+		return
+	}
+	// Saving decoded text over non-UTF-8 bytes would silently replace them.
+	if old, err := parent.ReadFile(base); err != nil {
+		chatFileError(w, err)
+		return
+	} else if !utf8.Valid(old) {
+		errw(w, 400, "not UTF-8 text")
 		return
 	}
 	if in.ExpectedModified != "" && info.ModTime().UTC().Format(time.RFC3339Nano) != in.ExpectedModified {

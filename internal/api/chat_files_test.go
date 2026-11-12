@@ -82,6 +82,16 @@ func TestChatFilesSave(t *testing.T) {
 	if w := request("edit.json", "{", ""); w.Code != 400 {
 		t.Fatalf("invalid JSON = %d", w.Code)
 	}
+	latin1 := filepath.Join(c.Workdir, "latin1.txt")
+	if err := os.WriteFile(latin1, []byte("caf\xe9"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("latin1.txt", "café", ""); w.Code != 400 {
+		t.Fatalf("non-UTF-8 = %d", w.Code)
+	}
+	if content, _ := os.ReadFile(latin1); string(content) != "caf\xe9" {
+		t.Fatalf("non-UTF-8 changed: %q", content)
+	}
 }
 
 func chatFileRequest(t *testing.T, s *Server, method, path string, body string) *httptest.ResponseRecorder {
