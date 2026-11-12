@@ -408,9 +408,7 @@ function General() {
             <dd>
               <code>{about.version}</code> · {about.os}/{about.arch}
               <span className="about-actions">
-                <button type="button" onClick={checkUpdates} disabled={update === "checking"}>
-                  {update === "checking" ? t.checking : t.checkUpdates}
-                </button>
+                <IconButton type="button" className="ghost" icon="refresh" label={update === "checking" ? t.checking : t.checkUpdates} onClick={checkUpdates} disabled={update === "checking"} />
               </span>
               {update && update !== "checking" && !update.available && (
                 <span className="muted" role="status">
@@ -425,9 +423,7 @@ function General() {
                 <dd>
                   {t.off}
                   <span className="about-actions">
-                    <button type="button" onClick={openNotificationSettings}>
-                      {t.openSettings}
-                    </button>
+                    <IconButton type="button" className="ghost" icon="settings" label={t.openSettings} onClick={openNotificationSettings} />
                   </span>
                 </dd>
               </>
@@ -436,12 +432,8 @@ function General() {
             <dd>
               <code className="about-path">{about.db_path}</code>
               <span className="about-actions">
-                <button type="button" onClick={() => reveal("database")}>
-                  {t.showIn(manager)}
-                </button>
-                <button type="button" onClick={copyPath}>
-                  {copied ? t.copied : t.copyPath}
-                </button>
+                <IconButton type="button" className="ghost" icon="folder" label={t.showIn(manager)} onClick={() => reveal("database")} />
+                <IconButton type="button" className="ghost" icon={copied ? "check" : "copy"} label={copied ? t.copied : t.copyPath} onClick={copyPath} />
               </span>
             </dd>
             {about.log_path && (
@@ -450,9 +442,7 @@ function General() {
                 <dd>
                   <code className="about-path">{about.log_path}</code>
                   <span className="about-actions">
-                    <button type="button" onClick={() => reveal("logs")}>
-                      {t.showIn(manager)}
-                    </button>
+                    <IconButton type="button" className="ghost" icon="folder" label={t.showIn(manager)} onClick={() => reveal("logs")} />
                   </span>
                 </dd>
               </>
@@ -465,9 +455,7 @@ function General() {
                 {formatBytes(about.data_dir_bytes)}
               </span>
               <span className="about-actions">
-                <button type="button" onClick={() => reveal("data_dir")}>
-                  {t.open}
-                </button>
+                <IconButton type="button" className="ghost" icon="externalLink" label={t.open} onClick={() => reveal("data_dir")} />
               </span>
             </dd>
             <dt>{t.contents}</dt>
