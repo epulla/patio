@@ -152,13 +152,18 @@ export default function ChatDock({
   }, []);
   useEffect(() => {
     if (!connectorsStale.current) return;
+    let live = true;
     api
       .get<Connector[]>("/api/connectors")
       .then((list) => {
+        if (!live) return;
         connectorsStale.current = false;
         setConnectors(list);
       })
       .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   }, [refresh, connectorEdits]);
 
   return (
