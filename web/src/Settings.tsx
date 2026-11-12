@@ -1,6 +1,7 @@
 import { startTour } from "./Tour";
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { ShortcutList } from "./Shortcuts";
+import { WhatsNewDialog } from "./WhatsNew";
 import {
   api,
   type AllowedFolder,
@@ -332,6 +333,7 @@ function General() {
   const [error, setError] = useState<unknown>();
   const [update, setUpdate] = useState<UpdateInfo | "checking">();
   const [updateError, setUpdateError] = useState<unknown>();
+  const [whatsNew, setWhatsNew] = useState(false);
   const notificationsBlocked = useNotificationsBlocked();
 
   async function checkUpdates() {
@@ -409,7 +411,9 @@ function General() {
               <code>{about.version}</code> · {about.os}/{about.arch}
               <span className="about-actions">
                 <IconButton type="button" className="ghost" icon="refresh" label={update === "checking" ? t.checking : t.checkUpdates} onClick={checkUpdates} disabled={update === "checking"} />
+                {about.version !== "dev" && <IconButton type="button" className="ghost" icon="sparkles" label={t.whatsNew} onClick={() => setWhatsNew(true)} />}
               </span>
+              {whatsNew && <WhatsNewDialog version={about.version} onClose={() => setWhatsNew(false)} />}
               {update && update !== "checking" && !update.available && (
                 <span className="muted" role="status">
                   {about.version === "dev" ? t.devBuild : t.upToDate}
