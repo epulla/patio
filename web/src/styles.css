@@ -4642,6 +4642,24 @@ main.chat-window .app-version {
 .about-size {
   flex: none;
 }
+.about-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 2px 2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--base-200);
+}
+.about-box code {
+  padding: 0;
+  background: none;
+  font: 13px var(--mono);
+}
+.about-box .about-size {
+  font-size: 13px;
+}
 .about-actions {
   display: inline-flex;
   flex: none;

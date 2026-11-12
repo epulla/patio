@@ -408,10 +408,13 @@ function General() {
           <dl className="about-list">
             <dt>{t.version}</dt>
             <dd>
-              <code>{about.version}</code> · {about.os}/{about.arch}
-              <span className="about-actions">
-                <IconButton type="button" className="ghost" icon="refresh" label={update === "checking" ? t.checking : t.checkUpdates} onClick={checkUpdates} disabled={update === "checking"} />
-                {about.version !== "dev" && <IconButton type="button" className="ghost" icon="sparkles" label={t.whatsNew} onClick={() => setWhatsNew(true)} />}
+              <span className="about-box">
+                <code>{about.version}</code>
+                <span className="muted about-size">{about.os}/{about.arch}</span>
+                <span className="about-actions">
+                  <IconButton type="button" className="ghost" icon="refresh" label={update === "checking" ? t.checking : t.checkUpdates} onClick={checkUpdates} disabled={update === "checking"} />
+                  {about.version !== "dev" && <IconButton type="button" className="ghost" icon="sparkles" label={t.whatsNew} onClick={() => setWhatsNew(true)} />}
+                </span>
               </span>
               {whatsNew && <WhatsNewDialog version={about.version} onClose={() => setWhatsNew(false)} />}
               {update && update !== "checking" && !update.available && (
@@ -434,32 +437,38 @@ function General() {
             )}
             <dt>{t.database}</dt>
             <dd>
-              <code className="about-path" title={about.db_path}><bdi>{about.db_path}</bdi></code>
-              <span className="about-actions">
-                <IconButton type="button" className="ghost" icon="folder" label={t.showIn(manager)} onClick={() => reveal("database")} />
-                <IconButton type="button" className="ghost" icon={copied ? "check" : "copy"} label={copied ? t.copied : t.copyPath} onClick={copyPath} />
+              <span className="about-box">
+                <code className="about-path" title={about.db_path}><bdi>{about.db_path}</bdi></code>
+                <span className="about-actions">
+                  <IconButton type="button" className="ghost" icon="folder" label={t.showIn(manager)} onClick={() => reveal("database")} />
+                  <IconButton type="button" className="ghost" icon={copied ? "check" : "copy"} label={copied ? t.copied : t.copyPath} onClick={copyPath} />
+                </span>
               </span>
             </dd>
             {about.log_path && (
               <>
                 <dt>{t.logs}</dt>
                 <dd>
-                  <code className="about-path" title={about.log_path}><bdi>{about.log_path}</bdi></code>
-                  <span className="about-actions">
-                    <IconButton type="button" className="ghost" icon="folder" label={t.showIn(manager)} onClick={() => reveal("logs")} />
+                  <span className="about-box">
+                    <code className="about-path" title={about.log_path}><bdi>{about.log_path}</bdi></code>
+                    <span className="about-actions">
+                      <IconButton type="button" className="ghost" icon="folder" label={t.showIn(manager)} onClick={() => reveal("logs")} />
+                    </span>
                   </span>
                 </dd>
               </>
             )}
             <dt>{t.dataFolder}</dt>
             <dd>
-              <code className="about-path" title={about.data_dir}><bdi>{about.data_dir}</bdi></code>
-              <span className="muted about-size">
-                {about.approximate ? t.about : ""}
-                {formatBytes(about.data_dir_bytes)}
-              </span>
-              <span className="about-actions">
-                <IconButton type="button" className="ghost" icon="externalLink" label={t.open} onClick={() => reveal("data_dir")} />
+              <span className="about-box">
+                <code className="about-path" title={about.data_dir}><bdi>{about.data_dir}</bdi></code>
+                <span className="muted about-size">
+                  {about.approximate ? t.about : ""}
+                  {formatBytes(about.data_dir_bytes)}
+                </span>
+                <span className="about-actions">
+                  <IconButton type="button" className="ghost" icon="externalLink" label={t.open} onClick={() => reveal("data_dir")} />
+                </span>
               </span>
             </dd>
             <dt>{t.contents}</dt>
