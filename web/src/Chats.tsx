@@ -2490,6 +2490,7 @@ export function Conversation({
             <IconButton
               type="button"
               className="ghost tip-up tip-wide"
+              data-tour="files"
               icon="folder"
               label={t.folder(folderLabel)}
               aria-pressed={filesOpen}
@@ -2589,20 +2590,22 @@ export function Conversation({
       </form>
     </section>
   );
-  if (!filesOpen) return conversation;
+  // Always wrapped, so opening the panel doesn't remount the conversation.
   return (
-    <div className="conversation-files">
+    <div className={filesOpen ? "conversation-files open" : "conversation-files"}>
       {conversation}
-      <ChatFiles
-        chatId={id}
-        workdir={detail.chat.workdir}
-        refreshKey={`${detail.messages.length}-${running}`}
-        canChangeFolder={detail.messages.length === 0 && !running}
-        onChangeFolder={() => setChoosingFolder(true)}
-        onReveal={() => reveal(detail.chat.workdir)}
-        onReference={(path) => insertLink("`" + path + "`")}
-        onClose={() => setFilesOpen(false)}
-      />
+      {filesOpen && (
+        <ChatFiles
+          chatId={id}
+          workdir={detail.chat.workdir}
+          refreshKey={`${detail.messages.length}-${running}`}
+          canChangeFolder={detail.messages.length === 0 && !running}
+          onChangeFolder={() => setChoosingFolder(true)}
+          onReveal={() => reveal(detail.chat.workdir)}
+          onReference={(path) => insertLink("`" + path + "`")}
+          onClose={() => setFilesOpen(false)}
+        />
+      )}
     </div>
   );
 }

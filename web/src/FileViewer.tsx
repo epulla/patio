@@ -17,7 +17,7 @@ const text = {
     loading: "Loading…",
     tooLarge: "This file is too large to preview.",
     noPreview: "No preview for this file type.",
-    rowsCut: (shown: number, total: number) => `Showing the first ${shown} of ${total} rows.`,
+    rowsCut: (shown: number) => `Showing the first ${shown} rows.`,
     sheets: "Sheets",
     entries: (n: number) => `${n} item${n === 1 ? "" : "s"}`,
   },
@@ -31,7 +31,7 @@ const text = {
     loading: "Cargando…",
     tooLarge: "Este archivo es demasiado grande para previsualizarlo.",
     noPreview: "No hay vista previa para este tipo de archivo.",
-    rowsCut: (shown: number, total: number) => `Se muestran las primeras ${shown} de ${total} filas.`,
+    rowsCut: (shown: number) => `Se muestran las primeras ${shown} filas.`,
     sheets: "Hojas",
     entries: (n: number) => `${n} elemento${n === 1 ? "" : "s"}`,
   },
@@ -61,12 +61,9 @@ export function rawURL(chatId: string, path: string) {
   return `/api/chats/${chatId}/files/raw?path=${encodeURIComponent(path)}`;
 }
 
-class TooLarge extends Error {}
-
-async function fetchFile(url: string) {
-  const response = await fetch(url);
+async function fetchFile(url: string, method = "GET") {
+  const response = await fetch(url, { method });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `${response.status}`);
-  if (Number(response.headers.get("content-length")) > previewLimit) throw new TooLarge();
   return response;
 }
 
@@ -162,8 +159,22 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
 }
 
 function Preview({ chatId, path, kind, source, fallback, onOfficeError }: { chatId: string; path: string; kind: string; source: boolean; fallback: ReactNode; onOfficeError: () => void }) {
+  const t = useText(text);
   const url = rawURL(chatId, path);
   const name = path.split("/").pop() ?? path;
+  const streamed = kind === "audio" || kind === "video";
+  const { data: size, error } = useLoad(
+    () => (streamed ? Promise.resolve(0) : fetchFile(url, "HEAD").then((response) => Number(response.headers.get("content-length")))),
+    [url, streamed],
+  );
+  if (size === undefined) return <Loading error={error} />;
+  if (size > previewLimit)
+    return (
+      <>
+        <p className="file-viewer-note">{t.tooLarge}</p>
+        {fallback}
+      </>
+    );
   switch (kind) {
     case "image":
       return <img className="file-viewer-image" src={url} alt={name} />;
@@ -177,14 +188,14 @@ function Preview({ chatId, path, kind, source, fallback, onOfficeError }: { chat
     case "json":
     case "markdown":
     case "text":
-      return <TextPreview url={url} kind={kind} source={source} name={name} fallback={fallback} />;
+      return <TextPreview url={url} kind={kind} source={source} name={name} />;
     case "quicklook":
-      return <TextPreview url={`/api/chats/${chatId}/files/quicklook?path=${encodeURIComponent(path)}`} kind="quicklook" source={false} name={name} fallback={fallback} />;
+      return <TextPreview url={`/api/chats/${chatId}/files/quicklook?path=${encodeURIComponent(path)}`} kind="quicklook" source={false} name={name} />;
     case "sheet":
-      return <SheetPreview url={url} csv={/\.(csv|tsv)$/i.test(name)} fallback={fallback} />;
+      return <SheetPreview url={url} csv={/\.(csv|tsv)$/i.test(name)} />;
     case "docx":
     case "pptx":
-      return <OfficePreview url={url} kind={kind} name={name} fallback={fallback} onError={onOfficeError} />;
+      return <OfficePreview url={url} kind={kind} name={name} onError={onOfficeError} />;
     case "zip":
       return <ZipPreview chatId={chatId} path={path} />;
     default:
@@ -192,22 +203,15 @@ function Preview({ chatId, path, kind, source, fallback, onOfficeError }: { chat
   }
 }
 
-function Loading({ error, fallback }: { error: unknown; fallback: ReactNode }) {
+function Loading({ error }: { error: unknown }) {
   const t = useText(text);
-  if (error instanceof TooLarge)
-    return (
-      <>
-        <p className="file-viewer-note">{t.tooLarge}</p>
-        {fallback}
-      </>
-    );
   if (error) return <ErrorText error={error} />;
   return <p className="muted file-viewer-note">{t.loading}</p>;
 }
 
-function TextPreview({ url, kind, source, name, fallback }: { url: string; kind: string; source: boolean; name: string; fallback: ReactNode }) {
+function TextPreview({ url, kind, source, name }: { url: string; kind: string; source: boolean; name: string }) {
   const { data, error } = useLoad(() => fetchFile(url).then((response) => response.text()), [url]);
-  if (data === undefined) return <Loading error={error} fallback={fallback} />;
+  if (data === undefined) return <Loading error={error} />;
   if (kind === "html") return <iframe className="file-viewer-frame" sandbox="allow-scripts" srcDoc={htmlCSP + data} title={name} />;
   if (kind === "quicklook") return <iframe className="file-viewer-frame" sandbox="" srcDoc={data} title={name} />;
   if (kind === "markdown" && !source)
@@ -226,18 +230,18 @@ function TextPreview({ url, kind, source, name, fallback }: { url: string; kind:
   return <pre className="file-viewer-text">{shown}</pre>;
 }
 
-function SheetPreview({ url, csv, fallback }: { url: string; csv: boolean; fallback: ReactNode }) {
+function SheetPreview({ url, csv }: { url: string; csv: boolean }) {
   const t = useText(text);
   const [sheet, setSheet] = useState(0);
   const { data, error } = useLoad(async () => {
     const [response, XLSX] = await Promise.all([fetchFile(url), import("xlsx")]);
-    const book = csv ? XLSX.read(await response.text(), { type: "string", raw: true }) : XLSX.read(await response.arrayBuffer(), { dense: true });
+    const book = csv ? XLSX.read(await response.text(), { type: "string", raw: true, sheetRows: rowLimit + 1 }) : XLSX.read(await response.arrayBuffer(), { dense: true, sheetRows: rowLimit + 1 });
     return book.SheetNames.map((name) => ({
       name,
       rows: XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[name], { header: 1, raw: false, defval: "" }),
     }));
   }, [url, csv]);
-  if (!data) return <Loading error={error} fallback={fallback} />;
+  if (!data) return <Loading error={error} />;
   const rows = data[sheet]?.rows ?? [];
   return (
     <div className="file-viewer-sheet">
@@ -250,7 +254,7 @@ function SheetPreview({ url, csv, fallback }: { url: string; csv: boolean; fallb
           ))}
         </div>
       )}
-      {rows.length > rowLimit && <p className="muted">{t.rowsCut(rowLimit, rows.length)}</p>}
+      {rows.length > rowLimit && <p className="muted">{t.rowsCut(rowLimit)}</p>}
       <table className="file-viewer-table">
         <tbody>
           {rows.slice(0, rowLimit).map((row, r) => (
@@ -268,7 +272,7 @@ function SheetPreview({ url, csv, fallback }: { url: string; csv: boolean; fallb
 }
 
 // docx/pptx render in office.html, whose CSP stops script smuggled in through document text.
-function OfficePreview({ url, kind, name, fallback, onError }: { url: string; kind: string; name: string; fallback: ReactNode; onError: () => void }) {
+function OfficePreview({ url, kind, name, onError }: { url: string; kind: string; name: string; onError: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const { data, error } = useLoad(() => fetchFile(url).then((response) => response.arrayBuffer()), [url]);
   const [failed, setFailed] = useState<string>();
@@ -285,7 +289,7 @@ function OfficePreview({ url, kind, name, fallback, onError }: { url: string; ki
     addEventListener("message", onMessage);
     return () => removeEventListener("message", onMessage);
   }, [data, kind, onError]);
-  if (!data) return <Loading error={error} fallback={fallback} />;
+  if (!data) return <Loading error={error} />;
   if (failed) return <ErrorText error={failed} />;
   return <iframe ref={frame} className="file-viewer-frame" sandbox="allow-scripts allow-same-origin" src="/office.html" title={name} />;
 }
@@ -296,7 +300,7 @@ function ZipPreview({ chatId, path }: { chatId: string; path: string }) {
     () => api.get<{ name: string; size: number; dir: boolean }[]>(`/api/chats/${chatId}/files/zip?path=${encodeURIComponent(path)}`),
     [chatId, path],
   );
-  if (!data) return <Loading error={error} fallback={null} />;
+  if (!data) return <Loading error={error} />;
   return (
     <div className="file-viewer-doc">
       <p className="muted">{t.entries(data.length)}</p>

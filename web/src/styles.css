@@ -2614,7 +2614,8 @@ main:has(> .chats) {
   text-overflow: ellipsis;
   box-shadow: var(--shadow);
 }
-.grid-pane > section {
+.grid-pane > section,
+.grid-pane > .conversation-files {
   flex: 1;
   min-width: 0;
 }
@@ -2684,7 +2685,8 @@ main.chat-window .app-version {
   z-index: 1;
   width: 6px;
 }
-.chat-dock > .conversation {
+.chat-dock > .conversation,
+.chat-dock > .conversation-files {
   flex: 1;
 }
 .dock-group {
@@ -4925,10 +4927,15 @@ main.chat-window .app-version {
 }
 .conversation-files {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
+.conversation-files.open {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+}
+
 .chat-files {
   display: flex;
   flex-direction: column;
@@ -5653,7 +5660,8 @@ button.notif-row:focus-visible,
   flex-direction: column;
   height: min(480px, 60vh);
 }
-.ai-create-chat > .conversation {
+.ai-create-chat > .conversation,
+.ai-create-chat > .conversation-files {
   flex: 1;
 }
 .ai-created {
