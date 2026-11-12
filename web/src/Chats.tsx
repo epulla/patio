@@ -33,7 +33,7 @@ import {
   type FlowStatus,
   type Workflow,
 } from "./api";
-import { ErrorText, navigate } from "./App";
+import { ErrorText, navigate, shortDate } from "./App";
 import { Icon, IconButton, type IconName } from "./icons";
 import SplitButton from "./SplitButton";
 import Switch from "./Switch";
@@ -1010,8 +1010,8 @@ export default function Chats({
                     <span>{chat.title}</span>
                     {state && <span className="sr-only">, {statusText[state]}</span>}
                   </span>
-                  <small>
-                    {copiedRow === chat.id ? t.copied : new Date(chat.updated_at).toLocaleDateString(locale())}
+                  <small title={new Date(chat.updated_at).toLocaleString(locale())}>
+                    {copiedRow === chat.id ? t.copied : shortDate(chat.updated_at)}
                     {children > 0 && ` · ${t.handoffs(children)}`}
                     {chat.scheduled_task_id && (
                       <>

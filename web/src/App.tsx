@@ -99,6 +99,16 @@ export function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString(locale()) : text[lang()].never;
 }
 
+// Today shows the time, this year the day and month, older dates add the year.
+export function shortDate(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (date.getFullYear() !== now.getFullYear()) options.year = "numeric";
+  return date.toLocaleDateString(locale(), options);
+}
+
 function currentPath() {
   if (location.pathname === "/mcp") {
     history.replaceState({}, "", "/settings");

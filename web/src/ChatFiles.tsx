@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
-import { ErrorText } from "./App";
+import { ErrorText, shortDate } from "./App";
 import { confirmDialog } from "./confirm";
 import { Icon, IconButton } from "./icons";
 import { locale, useText } from "./i18n";
@@ -44,15 +44,6 @@ const text = {
 
 type Entry = { name: string; path: string; dir: boolean; size: number; modified: string };
 
-// Today shows the time, this year the day and month, older dates add the year.
-function shortDate(value: string) {
-  const date = new Date(value);
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
-  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  if (date.getFullYear() !== now.getFullYear()) options.year = "numeric";
-  return date.toLocaleDateString(locale(), options);
-}
 
 export default function ChatFiles({
   chatId,
