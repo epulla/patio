@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -174,6 +176,8 @@ func (s *Server) rawChatFile(w http.ResponseWriter, r *http.Request) {
 
 const editLimit = 2 << 20
 
+var chatFileSaveMu sync.Mutex
+
 func (s *Server) saveChatFile(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Content          string `json:"content"`
@@ -219,6 +223,8 @@ func (s *Server) saveChatFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer parent.Close()
 	base := filepath.Base(rel)
+	chatFileSaveMu.Lock()
+	defer chatFileSaveMu.Unlock()
 	info, err := parent.Lstat(base)
 	if err != nil {
 		chatFileError(w, err)
@@ -248,8 +254,7 @@ func (s *Server) saveChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "invalid JSON")
 		return
 	}
-	tmp := "." + base + ".patio-tmp"
-	_ = parent.Remove(tmp)
+	tmp := "." + base + "." + rand.Text()[:12] + ".patio-tmp"
 	f, err := parent.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_TRUNC, info.Mode().Perm())
 	if err != nil {
 		chatFileError(w, err)
@@ -261,6 +266,13 @@ func (s *Server) saveChatFile(w http.ResponseWriter, r *http.Request) {
 		_ = f.Close()
 	}
 	if err == nil {
+		current, statErr := parent.Lstat(base)
+		if statErr != nil || !current.Mode().IsRegular() || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) {
+			_ = parent.Remove(tmp)
+			errw(w, http.StatusConflict, "file changed on disk")
+			return
+		}
+		// An external writer can still change the target between this check and Rename; the OS offers no compare-and-swap here.
 		err = parent.Rename(tmp, base)
 	}
 	if err != nil {

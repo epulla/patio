@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,10 @@ func TestChatFilesSave(t *testing.T) {
 	if err := os.WriteFile(name, []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	tmp := filepath.Join(c.Workdir, ".edit.txt.patio-tmp")
+	if err := os.WriteFile(tmp, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	info, _ := os.Stat(name)
 	expected := info.ModTime().UTC().Format(time.RFC3339Nano)
 	request := func(path, content, modified string) *httptest.ResponseRecorder {
@@ -27,6 +32,9 @@ func TestChatFilesSave(t *testing.T) {
 	got := request("edit.txt", "new", expected)
 	if got.Code != 200 {
 		t.Fatalf("save = %d %s", got.Code, got.Body.String())
+	}
+	if content, err := os.ReadFile(tmp); err != nil || string(content) != "keep" {
+		t.Fatalf("pre-existing temp = %q, %v", content, err)
 	}
 	var response struct {
 		Modified string `json:"modified"`
@@ -91,6 +99,58 @@ func TestChatFilesSave(t *testing.T) {
 	}
 	if content, _ := os.ReadFile(latin1); string(content) != "caf\xe9" {
 		t.Fatalf("non-UTF-8 changed: %q", content)
+	}
+}
+
+func TestChatFilesSaveConcurrentConflict(t *testing.T) {
+	s, c := attachmentTestChat(t)
+	name := filepath.Join(c.Workdir, "edit.txt")
+	if err := os.WriteFile(name, []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := info.ModTime().UTC().Format(time.RFC3339Nano)
+	type result struct {
+		code    int
+		content string
+	}
+	results := make(chan result, 8)
+	start := make(chan struct{})
+	for i := 0; i < 8; i++ {
+		content := fmt.Sprintf("winner-%d", i)
+		go func(content string) {
+			<-start
+			body, _ := json.Marshal(map[string]string{"content": content, "expected_modified": expected})
+			r := httptest.NewRequest("PUT", "/api/chats/"+c.ID+"/files?path=edit.txt", strings.NewReader(string(body)))
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			results <- result{w.Code, content}
+		}(content)
+	}
+	close(start)
+	winners, conflicts := 0, 0
+	winnerContent := ""
+	for i := 0; i < 8; i++ {
+		got := <-results
+		switch got.code {
+		case http.StatusOK:
+			winners++
+			winnerContent = got.content
+		case http.StatusConflict:
+			conflicts++
+		default:
+			t.Errorf("save status = %d", got.code)
+		}
+	}
+	if winners != 1 || conflicts != 7 {
+		t.Fatalf("successes=%d conflicts=%d", winners, conflicts)
+	}
+	content, err := os.ReadFile(name)
+	if err != nil || string(content) != winnerContent {
+		t.Fatalf("file content = %q, want winner %q (err %v)", content, winnerContent, err)
 	}
 }
 
