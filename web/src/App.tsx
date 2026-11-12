@@ -160,6 +160,7 @@ export default function App() {
   const [config, setConfig] = useState<Config>();
   const [refresh, setRefresh] = useState(0);
   const [boards, setBoards] = useState<Board[]>([]);
+  const [boardsError, setBoardsError] = useState<unknown>();
   const [onboarding, setOnboarding] = useState(false);
   const [touring, setTouring] = useState(false);
   const [monitorChanges, setMonitorChanges] = useState(0);
@@ -377,8 +378,11 @@ export default function App() {
   useEffect(() => {
     api
       .get<Board[]>("/api/boards")
-      .then(setBoards)
-      .catch(() => undefined);
+      .then((value) => {
+        setBoards(value);
+        setBoardsError(undefined);
+      })
+      .catch(setBoardsError);
   }, [path, refresh]);
 
   useEffect(() => {
@@ -511,7 +515,7 @@ export default function App() {
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
   };
-  let page: ReactNode = <BoardList boards={boards} />;
+  let page: ReactNode = <BoardList boards={boards} loadError={boardsError} />;
   if (boardMatch)
     page = (
       <BoardView id={decodeURIComponent(boardMatch[1])} refresh={refresh} />

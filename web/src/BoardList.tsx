@@ -46,7 +46,7 @@ const boardDraft = {
 };
 
 // The sidebar already loads the boards on every refresh; reuse its list instead of fetching again.
-export default function BoardList({ boards }: { boards: Board[] }) {
+export default function BoardList({ boards, loadError }: { boards: Board[]; loadError: unknown }) {
   const t = useText(text);
   const [error, setError] = useState<unknown>();
   const [importing, setImporting] = useState(false);
@@ -97,8 +97,8 @@ export default function BoardList({ boards }: { boards: Board[] }) {
           </button>
         </div>
       </div>
-      <ErrorText error={error} />
-      {boards.length === 0 && <small>{t.empty}</small>}
+      <ErrorText error={error ?? loadError} />
+      {boards.length === 0 && !loadError && <small>{t.empty}</small>}
       <div className="board-grid">
         {boards.map((board) => (
           <button
