@@ -1457,6 +1457,10 @@ export function Conversation({
   const localSent = useRef<{ message: ChatMessage; text?: string }>(undefined);
   // Loads can resolve out of order; only the newest applied one wins.
   const loadSeq = useRef({ started: 0, applied: 0 });
+  // After a local change lands, loads already in flight may carry the old state; skip them.
+  const dropStaleLoads = () => {
+    loadSeq.current.applied = ++loadSeq.current.started;
+  };
   const load = () => {
     const seq = ++loadSeq.current.started;
     return api
@@ -1645,14 +1649,6 @@ export function Conversation({
         );
       if (event.type === "tool" || event.type === "thinking" || event.type === "question" || event.type === "done") {
         if (event.type === "tool" || event.type === "done") void loadPausedOut();
-        if (event.type === "done") {
-          setStreaming("");
-          setThinking("");
-          setRunning(false);
-          setAnnouncement(t.replyReceived);
-          void load();
-          return;
-        }
         const message = event.message;
         if (message)
           setDetail((current) =>
@@ -1660,6 +1656,15 @@ export function Conversation({
               ? { ...current, messages: [...current.messages, message] }
               : current,
           );
+        if (event.type === "done") {
+          // Same render as the append, so the streamed bubble hands over to the stored reply without a gap.
+          setStreaming("");
+          setThinking("");
+          setRunning(false);
+          setAnnouncement(t.replyReceived);
+          dropStaleLoads();
+          void load();
+        }
       }
       if (event.type === "error") {
         setStreaming("");
@@ -1990,6 +1995,7 @@ export function Conversation({
     if (!value || value === detail?.chat.title) return setTitle(detail?.chat.title ?? "");
     try {
       await api.put(`/api/chats/${id}`, { title: value, ...(auto ? { title_auto: true } : {}) });
+      dropStaleLoads();
       setTitle(value);
       setDetail((current) => current && { ...current, chat: { ...current.chat, title: value } });
       onChanged();
@@ -2003,6 +2009,7 @@ export function Conversation({
   ) {
     try {
       await api.put(`/api/chats/${id}`, fields);
+      dropStaleLoads();
       setDetail((current) => current && { ...current, chat: { ...current.chat, ...fields } });
       setError(undefined);
     } catch (reason) {
@@ -2018,6 +2025,7 @@ export function Conversation({
 
   async function changeFolder(folder: string | null) {
     const chat = await api.put<Chat>(`/api/chats/${id}`, { folder });
+    dropStaleLoads();
     setDetail((current) => current && { ...current, chat: { ...current.chat, ...chat } });
     setChoosingFolder(false);
     setError(undefined);
