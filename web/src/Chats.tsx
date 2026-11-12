@@ -287,7 +287,8 @@ export default function Chats({
   const listSplitter = useSplitter({ storageKey: "chat-list-width", defaultWidth: 220, min: 180, max: 480, side: "right", label: t.resizeList });
   const [cursor, setCursor] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Chat[]>();
+  // Tagged with their query so a background refresh updates them in place instead of flashing "Searching…".
+  const [found, setFound] = useState<{ query: string; chats: Chat[] }>();
   const searchInput = useRef<HTMLInputElement>(null);
   const loadedCount = useRef(0);
   const generation = useRef(0);
@@ -353,13 +354,12 @@ export default function Chats({
 
   const search = query.trim();
   useEffect(() => {
-    setResults(undefined);
     if (!search) return;
     let stale = false;
     const timer = setTimeout(() => {
       api
         .get<ChatPage>(`/api/chats?limit=200&q=${encodeURIComponent(search)}`)
-        .then((page) => !stale && setResults(page.chats))
+        .then((page) => !stale && setFound({ query: search, chats: page.chats }))
         .catch((reason) => !stale && setError(reason));
     }, 200);
     return () => {
@@ -381,6 +381,7 @@ export default function Chats({
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [windowed]);
+  const results = found?.query === search ? found.chats : undefined;
   const listed = search ? (results ?? []) : chats;
 
   // Opening a chat pinned in another group switches to that group, so its grid shows.
