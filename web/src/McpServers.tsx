@@ -302,13 +302,13 @@ function ServerCard({
       <div className="connector-buttons">
         <Switch checked={server.enabled} onChange={toggle} label={t.enabled} />
         {server.auth === "oauth" && (
-          <IconButton className="ghost" icon="externalLink" label={server.has_oauth_token ? t.signInAgain : t.signIn} onClick={signIn} />
+          <IconButton className="ghost" icon="logIn" label={server.has_oauth_token ? t.signInAgain : t.signIn} onClick={signIn} />
         )}
-        <IconButton className="ghost" icon="play" label={t.test} disabled={checking || needsSignIn} onClick={() => setRun((value) => value + 1)} />
+        <IconButton className="ghost" icon="activity" label={t.test} disabled={checking || needsSignIn} onClick={() => setRun((value) => value + 1)} />
         <button
           className="icon ghost"
           aria-label={reloading ? t.reloading : t.reloadServer(server.name)}
-          data-tip={reloading ? t.reloading : t.reloadServer(server.name)}
+          data-tip={reloading ? t.reloading : t.reload}
           disabled={reloading || needsSignIn || !server.enabled}
           onClick={reload}
         >
