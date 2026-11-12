@@ -27,7 +27,7 @@ export function useSplitter({
   const grow = side === "right" ? 1 : -1;
 
   function resize(next: number) {
-    const clamped = Math.min(ceiling, clamp(next));
+    const clamped = clamp(Math.min(next, ceiling));
     localStorage.setItem(storageKey, String(clamped));
     setSaved(clamped);
   }
