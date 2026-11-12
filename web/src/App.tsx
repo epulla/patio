@@ -1,10 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import BoardList from "./BoardList";
 import BoardView, { NewTicketPage } from "./BoardView";
 import TicketDetail from "./TicketDetail";
 import PrintTicket from "./PrintTicket";
-import Calendar from "./Calendar";
-import Dashboard from "./Dashboard";
 import Connectors from "./Connectors";
 import { Channels } from "./Connections";
 import Chats, { createChatWithDefaults, NewChatDialog } from "./Chats";
@@ -15,8 +13,6 @@ import { statusIcons } from "./chatStatus";
 import { cycleGroup, groupOf, groupStep, isNewPinnedKey, lastPinnedChat, maxPins, pin, rememberPinnedChat, pruneSplit, setActiveGroup, shownPin, splitLeaves, usePinGroups, usePins } from "./pins";
 import McpServers from "./McpServers";
 import Bots from "./Bots";
-import Workflows from "./Workflows";
-import ChatFlow from "./ChatFlow";
 import Skills from "./Skills";
 import ScheduledTasks from "./ScheduledTasks";
 import Monitors from "./Monitors";
@@ -33,6 +29,12 @@ import { Icon, IconButton, PatioMark } from "./icons";
 import { lang, locale, useText } from "./i18n";
 import { useSplitter } from "./splitter";
 import { isDesktop, onEvent, openURL } from "./desktop";
+
+// Heavy pages (xyflow graphs, calendar) load on first visit instead of with the app.
+const Calendar = lazy(() => import("./Calendar"));
+const Dashboard = lazy(() => import("./Dashboard"));
+const Workflows = lazy(() => import("./Workflows"));
+const ChatFlow = lazy(() => import("./ChatFlow"));
 
 const text = {
   en: {
@@ -688,7 +690,7 @@ export default function App() {
       </aside>
       <div className="page">
         <div className="page-scroll">
-          <main>{page}</main>
+          <main><Suspense>{page}</Suspense></main>
         </div>
         {config.version && <span className="app-version">{config.version}</span>}
       </div>
