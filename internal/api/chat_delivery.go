@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"time"
 )
 
 func (s *Server) DeliverAgentMessages(ctx context.Context) error {
@@ -40,6 +41,12 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 	}
 	limit := agentHopLimit(s.db)
 	var deliveryErrors []error
+	retry := false
+	defer func() {
+		if retry {
+			s.retrySteer(ctx)
+		}
+	}()
 	for _, pending := range chats {
 		if err := ctx.Err(); err != nil {
 			return errors.Join(err, errors.Join(deliveryErrors...))
@@ -60,6 +67,11 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		}
 		chatID := pending.id
 		if s.chats.Running(chatID) {
+			again, err := s.steerHead(chatID)
+			retry = retry || again
+			if err != nil {
+				deliveryErrors = append(deliveryErrors, err)
+			}
 			continue
 		}
 		if _, err := s.chats.drainQueued(chatID, false); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -68,4 +80,57 @@ func (s *Server) DeliverAgentMessages(ctx context.Context) error {
 		}
 	}
 	return errors.Join(deliveryErrors...)
+}
+
+// steerHead steers the head of a running chat's queue into its turn when the sender asked to steer.
+// It reports whether to try again because the turn can't take it yet; if the turn ends first, the row is delivered as usual.
+func (s *Server) steerHead(chatID string) (bool, error) {
+	var rowID string
+	var sender sql.NullString
+	var steer bool
+	err := s.db.QueryRow(`SELECT id,from_chat_id,steer FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid LIMIT 1`, chatID).Scan(&rowID, &sender, &steer)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (!steer || !sender.Valid) {
+		delete(s.steerLogged, chatID)
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if reason := s.chats.steerBlocker(chatID); reason != "" {
+		if s.steerLogged[chatID] != rowID+" "+reason {
+			log.Printf("steer %s into %s waiting: %s", rowID, chatID, reason)
+			if s.steerLogged == nil {
+				s.steerLogged = make(map[string]string)
+			}
+			s.steerLogged[chatID] = rowID + " " + reason
+		}
+		return reason != steerUnsupported, nil
+	}
+	delete(s.steerLogged, chatID)
+	_, err = s.chats.steerQueued(chatID, sender.String)
+	if err == nil || errors.Is(err, sql.ErrNoRows) || errors.Is(err, errChatTurnRunning) {
+		return false, nil
+	}
+	log.Printf("steer %s into %s failed; delivering after the turn: %v", rowID, chatID, err)
+	// A failed steer is restored to the queue; without clearing the flag every database change would retry it.
+	if _, clearErr := s.db.Exec(`UPDATE chat_queue SET steer=0 WHERE chat_id=? AND from_chat_id=? AND steer<>0`, chatID, sender.String); clearErr != nil {
+		return false, errors.Join(err, clearErr)
+	}
+	return false, nil
+}
+
+// retrySteer runs delivery again shortly, since a starting turn may not write to the database before it can steer.
+func (s *Server) retrySteer(ctx context.Context) {
+	if !s.steerRetry.CompareAndSwap(false, true) {
+		return
+	}
+	time.AfterFunc(time.Second, func() {
+		s.steerRetry.Store(false)
+		if ctx.Err() != nil {
+			return
+		}
+		if err := s.DeliverAgentMessages(ctx); err != nil {
+			log.Printf("retry steering queued agent messages: %v", err)
+		}
+	})
 }

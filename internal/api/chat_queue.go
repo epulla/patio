@@ -196,6 +196,7 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySen
 	type queuedRow struct {
 		id, text, raw, createdAt string
 		from, report             sql.NullString
+		steer                    bool
 	}
 	var claimed []queuedRow
 	var oldHops, oldNotified, oldQueueHeld int
@@ -210,14 +211,14 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySen
 			return sql.ErrNoRows
 		}
 		limit := agentHopLimit(tx)
-		rows, err := tx.Query(`SELECT id,text,attachments,created_at,from_chat_id,report_to_chat_id FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
+		rows, err := tx.Query(`SELECT id,text,attachments,created_at,from_chat_id,report_to_chat_id,steer FROM chat_queue WHERE chat_id=? ORDER BY created_at,rowid`, chatID)
 		if err != nil {
 			return err
 		}
 		for rows.Next() {
 			var row queuedRow
 			var rawItems []ChatAttachment
-			if err := rows.Scan(&row.id, &row.text, &row.raw, &row.createdAt, &row.from, &row.report); err != nil {
+			if err := rows.Scan(&row.id, &row.text, &row.raw, &row.createdAt, &row.from, &row.report, &row.steer); err != nil {
 				rows.Close()
 				return err
 			}
@@ -283,7 +284,7 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySen
 				}
 			}
 			for _, row := range claimed {
-				if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,?,?,?,?)`, row.id, chatID, row.text, row.raw, row.createdAt, nullableQueueSender(row.from), nullableQueueSender(row.report)); err != nil {
+				if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id,steer) VALUES(?,?,?,?,?,?,?,?)`, row.id, chatID, row.text, row.raw, row.createdAt, nullableQueueSender(row.from), nullableQueueSender(row.report), row.steer); err != nil {
 					return err
 				}
 			}

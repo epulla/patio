@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,6 +47,9 @@ type Server struct {
 	mcpConnect      mcpConnector
 	attachmentsMu   sync.Mutex
 	agentDeliveryMu sync.Mutex
+	// steerLogged and steerRetry belong to DeliverAgentMessages; steerLogged is guarded by agentDeliveryMu.
+	steerLogged     map[string]string
+	steerRetry      atomic.Bool
 	attachments     map[string]map[string]ChatAttachment
 	windowID        string
 	openChat        func(string) error

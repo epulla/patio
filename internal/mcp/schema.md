@@ -26,7 +26,7 @@ erDiagram
   chat_draft { TEXT chat_id; TEXT text; TEXT attachments; TEXT updated_at }
   workflow_join_input { TEXT id; TEXT run_id; TEXT node_id; TEXT edge_id; TEXT from_chat_id; TEXT status; TEXT text; TEXT created_at; TEXT deadline_at; INTEGER delivered }
   chat_message { TEXT id; TEXT chat_id; TEXT role; TEXT content; TEXT created_at; TEXT tool_result; TEXT attachments; INTEGER answered; INTEGER tool_result_size; INTEGER tool_error; TEXT from_chat_id; TEXT report_to_chat_id }
-  chat_queue { TEXT id; TEXT chat_id; TEXT text; TEXT attachments; TEXT created_at; TEXT from_chat_id; TEXT report_to_chat_id }
+  chat_queue { TEXT id; TEXT chat_id; TEXT text; TEXT attachments; TEXT created_at; TEXT from_chat_id; TEXT report_to_chat_id; INTEGER steer }
   chat_approval { TEXT id; TEXT chat_id; TEXT tool_name; TEXT input_json; TEXT status; TEXT created_at; TEXT answered_at; INTEGER auto }
   mcp_server { TEXT id; TEXT name; TEXT kind; TEXT command; TEXT args_json; TEXT env_keys_json; TEXT url; TEXT auth; INTEGER enabled; TEXT created_at; TEXT oauth_client_id; TEXT oauth_scopes }
   skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at; TEXT kind }

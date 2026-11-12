@@ -404,8 +404,14 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		if err := s.notifyAgentHopCap(id); err != nil {
 			log.Printf("notify agent hop cap for %s: %v", id, err)
 		}
-	} else if in.Mode == "steer" && s.chats.Running(id) && s.chats.CanSteer(id) {
-		if _, err := s.chats.steerQueued(id, in.FromChatID); err == nil {
+	} else if in.Mode == "steer" {
+		// From a patio mcp process this runtime is never local; the app's delivery loop steers the row instead.
+		next = "Will steer into " + title + "'s running turn within ~1s if supported; otherwise after its turn."
+		if reason := s.chats.steerBlocker(id); reason != "" {
+			log.Printf("steer to %s not applied at send: %s", id, reason)
+		} else if _, err := s.chats.steerQueued(id, in.FromChatID); err != nil {
+			log.Printf("steer to %s failed at send: %v", id, err)
+		} else {
 			var n int
 			if err := s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, rowID).Scan(&n); err != nil {
 				log.Printf("check steered message %s: %v", rowID, err)
@@ -528,7 +534,7 @@ func (s *Server) queueAgentMessage(id string, in agentMessageRequest) (string, e
 	created := now()
 	rowID := uid()
 	err := txrun(s.db, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id) VALUES(?,?,?,'[]',?,?,?)`, rowID, id, in.Text, created, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id,steer) VALUES(?,?,?,'[]',?,?,?,?)`, rowID, id, in.Text, created, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID), in.Mode == "steer"); err != nil {
 			return err
 		}
 		if in.ReportBack {

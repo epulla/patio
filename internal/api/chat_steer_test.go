@@ -9,7 +9,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	connectorcli "patio/internal/connector"
+	"strings"
 	"testing"
+	"time"
 )
 
 type steerTestDriver struct {
@@ -205,5 +207,83 @@ func TestOpenCodeV2SteerDelivery(t *testing.T) {
 	}
 	if body["delivery"] != "steer" || body["text"] != "queued batch" {
 		t.Fatalf("body=%#v", body)
+	}
+}
+
+type failingSteerTestDriver struct{ steerTestDriver }
+
+func (*failingSteerTestDriver) steer(ChatSendRequest) error { return errors.New("steer rejected") }
+
+func TestAgentMessageSteerFromMCPProcessLandsInStartingTurn(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('agent-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	app := New(database, "local", false, "dev", root, Options{})
+	defer app.Close()
+	rt := app.chats.runtime(chatID)
+	rt.busy.Store(true)
+	// The patio mcp process has its own Server without the app's runtimes.
+	mcp := New(database, "ai", true, "dev", root, Options{})
+	defer mcp.Close()
+	var result map[string]string
+	if code := requestJSON(t, mcp, http.MethodPost, "/api/chats/"+chatID+"/agent-messages", map[string]string{"from_chat_id": "agent-sender", "text": "steer me", "mode": "steer"}, &result); code != 200 || result["status"] != "queued" || !strings.Contains(result["next"], "Will steer into") {
+		t.Fatalf("response=%d %#v", code, result)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := app.DeliverAgentMessages(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM chat_queue WHERE chat_id=? AND steer=1`, chatID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("steer rows while starting=%d err=%v", count, err)
+	}
+	steerer := &steerTestDriver{}
+	rt.mu.Lock()
+	rt.driver = steerer
+	rt.mu.Unlock()
+	deadline := time.Now().Add(3 * time.Second)
+	for count != 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		if err := database.QueryRow(`SELECT count(*) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt.mu.Lock()
+	steered := append([]ChatSendRequest(nil), steerer.steered...)
+	rt.mu.Unlock()
+	if count != 0 || len(steered) != 1 || !strings.Contains(steered[0].Text, "steer me") {
+		t.Fatalf("queued=%d steered=%#v", count, steered)
+	}
+}
+
+func TestDeliverAgentMessagesFailedSteerWaitsForTurnEnd(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('agent-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	server := New(database, "local", false, "dev", root, Options{})
+	defer server.Close()
+	rt := server.chats.runtime(chatID)
+	rt.mu.Lock()
+	rt.busy.Store(true)
+	rt.driver = &failingSteerTestDriver{}
+	rt.mu.Unlock()
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,steer) VALUES('row',?,'later','[]','1','agent-sender',1)`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := server.DeliverAgentMessages(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var steer int
+	if err := database.QueryRow(`SELECT steer FROM chat_queue WHERE id='row'`).Scan(&steer); err != nil || steer != 0 {
+		t.Fatalf("steer=%d err=%v", steer, err)
 	}
 }

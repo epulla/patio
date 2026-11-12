@@ -185,6 +185,35 @@ func (m *chatManager) CanSteer(id string) bool {
 	return rt.busy.Load() && !rt.stopping && ok && steerer.canSteer()
 }
 
+// steerBlocker says why the chat's turn can't take a steer now; "" means it can.
+// It never waits on rt.mu, which Send holds for seconds while a runtime starts.
+func (m *chatManager) steerBlocker(id string) string {
+	rt := m.lookupRuntime(id)
+	if rt == nil || !rt.busy.Load() {
+		return "not running"
+	}
+	if !rt.mu.TryLock() {
+		return "starting"
+	}
+	defer rt.mu.Unlock()
+	if rt.stopping {
+		return "stopping"
+	}
+	if rt.driver == nil {
+		return "starting"
+	}
+	steerer, ok := rt.driver.(chatSteerer)
+	if !ok {
+		return steerUnsupported
+	}
+	if !steerer.canSteer() {
+		return "runtime not ready"
+	}
+	return ""
+}
+
+const steerUnsupported = "runtime can't steer"
+
 func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendRequest) (ChatMessage, error) {
 	// A reload requested by the reload_mcp_servers tool must apply before any later turn, even ahead of the watcher.
 	if err := m.applyMCPReloadRequest(); err != nil {
