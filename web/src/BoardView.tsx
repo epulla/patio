@@ -80,13 +80,18 @@ export default function BoardView({
   const [settings, setSettings] = useState(false);
   const [newTicketStatus, setNewTicketStatus] = useState<string>();
 
-  const load = () =>
-    api
+  // Only the newest load may apply, so a slow response for an older query can't overwrite a newer one.
+  const loadSeq = useRef(0);
+  const load = () => {
+    const seq = ++loadSeq.current;
+    return api
       .get<BoardData>(`/api/boards/${id}/data?q=${encodeURIComponent(query)}`)
-      .then(setData)
-      .catch(setError);
+      .then((value) => seq === loadSeq.current && setData(value))
+      .catch((reason) => seq === loadSeq.current && setError(reason));
+  };
   useEffect(() => {
-    load();
+    const timer = setTimeout(load, data ? 200 : 0);
+    return () => clearTimeout(timer);
   }, [id, query, refresh]);
 
   function search(value: string) {
