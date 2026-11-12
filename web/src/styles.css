@@ -3879,6 +3879,33 @@ main.chat-window .app-version {
   font-weight: 500;
   vertical-align: middle;
 }
+.question-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.question-head > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.question-head .icon {
+  width: 28px;
+  height: 28px;
+}
+.question-min {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+}
+.question-min > span {
+  flex: 1;
+  font-weight: 500;
+}
+.question-min button {
+  height: 30px;
+  gap: 4px;
+}
 .question-steps {
   display: flex;
   align-items: center;
