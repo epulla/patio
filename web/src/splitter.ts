@@ -1,6 +1,7 @@
 import { useState, type HTMLAttributes } from "react";
 
 // A vertical separator on a panel's left or right edge: drag, ←/→ in 24px steps, double-click resets; width persists in localStorage.
+// limit caps the shown width to the room available right now without discarding the saved preference.
 export function useSplitter({
   storageKey,
   defaultWidth,
@@ -8,6 +9,7 @@ export function useSplitter({
   max,
   side,
   label,
+  limit = Infinity,
 }: {
   storageKey: string;
   defaultWidth: number;
@@ -15,15 +17,19 @@ export function useSplitter({
   max: number;
   side: "left" | "right";
   label: string;
+  limit?: number;
 }) {
   const clamp = (value: number) => Math.min(max, Math.max(min, Math.round(value)));
-  const [width, setWidth] = useState(() => clamp(Number(localStorage.getItem(storageKey)) || defaultWidth));
+  const [saved, setSaved] = useState(() => clamp(Number(localStorage.getItem(storageKey)) || defaultWidth));
+  const ceiling = Math.max(0, Math.min(max, limit));
+  const floor = Math.min(min, ceiling);
+  const width = Math.min(saved, ceiling);
   const grow = side === "right" ? 1 : -1;
 
   function resize(next: number) {
-    const clamped = clamp(next);
+    const clamped = Math.min(ceiling, clamp(next));
     localStorage.setItem(storageKey, String(clamped));
-    setWidth(clamped);
+    setSaved(clamped);
   }
 
   const props: HTMLAttributes<HTMLDivElement> = {
@@ -31,8 +37,8 @@ export function useSplitter({
     tabIndex: 0,
     "aria-label": label,
     "aria-orientation": "vertical",
-    "aria-valuemin": min,
-    "aria-valuemax": max,
+    "aria-valuemin": floor,
+    "aria-valuemax": ceiling,
     "aria-valuenow": width,
     onPointerDown: (event) => {
       event.preventDefault();

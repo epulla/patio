@@ -1429,7 +1429,15 @@ export function Conversation({
   const [split, setSplit] = useState<"" | "row" | "column">("");
   const [choosingFolder, setChoosingFolder] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
-  const filesSplitter = useSplitter({ storageKey: "chat-files-width", defaultWidth: 300, min: 200, max: 600, side: "left", label: t.resizeFiles });
+  // The conversation keeps 280px; the rest (minus the 12px splitter track) is room for the files panel.
+  const [filesRoom, setFilesRoom] = useState<number>();
+  const measureFiles = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+    const observer = new ResizeObserver(() => setFilesRoom(element.clientWidth - 292));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const filesSplitter = useSplitter({ storageKey: "chat-files-width", defaultWidth: 300, min: 200, max: 600, side: "left", label: t.resizeFiles, limit: filesRoom });
   const [splitSizes, setSplitSizes] = useState([0.5, 0.5]);
   const input = useRef<HTMLTextAreaElement>(null);
   const [detail, setDetail] = useState<ChatDetail>();
@@ -2633,6 +2641,7 @@ export function Conversation({
   // Always wrapped, so opening the panel doesn't remount the conversation.
   return (
     <div
+      ref={measureFiles}
       className={filesOpen ? "conversation-files open" : "conversation-files"}
       style={{ "--files-width": `${filesSplitter.width}px` } as CSSProperties}
     >
