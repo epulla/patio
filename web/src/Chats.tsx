@@ -74,6 +74,8 @@ type ChatDetail = {
   children: LinkedChat[];
   version: string;
   flow_status?: FlowStatus;
+  // Points at older messages not loaded yet; null once the first message is loaded.
+  next_cursor: string | null;
 };
 type LinkedChat = { id: string; title: string };
 type ChatEvent =
@@ -1416,7 +1418,19 @@ export function Conversation({
                 m.attachments.map((a) => a.name).join("\n") === local.message.attachments.map((a) => a.name).join("\n")),
           );
         if (stored) localSent.current = undefined;
-        setDetail(!stored && local ? { ...value, messages: [...value.messages, local.message] } : value);
+        const next = !stored && local ? { ...value, messages: [...value.messages, local.message] } : value;
+        // Loads return the latest page; older pages loaded on scroll-up stay while it still overlaps them.
+        setDetail((current) => {
+          const at = current?.messages.findIndex((m) => m.id === value.messages[0]?.id) ?? -1;
+          if (!current || at <= 0) return next;
+          const fresh = new Set(next.auto_approvals?.map((a) => a.id));
+          return {
+            ...next,
+            messages: [...current.messages.slice(0, at), ...next.messages],
+            auto_approvals: [...(current.auto_approvals ?? []).filter((a) => !fresh.has(a.id)), ...(next.auto_approvals ?? [])],
+            next_cursor: current.next_cursor,
+          };
+        });
         // An AI title arriving mid-edit must not replace what the user is typing.
         if (document.activeElement?.id !== `${uid}-title`) setTitle(value.chat.title);
         // A load that started before a send can resolve after it.
@@ -1612,6 +1626,55 @@ export function Conversation({
       box.removeEventListener("load", follow, true);
     };
   }, [id, split, ready]);
+
+  // Older messages load when the top of the list nears the viewport; the scroll offset from the bottom is kept.
+  const top = useRef<HTMLDivElement>(null);
+  const fromBottom = useRef<number>(undefined);
+  const olderCursor = detail?.next_cursor;
+  useEffect(() => {
+    const sentinel = top.current;
+    if (!sentinel || !olderCursor) return;
+    let loading = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting || loading) return;
+        loading = true;
+        api
+          .get<{ messages: ChatMessage[]; auto_approvals: ChatApproval[]; next_cursor: string | null }>(
+            `/api/chats/${id}/messages?before=${encodeURIComponent(olderCursor)}`,
+          )
+          .then((page) => {
+            const box = sentinel.parentElement!;
+            fromBottom.current = box.scrollHeight - box.scrollTop;
+            setDetail(
+              (current) =>
+                current &&
+                (current.next_cursor === olderCursor
+                  ? {
+                      ...current,
+                      messages: [...page.messages, ...current.messages],
+                      auto_approvals: [...page.auto_approvals, ...(current.auto_approvals ?? [])],
+                      next_cursor: page.next_cursor,
+                    }
+                  : current),
+            );
+          })
+          .catch((reason) => {
+            loading = false;
+            setError(reason);
+          });
+      },
+      { root: sentinel.parentElement, rootMargin: "400px 0px 0px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [id, split, olderCursor]);
+  useLayoutEffect(() => {
+    const box = top.current?.parentElement;
+    if (fromBottom.current === undefined || !box) return;
+    box.scrollTop = box.scrollHeight - fromBottom.current;
+    fromBottom.current = undefined;
+  }, [detail]);
 
   const [away, setAway] = useState(false);
   const onMessagesScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -2157,6 +2220,7 @@ export function Conversation({
             onChange={setSplitSizes}
           />
           <div className="messages" onScroll={onMessagesScroll}>
+            <div ref={top} />
             {history}
             {jump}
             <div ref={end} />
@@ -2164,6 +2228,7 @@ export function Conversation({
         </div>
       ) : (
         <div className="messages" onScroll={onMessagesScroll}>
+          <div ref={top} />
           {history}
           {jump}
           <div ref={end} />
