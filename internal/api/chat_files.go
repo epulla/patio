@@ -195,8 +195,16 @@ func (s *Server) deleteChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "cannot delete chat folder")
 		return
 	}
+	// The parent is pinned as its own root, so the identity check and the delete see the same folder.
+	parent, err := root.OpenRoot(filepath.Dir(rel))
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	defer parent.Close()
+	base := filepath.Base(rel)
 	// RemoveAll drops a final symlink itself, never its target.
-	target, err := root.Lstat(rel)
+	target, err := parent.Lstat(base)
 	if err != nil {
 		chatFileError(w, err)
 		return
@@ -206,15 +214,15 @@ func (s *Server) deleteChatFile(w http.ResponseWriter, r *http.Request) {
 	// Compare by file identity, since a symlinked parent can alias the attachments folder.
 	pending := false
 	if attachments, e := root.Lstat("attachments"); e == nil && len(s.attachments[c.ID]) > 0 {
-		_, named := s.attachments[c.ID][filepath.Base(rel)]
-		parent, e := root.Stat(filepath.Dir(rel))
-		pending = os.SameFile(target, attachments) || named && e == nil && os.SameFile(parent, attachments)
+		_, named := s.attachments[c.ID][base]
+		dir, e := parent.Stat(".")
+		pending = os.SameFile(target, attachments) || named && e == nil && os.SameFile(dir, attachments)
 	}
 	if pending {
 		errw(w, http.StatusConflict, "remove it from the message first")
 		return
 	}
-	if err := root.RemoveAll(rel); err != nil {
+	if err := parent.RemoveAll(base); err != nil {
 		chatFileError(w, err)
 		return
 	}
