@@ -963,6 +963,22 @@ func (m *chatManager) applyMCPReloadRequest() error {
 
 // ReloadMCP closes idle runtimes; busy chats, including one calling this mid-turn, restart before their next turn.
 func (m *chatManager) ReloadMCP() (closed, pending int, err error) {
+	return m.reloadMCP(func([]mcpServerSpec) bool { return true })
+}
+
+// ReloadMCPServer is ReloadMCP limited to chats whose runtime started with the named server.
+func (m *chatManager) ReloadMCPServer(name string) (closed, pending int, err error) {
+	return m.reloadMCP(func(specs []mcpServerSpec) bool {
+		for _, spec := range specs {
+			if spec.Name == name {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func (m *chatManager) reloadMCP(uses func([]mcpServerSpec) bool) (closed, pending int, err error) {
 	retireOpenCodeServers()
 	m.mu.Lock()
 	all := make([]*chatRuntime, 0, len(m.chats))
@@ -972,7 +988,7 @@ func (m *chatManager) ReloadMCP() (closed, pending int, err error) {
 	m.mu.Unlock()
 	for _, rt := range all {
 		rt.mu.Lock()
-		if rt.stopping {
+		if rt.stopping || !uses(rt.mcpSpecs) {
 			rt.mu.Unlock()
 			continue
 		}

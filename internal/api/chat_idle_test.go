@@ -75,6 +75,45 @@ func TestReloadMCPDefersBusyRuntime(t *testing.T) {
 	}
 }
 
+func TestReloadMCPServerOnlyRestartsChatsUsingIt(t *testing.T) {
+	m, c, d := newIdleTestManager(t, time.Hour)
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.finishTurn(c.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+	rt := m.lookupRuntime(c.ID)
+	rt.mu.Lock()
+	rt.mcpSpecs = []mcpServerSpec{{Name: "used"}}
+	rt.mu.Unlock()
+	if closed, pending, err := m.ReloadMCPServer("other"); err != nil || closed != 0 || pending != 0 {
+		t.Fatalf("other reload=(%d,%d,%v)", closed, pending, err)
+	}
+	select {
+	case <-d.closed:
+		t.Fatal("chat not using the server was closed")
+	default:
+	}
+	if closed, pending, err := m.ReloadMCPServer("used"); err != nil || closed != 1 || pending != 0 {
+		t.Fatalf("used reload=(%d,%d,%v)", closed, pending, err)
+	}
+	select {
+	case <-d.closed:
+	default:
+		t.Fatal("chat using the server not closed")
+	}
+}
+
+func TestReloadMCPServerHTTPUnknown(t *testing.T) {
+	db, _, root := chatAPI(t)
+	s := New(db, "local", false, "dev", root)
+	defer s.Close()
+	if code := requestJSON(t, s, "POST", "/api/mcp-servers/missing/reload", nil, nil); code != 404 {
+		t.Fatalf("status=%d", code)
+	}
+}
+
 func TestReloadMCPHTTP(t *testing.T) {
 	db, _, root := chatAPI(t)
 	s := New(db, "local", false, "dev", root)

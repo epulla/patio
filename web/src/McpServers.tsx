@@ -13,8 +13,8 @@ const text = {
   en: {
     addServer: "Add server", reload: "Reload", reloading: "Reloading…", reloadTitle: "Re-check every server and reconnect chats to fresh MCP servers",
     reloaded: (pending: number) => pending ? `Reloaded. ${pending} busy chat${pending === 1 ? "" : "s"} will reconnect after the current reply.` : "Reloaded. Chats reconnect on their next message.",
-    reloadServer: (name: string) => `Restart ${name} in every chat that uses it`,
-    serverReloaded: (now: number, pending: number) => now + pending === 0 ? "Reloaded. No open chat uses it yet." : `Reloaded in ${now} chat${now === 1 ? "" : "s"}${pending ? `; ${pending} busy chat${pending === 1 ? "" : "s"} after the current reply` : ""}.`,
+    reloadServer: (name: string) => `Restart the MCP servers of chats that use ${name}`,
+    serverReloaded: (now: number, pending: number) => now + pending === 0 ? "Reloaded. No open chat uses it yet." : `Reloaded. ${now} chat${now === 1 ? "" : "s"} reconnect${now === 1 ? "s" : ""} on the next message${pending ? `; ${pending} busy chat${pending === 1 ? "" : "s"} after the current reply` : ""}.`,
     title: "MCP servers", settings: "Settings", intro: "Enabled servers are available in every chat, next to the built-in Patio tools (status in ",
     introEnd: "). Claude Code, Copilot, and opencode ask before using their tools; Codex runs them without asking.",
     empty: "No servers yet. Add a remote URL (HTTP) or a local command (stdio).", finishLogin: "Finish signing in in your browser.",
@@ -26,8 +26,8 @@ const text = {
   es: {
     addServer: "Agregar servidor", reload: "Recargar", reloading: "Recargando…", reloadTitle: "Vuelve a comprobar todos los servidores y reconecta los chats a servidores MCP nuevos",
     reloaded: (pending: number) => pending ? `Recargado. ${pending} chat${pending === 1 ? "" : "s"} ocupado${pending === 1 ? "" : "s"} se reconectará${pending === 1 ? "" : "n"} después de la respuesta actual.` : "Recargado. Los chats se reconectan con su próximo mensaje.",
-    reloadServer: (name: string) => `Reinicia ${name} en todos los chats que lo usan`,
-    serverReloaded: (now: number, pending: number) => now + pending === 0 ? "Recargado. Ningún chat abierto lo usa aún." : `Recargado en ${now} chat${now === 1 ? "" : "s"}${pending ? `; ${pending} chat${pending === 1 ? "" : "s"} ocupado${pending === 1 ? "" : "s"} después de la respuesta actual` : ""}.`,
+    reloadServer: (name: string) => `Reinicia los servidores MCP de los chats que usan ${name}`,
+    serverReloaded: (now: number, pending: number) => now + pending === 0 ? "Recargado. Ningún chat abierto lo usa aún." : `Recargado. ${now} chat${now === 1 ? "" : "s"} se reconecta${now === 1 ? "" : "n"} con el próximo mensaje${pending ? `; ${pending} chat${pending === 1 ? "" : "s"} ocupado${pending === 1 ? "" : "s"} después de la respuesta actual` : ""}.`,
     title: "Servidores MCP", settings: "Ajustes", intro: "Los servidores habilitados están disponibles en todos los chats, junto a las herramientas integradas de Patio (estado en ",
     introEnd: "). Claude Code, Copilot y opencode preguntan antes de usar sus herramientas; Codex las ejecuta sin preguntar.",
     empty: "Aún no hay servidores. Agrega una URL remota (HTTP) o un comando local (stdio).", finishLogin: "Termina de iniciar sesión en tu navegador.",
@@ -159,8 +159,8 @@ function ServerCard({
     setReloaded(undefined);
     setError(undefined);
     try {
-      const result = await api.post<{ reconnected: number; restarted: number; pending: number }>(`/api/mcp-servers/${server.id}/reload`, {});
-      setReloaded({ now: result.reconnected + result.restarted, pending: result.pending });
+      const result = await api.post<{ closed: number; pending: number }>(`/api/mcp-servers/${server.id}/reload`, {});
+      setReloaded({ now: result.closed, pending: result.pending });
       setRun((value) => value + 1);
     } catch (reason) {
       setError(reason);
