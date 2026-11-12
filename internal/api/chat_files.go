@@ -195,18 +195,20 @@ func (s *Server) deleteChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "cannot delete chat folder")
 		return
 	}
-	base := filepath.Base(rel)
 	// RemoveAll drops a final symlink itself, never its target.
-	if _, err := root.Lstat(rel); err != nil {
+	target, err := root.Lstat(rel)
+	if err != nil {
 		chatFileError(w, err)
 		return
 	}
 	s.attachmentsMu.Lock()
 	defer s.attachmentsMu.Unlock()
+	// Compare by file identity, since a symlinked parent can alias the attachments folder.
 	pending := false
-	if _, e := chatAttachmentsDir(c.Workdir, false); e == nil {
-		_, named := s.attachments[c.ID][base]
-		pending = filepath.Dir(rel) == "attachments" && named || rel == "attachments" && len(s.attachments[c.ID]) > 0
+	if attachments, e := root.Lstat("attachments"); e == nil && len(s.attachments[c.ID]) > 0 {
+		_, named := s.attachments[c.ID][filepath.Base(rel)]
+		parent, e := root.Stat(filepath.Dir(rel))
+		pending = os.SameFile(target, attachments) || named && e == nil && os.SameFile(parent, attachments)
 	}
 	if pending {
 		errw(w, http.StatusConflict, "remove it from the message first")

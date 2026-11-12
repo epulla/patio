@@ -59,12 +59,15 @@ func TestChatFilesTraversalRejected(t *testing.T) {
 	}
 	_ = os.Symlink(outside, filepath.Join(c.Workdir, "outside-dir"))
 	_ = os.Symlink(outsideFile, filepath.Join(c.Workdir, "outside-file"))
-	for _, path := range []string{"../x", "/etc/passwd", "a/../../x", "outside-dir", "outside-file"} {
+	for _, path := range []string{"../x", "/etc/passwd", "a/../../x", "outside-dir/x", "outside-dir", "outside-file"} {
 		for _, tc := range []struct{ method, route string }{{"GET", ""}, {"GET", "/raw"}, {"DELETE", ""}} {
 			target := "/api/chats/" + c.ID + "/files" + tc.route + "?path=" + path
 			w := chatFileRequest(t, s, tc.method, target, "")
 			// Deleting an escaping symlink removes only the link.
-			if strings.HasPrefix(path, "outside") && tc.method == "DELETE" {
+			if (path == "outside-dir" || path == "outside-file") && tc.method == "DELETE" {
+				if _, err := os.Lstat(filepath.Join(c.Workdir, path)); w.Code != 204 || !os.IsNotExist(err) {
+					t.Errorf("delete link %q status %d, link err %v", path, w.Code, err)
+				}
 				continue
 			}
 			if w.Code != 400 {
@@ -134,42 +137,19 @@ func TestChatFilesDelete(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("pending delete = %d", w.Code)
 	}
+	_ = os.Symlink("attachments", filepath.Join(root, "alias"))
+	_ = os.Symlink(".", filepath.Join(root, "here"))
+	for _, path := range []string{"alias/pending.txt", "here/attachments"} {
+		if w = chatFileRequest(t, s, "DELETE", "/api/chats/"+c.ID+"/files?path="+path, ""); w.Code != http.StatusConflict {
+			t.Fatalf("pending delete via %s = %d", path, w.Code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "attachments", "pending.txt")); err != nil {
+		t.Fatal("pending attachment removed")
+	}
 	_ = os.WriteFile(filepath.Join(root, "pending.txt"), []byte("other"), 0600)
 	if w = chatFileRequest(t, s, "DELETE", "/api/chats/"+c.ID+"/files?path=pending.txt", ""); w.Code != 204 {
 		t.Fatalf("same-name delete outside attachments = %d", w.Code)
-	}
-}
-
-func TestChatFilesIntermediateSymlinkRace(t *testing.T) {
-	s, c := attachmentTestChat(t)
-	sub := filepath.Join(c.Workdir, "sub")
-	if err := os.Mkdir(sub, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(sub, "f"), []byte("inside"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	outside := t.TempDir()
-	outsideFile := filepath.Join(outside, "f")
-	if err := os.WriteFile(outsideFile, []byte("outside"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.RemoveAll(sub); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, sub); err != nil {
-		t.Fatal(err)
-	}
-	w := chatFileRequest(t, s, "GET", "/api/chats/"+c.ID+"/files/raw?path=sub/f", "")
-	if w.Code == 200 {
-		t.Fatal("raw through intermediate symlink succeeded")
-	}
-	w = chatFileRequest(t, s, "DELETE", "/api/chats/"+c.ID+"/files?path=sub/f", "")
-	if w.Code == 204 {
-		t.Fatal("delete through intermediate symlink succeeded")
-	}
-	if _, err := os.Stat(outsideFile); err != nil {
-		t.Fatalf("outside file removed: %v", err)
 	}
 }
 
