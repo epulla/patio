@@ -22,7 +22,7 @@ type Notification = {
   created_at: string;
   read_at: string | null;
 };
-type Page = { notifications: Notification[]; unread: number; next_cursor: string | null };
+type Page = { notifications: Notification[]; unread: number; unread_monitor: number; next_cursor: string | null };
 
 export function useNotificationsBlocked() {
   const [blocked, setBlocked] = useState(false);
@@ -86,7 +86,7 @@ function RowBody({ item, body, onOpen }: { item: Notification; body: ReactNode; 
   );
 }
 
-export default function Notifications({ refresh, onScreen }: { refresh: number; onScreen: (link: string) => boolean }) {
+export default function Notifications({ refresh, onScreen, onMonitorUnread }: { refresh: number; onScreen: (link: string) => boolean; onMonitorUnread: (count: number) => void }) {
   const t = useText(text);
   const [list, setList] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -112,6 +112,7 @@ export default function Notifications({ refresh, onScreen }: { refresh: number; 
             .forEach((item) => api.post(`/api/notifications/${item.id}/native`, {}).catch(() => undefined));
         setList(value.notifications.filter((item) => !drop.includes(item)));
         setUnread(value.unread - drop.length);
+        onMonitorUnread(value.unread_monitor);
         if (!first && document.hasFocus())
           setToasts((current) => [...current, ...fresh.filter((item) => !onScreen(item.link))]);
       })

@@ -135,13 +135,18 @@ func TestNotificationPagingAndUnreadFilter(t *testing.T) {
 	s := New(database, "local", false, "dev", t.TempDir())
 	for i := 1; i <= 5; i++ {
 		stamp := time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC).Format("2006-01-02T15:04:05.000Z")
-		if _, err := database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, fmt.Sprint(i), "chat", fmt.Sprint(i), "", "", stamp); err != nil {
+		kind := "chat"
+		if i <= 2 {
+			kind = "monitor"
+		}
+		if _, err := database.Exec(`INSERT INTO notification(id,kind,title,body,link,created_at) VALUES(?,?,?,?,?,?)`, fmt.Sprint(i), kind, fmt.Sprint(i), "", "", stamp); err != nil {
 			t.Fatal(err)
 		}
 	}
 	page := func(url string) struct {
 		Notifications []notification `json:"notifications"`
 		Unread        int            `json:"unread"`
+		UnreadMonitor int            `json:"unread_monitor"`
 		NextCursor    *string        `json:"next_cursor"`
 	} {
 		t.Helper()
@@ -153,6 +158,7 @@ func TestNotificationPagingAndUnreadFilter(t *testing.T) {
 		var result struct {
 			Notifications []notification `json:"notifications"`
 			Unread        int            `json:"unread"`
+			UnreadMonitor int            `json:"unread_monitor"`
 			NextCursor    *string        `json:"next_cursor"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
@@ -175,8 +181,8 @@ func TestNotificationPagingAndUnreadFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	unread := page("/api/notifications?limit=10&unread=1")
-	if unread.Unread != 5 {
-		t.Fatalf("total unread=%d, want 5", unread.Unread)
+	if unread.Unread != 5 || unread.UnreadMonitor != 1 {
+		t.Fatalf("total unread=%d monitor=%d, want 5 and 1", unread.Unread, unread.UnreadMonitor)
 	}
 	for _, item := range unread.Notifications {
 		if item.ID == "2" {

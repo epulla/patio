@@ -192,8 +192,8 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		items = items[:limit]
 		rowIDs = rowIDs[:limit]
 	}
-	var unread int
-	if err := s.db.QueryRow(`SELECT count(*) FROM notification WHERE read_at IS NULL`).Scan(&unread); err != nil {
+	var unread, unreadMonitor int
+	if err := s.db.QueryRow(`SELECT count(*),count(CASE WHEN kind='monitor' THEN 1 END) FROM notification WHERE read_at IS NULL`).Scan(&unread, &unreadMonitor); err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -203,7 +203,7 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		encoded := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%s|%d", last.CreatedAt, rowIDs[len(rowIDs)-1])))
 		nextCursor = &encoded
 	}
-	write(w, http.StatusOK, map[string]any{"notifications": items, "unread": unread, "next_cursor": nextCursor})
+	write(w, http.StatusOK, map[string]any{"notifications": items, "unread": unread, "unread_monitor": unreadMonitor, "next_cursor": nextCursor})
 }
 
 func (s *Server) readNotification(w http.ResponseWriter, r *http.Request) {

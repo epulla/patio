@@ -382,13 +382,6 @@ export default function App() {
   }, [path, refresh]);
 
   useEffect(() => {
-    api
-      .get<{ notifications: { kind: string }[] }>("/api/notifications?unread=1&limit=200")
-      .then((page) => setMonitorChanges(page.notifications.filter((item) => item.kind === "monitor").length))
-      .catch(() => undefined);
-  }, [path, refresh]);
-
-  useEffect(() => {
     const onPopState = () => {
       setPath(currentPath());
       setDockFocus(undefined);
@@ -518,7 +511,7 @@ export default function App() {
   const isTickets = path === "/tickets";
   const aiPages: Record<string, string> = {
   };
-  let page: ReactNode = <BoardList refresh={refresh} />;
+  let page: ReactNode = <BoardList boards={boards} />;
   if (boardMatch)
     page = (
       <BoardView id={decodeURIComponent(boardMatch[1])} refresh={refresh} />
@@ -688,7 +681,7 @@ export default function App() {
             path === "/settings",
           )}
           <ThemeToggle />
-          <Notifications refresh={refresh} onScreen={onScreen} />
+          <Notifications refresh={refresh} onScreen={onScreen} onMonitorUnread={setMonitorChanges} />
           {showDock && (
             <button
               className="icon ghost dock-toggle"

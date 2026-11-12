@@ -45,20 +45,14 @@ const boardDraft = {
   es: "Crea un tablero llamado <nombre> para <para qué es>.\nColumnas: <p. ej. Por hacer, En curso, Hecho>.",
 };
 
-export default function BoardList({ refresh }: { refresh: number }) {
+// The sidebar already loads the boards on every refresh; reuse its list instead of fetching again.
+export default function BoardList({ boards }: { boards: Board[] }) {
   const t = useText(text);
-  const [boards, setBoards] = useState<Board[]>([]);
   const [error, setError] = useState<unknown>();
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const createButton = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const load = () =>
-    api.get<Board[]>("/api/boards").then(setBoards).catch(setError);
-  useEffect(() => {
-    load();
-  }, [refresh]);
 
   async function importFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
