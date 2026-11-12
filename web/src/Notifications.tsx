@@ -300,7 +300,8 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
     api.post("/api/notifications/read-all", {}).catch(setError);
   });
 
-  // The first load sets the cursor; later refreshes only merge in the newest page so loaded pages stay.
+  // The first load sets the cursor; later refreshes replace the newest page so loaded older pages stay
+  // and deleted items drop out. Local read marks win: the server never marks an item unread again.
   useEffect(() => {
     api
       .get<Page>("/api/notifications?limit=50")
@@ -313,7 +314,12 @@ export function NotificationsPage({ refresh }: { refresh: number }) {
           return;
         }
         const ids = new Set(page.notifications.map((item) => item.id));
-        setItems((list) => [...page.notifications, ...(list ?? []).filter((item) => !ids.has(item.id))]);
+        const last = page.notifications.at(-1)?.created_at;
+        setItems((list = []) => {
+          const read = new Map(list.map((item) => [item.id, item.read_at]));
+          const older = page.next_cursor && last ? list.filter((item) => !ids.has(item.id) && item.created_at <= last) : [];
+          return [...page.notifications.map((item) => ({ ...item, read_at: item.read_at ?? read.get(item.id) ?? null })), ...older];
+        });
       })
       .catch(setError);
   }, [refresh]);

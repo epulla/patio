@@ -78,10 +78,15 @@ export default function TicketDetail({
   // An upload can save and reload after the user opened another ticket; drop those stale loads.
   const shownId = useRef(id);
   shownId.current = id;
+  // Overlapping loads (live refresh, save reload) can resolve out of order; only the newest applies.
+  const loadSeq = useRef(0);
   async function load(preserveForm = false) {
+    if (shownId.current !== id) return;
+    const seq = ++loadSeq.current;
+    const stale = () => shownId.current !== id || seq !== loadSeq.current;
     try {
       const current = await api.get<Ticket>(`/api/tickets/${id}`);
-      if (shownId.current !== id) return;
+      if (stale()) return;
       setTicket(current);
       // Title and description save on blur, so keep in-progress text on live refresh.
       setForm((prev) => ({
@@ -99,20 +104,23 @@ export default function TicketDetail({
         api.get<Comment[]>(`/api/tickets/${current.id}/comments`),
         api.get<TicketLink[]>(`/api/tickets/${current.id}/links`),
       ]);
-      if (shownId.current !== id) return;
+      if (stale()) return;
       setBoard(boardData);
       setHistory(ticketHistory);
       setTransitions(ticketTransitions);
       setComments(ticketComments);
       setLinks(ticketLinks);
       if (config.show_hidden) {
-        setUsers(await api.get<User[]>("/api/users"));
+        const users = await api.get<User[]>("/api/users");
+        if (!stale()) setUsers(users);
       }
     } catch (reason) {
-      setError(reason);
+      if (!stale()) setError(reason);
     }
   }
   useEffect(() => {
+    // Show loading instead of the previous ticket so edits can't target it.
+    if (previous.current.id !== id) setTicket(undefined);
     const preserveForm =
       previous.current.id === id &&
       previous.current.showHidden === config.show_hidden &&
