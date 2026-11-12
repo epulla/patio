@@ -4905,6 +4905,151 @@ main.chat-window .app-version {
   margin: 0 auto;
   object-fit: contain;
 }
+.conversation-files {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 12px;
+  min-height: 0;
+}
+.chat-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+.chat-files-head,
+.file-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-files-head h2,
+.file-viewer-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+.chat-files-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 13px;
+}
+.chat-files-crumbs span {
+  display: inline-flex;
+  align-items: center;
+}
+.chat-files-crumbs button {
+  padding: 2px 6px;
+}
+.chat-files-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-files-list li {
+  display: flex;
+  align-items: center;
+}
+.chat-files-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  text-align: left;
+}
+.chat-files-row .muted {
+  grid-column: 2;
+  font-size: 12px;
+}
+.file-viewer {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 12px 16px;
+  border: 0;
+  background: var(--base-100);
+  color: inherit;
+}
+.file-viewer[open],
+.file-viewer.standalone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.file-viewer.standalone {
+  height: 100vh;
+  box-sizing: border-box;
+}
+.file-viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.file-viewer-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+.file-viewer-image {
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: contain;
+}
+.file-viewer-text {
+  margin: 0;
+  font: 13px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-viewer-doc {
+  width: min(860px, 100%);
+  margin: 0 auto;
+}
+.file-viewer-note {
+  margin: auto;
+  text-align: center;
+}
+.file-viewer-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.file-viewer-tabs [aria-selected="true"] {
+  background: color-mix(in oklch, var(--content) 10%, transparent);
+}
+.file-viewer-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.file-viewer-table th,
+.file-viewer-table td {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.file-viewer-table th {
+  color: var(--muted);
+  font-weight: 400;
+}
 .attachment-label {
   display: inline-flex;
   align-items: center;

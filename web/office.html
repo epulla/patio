@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Office renderers build DOM from file text; this CSP stops injected markup from running script or reaching /api. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:"
+    />
+    <style>
+      body { margin: 0; background: #e5e7eb; }
+      #root { min-height: 100vh; }
+      #root > .pptx-preview-wrapper { margin: 0 auto; }
+      .error { font: 14px system-ui, sans-serif; padding: 24px; color: #b91c1c; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/office.ts"></script>
+  </body>
+</html>

@@ -35,6 +35,7 @@ const Calendar = lazy(() => import("./Calendar"));
 const Dashboard = lazy(() => import("./Dashboard"));
 const Workflows = lazy(() => import("./Workflows"));
 const ChatFlow = lazy(() => import("./ChatFlow"));
+const FileViewer = lazy(() => import("./FileViewer"));
 
 const text = {
   en: {
@@ -77,6 +78,13 @@ const chatWindow =
   new URLSearchParams(location.search).get("window") === "chat"
     ? decodeURIComponent(location.pathname.match(/^\/ai\/chats\/([^/]+)$/)?.[1] ?? "")
     : "";
+// File windows load /ai/chats/<id>/files?window=file&path=<path> and show only the viewer.
+const params = new URLSearchParams(location.search);
+const fileWindow =
+  params.get("window") === "file"
+    ? { chatId: decodeURIComponent(location.pathname.match(/^\/ai\/chats\/([^/]+)\/files$/)?.[1] ?? ""), path: params.get("path") ?? "" }
+    : undefined;
+const popout = !!chatWindow || !!fileWindow;
 
 export function ErrorText({ error }: { error: unknown }) {
   if (!error) return null;
@@ -204,7 +212,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (chatWindow) return;
+    if (popout) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isNewPinnedKey(event) || document.querySelector("dialog[open]")) return;
       event.preventDefault();
@@ -313,7 +321,7 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const step = groupStep(event);
-      if (!step || chatWindow || groups.groups.length < 2) return;
+      if (!step || popout || groups.groups.length < 2) return;
       event.preventDefault();
       cycleGroup(step);
       if (location.pathname.startsWith("/ai/chats")) navigate("/ai/chats");
@@ -331,7 +339,7 @@ export default function App() {
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
-      if (!allPinned.length || chatWindow || location.pathname.startsWith("/ai/chats")) return;
+      if (!allPinned.length || popout || location.pathname.startsWith("/ai/chats")) return;
       event.preventDefault();
       if (!dockOpen) return toggleDock(true);
       if (document.activeElement?.closest(".chat-dock")) return toggleDock(false);
@@ -347,7 +355,7 @@ export default function App() {
       const id = (event as CustomEvent<string>).detail;
       // Read the store, not render state: a chat pinned just before this event isn't rendered yet.
       const group = groupOf(id);
-      if (!group || chatWindow || location.pathname.startsWith("/ai/chats")) return navigate(`/ai/chats/${id}`);
+      if (!group || popout || location.pathname.startsWith("/ai/chats")) return navigate(`/ai/chats/${id}`);
       setActiveGroup(group.id);
       toggleDock(true);
       setDockFocus({ id });
@@ -383,11 +391,11 @@ export default function App() {
     return onEvent("db-changed", () => setRefresh((current) => current + 1));
   }, []);
 
-  useEffect(() => (chatWindow ? undefined : onEvent("navigate", (to) => openLink(String(to)))), []);
+  useEffect(() => (popout ? undefined : onEvent("navigate", (to) => openLink(String(to)))), []);
 
   // Marks the version seen only once its notes load, so an offline launch retries next time.
   const openWhatsNew = async () => {
-    if (chatWindow || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
+    if (popout || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
     await api.get("/api/release-notes");
     await api.put("/api/whats-new", {});
     setWhatsNew(true);
@@ -436,7 +444,7 @@ export default function App() {
       .get<Config>("/api/config")
       .then((loaded) => {
         // Restore only when the app opened at its start page and the user hasn't moved on yet.
-        if (!chatWindow && location.pathname === "/")
+        if (!popout && location.pathname === "/")
           lastPage().then((page) => page && location.pathname === "/" && navigate(page));
         setConfig(loaded);
       })
@@ -447,7 +455,7 @@ export default function App() {
   const pinIds = useRef(allPinned);
   pinIds.current = allPinned;
   useEffect(() => {
-    if (!config || chatWindow) return;
+    if (!config || popout) return;
     const run = () => api.post("/api/chats/cleanup", { keep: pinIds.current }).catch(() => undefined);
     run();
     const timer = setInterval(run, 24 * 60 * 60 * 1000);
@@ -456,7 +464,7 @@ export default function App() {
 
   // Chat windows share localStorage and the tour visits pages on its own, so neither records the last page.
   useEffect(() => {
-    if (config && !chatWindow && !touring && !path.startsWith("/print/")) localStorage.setItem(lastPageKey, path);
+    if (config && !popout && !touring && !path.startsWith("/print/")) localStorage.setItem(lastPageKey, path);
   }, [path, config, touring]);
 
   // The side panel is hidden on chat routes; remember the pinned chat viewed there for when it comes back.
@@ -478,6 +486,12 @@ export default function App() {
   }, []);
 
   if (!config) return null;
+  if (fileWindow)
+    return (
+      <Suspense fallback={null}>
+        <FileViewer chatId={fileWindow.chatId} path={fileWindow.path} standalone />
+      </Suspense>
+    );
   if (chatWindow)
     return (
       <main className="chat-window">
