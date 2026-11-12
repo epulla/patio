@@ -48,7 +48,8 @@ func throttle(every time.Duration, fn func()) func() {
 	pending := false
 	return func() {
 		mu.Lock()
-		if last.IsZero() || time.Since(last) >= every {
+		// A pending trailing call already covers this one, even if its timer is overdue.
+		if !pending && (last.IsZero() || time.Since(last) >= every) {
 			last = time.Now()
 			mu.Unlock()
 			fn()
