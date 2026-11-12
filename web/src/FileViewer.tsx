@@ -131,7 +131,8 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
   const [version, setVersion] = useState(0);
   const name = path.split("/").pop() ?? path;
   const kind = fileKind(name);
-  const editable = kind === "markdown" || kind === "json" || kind === "text" || /\.(csv|tsv)$/i.test(name);
+  // The separate window can't guard unsaved edits on close, so it stays read-only.
+  const editable = !standalone && (kind === "markdown" || kind === "json" || kind === "text" || /\.(csv|tsv)$/i.test(name));
   useEffect(() => {
     if (!standalone && !dialog.current?.open) dialog.current?.showModal();
   }, [standalone]);
@@ -158,6 +159,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
 
   async function save(overwrite = false) {
     if (!draft || saving) return;
+    const sent = draft.text;
     setSaving(true);
     setError(undefined);
     try {
@@ -165,11 +167,13 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         // An empty expected_modified tells the server to overwrite.
-        body: JSON.stringify({ content: draft.text, expected_modified: overwrite ? "" : draft.modified }),
+        body: JSON.stringify({ content: sent, expected_modified: overwrite ? "" : draft.modified }),
       });
       if (response.status === 409) return setDraft((current) => current && { ...current, conflict: true });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `${response.status}`);
-      setDraft(undefined);
+      const { modified } = await response.json();
+      // Text typed while the save was in flight stays in the editor, unsaved.
+      setDraft((current) => (current && current.text !== sent ? { text: current.text, original: sent, modified } : undefined));
       setVersion((n) => n + 1);
     } catch (reason) {
       setError(reason);
@@ -264,13 +268,13 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
       <div className="file-viewer-body">
         {draft ? (
           kind === "markdown" ? (
-            <MarkdownEditor value={draft.text} onChange={(text) => setDraft({ ...draft, text })} label={name} />
+            <MarkdownEditor value={draft.text} onChange={(text) => setDraft((current) => current && { ...current, text })} label={name} />
           ) : (
             <textarea
               className="file-viewer-editor"
               aria-label={name}
               value={draft.text}
-              onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+              onChange={(event) => setDraft((current) => current && { ...current, text: event.target.value })}
               spellCheck={false}
               autoFocus
             />
@@ -297,12 +301,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
       </div>
     </>
   );
-  if (standalone)
-    return (
-      <main className="file-viewer standalone" onKeyDown={onKeyDown}>
-        {body}
-      </main>
-    );
+  if (standalone) return <main className="file-viewer standalone">{body}</main>;
   return (
     <dialog
       ref={dialog}
