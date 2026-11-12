@@ -87,22 +87,22 @@ func TestParseOpenCodeAuthJSON(t *testing.T) {
 	}
 }
 
-func TestParseOpencodeMajor(t *testing.T) {
+func TestParseOpencodeVersion(t *testing.T) {
 	for _, tc := range []struct {
 		version string
-		major   int
+		want    [3]int
 		wantErr bool
 	}{
-		{"1.18.35", 1, false},
-		{"v1.18.35", 1, false},
-		{"opencode v2.0.26", 2, false},
-		{"2.0.26", 2, false},
-		{"unknown", 0, true},
+		{"1.18.35", [3]int{1, 18, 35}, false},
+		{"v1.18.35", [3]int{1, 18, 35}, false},
+		{"opencode v2.0.26", [3]int{2, 0, 26}, false},
+		{"2.2", [3]int{2, 2, 0}, false},
+		{"unknown", [3]int{}, true},
 	} {
 		t.Run(tc.version, func(t *testing.T) {
-			got, err := parseOpencodeMajor(tc.version)
-			if (err != nil) != tc.wantErr || got != tc.major {
-				t.Fatalf("major = %d, %v", got, err)
+			got, err := parseOpencodeVersion(tc.version)
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Fatalf("version = %v, %v", got, err)
 			}
 		})
 	}
@@ -113,8 +113,8 @@ func TestParseOpencodeMajor(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s\\n' 'opencode v2.0.26'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := OpencodeMajor(context.Background(), path, []string{}); err != nil || got != 2 {
-		t.Fatalf("OpencodeMajor = %d, %v", got, err)
+	if got, err := OpencodeVersion(context.Background(), path, []string{}); err != nil || got != [3]int{2, 0, 26} {
+		t.Fatalf("OpencodeVersion = %v, %v", got, err)
 	}
 }
 

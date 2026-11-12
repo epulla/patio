@@ -50,6 +50,7 @@ type opencodeServer struct {
 	registryKey string
 	inputKey    string
 	major       int
+	catalogLags bool
 	baseURL     string
 	password    string
 	client      *http.Client
@@ -185,14 +186,15 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 			return server, nil
 		}
 	}
-	majorDetector := m.options.opencodeMajor
-	if majorDetector == nil {
-		majorDetector = connectorcli.OpencodeMajor
+	versionDetector := m.options.opencodeVersion
+	if versionDetector == nil {
+		versionDetector = connectorcli.OpencodeVersion
 	}
-	major, err := majorDetector(context.Background(), path, env)
+	version, err := versionDetector(context.Background(), path, env)
 	if err != nil {
 		return nil, fmt.Errorf("detect opencode version: %w", err)
 	}
+	major := version[0]
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
@@ -241,7 +243,7 @@ func acquireOpenCodeServer(m *chatManager, connectorID, configDir string, extern
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
-	server := &opencodeServer{connectorID: connectorID, registryKey: registryKey, inputKey: inputKey, major: major, baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
+	server := &opencodeServer{connectorID: connectorID, registryKey: registryKey, inputKey: inputKey, major: major, catalogLags: opencodeCatalogLags(version), baseURL: baseURL, password: password, client: &http.Client{Timeout: 0}, process: process,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), chats: make(map[string]*opencodeRuntime), ancestors: make(map[string]string), refs: 1}
 	if err := server.ready(); err != nil {
 		cancel()
@@ -594,6 +596,17 @@ func (d *opencodeRuntime) triggerMCPReconnect() {
 	}()
 }
 
+// opencodeCatalogLags reports OpenCode versions before 2.2.6, which report an MCP server
+// connected before its tools reach the model (anomalyco/opencode#51812).
+func opencodeCatalogLags(version [3]int) bool {
+	for i, fixed := range [3]int{2, 2, 6} {
+		if version[i] != fixed {
+			return version[i] < fixed
+		}
+	}
+	return false
+}
+
 // awaitMCPSettled polls until no configured server is missing or pending, or budget passes.
 func (d *opencodeRuntime) awaitMCPSettled(started time.Time) map[string]opencodeMCPState {
 	ctx, cancel := context.WithTimeout(d.ctx, opencodeMCPSettleBudget)
@@ -618,7 +631,7 @@ func (d *opencodeRuntime) awaitMCPSettled(started time.Time) map[string]opencode
 			firstPoll = false
 			if settled {
 				// burnedout: assumed 1s; OpenCode adds tools to the catalog shortly after reporting connected
-				if needsCatalogSettle && !sleepCtx(ctx, time.Second) {
+				if needsCatalogSettle && d.server.catalogLags && !sleepCtx(ctx, time.Second) {
 					log.Printf("OpenCode MCP wait timed out chat=%s after %s", d.chatID, time.Since(started))
 					return states
 				}

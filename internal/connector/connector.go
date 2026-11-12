@@ -276,12 +276,12 @@ func Check(ctx context.Context, opts Options) (out Status) {
 	case "codex":
 		statusErr = codexStatus(ctx, &out, opts)
 	case "opencode":
-		major, err := parseOpencodeMajor(version)
+		parsed, err := parseOpencodeVersion(version)
 		if err != nil {
 			out.Note = "version: " + err.Error()
 			return out
 		}
-		statusErr = openCodeStatus(ctx, &out, opts, major)
+		statusErr = openCodeStatus(ctx, &out, opts, parsed[0])
 	case "copilot":
 		statusErr = copilotStatus(ctx, &out, opts)
 	default:
@@ -293,30 +293,39 @@ func Check(ctx context.Context, opts Options) (out Status) {
 	return out
 }
 
-var opencodeVersion = regexp.MustCompile(`(?:^|[^0-9])v?([0-9]+)\.[0-9]+(?:\.[0-9]+)?`)
+var opencodeVersion = regexp.MustCompile(`(?:^|[^0-9])v?([0-9]+)\.([0-9]+)(?:\.([0-9]+))?`)
 
-func parseOpencodeMajor(version string) (int, error) {
+// parseOpencodeVersion returns major, minor and patch; a missing patch is 0.
+func parseOpencodeVersion(version string) ([3]int, error) {
+	var out [3]int
 	match := opencodeVersion.FindStringSubmatch(strings.TrimSpace(version))
-	if len(match) != 2 {
-		return 0, fmt.Errorf("could not parse opencode version %q", strings.TrimSpace(version))
+	if len(match) != 4 {
+		return out, fmt.Errorf("could not parse opencode version %q", strings.TrimSpace(version))
 	}
-	major, err := strconv.Atoi(match[1])
-	if err != nil {
-		return 0, err
+	for i, part := range match[1:] {
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return out, err
+		}
+		out[i] = n
 	}
-	return major, nil
+	return out, nil
 }
 
 func opencodeMajor(ctx context.Context, path string, env []string) (int, error) {
-	version, err := OpencodeCommandOutput(ctx, path, []string{"--version"}, env)
-	if err != nil {
-		return 0, err
-	}
-	return parseOpencodeMajor(version)
+	version, err := OpencodeVersion(ctx, path, env)
+	return version[0], err
 }
 
-func OpencodeMajor(ctx context.Context, path string, env []string) (int, error) {
-	return opencodeMajor(ctx, path, env)
+func OpencodeVersion(ctx context.Context, path string, env []string) ([3]int, error) {
+	version, err := OpencodeCommandOutput(ctx, path, []string{"--version"}, env)
+	if err != nil {
+		return [3]int{}, err
+	}
+	return parseOpencodeVersion(version)
 }
 
 func commandOutput(ctx context.Context, path string, args []string, env []string) (string, error) {

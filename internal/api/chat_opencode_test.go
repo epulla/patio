@@ -50,9 +50,9 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 			emittedMu.Unlock()
 		},
 		findOpencode: func() (string, error) { return "opencode-test", nil },
-		opencodeMajor: func(context.Context, string, []string) (int, error) {
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) {
 			versionChecks.Add(1)
-			return 1, nil
+			return [3]int{1}, nil
 		},
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
 			return fake.start(args, env)
@@ -590,9 +590,9 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath:       filepath.Join(root, "test.db"),
 		findOpencode: func() (string, error) { return "opencode-v2-test", nil },
-		opencodeMajor: func(context.Context, string, []string) (int, error) {
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) {
 			versionChecks.Add(1)
-			return 2, nil
+			return [3]int{2}, nil
 		},
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) {
 			return fake.start(args, env)
@@ -740,7 +740,7 @@ func TestOpenCodeV2WaitsForMCPAndNotesFailure(t *testing.T) {
 			var emitted []map[string]any
 			server := New(database, "local", false, "dev", root, Options{
 				DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
-				opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+				opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{2}, nil },
 				opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
 				Emit: func(_ string, event any) {
 					emittedMu.Lock()
@@ -808,7 +808,7 @@ func TestOpenCodeV2LaterPromptDoesNotWaitForMCP(t *testing.T) {
 	fake.mcpMode = "failed"
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
-		opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{2}, nil },
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
 	})
 	addChatMCPTestServers(t, server)
@@ -850,7 +850,7 @@ func TestOpenCodeV2PendingMCPRefreshesAndReconnects(t *testing.T) {
 	fake.mcpMode = "hang"
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
-		opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{2}, nil },
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
 	})
 	addChatMCPTestServers(t, server)
@@ -890,7 +890,7 @@ func TestOpenCodeV1ReconnectsFailedMCPBeforePrompt(t *testing.T) {
 	fake.mcpFailed = "stdio-test"
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-test", nil },
-		opencodeMajor:   func(context.Context, string, []string) (int, error) { return 1, nil },
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{1}, nil },
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
 	})
 	addChatMCPTestServers(t, server)
@@ -926,7 +926,7 @@ func TestOpenCodeV2ReconnectsFailedMCPBeforePrompt(t *testing.T) {
 	fake.mcpMode = "recover"
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
-		opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{2}, nil },
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
 	})
 	addChatMCPTestServers(t, server)
@@ -1329,7 +1329,7 @@ func TestOpenCodeV2QueueDrainResumesSessionWithoutDeadlock(t *testing.T) {
 	fake := newOpenCodeV2Fake(t)
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-v2-test", nil },
-		opencodeMajor:   func(context.Context, string, []string) (int, error) { return 2, nil },
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{2}, nil },
 		opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) },
 	})
 	addChatMCPTestServers(t, server)
@@ -1383,7 +1383,7 @@ func TestReloadMCPRetiresSharedOpenCodeServer(t *testing.T) {
 	}
 	a, b := createDriverTestChat(t, database, connectorID, root), createDriverTestChat(t, database, connectorID, root)
 	fake := newOpenCodeFake(t)
-	server := New(database, "local", false, "dev", root, Options{DBPath: filepath.Join(root, "test.db"), mcpExecutable: "/usr/bin/patio", findOpencode: func() (string, error) { return "opencode-test", nil }, opencodeMajor: func(context.Context, string, []string) (int, error) { return 1, nil }, opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) }})
+	server := New(database, "local", false, "dev", root, Options{DBPath: filepath.Join(root, "test.db"), mcpExecutable: "/usr/bin/patio", findOpencode: func() (string, error) { return "opencode-test", nil }, opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{1}, nil }, opencodeStarter: func(_ string, args, env []string) (opencodeProcess, error) { return fake.start(args, env) }})
 	addChatMCPTestServers(t, server)
 	t.Cleanup(func() {
 		if err := server.Close(); err != nil {
@@ -1425,5 +1425,20 @@ func TestReloadMCPRetiresSharedOpenCodeServer(t *testing.T) {
 	fake.mu.Unlock()
 	if starts != 2 || kills != 1 {
 		t.Fatalf("starts=%d kills=%d after B restart", starts, kills)
+	}
+}
+
+func TestOpencodeCatalogLags(t *testing.T) {
+	for version, want := range map[[3]int]bool{
+		{1, 18, 35}: true,
+		{2, 1, 2}:   true,
+		{2, 2, 5}:   true,
+		{2, 2, 6}:   false,
+		{2, 3, 0}:   false,
+		{3, 0, 0}:   false,
+	} {
+		if got := opencodeCatalogLags(version); got != want {
+			t.Errorf("opencodeCatalogLags(%v) = %v, want %v", version, got, want)
+		}
 	}
 }

@@ -1729,7 +1729,7 @@ func TestOpenCodePicksUpMCPChangesOnNextSend(t *testing.T) {
 	var configs []map[string]json.RawMessage
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath: filepath.Join(root, "test.db"), findOpencode: func() (string, error) { return "opencode-test", nil },
-		opencodeMajor: func(context.Context, string, []string) (int, error) { return 1, nil },
+		opencodeVersion: func(context.Context, string, []string) ([3]int, error) { return [3]int{1}, nil },
 		opencodeStarter: func(path string, args, env []string) (opencodeProcess, error) {
 			for i, item := range env {
 				if strings.HasPrefix(item, "OPENCODE_CONFIG_CONTENT=") {
