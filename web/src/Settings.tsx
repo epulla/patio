@@ -45,6 +45,7 @@ const text = {
     dataFolder: "Data folder",
     about: "about ",
     open: "Open",
+    openSource: "Open on GitHub",
     contents: "Contents",
     counts: {
       boards: "boards",
@@ -146,6 +147,7 @@ const text = {
     dataFolder: "Carpeta de datos",
     about: "aprox. ",
     open: "Abrir",
+    openSource: "Abrir en GitHub",
     contents: "Contenido",
     counts: {
       boards: "tableros",
@@ -472,7 +474,7 @@ function General() {
               </span>
             </dd>
             <dt>{t.contents}</dt>
-            <dd>{counts.map(([label, count]) => `${count} ${label}`).join(" · ")}</dd>
+            <dd>{counts.map(([label, count]) => `${count} ${label}`.replaceAll(" ", "\u00a0")).join(" · ")}</dd>
             <dt>{t.schema}</dt>
             <dd>{t.schemaVersion(about.schema_version)}</dd>
             <dt>{t.hiddenFields}</dt>
@@ -481,9 +483,14 @@ function General() {
             <dd>{t.secretsIn(about.secrets_store)}</dd>
             <dt>{t.source}</dt>
             <dd>
-              <a href={about.repo_url} target="_blank" rel="noreferrer" onClick={openRepo}>
-                {about.repo_url.replace(/^https:\/\//, "")}
-              </a>
+              <span className="about-box">
+                <a href={about.repo_url} target="_blank" rel="noreferrer" onClick={openRepo}>
+                  {about.repo_url.replace(/^https:\/\//, "")}
+                </a>
+                <span className="about-actions">
+                  <IconButton type="button" className="ghost" icon="externalLink" label={t.openSource} onClick={() => (isDesktop ? openURL(about.repo_url) : window.open(about.repo_url, "_blank", "noreferrer"))} />
+                </span>
+              </span>
             </dd>
             <dt>{t.dedication}</dt>
             <dd>{t.dedicationText}</dd>
