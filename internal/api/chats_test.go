@@ -382,25 +382,44 @@ func TestChatMessagesPaging(t *testing.T) {
 		t.Fatalf("create chat = %d", code)
 	}
 	for i := 0; i < 120; i++ {
-		if _, err := database.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,'user',?,'same')`, uid(), created.ID, strconv.Itoa(i)); err != nil {
+		if _, err := database.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES(?,?,'user',?,?)`, uid(), created.ID, strconv.Itoa(i), strconv.Itoa(i/30)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	approvalIDs := []string{uid(), uid(), uid()}
+	for i, createdAt := range []string{"0", "2", "3"} {
+		if _, err := database.Exec(`INSERT INTO chat_approval(id,chat_id,tool_name,input_json,status,auto,created_at) VALUES(?,?,?,'{}','allowed',1,?)`, approvalIDs[i], created.ID, "tool", createdAt); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var page struct {
-		Messages []ChatMessage `json:"messages"`
-		Next     *string       `json:"next_cursor"`
+		Messages      []ChatMessage  `json:"messages"`
+		Next          *string        `json:"next_cursor"`
+		AutoApprovals []chatApproval `json:"auto_approvals"`
 	}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &page); code != http.StatusOK || len(page.Messages) != 50 || page.Next == nil {
 		t.Fatalf("chat page = %d, %#v", code, page)
 	}
 	all := append([]ChatMessage(nil), page.Messages...)
+	approvalCounts := map[string]int{}
+	for _, a := range page.AutoApprovals {
+		approvalCounts[a.ID]++
+	}
 	for cursor := page.Next; cursor != nil; {
 		path := "/api/chats/" + created.ID + "/messages?before=" + url.QueryEscape(*cursor)
 		if code := requestJSON(t, handler, http.MethodGet, path, nil, &page); code != http.StatusOK {
 			t.Fatalf("older page = %d", code)
 		}
 		all = append(page.Messages, all...)
+		for _, a := range page.AutoApprovals {
+			approvalCounts[a.ID]++
+		}
 		cursor = page.Next
+	}
+	for _, id := range approvalIDs {
+		if approvalCounts[id] != 1 {
+			t.Fatalf("approval %s returned %d times across pages", id, approvalCounts[id])
+		}
 	}
 	if len(all) != 120 {
 		t.Fatalf("got %d messages, want 120", len(all))
