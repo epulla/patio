@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "./api";
 import { ErrorText } from "./App";
 import Switch from "./Switch";
+import { IconButton } from "./icons";
 import { useText } from "./i18n";
 
 type TelegramSettings = { enabled: boolean; allowed_user_ids: number[]; has_token: boolean };
@@ -9,7 +10,15 @@ type TelegramSettings = { enabled: boolean; allowed_user_ids: number[]; has_toke
 const text = {
   en: {
     telegram: "Telegram",
-    help: "Chat with Patio from Telegram. Create a bot with @BotFather, paste its token here, then message the bot. Patio must be running; replies use your default connector and bot. Commands: /new starts a fresh chat, /chat shows the current one, /continue picks a recent chat (or /continue <chat link>).",
+    help: "Chat with Patio from Telegram. Create a bot with @BotFather, paste its token here, then message the bot. Patio must be running; replies use your default connector and bot.",
+    commands: "Commands",
+    commandList: [
+      ["/new", "Start a fresh chat"],
+      ["/chat", "Show the current chat"],
+      ["/continue", "Pick a recent chat"],
+      ["/continue <chat link>", "Switch to that chat"],
+      ["/recents", "Same as /continue (also /recent)"],
+    ],
     enabled: "Answer Telegram messages",
     token: "Bot token",
     tokenSaved: "Saved · type to replace",
@@ -27,7 +36,15 @@ const text = {
   },
   es: {
     telegram: "Telegram",
-    help: "Chatea con Patio desde Telegram. Crea un bot con @BotFather, pega aquí su token y escríbele al bot. Patio debe estar abierto; las respuestas usan tu conector y bot por defecto. Comandos: /new inicia un chat nuevo, /chat muestra el actual, /continue elige un chat reciente (o /continue <enlace del chat>).",
+    help: "Chatea con Patio desde Telegram. Crea un bot con @BotFather, pega aquí su token y escríbele al bot. Patio debe estar abierto; las respuestas usan tu conector y bot por defecto.",
+    commands: "Comandos",
+    commandList: [
+      ["/new", "Iniciar un chat nuevo"],
+      ["/chat", "Ver el chat actual"],
+      ["/continue", "Elegir un chat reciente"],
+      ["/continue <enlace del chat>", "Cambiar a ese chat"],
+      ["/recents", "Igual que /continue (también /recent)"],
+    ],
     enabled: "Responder mensajes de Telegram",
     token: "Token del bot",
     tokenSaved: "Guardado · escribe para reemplazarlo",
@@ -127,14 +144,27 @@ export default function Telegram() {
     <section className="stack">
       <h2>{t.telegram}</h2>
       <p className="muted">{t.help}</p>
+      <section className="shortcut-list">
+        <section>
+          <h3>{t.commands}</h3>
+          <dl>
+            {t.commandList.map(([command, description]) => (
+              <div key={command} className="shortcut-row">
+                <dt>{description}</dt>
+                <dd>
+                  <kbd>{command}</kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </section>
       <section className={`panel mcp-status ${state}`}>
         <span className="status-dot" aria-hidden="true" />
         <div className="mcp-status-text" role="status" aria-live="polite">
           <strong>{label}</strong>
         </div>
-        <button type="button" disabled={testing || (!token.trim() && !settings?.has_token)} onClick={() => test(token.trim() || null)}>
-          {testing ? t.testing : t.test}
-        </button>
+        <IconButton type="button" className="ghost" icon="activity" label={testing ? t.testing : t.test} disabled={testing || (!token.trim() && !settings?.has_token)} onClick={() => test(token.trim() || null)} />
       </section>
       <section className="panel stack defaults-panel">
         {settings ? (
@@ -151,11 +181,9 @@ export default function Telegram() {
                   onChange={(event) => setToken(event.target.value)}
                 />
               </label>
-              <button disabled={!token.trim()}>{t.saveToken}</button>
+              <IconButton className="ghost" icon="check" label={t.saveToken} disabled={!token.trim()} />
               {settings.has_token && (
-                <button type="button" className="danger-text" onClick={() => save({ token: "" })}>
-                  {t.removeToken}
-                </button>
+                <IconButton type="button" className="danger-text" icon="trash" label={t.removeToken} onClick={() => save({ token: "" })} />
               )}
             </form>
             <div className="inline-form">
