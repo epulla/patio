@@ -4629,8 +4629,18 @@ main.chat-window .app-version {
 }
 .about-path {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
   font: 13px var(--mono);
+}
+.about-path bdi {
+  direction: ltr;
+}
+.about-size {
+  flex: none;
 }
 .about-actions {
   display: inline-flex;
