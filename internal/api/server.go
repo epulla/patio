@@ -23,6 +23,9 @@ type Server struct {
 	showHidden      bool
 	version         string
 	updateURL       string
+	notesURL        string
+	notesMu         sync.Mutex
+	notes           *releaseInfo
 	releaseMu       sync.Mutex
 	release         releaseInfo
 	releaseAt       time.Time
@@ -66,6 +69,7 @@ type Options struct {
 	codexStart      func(context.Context, string, []string, bool, string, string, ...string) (codexClient, error)
 	version         string
 	UpdateURL       string
+	ReleaseNotesURL string
 	findCopilot     func() (string, error)
 	mcpExecutable   string
 	PatioMCPTools   []string
@@ -110,7 +114,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), windowID: opts.WindowID, openChat: opts.OpenChatWindow, showMain: opts.ShowMain, telegramWake: make(chan struct{}, 1)}
+	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, notesURL: opts.ReleaseNotesURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), windowID: opts.WindowID, openChat: opts.OpenChatWindow, showMain: opts.ShowMain, telegramWake: make(chan struct{}, 1)}
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -194,6 +198,9 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/cleanup", s.runChatCleanup)
 	m.HandleFunc("GET /api/settings/about", s.settingsAbout)
 	m.HandleFunc("GET /api/update", s.update)
+	m.HandleFunc("GET /api/release-notes", s.releaseNotes)
+	m.HandleFunc("GET /api/whats-new", s.whatsNew)
+	m.HandleFunc("PUT /api/whats-new", s.putWhatsNew)
 	m.HandleFunc("POST /api/settings/reveal", s.revealSettingsTarget)
 	m.HandleFunc("GET /api/chats", s.listChats)
 	m.HandleFunc("POST /api/chats", s.createChat)

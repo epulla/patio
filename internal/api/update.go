@@ -15,8 +15,68 @@ import (
 const githubLatestRelease = "https://api.github.com/repos/epulla/patio/releases/latest"
 
 type releaseInfo struct {
-	Tag string `json:"tag_name"`
-	URL string `json:"html_url"`
+	Tag  string `json:"tag_name"`
+	URL  string `json:"html_url"`
+	Body string `json:"body"`
+}
+
+func (s *Server) releaseNotes(w http.ResponseWriter, r *http.Request) {
+	if _, ok := parseVersion(s.version); !ok {
+		errw(w, http.StatusNotFound, "no release notes for this build")
+		return
+	}
+	s.notesMu.Lock()
+	defer s.notesMu.Unlock()
+	if s.notes == nil {
+		base := s.notesURL
+		if base == "" {
+			base = "https://api.github.com/repos/epulla/patio/releases/tags"
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/"+s.version, nil)
+		if err != nil {
+			errw(w, http.StatusBadGateway, "couldn't load release notes: "+err.Error())
+			return
+		}
+		req.Header.Set("User-Agent", "Patio")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			errw(w, http.StatusBadGateway, "couldn't load release notes: "+err.Error())
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			errw(w, http.StatusBadGateway, "couldn't load release notes: GitHub returned "+resp.Status)
+			return
+		}
+		var release releaseInfo
+		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+			errw(w, http.StatusBadGateway, "couldn't load release notes: "+err.Error())
+			return
+		}
+		s.notes = &release
+	}
+	write(w, http.StatusOK, map[string]string{"version": s.version, "notes": s.notes.Body, "url": s.notes.URL})
+}
+
+func (s *Server) whatsNew(w http.ResponseWriter, _ *http.Request) {
+	var lastSeen string
+	err := s.db.QueryRow(`SELECT value FROM app_setting WHERE key='last_seen_version'`).Scan(&lastSeen)
+	if err != nil && err != sql.ErrNoRows {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	_, valid := parseVersion(s.version)
+	write(w, http.StatusOK, map[string]bool{"show": valid && lastSeen != s.version})
+}
+
+func (s *Server) putWhatsNew(w http.ResponseWriter, _ *http.Request) {
+	if _, err := s.db.Exec(`INSERT INTO app_setting(key,value) VALUES('last_seen_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, s.version); err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	noContent(w)
 }
 
 // latestRelease caches GitHub's answer for 10 minutes; unauthenticated calls are limited to 60 an hour per IP.

@@ -60,3 +60,43 @@ func TestUpdateAndNotification(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseNotes(t *testing.T) {
+	hits := 0
+	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if !strings.HasSuffix(r.URL.Path, "/v0.9.1") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"body": "Release **notes**", "html_url": "https://github.com/epulla/patio/releases/tag/v0.9.1"})
+	}))
+	defer releases.Close()
+	db, _, root := chatAPI(t)
+	s := New(db, "local", false, "v0.9.1", root, Options{ReleaseNotesURL: releases.URL})
+	for i := 0; i < 2; i++ {
+		var got struct{ Version, Notes, URL string }
+		if code := requestJSON(t, s, http.MethodGet, "/api/release-notes", nil, &got); code != http.StatusOK || got.Version != "v0.9.1" || got.Notes != "Release **notes**" {
+			t.Fatalf("release notes = %d, %+v", code, got)
+		}
+	}
+	if hits != 1 {
+		t.Fatalf("GitHub hits = %d", hits)
+	}
+	var show struct{ Show bool }
+	if code := requestJSON(t, s, http.MethodGet, "/api/whats-new", nil, &show); code != http.StatusOK || !show.Show {
+		t.Fatalf("whats-new = %d, %+v", code, show)
+	}
+	if code := requestJSON(t, s, http.MethodPut, "/api/whats-new", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("PUT whats-new = %d", code)
+	}
+	if code := requestJSON(t, s, http.MethodGet, "/api/whats-new", nil, &show); code != http.StatusOK || show.Show {
+		t.Fatalf("whats-new after PUT = %d, %+v", code, show)
+	}
+	dev := New(db, "local", false, "dev", root)
+	if code := requestJSON(t, dev, http.MethodGet, "/api/release-notes", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("dev release-notes = %d", code)
+	}
+	if code := requestJSON(t, dev, http.MethodGet, "/api/whats-new", nil, &show); code != http.StatusOK || show.Show {
+		t.Fatalf("dev whats-new = %d, %+v", code, show)
+	}
+}
