@@ -4587,22 +4587,26 @@ main.chat-window .app-version {
   min-width: 0;
   margin: 0;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
 }
 .about-path {
+  min-width: 0;
   overflow-wrap: anywhere;
   font: 13px var(--mono);
 }
 .about-actions {
   display: inline-flex;
-  gap: 6px;
+  flex: none;
+  gap: 2px;
 }
-.about-actions button {
+.about-actions .icon {
+  width: 28px;
   height: 28px;
-  padding: 0 10px;
-  font-size: 13px;
+}
+.about-actions .icon .svg-icon {
+  width: 16px;
+  height: 16px;
 }
 .defaults-fields {
   display: grid;
