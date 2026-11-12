@@ -12,6 +12,7 @@ const FileViewer = lazy(() => import("./FileViewer"));
 const text = {
   en: {
     files: "Files",
+    chatFiles: "Chat files",
     changeFolder: "Change folder…",
     changeFolderLocked: "Start a new chat to use another folder",
     fileManager: "Open in file manager",
@@ -27,6 +28,7 @@ const text = {
   },
   es: {
     files: "Archivos",
+    chatFiles: "Archivos del chat",
     changeFolder: "Cambiar carpeta…",
     changeFolderLocked: "Inicia un chat nuevo para usar otra carpeta",
     fileManager: "Abrir en el administrador de archivos",
@@ -48,6 +50,7 @@ type Entry = { name: string; path: string; dir: boolean; size: number; modified:
 export default function ChatFiles({
   chatId,
   workdir,
+  scratch,
   refreshKey,
   canChangeFolder,
   onChangeFolder,
@@ -57,6 +60,7 @@ export default function ChatFiles({
 }: {
   chatId: string;
   workdir: string;
+  scratch: boolean;
   refreshKey: unknown;
   canChangeFolder: boolean;
   onChangeFolder: () => void;
@@ -76,7 +80,8 @@ export default function ChatFiles({
   const [error, setError] = useState<unknown>();
   const [viewing, setViewing] = useState<string>();
   const [reload, setReload] = useState(0);
-  const folderName = workdir.split(/[\\/]/).filter(Boolean).pop() ?? workdir;
+  // Scratch folders are named after the chat id, which means nothing to the user.
+  const folderName = scratch ? t.chatFiles : (workdir.split(/[\\/]/).filter(Boolean).pop() ?? workdir);
   const crumbs = dir ? dir.split("/") : [];
 
   useEffect(() => {
@@ -108,8 +113,8 @@ export default function ChatFiles({
   return (
     <aside className="chat-files" aria-label={t.files}>
       <header className="chat-files-head">
-        <h2 className="attachment-name" title={workdir}>
-          <Icon name="folder" /> {folderName}
+        <h2 title={workdir}>
+          <Icon name="folder" /> <span className="attachment-name">{folderName}</span>
         </h2>
         <IconButton
           type="button"
@@ -124,13 +129,11 @@ export default function ChatFiles({
       </header>
       {crumbs.length > 0 && (
         <nav className="chat-files-crumbs" aria-label={t.path}>
-          <button type="button" className="ghost" onClick={() => setDir("")}>
-            {folderName}
-          </button>
+          <IconButton type="button" className="ghost" icon="folder" label={folderName} onClick={() => setDir("")} />
           {crumbs.map((crumb, i) => (
             <span key={i}>
               <Icon name="chevronRight" />
-              <button type="button" className="ghost" aria-current={i === crumbs.length - 1 ? "page" : undefined} onClick={() => setDir(crumbs.slice(0, i + 1).join("/"))}>
+              <button type="button" className="ghost attachment-name" title={crumb} aria-current={i === crumbs.length - 1 ? "page" : undefined} onClick={() => setDir(crumbs.slice(0, i + 1).join("/"))}>
                 {crumb}
               </button>
             </span>
@@ -144,7 +147,7 @@ export default function ChatFiles({
           <li key={entry.path}>
             <button type="button" className="ghost chat-files-row" onClick={() => open(entry)}>
               <Icon name={entry.dir ? "folder" : "file"} />
-              <span className="attachment-name">{entry.name}</span>
+              <span className="attachment-name" title={entry.name}>{entry.name}</span>
               <span className="muted" title={new Date(entry.modified).toLocaleString(locale())}>
                 {entry.dir ? "" : `${formatBytes(entry.size)} · `}
                 {shortDate(entry.modified)}

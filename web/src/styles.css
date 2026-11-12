@@ -4968,9 +4968,19 @@ main.chat-window .app-version {
 .chat-files-crumbs span {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
 }
 .chat-files-crumbs button {
+  max-width: 140px;
+  height: 28px;
   padding: 2px 6px;
+}
+.chat-files-crumbs .icon {
+  width: 28px;
+  padding: 0;
+}
+.chat-files-head h2 {
+  min-width: 0;
 }
 .chat-files-list {
   flex: 1;

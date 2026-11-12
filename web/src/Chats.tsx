@@ -2637,6 +2637,7 @@ export function Conversation({
         <ChatFiles
           chatId={id}
           workdir={detail.chat.workdir}
+          scratch={!detail.chat.folder}
           refreshKey={`${detail.messages.length}-${running}`}
           canChangeFolder={detail.messages.length === 0 && !running}
           onChangeFolder={() => setChoosingFolder(true)}
