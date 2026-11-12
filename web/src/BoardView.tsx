@@ -510,8 +510,8 @@ function Settings({
   onError: (error: unknown) => void;
 }) {
   const t = useText(text);
-  const [name, setName] = useState(data.board.name);
-  const [shortName, setShortName] = useState(data.board.short_name);
+  const [name, setName] = useSynced(data.board.name);
+  const [shortName, setShortName] = useSynced(data.board.short_name);
   async function saveBoard() {
     if (name === data.board.name && shortName === data.board.short_name) return;
     if (!name.trim() || !shortName.trim()) {
@@ -666,12 +666,12 @@ function StatusRow({
   onError: (error: unknown) => void;
 }) {
   const t = useText(text);
-  const [name, setName] = useState(status.name);
-  const [type, setType] = useState(status.type);
-  const [hideAfterDays, setHideAfterDays] = useState(
+  const [name, setName] = useSynced(status.name);
+  const [type, setType] = useSynced(status.type);
+  const [hideAfterDays, setHideAfterDays] = useSynced(
     String(status.hide_after_days),
   );
-  const [countsAs, setCountsAs] = useState(status.counts_as ?? "");
+  const [countsAs, setCountsAs] = useSynced(status.counts_as ?? "");
   function revert() {
     setName(status.name);
     setType(status.type);
@@ -756,6 +756,18 @@ function StatusRow({
       />
     </div>
   );
+}
+
+// Like useState(value), but takes newer server values while the field is unedited,
+// so a save can't send back a stale value and revert a change made elsewhere.
+function useSynced<T>(value: T) {
+  const [local, setLocal] = useState(value);
+  const [base, setBase] = useState(value);
+  if (!Object.is(base, value)) {
+    setBase(value);
+    if (Object.is(local, base)) setLocal(value);
+  }
+  return [local, setLocal] as const;
 }
 
 function blurOnEnter(event: KeyboardEvent<HTMLInputElement>) {
@@ -867,8 +879,8 @@ function TypeRow({
   onError: (error: unknown) => void;
 }) {
   const t = useText(text);
-  const [name, setName] = useState(type.name);
-  const [color, setColor] = useState(type.color);
+  const [name, setName] = useSynced(type.name);
+  const [color, setColor] = useSynced(type.color);
   function revert() {
     setName(type.name);
     setColor(type.color);
