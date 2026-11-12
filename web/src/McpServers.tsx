@@ -259,9 +259,7 @@ function ServerCard({
           <h2 id={`mcp-${server.id}`}>{server.name}</h2>
         </div>
         <div className="connector-actions">
-          <button aria-label={t.edit(server.name)} onClick={onEdit}>
-            {t.editText}
-          </button>
+          <IconButton className="ghost" icon="pencil" label={t.edit(server.name)} tip={t.editText} onClick={onEdit} />
           <IconButton className="danger-text" icon="trash" label={t.delete(server.name)} onClick={remove} />
         </div>
       </header>
@@ -304,13 +302,17 @@ function ServerCard({
       <div className="connector-buttons">
         <Switch checked={server.enabled} onChange={toggle} label={t.enabled} />
         {server.auth === "oauth" && (
-          <button onClick={signIn}>{server.has_oauth_token ? t.signInAgain : t.signIn}</button>
+          <IconButton className="ghost" icon="externalLink" label={server.has_oauth_token ? t.signInAgain : t.signIn} onClick={signIn} />
         )}
-        <button disabled={checking || needsSignIn} onClick={() => setRun((value) => value + 1)}>
-          {t.test}
-        </button>
-        <button className="ghost" disabled={reloading || needsSignIn || !server.enabled} title={t.reloadServer(server.name)} onClick={reload}>
-          {reloading ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" />} {reloading ? t.reloading : t.reload}
+        <IconButton className="ghost" icon="play" label={t.test} disabled={checking || needsSignIn} onClick={() => setRun((value) => value + 1)} />
+        <button
+          className="icon ghost"
+          aria-label={reloading ? t.reloading : t.reloadServer(server.name)}
+          data-tip={reloading ? t.reloading : t.reloadServer(server.name)}
+          disabled={reloading || needsSignIn || !server.enabled}
+          onClick={reload}
+        >
+          {reloading ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" />}
         </button>
       </div>
     </article>
