@@ -5071,6 +5071,28 @@ main.chat-window .app-version {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.file-viewer-editor {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--base-200);
+  color: inherit;
+  font: 13px/1.5 var(--mono);
+  white-space: pre;
+  resize: none;
+}
+.file-viewer-body .md-editor {
+  flex: 1;
+  min-height: 0;
+}
+.file-viewer-body .md-editor textarea,
+.file-viewer-body .md-preview {
+  flex: 1;
+  max-height: none;
+  resize: none;
+  overflow: auto;
+}
 .file-viewer-code {
   display: flex;
   min-width: 0;

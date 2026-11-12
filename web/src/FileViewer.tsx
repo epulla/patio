@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import hljs from "highlight.js/lib/common";
 import { api } from "./api";
 import { ErrorText } from "./App";
+import { confirmDialog } from "./confirm";
 import { Icon, IconButton } from "./icons";
 import { useText } from "./i18n";
 import Markdown from "./Markdown";
+import MarkdownEditor from "./MarkdownEditor";
 import { formatBytes } from "./Settings";
 
 const text = {
@@ -23,6 +25,16 @@ const text = {
     rowsCut: (shown: number) => `Showing the first ${shown} rows.`,
     sheets: "Sheets",
     entries: (n: number) => `${n} item${n === 1 ? "" : "s"}`,
+    edit: "Edit",
+    save: "Save",
+    saving: "Saving…",
+    cancel: "Cancel",
+    editTooLarge: "This file is larger than 2 MB, too large to edit here.",
+    discard: "Discard your unsaved changes?",
+    discardButton: "Discard",
+    conflict: "This file changed on disk since you opened it.",
+    reload: "Reload",
+    overwrite: "Overwrite",
   },
   es: {
     close: "Cerrar",
@@ -39,6 +51,16 @@ const text = {
     rowsCut: (shown: number) => `Se muestran las primeras ${shown} filas.`,
     sheets: "Hojas",
     entries: (n: number) => `${n} elemento${n === 1 ? "" : "s"}`,
+    edit: "Editar",
+    save: "Guardar",
+    saving: "Guardando…",
+    cancel: "Cancelar",
+    editTooLarge: "Este archivo pesa más de 2 MB, demasiado para editarlo aquí.",
+    discard: "¿Descartar los cambios sin guardar?",
+    discardButton: "Descartar",
+    conflict: "Este archivo cambió en el disco desde que lo abriste.",
+    reload: "Recargar",
+    overwrite: "Sobrescribir",
   },
 };
 
@@ -49,6 +71,7 @@ const htmlCSP = `<meta http-equiv="Content-Security-Policy" content="default-src
 // Opt-in per view: https only, so Patio's own origin (wails:/http) stays unreachable; the sandbox still has no same-origin.
 const webCSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src https:">`;
 const highlightLimit = 500 * 1024;
+const editLimit = 2 * 1024 * 1024;
 
 const kinds: Record<string, string> = {
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image", bmp: "image", ico: "image", avif: "image",
@@ -70,7 +93,8 @@ export function rawURL(chatId: string, path: string) {
 }
 
 async function fetchFile(url: string, method = "GET") {
-  const response = await fetch(url, { method });
+  // no-store: the viewer and editor must see a save right away.
+  const response = await fetch(url, { method, cache: "no-store" });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `${response.status}`);
   return response;
 }
@@ -99,24 +123,96 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
   const [source, setSource] = useState(false);
   const [quickLook, setQuickLook] = useState(false);
   const [web, setWeb] = useState(false);
+  const [draft, setDraft] = useState<{ text: string; original: string; modified: string; conflict?: boolean }>();
+  const [saving, setSaving] = useState(false);
+  const [version, setVersion] = useState(0);
   const name = path.split("/").pop() ?? path;
   const kind = fileKind(name);
+  const editable = kind === "markdown" || kind === "json" || kind === "text" || /\.(csv|tsv)$/i.test(name);
   useEffect(() => {
     if (!standalone && !dialog.current?.open) dialog.current?.showModal();
   }, [standalone]);
 
   const openDefault = () => api.post(`/api/chats/${chatId}/files/open`, { path }).catch(setError);
+
+  async function edit() {
+    setError(undefined);
+    try {
+      const response = await fetchFile(rawURL(chatId, path));
+      if (Number(response.headers.get("content-length")) > editLimit) throw new Error(t.editTooLarge);
+      const text = await response.text();
+      setDraft({ text, original: text, modified: response.headers.get("X-Modified") ?? "" });
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  async function save(overwrite = false) {
+    if (!draft || saving) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`/api/chats/${chatId}/files?path=${encodeURIComponent(path)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // An empty expected_modified tells the server to overwrite.
+        body: JSON.stringify({ content: draft.text, expected_modified: overwrite ? "" : draft.modified }),
+      });
+      if (response.status === 409) return setDraft((current) => current && { ...current, conflict: true });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `${response.status}`);
+      setDraft(undefined);
+      setVersion((n) => n + 1);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const discardOK = async () => !draft || draft.text === draft.original || (await confirmDialog(t.discard, t.discardButton));
+  async function cancel() {
+    if (!(await discardOK())) return;
+    setDraft(undefined);
+    setError(undefined);
+  }
+  async function close() {
+    if (await discardOK()) dialog.current?.close();
+  }
+  function onKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!draft) return;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") void save();
+    else if (event.key === "Escape") void cancel();
+    else return;
+    event.preventDefault();
+  }
+
   const head = (
     <header className="file-viewer-head">
       <h2 className="attachment-name" id="file-viewer-title" title={path}>
         {name}
       </h2>
+      {draft ? (
+        <>
+          <button type="button" className="ghost" onClick={() => void cancel()}>
+            {t.cancel}
+          </button>
+          <button type="button" className="ghost" disabled={saving} onClick={() => void save()}>
+            <Icon name="check" /> {saving ? t.saving : `${t.save} ⌘S`}
+          </button>
+        </>
+      ) : (
+        editable && (
+          <button type="button" className="ghost" onClick={() => void edit()}>
+            <Icon name="pencil" /> {t.edit}
+          </button>
+        )
+      )}
       {kind === "html" && !source && (
         <button type="button" className="ghost" aria-pressed={web} data-tip={t.webContentHint} onClick={() => setWeb(!web)}>
           <Icon name="link" /> {t.webContent}
         </button>
       )}
-      {(kind === "markdown" || kind === "html") && (
+      {(kind === "html" || (kind === "markdown" && !draft)) && (
         <button type="button" className="ghost" onClick={() => setSource(!source)}>
           <Icon name={source ? "eye" : "code"} /> {source ? t.rendered : t.source}
         </button>
@@ -136,7 +232,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
             label={t.newWindow}
             onClick={() => api.post(`/api/chats/${chatId}/files/window`, { path }).catch(setError)}
           />
-          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => void close()} />
         </>
       )}
     </header>
@@ -145,8 +241,34 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
     <>
       {head}
       <ErrorText error={error} />
+      {draft?.conflict && (
+        <p className="file-viewer-note" role="alert">
+          {t.conflict}{" "}
+          <button type="button" className="ghost" onClick={() => void edit()}>
+            <Icon name="refresh" /> {t.reload}
+          </button>
+          <button type="button" className="ghost" onClick={() => void save(true)}>
+            {t.overwrite}
+          </button>
+        </p>
+      )}
       <div className="file-viewer-body">
+        {draft ? (
+          kind === "markdown" ? (
+            <MarkdownEditor value={draft.text} onChange={(text) => setDraft({ ...draft, text })} label={name} />
+          ) : (
+            <textarea
+              className="file-viewer-editor"
+              aria-label={name}
+              value={draft.text}
+              onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+              spellCheck={false}
+              autoFocus
+            />
+          )
+        ) : (
         <Preview
+          key={version}
           chatId={chatId}
           path={path}
           kind={quickLook ? "quicklook" : kind}
@@ -162,12 +284,26 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
             </p>
           }
         />
+        )}
       </div>
     </>
   );
-  if (standalone) return <main className="file-viewer standalone">{body}</main>;
+  if (standalone)
+    return (
+      <main className="file-viewer standalone" onKeyDown={onKeyDown}>
+        {body}
+      </main>
+    );
   return (
-    <dialog ref={dialog} className="file-viewer" aria-labelledby="file-viewer-title" onClose={onClose}>
+    <dialog
+      ref={dialog}
+      className="file-viewer"
+      aria-labelledby="file-viewer-title"
+      onKeyDown={onKeyDown}
+      // Esc while editing cancels the edit (onKeyDown) instead of closing the viewer.
+      onCancel={(event) => draft && event.preventDefault()}
+      onClose={onClose}
+    >
       {body}
     </dialog>
   );
