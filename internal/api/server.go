@@ -34,6 +34,8 @@ type Server struct {
 	logPath         string
 	chats           *chatManager
 	revealFile      func(string) error
+	openFile        func(string) error
+	openFileWindow  func(string, string) error
 	openOAuthURL    func(string) error
 	notify          func(string, string, string) error
 	notesBlocked    func() bool
@@ -83,6 +85,7 @@ type Options struct {
 	WindowID        string
 	// OpenChatWindow focuses the chat's window or opens a new one.
 	OpenChatWindow func(chatID string) error
+	OpenFileWindow func(chatID, path string) error
 	// ShowMain focuses or reopens the main window, navigating to path when set.
 	ShowMain func(path string)
 }
@@ -115,6 +118,8 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 		dbDir = filepath.Dir(dbPath)
 	}
 	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, notesURL: opts.ReleaseNotesURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), windowID: opts.WindowID, openChat: opts.OpenChatWindow, showMain: opts.ShowMain, telegramWake: make(chan struct{}, 1)}
+	s.openFile = openDefaultApp
+	s.openFileWindow = opts.OpenFileWindow
 	if s.openOAuthURL == nil {
 		s.openOAuthURL = openLoginURL
 	}
@@ -214,6 +219,13 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("POST /api/chats/{id}/approvals/{approval_id}", s.answerChatApproval)
 	m.HandleFunc("POST /api/chats/{id}/questions/{messageID}/answer", s.answerChatQuestion)
 	m.HandleFunc("POST /api/chats/{id}/reveal", s.revealChatFile)
+	m.HandleFunc("GET /api/chats/{id}/files", s.listChatFiles)
+	m.HandleFunc("GET /api/chats/{id}/files/raw", s.rawChatFile)
+	m.HandleFunc("DELETE /api/chats/{id}/files", s.deleteChatFile)
+	m.HandleFunc("POST /api/chats/{id}/files/open", s.openChatFile)
+	m.HandleFunc("POST /api/chats/{id}/files/window", s.openChatFileWindow)
+	m.HandleFunc("GET /api/chats/{id}/files/zip", s.listChatZip)
+	m.HandleFunc("GET /api/chats/{id}/files/quicklook", s.quickLookChatFile)
 	m.HandleFunc("POST /api/chats/{id}/attachments", s.uploadChatAttachments)
 	m.HandleFunc("GET /api/chats/{id}/attachments", s.listChatAttachments)
 	m.HandleFunc("GET /api/chats/{id}/attachments/{name}", s.getChatAttachment)

@@ -122,6 +122,7 @@ func main() {
 		WindowID:             windowID,
 		LogPath:              logFilePath,
 		OpenChatWindow:       wins.openChat,
+		OpenFileWindow:       wins.openFile,
 		ShowMain:             wins.showMain,
 		Notify:               notes.Notify,
 		NotificationsBlocked: notes.Blocked,
@@ -472,6 +473,20 @@ func (w *windows) openChat(id string) error {
 		if w.chats[id] == win {
 			delete(w.chats, id)
 		}
+	})
+	return nil
+}
+
+func (w *windows) openFile(chatID, rel string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.app == nil {
+		return errors.New("app is starting")
+	}
+	w.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title: filepath.Base(rel), Width: 1100, Height: 800,
+		URL:   "/ai/chats/" + url.PathEscape(chatID) + "/files?window=file&path=" + url.QueryEscape(rel),
+		Linux: application.LinuxWindow{Icon: appIcon, WebviewGpuPolicy: application.WebviewGpuPolicyNever},
 	})
 	return nil
 }
