@@ -3893,7 +3893,8 @@ main.chat-window .app-version {
   height: 28px;
 }
 .question-min {
-  flex-direction: row;
+  display: flex;
+  align-self: stretch;
   align-items: center;
   gap: 8px;
   padding: 6px 6px 6px 12px;
