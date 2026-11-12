@@ -30,51 +30,27 @@ func (s *Server) chatFileRoot(w http.ResponseWriter, r *http.Request) (chat, str
 	if !ok {
 		return chat{}, "", false
 	}
-	root, err := filepath.EvalSymlinks(c.Workdir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			root, _ = filepath.Abs(c.Workdir)
-			return c, root, true
-		}
-		errw(w, http.StatusNotFound, "chat folder not found")
-		return chat{}, "", false
-	}
-	return c, root, true
+	return c, c.Workdir, true
 }
 
-func resolveChatFile(root, rel string) (string, error) {
-	if strings.ContainsRune(rel, 0) || filepath.IsAbs(rel) {
+func cleanChatFilePath(rel string) (string, error) {
+	if strings.ContainsRune(rel, 0) || filepath.IsAbs(filepath.FromSlash(rel)) {
 		return "", errPathOutsideWorkdir
 	}
-	for _, part := range strings.Split(rel, "/") {
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
 		if part == ".." {
 			return "", errPathOutsideWorkdir
 		}
 	}
-	if runtime.GOOS == "windows" {
-		rel = filepath.FromSlash(rel)
-	}
-	path := filepath.Join(root, filepath.Clean(rel))
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", err
-	}
-	inside, err := pathWithin(root, resolved)
-	if err != nil {
-		return "", err
-	}
-	if !inside {
-		return "", errPathOutsideWorkdir
-	}
-	return resolved, nil
+	return filepath.Clean(filepath.FromSlash(rel)), nil
 }
 
 func (s *Server) listChatFiles(w http.ResponseWriter, r *http.Request) {
-	_, root, ok := s.chatFileRoot(w, r)
+	_, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
-	path, err := resolveChatFile(root, r.URL.Query().Get("path"))
+	root, err := os.OpenRoot(workdir)
 	if os.IsNotExist(err) && r.URL.Query().Get("path") == "" {
 		write(w, http.StatusOK, []chatFile{})
 		return
@@ -83,7 +59,19 @@ func (s *Server) listChatFiles(w http.ResponseWriter, r *http.Request) {
 		chatFileError(w, err)
 		return
 	}
-	entries, err := os.ReadDir(path)
+	defer root.Close()
+	path, err := cleanChatFilePath(r.URL.Query().Get("path"))
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	dir, err := root.Open(path)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	defer dir.Close()
+	entries, err := dir.ReadDir(-1)
 	if err != nil {
 		chatFileError(w, err)
 		return
@@ -93,15 +81,12 @@ func (s *Server) listChatFiles(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
+		child := filepath.Join(path, entry.Name())
+		info, err := root.Stat(child)
+		if err != nil {
+			continue
+		}
 		rel := filepath.ToSlash(filepath.Join(r.URL.Query().Get("path"), entry.Name()))
-		child, err := resolveChatFile(root, rel)
-		if err != nil {
-			continue
-		}
-		info, err := os.Stat(child)
-		if err != nil {
-			continue
-		}
 		result = append(result, chatFile{Name: entry.Name(), Path: rel, Dir: info.IsDir(), Size: info.Size(), Modified: info.ModTime().UTC().Format(time.RFC3339)})
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -124,16 +109,22 @@ func chatFileError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) rawChatFile(w http.ResponseWriter, r *http.Request) {
-	_, root, ok := s.chatFileRoot(w, r)
+	_, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
-	path, err := resolveChatFile(root, r.URL.Query().Get("path"))
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	f, err := os.Open(path)
+	defer root.Close()
+	path, err := cleanChatFilePath(r.URL.Query().Get("path"))
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	f, err := root.Open(path)
 	if err != nil {
 		chatFileError(w, err)
 		return
@@ -180,7 +171,7 @@ func (s *Server) rawChatFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteChatFile(w http.ResponseWriter, r *http.Request) {
-	c, root, ok := s.chatFileRoot(w, r)
+	c, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
@@ -189,50 +180,39 @@ func (s *Server) deleteChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "cannot delete chat folder")
 		return
 	}
-	if strings.ContainsRune(rel, 0) || filepath.IsAbs(rel) {
-		chatFileError(w, errPathOutsideWorkdir)
-		return
-	}
-	for _, part := range strings.Split(rel, "/") {
-		if part == ".." {
-			chatFileError(w, errPathOutsideWorkdir)
-			return
-		}
-	}
-	base := filepath.Base(filepath.FromSlash(rel))
-	parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel)))
-	if parentRel == "." {
-		parentRel = ""
-	}
-	parent, err := resolveChatFile(root, parentRel)
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	target := filepath.Join(parent, base)
-	if _, err := os.Lstat(target); err != nil {
+	defer root.Close()
+	rel, err = cleanChatFilePath(rel)
+	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	if resolved, err := filepath.EvalSymlinks(target); err == nil {
-		inside, checkErr := pathWithin(root, resolved)
-		if checkErr != nil || !inside {
-			chatFileError(w, errPathOutsideWorkdir)
-			return
-		}
+	if rel == "." {
+		errw(w, 400, "cannot delete chat folder")
+		return
+	}
+	base := filepath.Base(rel)
+	// RemoveAll drops a final symlink itself, never its target.
+	if _, err := root.Lstat(rel); err != nil {
+		chatFileError(w, err)
+		return
 	}
 	s.attachmentsMu.Lock()
 	defer s.attachmentsMu.Unlock()
 	pending := false
-	if dir, e := chatAttachmentsDir(c.Workdir, false); e == nil {
+	if _, e := chatAttachmentsDir(c.Workdir, false); e == nil {
 		_, named := s.attachments[c.ID][base]
-		pending = parent == dir && named || target == dir && len(s.attachments[c.ID]) > 0
+		pending = filepath.Dir(rel) == "attachments" && named || rel == "attachments" && len(s.attachments[c.ID]) > 0
 	}
 	if pending {
 		errw(w, http.StatusConflict, "remove it from the message first")
 		return
 	}
-	if err := os.RemoveAll(target); err != nil {
+	if err := root.RemoveAll(rel); err != nil {
 		chatFileError(w, err)
 		return
 	}
@@ -247,16 +227,22 @@ func (s *Server) openChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "invalid path")
 		return
 	}
-	_, root, ok := s.chatFileRoot(w, r)
+	_, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
-	path, err := resolveChatFile(root, in.Path)
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	info, err := os.Stat(path)
+	defer root.Close()
+	path, err := cleanChatFilePath(in.Path)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	info, err := root.Stat(path)
 	if err != nil {
 		chatFileError(w, err)
 		return
@@ -265,7 +251,13 @@ func (s *Server) openChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "path is a directory")
 		return
 	}
-	if err := s.openFile(path); err != nil {
+	resolved, err := filepath.EvalSymlinks(workdir)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	// open follows the path by name.
+	if err := s.openFile(filepath.Join(resolved, path)); err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
@@ -280,16 +272,22 @@ func (s *Server) openChatFileWindow(w http.ResponseWriter, r *http.Request) {
 		errw(w, 400, "invalid path")
 		return
 	}
-	_, root, ok := s.chatFileRoot(w, r)
+	_, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
-	path, err := resolveChatFile(root, in.Path)
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	info, err := os.Stat(path)
+	defer root.Close()
+	path, err := cleanChatFilePath(in.Path)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	info, err := root.Stat(path)
 	if err != nil {
 		chatFileError(w, err)
 		return
@@ -310,21 +308,37 @@ func (s *Server) openChatFileWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listChatZip(w http.ResponseWriter, r *http.Request) {
-	_, root, ok := s.chatFileRoot(w, r)
+	_, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
-	path, err := resolveChatFile(root, r.URL.Query().Get("path"))
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	z, err := zip.OpenReader(path)
+	defer root.Close()
+	path, err := cleanChatFilePath(r.URL.Query().Get("path"))
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
-	defer z.Close()
+	f, err := root.Open(path)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	z, err := zip.NewReader(f, info.Size())
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
 	if len(z.File) > 5000 {
 		errw(w, 413, "zip has too many entries")
 		return
@@ -346,29 +360,56 @@ func (s *Server) quickLookChatFile(w http.ResponseWriter, r *http.Request) {
 		errw(w, 501, "QuickLook is only available on macOS")
 		return
 	}
-	_, root, ok := s.chatFileRoot(w, r)
+	_, workdir, ok := s.chatFileRoot(w, r)
 	if !ok {
 		return
 	}
-	path, err := resolveChatFile(root, r.URL.Query().Get("path"))
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
 		chatFileError(w, err)
 		return
 	}
+	defer root.Close()
+	path, err := cleanChatFilePath(r.URL.Query().Get("path"))
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	f, err := root.Open(path)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	defer f.Close()
 	tmp, err := os.MkdirTemp("", "patio-quicklook-")
 	if err != nil {
 		errw(w, 500, err.Error())
 		return
 	}
 	defer os.RemoveAll(tmp)
+	copyPath := filepath.Join(tmp, filepath.Base(path))
+	out, err := os.Create(copyPath)
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	if _, err = io.Copy(out, f); err != nil {
+		out.Close()
+		errw(w, 500, err.Error())
+		return
+	}
+	if err := out.Close(); err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "qlmanage", "-p", "-o", tmp, path)
+	cmd := exec.CommandContext(ctx, "qlmanage", "-p", "-o", tmp, copyPath)
 	if err := cmd.Run(); err != nil {
 		errw(w, 422, "no preview")
 		return
 	}
-	preview := filepath.Join(tmp, filepath.Base(path)+".qlpreview", "Preview.html")
+	preview := filepath.Join(tmp, filepath.Base(copyPath)+".qlpreview", "Preview.html")
 	data, err := os.ReadFile(preview)
 	if err != nil {
 		errw(w, 422, "no preview")
