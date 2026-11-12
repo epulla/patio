@@ -383,16 +383,21 @@ export default function App() {
 
   useEffect(() => (chatWindow ? undefined : onEvent("navigate", (to) => openLink(String(to)))), []);
 
+  // Marks the version seen only once its notes load, so an offline launch retries next time.
+  const openWhatsNew = async () => {
+    if (chatWindow || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
+    await api.get("/api/release-notes");
+    await api.put("/api/whats-new", {});
+    setWhatsNew(true);
+  };
+
+  // Onboarding and its tour come first; the notes follow once they close.
   useEffect(() => {
     api
       .get<{ show: boolean }>("/api/onboarding")
-      .then(async (state) => {
+      .then((state) => {
         setOnboarding(state.show);
-        // Onboarding takes the first launch; the notes wait for the next one. Mark seen only once they load so an offline launch retries.
-        if (state.show || chatWindow || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
-        await api.get("/api/release-notes");
-        await api.put("/api/whats-new", {});
-        setWhatsNew(true);
+        if (!state.show) return openWhatsNew();
       })
       .catch(() => undefined);
   }, []);
@@ -712,11 +717,20 @@ export default function App() {
         <Onboarding
           onDone={async () => {
             setOnboarding(false);
-            setTouring(await confirmDialog(t.tourOffer, t.takeTour, false));
+            const tour = await confirmDialog(t.tourOffer, t.takeTour, false);
+            setTouring(tour);
+            if (!tour) openWhatsNew().catch(() => undefined);
           }}
         />
       )}
-      {touring && <Tour onClose={() => setTouring(false)} />}
+      {touring && (
+        <Tour
+          onClose={() => {
+            setTouring(false);
+            openWhatsNew().catch(() => undefined);
+          }}
+        />
+      )}
       {notice && (
         <p className="app-notice" role="status">
           {notice}
