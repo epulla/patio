@@ -44,6 +44,16 @@ const text = {
 
 type Entry = { name: string; path: string; dir: boolean; size: number; modified: string };
 
+// Today shows the time, this year the day and month, older dates add the year.
+function shortDate(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (date.getFullYear() !== now.getFullYear()) options.year = "numeric";
+  return date.toLocaleDateString(locale(), options);
+}
+
 export default function ChatFiles({
   chatId,
   workdir,
@@ -136,12 +146,12 @@ export default function ChatFiles({
       <ul className="chat-files-list">
         {entries?.map((entry) => (
           <li key={entry.path}>
-            <button type="button" className="ghost chat-files-row" title={entry.name} onClick={() => open(entry)}>
+            <button type="button" className="ghost chat-files-row" onClick={() => open(entry)}>
               <Icon name={entry.dir ? "folder" : "file"} />
               <span className="attachment-name">{entry.name}</span>
-              <span className="muted">
+              <span className="muted" title={new Date(entry.modified).toLocaleString(locale())}>
                 {entry.dir ? "" : `${formatBytes(entry.size)} · `}
-                {new Date(entry.modified).toLocaleDateString(locale())}
+                {shortDate(entry.modified)}
               </span>
             </button>
             <Menu label={t.actions(entry.name)} buttonClassName="icon ghost" button={<Icon name="more" />}>

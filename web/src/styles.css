@@ -4983,6 +4983,20 @@ main.chat-window .app-version {
 .chat-files-list li {
   display: flex;
   align-items: center;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.chat-files-list li:hover,
+.chat-files-list li:focus-within {
+  background: var(--base-200);
+}
+.chat-files-list li .ghost:hover {
+  background: transparent;
+}
+.chat-files-list li .icon {
+  width: 32px;
+  height: 32px;
+  color: var(--muted);
 }
 .chat-files-row {
   display: grid;
@@ -4991,12 +5005,15 @@ main.chat-window .app-version {
   column-gap: 8px;
   flex: 1;
   min-width: 0;
-  padding: 4px 6px;
+  height: auto;
+  padding: 6px 8px;
   text-align: left;
+  row-gap: 1px;
 }
 .chat-files-row .muted {
   grid-column: 2;
   font-size: 12px;
+  font-weight: 400;
 }
 .file-viewer {
   width: 100vw;
