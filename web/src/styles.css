@@ -4960,8 +4960,10 @@ main.chat-window .app-version {
   gap: 12px;
   min-height: 0;
 }
+/* The conversation keeps at least 280px in narrow panes (dock, grid, split); the panel never drops below 200px. */
 .conversation-files.open {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  grid-template-columns: minmax(0, 1fr) 6px max(200px, min(var(--files-width), calc(100% - 292px)));
+  gap: 3px;
 }
 
 .chat-files {
@@ -4969,8 +4971,7 @@ main.chat-window .app-version {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
+  padding-left: 9px;
 }
 .chat-files-head,
 .file-viewer-head {
