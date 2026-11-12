@@ -388,11 +388,11 @@ export default function App() {
       .get<{ show: boolean }>("/api/onboarding")
       .then(async (state) => {
         setOnboarding(state.show);
-        if (chatWindow || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
-        // A fresh install gets onboarding instead; otherwise wait for the notes so an offline launch retries next time.
-        if (!state.show) await api.get("/api/release-notes");
+        // Onboarding takes the first launch; the notes wait for the next one. Mark seen only once they load so an offline launch retries.
+        if (state.show || chatWindow || !(await api.get<{ show: boolean }>("/api/whats-new")).show) return;
+        await api.get("/api/release-notes");
         await api.put("/api/whats-new", {});
-        if (!state.show) setWhatsNew(true);
+        setWhatsNew(true);
       })
       .catch(() => undefined);
   }, []);

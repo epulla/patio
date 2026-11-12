@@ -68,18 +68,25 @@ func TestReleaseNotes(t *testing.T) {
 		if !strings.HasSuffix(r.URL.Path, "/v0.9.1") {
 			t.Errorf("path = %s", r.URL.Path)
 		}
+		if hits == 1 {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"body": "Release **notes**", "html_url": "https://github.com/epulla/patio/releases/tag/v0.9.1"})
 	}))
 	defer releases.Close()
 	db, _, root := chatAPI(t)
 	s := New(db, "local", false, "v0.9.1", root, Options{ReleaseNotesURL: releases.URL})
+	if code := requestJSON(t, s, http.MethodGet, "/api/release-notes", nil, nil); code != http.StatusBadGateway {
+		t.Fatalf("release notes while GitHub is down = %d", code)
+	}
 	for i := 0; i < 2; i++ {
 		var got struct{ Version, Notes, URL string }
 		if code := requestJSON(t, s, http.MethodGet, "/api/release-notes", nil, &got); code != http.StatusOK || got.Version != "v0.9.1" || got.Notes != "Release **notes**" {
 			t.Fatalf("release notes = %d, %+v", code, got)
 		}
 	}
-	if hits != 1 {
+	if hits != 2 {
 		t.Fatalf("GitHub hits = %d", hits)
 	}
 	var show struct{ Show bool }
