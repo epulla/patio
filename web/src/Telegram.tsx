@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "./api";
 import { ErrorText } from "./App";
 import Switch from "./Switch";
@@ -72,7 +72,12 @@ export default function Telegram() {
   const [testError, setTestError] = useState<string>();
   const [error, setError] = useState<unknown>();
 
+  // Saves run one at a time from the last saved settings, so a blur save and a quick toggle can't undo each other.
+  const saved = useRef<TelegramSettings>(undefined);
+  const queue = useRef(Promise.resolve());
+
   function load(loaded: TelegramSettings) {
+    saved.current = loaded;
     setSettings(loaded);
     setIds(loaded.allowed_user_ids.join(", "));
   }
@@ -87,26 +92,28 @@ export default function Telegram() {
       .catch(setError);
   }, []);
 
-  async function save(change: { enabled?: boolean; allowed_user_ids?: number[]; token?: string }) {
-    if (!settings) return;
-    try {
-      const saved = await api.put<TelegramSettings>("/api/settings/telegram", {
-        enabled: settings.enabled,
-        allowed_user_ids: settings.allowed_user_ids,
-        token: null,
-        ...change,
-      });
-      load(saved);
-      setError(undefined);
-      if (change.token !== undefined) {
-        setToken("");
-        setBot(undefined);
-        setTestError(undefined);
-        if (saved.has_token) void test(null);
+  function save(change: { enabled?: boolean; allowed_user_ids?: number[]; token?: string }) {
+    queue.current = queue.current.then(async () => {
+      if (!saved.current) return;
+      try {
+        const next = await api.put<TelegramSettings>("/api/settings/telegram", {
+          enabled: saved.current.enabled,
+          allowed_user_ids: saved.current.allowed_user_ids,
+          token: null,
+          ...change,
+        });
+        load(next);
+        setError(undefined);
+        if (change.token !== undefined) {
+          setToken("");
+          setBot(undefined);
+          setTestError(undefined);
+          if (next.has_token) void test(null);
+        }
+      } catch (reason) {
+        setError(reason);
       }
-    } catch (reason) {
-      setError(reason);
-    }
+    });
   }
 
   function saveToken(event: FormEvent) {
