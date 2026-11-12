@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Board, type Chat, type Connector, type Ticket } from "./api";
 import { navigate } from "./App";
 import { Conversation, type PageContext } from "./Chats";
@@ -139,12 +139,27 @@ export default function ChatDock({
     if (status[current] === "reply") onSeen(current);
   }, [current, status[current]]);
 
+  // Loaded on mount and after a connector edit; a failed load retries on the next refresh.
+  const connectorsStale = useRef(true);
+  const [connectorEdits, setConnectorEdits] = useState(0);
   useEffect(() => {
+    const onChange = () => {
+      connectorsStale.current = true;
+      setConnectorEdits((value) => value + 1);
+    };
+    addEventListener("connectors-changed", onChange);
+    return () => removeEventListener("connectors-changed", onChange);
+  }, []);
+  useEffect(() => {
+    if (!connectorsStale.current) return;
     api
       .get<Connector[]>("/api/connectors")
-      .then(setConnectors)
+      .then((list) => {
+        connectorsStale.current = false;
+        setConnectors(list);
+      })
       .catch(() => undefined);
-  }, [refresh]);
+  }, [refresh, connectorEdits]);
 
   return (
     <aside className="chat-dock" aria-label={t.pinnedChats} style={{ width: splitter.width, ...(activeGroup && pinStyle(activeGroup.color)) }}>

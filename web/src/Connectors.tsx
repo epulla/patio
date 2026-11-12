@@ -222,6 +222,7 @@ function ConnectorCard({
     if (!(await confirmDialog(text[lang()].deleteQuestion(connector.name)))) return;
     try {
       await api.delete(`/api/connectors/${connector.id}`);
+      dispatchEvent(new Event("connectors-changed"));
       onDeleted();
     } catch (reason) {
       setError(reason);
@@ -462,6 +463,8 @@ function ConnectorDialog({
       };
       if (connector) await api.put(`/api/connectors/${connector.id}`, fields);
       else await api.post("/api/connectors", { ...fields, kind, use_existing_login: !local && useExisting });
+      // Chats and the pinned dock reload connectors only on this, not on every db-changed.
+      dispatchEvent(new Event("connectors-changed"));
       onSaved();
     } catch (reason) {
       setError(reason);

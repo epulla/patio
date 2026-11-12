@@ -320,18 +320,32 @@ export default function Chats({
     }
   }
 
+  // Connectors reload on mount and after a connector edit, not on every background refresh.
+  const connectorsStale = useRef(true);
+  useEffect(() => {
+    const onChange = () => {
+      connectorsStale.current = true;
+      setReload((value) => value + 1);
+    };
+    addEventListener("connectors-changed", onChange);
+    return () => removeEventListener("connectors-changed", onChange);
+  }, []);
+
   useEffect(() => {
     const current = ++generation.current;
     Promise.all([
       api.get<ChatPage>(`/api/chats?limit=${Math.max(pageSize, loadedCount.current)}`),
-      api.get<Connector[]>("/api/connectors"),
+      connectorsStale.current ? api.get<Connector[]>("/api/connectors") : undefined,
     ])
       .then(([page, connectorList]) => {
         if (current !== generation.current) return;
         setChats(page.chats);
         syncChatStatus(page.chats);
         setCursor(page.next_cursor);
-        setConnectors(connectorList);
+        if (connectorList) {
+          connectorsStale.current = false;
+          setConnectors(connectorList);
+        }
         setLoaded(true);
         setError(undefined);
         const listed = new Set(page.chats.map((chat) => chat.id));
