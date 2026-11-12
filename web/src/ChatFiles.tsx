@@ -65,25 +65,30 @@ export default function ChatFiles({
   onClose: () => void;
 }) {
   const t = useText(text);
-  const [dir, setDir] = useState("");
-  const [entries, setEntries] = useState<Entry[]>();
+  // Tagged with what they belong to, so a chat or folder switch shows nothing stale and fetches once.
+  const place = `${chatId}\n${workdir}`;
+  const [at, setAt] = useState({ place, dir: "" });
+  const dir = at.place === place ? at.dir : "";
+  const setDir = (next: string) => setAt({ place, dir: next });
+  const listing = `${place}\n${dir}`;
+  const [listed, setListed] = useState<{ listing: string; entries: Entry[] }>();
+  const entries = listed?.listing === listing ? listed.entries : undefined;
   const [error, setError] = useState<unknown>();
   const [viewing, setViewing] = useState<string>();
   const [reload, setReload] = useState(0);
   const folderName = workdir.split(/[\\/]/).filter(Boolean).pop() ?? workdir;
   const crumbs = dir ? dir.split("/") : [];
 
-  useEffect(() => setDir(""), [chatId, workdir]);
   useEffect(() => {
     let live = true;
     api.get<Entry[]>(`/api/chats/${chatId}/files?path=${encodeURIComponent(dir)}`).then(
-      (list) => live && (setEntries(list), setError(undefined)),
+      (list) => live && (setListed({ listing, entries: list }), setError(undefined)),
       (reason) => live && setError(reason),
     );
     return () => {
       live = false;
     };
-  }, [chatId, dir, refreshKey, reload]);
+  }, [listing, refreshKey, reload]);
 
   function open(entry: Entry) {
     if (entry.dir) setDir(entry.path);

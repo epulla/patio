@@ -55,10 +55,12 @@ export default function ChatFlow({ id, refresh }: { id: string; refresh: number 
   // React Flow resets a node's measurement whenever it gets a new object, hiding it until re-measured;
   // keep the same tree (and so the same node objects) while polls return identical data.
   const lastTree = useRef("");
+  useEffect(() => {
+    lastTree.current = "";
+  }, [id]);
 
   useEffect(() => {
     let cancelled = false;
-    lastTree.current = "";
     const load = () =>
       api
         .get<ChatTree>(`/api/chats/${id}/tree`)

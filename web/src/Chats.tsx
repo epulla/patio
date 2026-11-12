@@ -3250,6 +3250,8 @@ export function NewChatDialog({
   const [botID, setBotID] = useState("none");
   const [error, setError] = useState<unknown>();
   const dialog = useRef<HTMLDialogElement>(null);
+  // Defaults arriving after the user picked something must not overwrite the pick.
+  const picked = useRef(false);
 
   // A bot with its own connector starts the chat there; the user can still change it.
   function pickBot(id: string, botList = bots) {
@@ -3268,6 +3270,7 @@ export function NewChatDialog({
       .then(([defaults, botList]) => {
         setDefaults(defaults);
         setBots(botList);
+        if (picked.current) return;
         if (defaults.connector_id && connectors.some((c) => c.id === defaults.connector_id)) {
           setConnectorID(defaults.connector_id);
           setModel(startModel(connectors, defaults, defaults.connector_id));
@@ -3298,7 +3301,7 @@ export function NewChatDialog({
         <form onSubmit={submit}>
           <label>
             {t.bot}
-            <Picker label={t.bot} options={[{ id: "none", name: t.noBot }, ...bots]} value={botID} onChange={(id) => pickBot(id)} />
+            <Picker label={t.bot} options={[{ id: "none", name: t.noBot }, ...bots]} value={botID} onChange={(id) => ((picked.current = true), pickBot(id))} />
           </label>
           <label>
             {t.connector}
@@ -3308,6 +3311,7 @@ export function NewChatDialog({
               options={connectors.map((c) => ({ id: c.id, name: `${c.name} · ${c.kind}` }))}
               value={connectorID}
               onChange={(id) => {
+                picked.current = true;
                 setConnectorID(id);
                 setModel(defaultModel(id));
               }}
@@ -3322,7 +3326,7 @@ export function NewChatDialog({
               value={model}
               loading={modelsLoading}
               pinKind={connectors.find((c) => c.id === connectorID)?.kind}
-              onChange={setModel}
+              onChange={(id) => ((picked.current = true), setModel(id))}
             />
           </div>
           <label className="wide">
@@ -3332,7 +3336,7 @@ export function NewChatDialog({
               empty={t.scratchFolder}
               options={folders.map((f) => ({ id: f.path, name: f.path }))}
               value={folder}
-              onChange={setFolder}
+              onChange={(path) => ((picked.current = true), setFolder(path))}
             />
             {folders.length === 0 && <small>{t.addFolders}</small>}
           </label>
