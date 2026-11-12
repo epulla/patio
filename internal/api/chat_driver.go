@@ -43,14 +43,6 @@ type chatRuntimeDriver interface {
 	close() error
 }
 
-// mcpReconnecter restarts one MCP server of an idle chat without restarting the chat.
-// errMCPReconnectDeferred means retry before the chat's next turn.
-type mcpReconnecter interface {
-	reconnectMCP(name string) error
-}
-
-var errMCPReconnectDeferred = errors.New("MCP reconnect deferred")
-
 type chatSteerer interface {
 	canSteer() bool
 	steer(request ChatSendRequest) error
@@ -147,7 +139,6 @@ type chatRuntime struct {
 	idleTimer        *time.Timer
 	mcpSpecs         []mcpServerSpec
 	reloadMCP        bool
-	reloadServers    map[string]bool
 }
 
 func newChatManager(database *sql.DB, options Options) *chatManager {
@@ -288,7 +279,6 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 				rt.driver, rt.mcpSpecs = nil, nil
 			}
 			rt.reloadMCP = false
-			rt.reloadServers = nil
 			rt.stopping, rt.stopDone = false, nil
 			close(done)
 			if err != nil {
@@ -298,18 +288,6 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 				return ChatMessage{}, err
 			}
 			m.emit(c.ID, map[string]any{"type": "error", "message": "MCP servers changed — reconnected."})
-		}
-	}
-	if rt.driver != nil && len(rt.reloadServers) > 0 {
-		if reconnecter, ok := rt.driver.(mcpReconnecter); ok {
-			for name := range rt.reloadServers {
-				if err := reconnecter.reconnectMCP(name); !errors.Is(err, errMCPReconnectDeferred) {
-					delete(rt.reloadServers, name)
-					if err != nil {
-						log.Printf("reconnect MCP server %s for chat %s: %v", name, c.ID, err)
-					}
-				}
-			}
 		}
 	}
 	if err := m.claimTurn(c.ID); err != nil {
@@ -353,7 +331,6 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 	rt.busy.Store(true)
 	if rt.driver == nil {
 		rt.reloadMCP = false
-		rt.reloadServers = nil
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
 		if specErr != nil {
 			return message, failTurn("configuration", specErr)
@@ -1028,94 +1005,6 @@ func (m *chatManager) ReloadMCP() (closed, pending int, err error) {
 		err = errors.Join(err, closeErr)
 	}
 	return closed, pending, err
-}
-
-func (m *chatManager) ReloadMCPServer(name string) (reconnected, restarted, pending int, err error) {
-	m.mu.Lock()
-	all := make([]*chatRuntime, 0, len(m.chats))
-	for _, rt := range m.chats {
-		all = append(all, rt)
-	}
-	m.mu.Unlock()
-	var wg sync.WaitGroup
-	var resultMu sync.Mutex
-	for _, rt := range all {
-		wg.Add(1)
-		go func(rt *chatRuntime) {
-			defer wg.Done()
-			rt.mu.Lock()
-			defer rt.mu.Unlock()
-			if rt.stopping || rt.driver == nil {
-				return
-			}
-			usesServer := false
-			for _, spec := range rt.mcpSpecs {
-				if spec.Name == name {
-					usesServer = true
-					break
-				}
-			}
-			if !usesServer {
-				return
-			}
-			add := func(r, s, p int, e error) {
-				resultMu.Lock()
-				reconnected += r
-				restarted += s
-				pending += p
-				err = errors.Join(err, e)
-				resultMu.Unlock()
-			}
-			reconnecter, canReconnect := rt.driver.(mcpReconnecter)
-			if rt.busy.Load() {
-				if canReconnect {
-					if rt.reloadServers == nil {
-						rt.reloadServers = make(map[string]bool)
-					}
-					rt.reloadServers[name] = true
-				} else {
-					rt.reloadMCP = true
-				}
-				add(0, 0, 1, nil)
-				return
-			}
-			if canReconnect {
-				reconnectErr := reconnecter.reconnectMCP(name)
-				if errors.Is(reconnectErr, errMCPReconnectDeferred) {
-					if rt.reloadServers == nil {
-						rt.reloadServers = make(map[string]bool)
-					}
-					rt.reloadServers[name] = true
-					add(0, 0, 1, nil)
-				} else {
-					if reconnectErr == nil {
-						add(1, 0, 0, nil)
-					} else {
-						add(0, 0, 0, reconnectErr)
-					}
-				}
-				return
-			}
-			driver := rt.driver
-			rt.stopping = true
-			rt.stopDone = make(chan struct{})
-			done := rt.stopDone
-			m.stopRuntimeTimerLocked(rt)
-			rt.mu.Unlock()
-			closeErr := driver.close()
-			rt.mu.Lock()
-			if rt.driver == driver {
-				rt.driver, rt.mcpSpecs = nil, nil
-				rt.busy.Store(false)
-			}
-			rt.reloadServers = nil
-			rt.stopping, rt.stopDone = false, nil
-			close(done)
-			add(0, 1, 0, closeErr)
-		}(rt)
-	}
-	wg.Wait()
-	return
 }
 
 func (m *chatManager) closeRuntime(id string) error {

@@ -46,22 +46,21 @@ func (p *opencodeCommand) Wait() error {
 }
 
 type opencodeServer struct {
-	connectorID    string
-	registryKey    string
-	inputKey       string
-	major          int
-	baseURL        string
-	password       string
-	client         *http.Client
-	process        opencodeProcess
-	ctx            context.Context
-	cancel         context.CancelFunc
-	done           chan struct{}
-	mu             sync.Mutex
-	mcpReconnectMu sync.Mutex
-	chats          map[string]*opencodeRuntime
-	ancestors      map[string]string
-	refs           int
+	connectorID string
+	registryKey string
+	inputKey    string
+	major       int
+	baseURL     string
+	password    string
+	client      *http.Client
+	process     opencodeProcess
+	ctx         context.Context
+	cancel      context.CancelFunc
+	done        chan struct{}
+	mu          sync.Mutex
+	chats       map[string]*opencodeRuntime
+	ancestors   map[string]string
+	refs        int
 }
 
 type opencodeRuntime struct {
@@ -384,17 +383,14 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	if err != nil {
 		return err
 	}
-	d.server.mcpReconnectMu.Lock()
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
-		d.server.mcpReconnectMu.Unlock()
 		return errors.New("opencode chat is closed")
 	}
 	d.text.Reset()
 	d.active = true
 	d.mu.Unlock()
-	d.server.mcpReconnectMu.Unlock()
 	var model any
 	if provider, modelID, ok := strings.Cut(d.model, "/"); ok && provider != "" && modelID != "" {
 		model = map[string]string{"providerID": provider, "modelID": modelID}
@@ -715,61 +711,6 @@ func (d *opencodeRuntime) connectMCP(ctx context.Context, name string) (opencode
 			return opencodeMCPState{}, ctx.Err()
 		}
 	}
-}
-
-func (d *opencodeRuntime) reconnectMCP(name string) error {
-	d.server.mcpReconnectMu.Lock()
-	defer d.server.mcpReconnectMu.Unlock()
-	d.mu.Lock()
-	closed := d.closed
-	d.mu.Unlock()
-	if closed {
-		return nil
-	}
-	d.server.mu.Lock()
-	for _, other := range d.server.chats {
-		if other == d || other.directory != d.directory {
-			continue
-		}
-		other.mu.Lock()
-		active := other.active
-		other.mu.Unlock()
-		if active {
-			d.server.mu.Unlock()
-			return errMCPReconnectDeferred
-		}
-	}
-	d.server.mu.Unlock()
-	ctx, cancel := context.WithTimeout(d.ctx, opencodeMCPReconnectCap)
-	defer cancel()
-	endpoint := "/mcp/" + url.PathEscape(name) + "/disconnect?directory=" + url.QueryEscape(d.directory)
-	if d.server.major >= 2 {
-		endpoint = "/api/experimental/mcp/" + url.PathEscape(name) + "/disconnect?location%5Bdirectory%5D=" + url.QueryEscape(d.directory)
-	}
-	resp, err := d.server.request(ctx, http.MethodPost, endpoint, nil)
-	if err == nil {
-		_ = resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			err = fmt.Errorf("disconnect returned %s", resp.Status)
-		}
-	}
-	state := opencodeMCPState{}
-	if err == nil {
-		state, err = d.connectMCP(ctx, name)
-	}
-	d.mcpMu.Lock()
-	if d.cachedMCPStates == nil {
-		d.cachedMCPStates = make(map[string]opencodeMCPState)
-	}
-	d.cachedMCPStates[name] = state
-	d.mcpMu.Unlock()
-	if err != nil {
-		return fmt.Errorf("reconnect MCP %s: %w (status %q, error %q)", name, err, state.Status, state.Error)
-	}
-	if state.Status != "connected" {
-		return fmt.Errorf("reconnect MCP %s: status %q, error %q", name, state.Status, state.Error)
-	}
-	return nil
 }
 
 func sleepCtx(ctx context.Context, wait time.Duration) bool {

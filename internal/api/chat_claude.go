@@ -27,23 +27,21 @@ const (
 type chatCommandBuilder func(exe, dbPath, chatID, model, sessionID string) ([]string, error)
 
 type claudeRuntime struct {
-	manager          *chatManager
-	chatID           string
-	workdir          string
-	runtime          *chatRuntime
-	process          chatProcess
-	processDone      chan struct{}
-	configFile       string
-	configOnce       sync.Once
-	assistant        strings.Builder
-	thinkingDeltas   bool
-	textDeltas       bool
-	toolMessages     map[string]string // tool_use ID -> tool chat message ID
-	steerMu          sync.Mutex
-	steering         bool
-	steerRequest     ChatSendRequest
-	reconnectMu      sync.Mutex
-	reconnectWaiters map[string]chan error
+	manager        *chatManager
+	chatID         string
+	workdir        string
+	runtime        *chatRuntime
+	process        chatProcess
+	processDone    chan struct{}
+	configFile     string
+	configOnce     sync.Once
+	assistant      strings.Builder
+	thinkingDeltas bool
+	textDeltas     bool
+	toolMessages   map[string]string // tool_use ID -> tool chat message ID
+	steerMu        sync.Mutex
+	steering       bool
+	steerRequest   ChatSendRequest
 }
 
 func init() { runtimes["claude"] = startClaude }
@@ -212,39 +210,6 @@ func (d *claudeRuntime) steer(request ChatSendRequest) error {
 	return err
 }
 
-func (d *claudeRuntime) reconnectMCP(name string) error {
-	id := fmt.Sprintf("mcp-reconnect-%d", time.Now().UnixNano())
-	waiter := make(chan error, 1)
-	d.reconnectMu.Lock()
-	if d.reconnectWaiters == nil {
-		d.reconnectWaiters = make(map[string]chan error)
-	}
-	d.reconnectWaiters[id] = waiter
-	d.reconnectMu.Unlock()
-	defer func() {
-		d.reconnectMu.Lock()
-		delete(d.reconnectWaiters, id)
-		d.reconnectMu.Unlock()
-	}()
-	payload, err := json.Marshal(map[string]any{"type": "control_request", "request_id": id, "request": map[string]string{"subtype": "mcp_reconnect", "serverName": name}})
-	if err != nil {
-		return err
-	}
-	if _, err := d.process.Stdin().Write(append(payload, '\n')); err != nil {
-		return err
-	}
-	timer := time.NewTimer(30 * time.Second)
-	defer timer.Stop()
-	select {
-	case err := <-waiter:
-		return err
-	case <-d.processDone:
-		return errors.New("claude exited")
-	case <-timer.C:
-		return errors.New("Claude MCP reconnect timed out")
-	}
-}
-
 func claudeUserMessage(text string, files []chatAttachmentFile) map[string]any {
 	if len(files) == 0 {
 		return map[string]any{"role": "user", "content": text}
@@ -383,27 +348,6 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 		return errors.New("Claude stream event missing type")
 	}
 	switch typ {
-	case "control_response":
-		var response struct {
-			Response struct {
-				RequestID string `json:"request_id"`
-				Subtype   string `json:"subtype"`
-				Error     string `json:"error"`
-			} `json:"response"`
-		}
-		if err := json.Unmarshal(raw, &response); err != nil {
-			return err
-		}
-		d.reconnectMu.Lock()
-		waiter := d.reconnectWaiters[response.Response.RequestID]
-		if waiter != nil {
-			var err error
-			if response.Response.Subtype != "success" {
-				err = fmt.Errorf("Claude MCP reconnect: %s", response.Response.Error)
-			}
-			waiter <- err
-		}
-		d.reconnectMu.Unlock()
 	case "system":
 		var init struct {
 			Subtype   string `json:"subtype"`
