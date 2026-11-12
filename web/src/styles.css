@@ -2121,6 +2121,43 @@ main:has(> .chats) {
   gap: 12px;
   min-height: 0;
 }
+.chat-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.chat-search > .svg-icon {
+  position: absolute;
+  left: 10px;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.chat-search input {
+  width: 100%;
+  height: 34px;
+  padding: 0 34px 0 32px;
+  border-radius: 999px;
+  background: var(--base-200);
+}
+.chat-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.chat-search .icon {
+  position: absolute;
+  right: 3px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+}
+.chat-search .icon .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.chat-search-empty:empty {
+  display: none;
+}
 .chat-list nav {
   display: flex;
   flex-direction: column;

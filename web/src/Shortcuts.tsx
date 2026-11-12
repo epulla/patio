@@ -25,6 +25,7 @@ const text = {
     items: {
       shortcuts: "Show keyboard shortcuts",
       newChat: "New chat",
+      searchChats: "Search chats",
       newPinned: "New pinned chat in the current group",
       dock: "Open the side panel, or jump to its message box",
       tabN: "Go to tab 1–9",
@@ -51,6 +52,7 @@ const text = {
     items: {
       shortcuts: "Mostrar atajos de teclado",
       newChat: "Nuevo chat",
+      searchChats: "Buscar chats",
       newPinned: "Nuevo chat fijado en el grupo actual",
       dock: "Abrir el panel lateral o ir a su cuadro de mensaje",
       tabN: "Ir a la pestaña 1–9",
@@ -74,6 +76,7 @@ const sections: { id: keyof (typeof text)["en"]["sections"]; rows: [Item, string
     rows: [
       ["shortcuts", [shortcutsShortcut]],
       ["newChat", [keys("⌘N", "Ctrl+N")]],
+      ["searchChats", [keys("⌘F", "Ctrl+F")]],
       ["newPinned", [keys("⌘⇧N", "Ctrl+Shift+N")]],
       ["dock", [keys("⌘J", "Ctrl+J")]],
     ],
