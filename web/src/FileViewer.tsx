@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import hljs from "highlight.js/lib/common";
 import { api } from "./api";
 import { ErrorText } from "./App";
 import { Icon, IconButton } from "./icons";
@@ -14,6 +15,8 @@ const text = {
     source: "Show source",
     rendered: "Show rendered",
     quickLook: "Quick Look preview",
+    webContent: "Allow web content",
+    webContentHint: "Lets this page load scripts, styles, fonts and images from the internet. It still can't reach Patio.",
     loading: "Loading…",
     tooLarge: "This file is too large to preview.",
     noPreview: "No preview for this file type.",
@@ -28,6 +31,8 @@ const text = {
     source: "Ver código fuente",
     rendered: "Ver renderizado",
     quickLook: "Vista previa con Quick Look",
+    webContent: "Permitir contenido web",
+    webContentHint: "Permite que esta página cargue scripts, estilos, fuentes e imágenes de internet. Aun así no puede acceder a Patio.",
     loading: "Cargando…",
     tooLarge: "Este archivo es demasiado grande para previsualizarlo.",
     noPreview: "No hay vista previa para este tipo de archivo.",
@@ -41,6 +46,9 @@ const previewLimit = 50 * 1024 * 1024;
 const rowLimit = 2000;
 // Same rules as artifacts: scripts run, but nothing loads from the network or reaches /api.
 const htmlCSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:">`;
+// Opt-in per view: https only, so Patio's own origin (wails:/http) stays unreachable; the sandbox still has no same-origin.
+const webCSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src https:">`;
+const highlightLimit = 500 * 1024;
 
 const kinds: Record<string, string> = {
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image", bmp: "image", ico: "image", avif: "image",
@@ -90,6 +98,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
   const [error, setError] = useState<unknown>();
   const [source, setSource] = useState(false);
   const [quickLook, setQuickLook] = useState(false);
+  const [web, setWeb] = useState(false);
   const name = path.split("/").pop() ?? path;
   const kind = fileKind(name);
   useEffect(() => {
@@ -102,7 +111,12 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
       <h2 className="attachment-name" id="file-viewer-title" title={path}>
         {name}
       </h2>
-      {kind === "markdown" && (
+      {kind === "html" && !source && (
+        <button type="button" className="ghost" aria-pressed={web} data-tip={t.webContentHint} onClick={() => setWeb(!web)}>
+          <Icon name="link" /> {t.webContent}
+        </button>
+      )}
+      {(kind === "markdown" || kind === "html") && (
         <button type="button" className="ghost" onClick={() => setSource(!source)}>
           <Icon name={source ? "eye" : "code"} /> {source ? t.rendered : t.source}
         </button>
@@ -137,6 +151,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
           path={path}
           kind={quickLook ? "quicklook" : kind}
           source={source}
+          web={web}
           onOfficeError={() => kind === "pptx" && setQuickLook(true)}
           fallback={
             <p className="file-viewer-note">
@@ -158,7 +173,7 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
   );
 }
 
-function Preview({ chatId, path, kind, source, fallback, onOfficeError }: { chatId: string; path: string; kind: string; source: boolean; fallback: ReactNode; onOfficeError: () => void }) {
+function Preview({ chatId, path, kind, source, web, fallback, onOfficeError }: { chatId: string; path: string; kind: string; source: boolean; web: boolean; fallback: ReactNode; onOfficeError: () => void }) {
   const t = useText(text);
   const url = rawURL(chatId, path);
   const name = path.split("/").pop() ?? path;
@@ -188,9 +203,9 @@ function Preview({ chatId, path, kind, source, fallback, onOfficeError }: { chat
     case "json":
     case "markdown":
     case "text":
-      return <TextPreview url={url} kind={kind} source={source} name={name} />;
+      return <TextPreview url={url} kind={kind} source={source} web={web} name={name} />;
     case "quicklook":
-      return <TextPreview url={`/api/chats/${chatId}/files/quicklook?path=${encodeURIComponent(path)}`} kind="quicklook" source={false} name={name} />;
+      return <TextPreview url={`/api/chats/${chatId}/files/quicklook?path=${encodeURIComponent(path)}`} kind="quicklook" source={false} web={false} name={name} />;
     case "sheet":
       return <SheetPreview url={url} csv={/\.(csv|tsv)$/i.test(name)} />;
     case "docx":
@@ -209,10 +224,11 @@ function Loading({ error }: { error: unknown }) {
   return <p className="muted file-viewer-note">{t.loading}</p>;
 }
 
-function TextPreview({ url, kind, source, name }: { url: string; kind: string; source: boolean; name: string }) {
+function TextPreview({ url, kind, source, web, name }: { url: string; kind: string; source: boolean; web: boolean; name: string }) {
   const { data, error } = useLoad(() => fetchFile(url).then((response) => response.text()), [url]);
   if (data === undefined) return <Loading error={error} />;
-  if (kind === "html") return <iframe className="file-viewer-frame" sandbox="allow-scripts" srcDoc={htmlCSP + data} title={name} />;
+  if (kind === "html" && !source)
+    return <iframe key={String(web)} className="file-viewer-frame" sandbox="allow-scripts" srcDoc={(web ? webCSP : htmlCSP) + data} title={name} />;
   if (kind === "quicklook") return <iframe className="file-viewer-frame" sandbox="" srcDoc={data} title={name} />;
   if (kind === "markdown" && !source)
     return (
@@ -227,7 +243,26 @@ function TextPreview({ url, kind, source, name }: { url: string; kind: string; s
     } catch {
       // Invalid JSON still shows as text.
     }
-  return <pre className="file-viewer-text">{shown}</pre>;
+  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  const language = kind === "json" ? "json" : kind === "markdown" ? "markdown" : kind === "html" ? "xml" : ext;
+  return <CodeBlock code={shown} language={language} />;
+}
+
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  const html = useMemo(() => {
+    if (code.length > highlightLimit || !hljs.getLanguage(language)) return undefined;
+    return hljs.highlight(code, { language, ignoreIllegals: true }).value;
+  }, [code, language]);
+  const lines = code.split("\n").length;
+  return (
+    <div className="file-viewer-code">
+      <pre className="file-viewer-gutter" aria-hidden="true">
+        {Array.from({ length: lines }, (_, i) => i + 1).join("\n")}
+      </pre>
+      {/* highlight.js escapes the source; its output is only spans with classes. */}
+      {html !== undefined ? <pre className="file-viewer-text hljs" dangerouslySetInnerHTML={{ __html: html }} /> : <pre className="file-viewer-text">{code}</pre>}
+    </div>
+  );
 }
 
 function SheetPreview({ url, csv }: { url: string; csv: boolean }) {

@@ -5071,6 +5071,78 @@ main.chat-window .app-version {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.file-viewer-code {
+  display: flex;
+  min-width: 0;
+  padding: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--base-200);
+}
+.file-viewer-code .file-viewer-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0 16px;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+.file-viewer-gutter {
+  margin: 0;
+  padding: 0 12px 0 16px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font: 13px/1.5 var(--mono);
+  text-align: right;
+  user-select: none;
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-meta .hljs-keyword {
+  color: oklch(0.58 0.17 300);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-meta .hljs-string {
+  color: oklch(0.6 0.13 150);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: oklch(0.65 0.15 55);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-variable,
+.hljs-template-variable {
+  color: oklch(0.6 0.13 245);
+}
+.hljs-title,
+.hljs-name,
+.hljs-section,
+.hljs-built_in,
+.hljs-type {
+  color: oklch(0.6 0.15 20);
+}
+.hljs-tag,
+.hljs-punctuation,
+.hljs-meta {
+  color: var(--muted);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
 .file-viewer-doc {
   width: min(860px, 100%);
   margin: 0 auto;
