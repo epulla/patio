@@ -274,7 +274,46 @@ func TestDeliverAgentMessagesFailedSteerWaitsForTurnEnd(t *testing.T) {
 	rt.busy.Store(true)
 	rt.driver = &failingSteerTestDriver{}
 	rt.mu.Unlock()
-	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,steer) VALUES('row',?,'later','[]','1','agent-sender',1)`, chatID); err != nil {
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('other-sender','Other','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		id, created, sender string
+		steer               int
+	}{{"row", "1", "agent-sender", 1}, {"other", "2", "other-sender", 0}, {"later", "3", "agent-sender", 1}} {
+		if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,steer) VALUES(?,?,?,'[]',?,?,?)`, row.id, chatID, row.id, row.created, row.sender, row.steer); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := server.DeliverAgentMessages(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]int{"row": 0, "later": 1} {
+		var steer int
+		if err := database.QueryRow(`SELECT steer FROM chat_queue WHERE id=?`, id).Scan(&steer); err != nil || steer != want {
+			t.Fatalf("%s steer=%d want %d err=%v", id, steer, want, err)
+		}
+	}
+}
+
+func TestDeliverAgentMessagesSteerStopsAtQueuedRow(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('agent-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	server := New(database, "local", false, "dev", root, Options{})
+	defer server.Close()
+	steerer := &steerTestDriver{}
+	rt := server.chats.runtime(chatID)
+	rt.mu.Lock()
+	rt.busy.Store(true)
+	rt.driver = steerer
+	rt.mu.Unlock()
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,steer) VALUES('steer',?,'now','[]','1','agent-sender',1),('queue',?,'after','[]','2','agent-sender',0)`, chatID, chatID); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -282,8 +321,35 @@ func TestDeliverAgentMessagesFailedSteerWaitsForTurnEnd(t *testing.T) {
 	if err := server.DeliverAgentMessages(ctx); err != nil {
 		t.Fatal(err)
 	}
+	var remaining string
+	if err := database.QueryRow(`SELECT group_concat(id) FROM chat_queue WHERE chat_id=?`, chatID).Scan(&remaining); err != nil || remaining != "queue" {
+		t.Fatalf("remaining=%q err=%v", remaining, err)
+	}
+	if len(steerer.steered) != 1 || strings.Contains(steerer.steered[0].Text, "after") {
+		t.Fatalf("steered=%#v", steerer.steered)
+	}
+}
+
+func TestAgentMessageFailedSteerWaitsForTurnEnd(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('agent-sender','Sender','0','0')`); err != nil {
+		t.Fatal(err)
+	}
+	server := New(database, "local", false, "dev", root, Options{})
+	defer server.Close()
+	rt := server.chats.runtime(chatID)
+	rt.mu.Lock()
+	rt.busy.Store(true)
+	rt.driver = &failingSteerTestDriver{}
+	rt.mu.Unlock()
+	var result map[string]string
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/agent-messages", map[string]string{"from_chat_id": "agent-sender", "text": "later", "mode": "steer"}, &result); code != 200 || result["status"] != "queued" {
+		t.Fatalf("response=%d %#v", code, result)
+	}
 	var steer int
-	if err := database.QueryRow(`SELECT steer FROM chat_queue WHERE id='row'`).Scan(&steer); err != nil || steer != 0 {
+	if err := database.QueryRow(`SELECT steer FROM chat_queue WHERE chat_id=?`, chatID).Scan(&steer); err != nil || steer != 0 {
 		t.Fatalf("steer=%d err=%v", steer, err)
 	}
 }

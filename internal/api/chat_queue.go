@@ -226,7 +226,7 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySen
 				rows.Close()
 				return err
 			}
-			if len(claimed) > 0 && (row.from != sender || len(attachments)+len(rawItems) > maxChatAttachments) {
+			if len(claimed) > 0 && (row.from != sender || len(attachments)+len(rawItems) > maxChatAttachments) || steer && !row.steer {
 				break
 			}
 			if len(claimed) == 0 && onlySender != "" && (!row.from.Valid || row.from.String != onlySender) {
@@ -273,6 +273,7 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySen
 	}
 	restore := func(cause error, messageID string) error {
 		// A turn that started meanwhile drains the queue when it ends; holding it would strand the rows.
+		// A failed steer clears its rows' flag so they wait for the turn to end instead of retrying.
 		held := 1
 		if steer || !manual && errors.Is(cause, errChatTurnRunning) {
 			held = oldQueueHeld
@@ -284,7 +285,7 @@ func (m *chatManager) drainQueuedMode(chatID string, manual, steer bool, onlySen
 				}
 			}
 			for _, row := range claimed {
-				if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id,steer) VALUES(?,?,?,?,?,?,?,?)`, row.id, chatID, row.text, row.raw, row.createdAt, nullableQueueSender(row.from), nullableQueueSender(row.report), row.steer); err != nil {
+				if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id,steer) VALUES(?,?,?,?,?,?,?,?)`, row.id, chatID, row.text, row.raw, row.createdAt, nullableQueueSender(row.from), nullableQueueSender(row.report), row.steer && !steer); err != nil {
 					return err
 				}
 			}

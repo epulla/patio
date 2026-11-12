@@ -410,7 +410,7 @@ func (s *Server) agentMessage(w http.ResponseWriter, r *http.Request) {
 		if reason := s.chats.steerBlocker(id); reason != "" {
 			log.Printf("steer to %s not applied at send: %s", id, reason)
 		} else if _, err := s.chats.steerQueued(id, in.FromChatID); err != nil {
-			log.Printf("steer to %s failed at send: %v", id, err)
+			log.Printf("steer to %s failed at send; delivering after its turn: %v", id, err)
 		} else {
 			var n int
 			if err := s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, rowID).Scan(&n); err != nil {

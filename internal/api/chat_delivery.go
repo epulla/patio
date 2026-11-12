@@ -112,10 +112,6 @@ func (s *Server) steerHead(chatID string) (bool, error) {
 		return false, nil
 	}
 	log.Printf("steer %s into %s failed; delivering after the turn: %v", rowID, chatID, err)
-	// A failed steer is restored to the queue; without clearing the flag every database change would retry it.
-	if _, clearErr := s.db.Exec(`UPDATE chat_queue SET steer=0 WHERE chat_id=? AND from_chat_id=? AND steer<>0`, chatID, sender.String); clearErr != nil {
-		return false, errors.Join(err, clearErr)
-	}
 	return false, nil
 }
 
