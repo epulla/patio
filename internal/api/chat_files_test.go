@@ -9,7 +9,80 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestChatFilesSave(t *testing.T) {
+	s, c := attachmentTestChat(t)
+	name := filepath.Join(c.Workdir, "edit.txt")
+	if err := os.WriteFile(name, []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(name)
+	expected := info.ModTime().UTC().Format(time.RFC3339Nano)
+	request := func(path, content, modified string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]string{"content": content, "expected_modified": modified})
+		return chatFileRequest(t, s, "PUT", "/api/chats/"+c.ID+"/files?path="+path, string(body))
+	}
+	got := request("edit.txt", "new", expected)
+	if got.Code != 200 {
+		t.Fatalf("save = %d %s", got.Code, got.Body.String())
+	}
+	var response struct {
+		Modified string `json:"modified"`
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if content, _ := os.ReadFile(name); string(content) != "new" {
+		t.Fatalf("content = %q", content)
+	}
+	raw := chatFileRequest(t, s, "GET", "/api/chats/"+c.ID+"/files/raw?path=edit.txt", "")
+	if raw.Header().Get("X-Modified") != response.Modified {
+		t.Fatalf("modified header %q != %q", raw.Header().Get("X-Modified"), response.Modified)
+	}
+	if w := request("edit.txt", "stale", "2000-01-01T00:00:00Z"); w.Code != 409 {
+		t.Fatalf("stale = %d", w.Code)
+	}
+	if content, _ := os.ReadFile(name); string(content) != "new" {
+		t.Fatalf("stale changed content: %q", content)
+	}
+	if w := request("../x", "x", ""); w.Code != 400 {
+		t.Fatalf("traversal = %d", w.Code)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("safe"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(c.Workdir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(dir, filepath.Join(c.Workdir, "dirlink")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "nested")); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"link", "dirlink/nested"} {
+		if w := request(path, "bad", ""); w.Code != 400 {
+			t.Errorf("symlink %s = %d", path, w.Code)
+		}
+	}
+	if content, _ := os.ReadFile(outside); string(content) != "safe" {
+		t.Fatalf("outside changed: %q", content)
+	}
+	if w := request("edit.txt", strings.Repeat("x", editLimit+1), ""); w.Code != 413 {
+		t.Fatalf("size = %d", w.Code)
+	}
+	jsonFile := filepath.Join(c.Workdir, "edit.json")
+	if err := os.WriteFile(jsonFile, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("edit.json", "{", ""); w.Code != 400 {
+		t.Fatalf("invalid JSON = %d", w.Code)
+	}
+}
 
 func chatFileRequest(t *testing.T, s *Server, method, path string, body string) *httptest.ResponseRecorder {
 	t.Helper()

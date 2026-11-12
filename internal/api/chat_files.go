@@ -164,10 +164,103 @@ func (s *Server) rawChatFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(path)}))
+	w.Header().Set("X-Modified", info.ModTime().UTC().Format(time.RFC3339Nano))
 	if contentType != "application/pdf" {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	}
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), f)
+}
+
+const editLimit = 2 << 20
+
+func (s *Server) saveChatFile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Content          string `json:"content"`
+		ExpectedModified string `json:"expected_modified"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, editLimit*2)
+	if json.NewDecoder(r.Body).Decode(&in) != nil {
+		errw(w, 400, "invalid request")
+		return
+	}
+	if len(in.Content) > editLimit {
+		errw(w, 413, "file too large")
+		return
+	}
+	_, workdir, ok := s.chatFileRoot(w, r)
+	if !ok {
+		return
+	}
+	rel := r.URL.Query().Get("path")
+	if rel == "" {
+		errw(w, 400, "invalid path")
+		return
+	}
+	root, err := os.OpenRoot(workdir)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	defer root.Close()
+	rel, err = cleanChatFilePath(rel)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	if rel == "." {
+		errw(w, 400, "invalid path")
+		return
+	}
+	parent, err := root.OpenRoot(filepath.Dir(rel))
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	defer parent.Close()
+	base := filepath.Base(rel)
+	info, err := parent.Lstat(base)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	if !info.Mode().IsRegular() {
+		errw(w, 400, "path is not a regular file")
+		return
+	}
+	if in.ExpectedModified != "" && info.ModTime().UTC().Format(time.RFC3339Nano) != in.ExpectedModified {
+		errw(w, http.StatusConflict, "file changed on disk")
+		return
+	}
+	if strings.EqualFold(filepath.Ext(base), ".json") && !json.Valid([]byte(in.Content)) {
+		errw(w, 400, "invalid JSON")
+		return
+	}
+	tmp := "." + base + ".patio-tmp"
+	_ = parent.Remove(tmp)
+	f, err := parent.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	if _, err = io.WriteString(f, in.Content); err == nil {
+		err = f.Close()
+	} else {
+		_ = f.Close()
+	}
+	if err == nil {
+		err = parent.Rename(tmp, base)
+	}
+	if err != nil {
+		_ = parent.Remove(tmp)
+		chatFileError(w, err)
+		return
+	}
+	updated, err := parent.Stat(base)
+	if err != nil {
+		chatFileError(w, err)
+		return
+	}
+	write(w, 200, map[string]string{"modified": updated.ModTime().UTC().Format(time.RFC3339Nano)})
 }
 
 func (s *Server) deleteChatFile(w http.ResponseWriter, r *http.Request) {
