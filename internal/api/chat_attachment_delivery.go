@@ -85,12 +85,11 @@ func chatAttachmentAbsolutePath(workdir, name string) (string, error) {
 	return path, nil
 }
 
-func promptWithAttachmentPaths(text string, files []chatAttachmentFile, includeImages bool) string {
+// Images are also listed by path even when sent inline, so tools like attach_file can reference them.
+func promptWithAttachmentPaths(text string, files []chatAttachmentFile) string {
 	var lines []string
 	for _, file := range files {
-		if file.Kind != "image" || !includeImages {
-			lines = append(lines, attachmentPathLine(file.Path))
-		}
+		lines = append(lines, attachmentPathLine(file.Path))
 	}
 	return appendPromptLines(text, lines)
 }

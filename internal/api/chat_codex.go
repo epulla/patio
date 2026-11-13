@@ -257,7 +257,7 @@ func (d *codexRuntime) steer(request ChatSendRequest) error {
 }
 
 func codexUserInput(text string, files []chatAttachmentFile) []map[string]string {
-	input := []map[string]string{{"type": "text", "text": promptWithAttachmentPaths(text, files, true)}}
+	input := []map[string]string{{"type": "text", "text": promptWithAttachmentPaths(text, files)}}
 	for _, file := range files {
 		if file.Kind == "image" {
 			input = append(input, map[string]string{"type": "localImage", "path": file.Path})

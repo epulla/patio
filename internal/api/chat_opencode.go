@@ -739,7 +739,7 @@ func sleepCtx(ctx context.Context, wait time.Duration) bool {
 
 func opencodePromptParts(text string, files []chatAttachmentFile) []any {
 	parts := make([]any, 0, len(files)+1)
-	prompt := promptWithAttachmentPaths(text, files, true)
+	prompt := promptWithAttachmentPaths(text, files)
 	if prompt != "" {
 		parts = append(parts, map[string]string{"type": "text", "text": prompt})
 	}
@@ -752,7 +752,7 @@ func opencodePromptParts(text string, files []chatAttachmentFile) []any {
 }
 
 func opencodeV2Prompt(text string, files []chatAttachmentFile) map[string]any {
-	body := map[string]any{"text": promptWithAttachmentPaths(text, files, true)}
+	body := map[string]any{"text": promptWithAttachmentPaths(text, files)}
 	attachments := make([]map[string]string, 0, len(files))
 	for _, file := range files {
 		if file.Kind == "image" {

@@ -65,11 +65,11 @@ func TestChatAttachmentRuntimePayloadShapes(t *testing.T) {
 	}
 	textPath := files[0].Path
 	imagePath := files[1].Path
-	if got := promptWithAttachmentPaths("look", files, true); got != "look\nAttached file: "+textPath {
+	if got := promptWithAttachmentPaths("look", files); got != "look\nAttached file: "+textPath+"\nAttached file: "+imagePath {
 		t.Fatalf("prompt path lines = %q", got)
 	}
 	file := chatAttachmentFile{ChatAttachment: ChatAttachment{Kind: "file"}, Path: filepath.Join(workdir, "attachments", "report.pdf")}
-	if got := promptWithAttachmentPaths("look", []chatAttachmentFile{file}, true); got != "look\nAttached file: "+file.Path {
+	if got := promptWithAttachmentPaths("look", []chatAttachmentFile{file}); got != "look\nAttached file: "+file.Path {
 		t.Fatalf("file path line = %q", got)
 	}
 	if got := attachmentPathLine(filepath.Join(`C:\Users\test`, "attachments", "notes.md")); !strings.HasPrefix(got, "Attached file: ") {
@@ -82,7 +82,7 @@ func TestChatAttachmentRuntimePayloadShapes(t *testing.T) {
 	claude := claudeUserMessage("look", files)
 	claudeContent := claude["content"].([]any)
 	if !reflect.DeepEqual(claudeContent, []any{
-		map[string]string{"type": "text", "text": "look\nAttached file: " + textPath},
+		map[string]string{"type": "text", "text": "look\nAttached file: " + textPath + "\nAttached file: " + imagePath},
 		map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": "image/png", "data": base64.StdEncoding.EncodeToString(imageData)}},
 	}) {
 		t.Fatalf("Claude stream-json content = %#v", claudeContent)
@@ -90,7 +90,7 @@ func TestChatAttachmentRuntimePayloadShapes(t *testing.T) {
 
 	codex := codexUserInput("look", files)
 	wantCodex := []map[string]string{
-		{"type": "text", "text": "look\nAttached file: " + textPath},
+		{"type": "text", "text": "look\nAttached file: " + textPath + "\nAttached file: " + imagePath},
 		{"type": "localImage", "path": imagePath},
 	}
 	if !reflect.DeepEqual(codex, wantCodex) {
@@ -99,7 +99,7 @@ func TestChatAttachmentRuntimePayloadShapes(t *testing.T) {
 
 	gotCopilot := copilotPromptContent("look", files, true)
 	wantCopilot := []any{
-		map[string]string{"type": "text", "text": "look\nAttached file: " + textPath},
+		map[string]string{"type": "text", "text": "look\nAttached file: " + textPath + "\nAttached file: " + imagePath},
 		map[string]string{"type": "image", "mimeType": "image/png", "data": base64.StdEncoding.EncodeToString(imageData)},
 	}
 	if !reflect.DeepEqual(gotCopilot, wantCopilot) {
@@ -112,14 +112,14 @@ func TestChatAttachmentRuntimePayloadShapes(t *testing.T) {
 	}
 
 	wantV1 := []any{
-		map[string]string{"type": "text", "text": "look\nAttached file: " + textPath},
+		map[string]string{"type": "text", "text": "look\nAttached file: " + textPath + "\nAttached file: " + imagePath},
 		map[string]string{"type": "file", "mime": "image/png", "url": chatImageDataURL(files[1])},
 	}
 	if got := opencodePromptParts("look", files); !reflect.DeepEqual(got, wantV1) {
 		t.Fatalf("OpenCode v1 parts = %#v, want %#v", got, wantV1)
 	}
 	wantV2 := map[string]any{
-		"text":  "look\nAttached file: " + textPath,
+		"text":  "look\nAttached file: " + textPath + "\nAttached file: " + imagePath,
 		"files": []map[string]string{{"uri": chatImageDataURL(files[1]), "mime": "image/png", "name": "square.png"}},
 	}
 	if got := opencodeV2Prompt("look", files); !reflect.DeepEqual(got, wantV2) {
@@ -182,7 +182,7 @@ func TestClaudeSendWritesImageBlockToStreamJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
 		t.Fatal(err)
 	}
-	if event.Type != "user" || event.Message.Role != "user" || len(event.Message.Content) != 2 || event.Message.Content[0].Text != "look\nAttached file: "+files[0].Path || event.Message.Content[1].Type != "image" || event.Message.Content[1].Source.Type != "base64" || event.Message.Content[1].Source.MediaType != "image/png" || event.Message.Content[1].Source.Data != base64.StdEncoding.EncodeToString(imageData) {
+	if event.Type != "user" || event.Message.Role != "user" || len(event.Message.Content) != 2 || event.Message.Content[0].Text != "look\nAttached file: "+files[0].Path+"\nAttached file: "+files[1].Path || event.Message.Content[1].Type != "image" || event.Message.Content[1].Source.Type != "base64" || event.Message.Content[1].Source.MediaType != "image/png" || event.Message.Content[1].Source.Data != base64.StdEncoding.EncodeToString(imageData) {
 		t.Fatalf("Claude event = %#v", event)
 	}
 }
@@ -233,7 +233,7 @@ func TestCodexSendWritesLocalImageInputItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	input, _ := client.params["input"].([]any)
-	wantText := "look\nAttached file: " + files[0].Path
+	wantText := "look\nAttached file: " + files[0].Path + "\nAttached file: " + files[1].Path
 	if len(input) != 2 {
 		t.Fatalf("Codex turn/start payload = %#v", client.params)
 	}

@@ -312,7 +312,7 @@ func hasChatImage(files []chatAttachmentFile) bool {
 
 func copilotPromptContent(text string, files []chatAttachmentFile, imageSupport bool) []any {
 	content := make([]any, 0, len(files)+1)
-	prompt := promptWithAttachmentPaths(text, files, imageSupport)
+	prompt := promptWithAttachmentPaths(text, files)
 	if prompt != "" {
 		content = append(content, map[string]string{"type": "text", "text": prompt})
 	}

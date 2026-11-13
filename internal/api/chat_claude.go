@@ -215,7 +215,7 @@ func claudeUserMessage(text string, files []chatAttachmentFile) map[string]any {
 		return map[string]any{"role": "user", "content": text}
 	}
 	content := make([]any, 0, len(files)+1)
-	prompt := promptWithAttachmentPaths(text, files, true)
+	prompt := promptWithAttachmentPaths(text, files)
 	if prompt != "" {
 		content = append(content, map[string]string{"type": "text", "text": prompt})
 	}
