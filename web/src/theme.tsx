@@ -17,6 +17,7 @@ export type Mode = "system" | "light" | "dark";
 export type SidebarStyle = "flat" | "gradient";
 export const palettes = [
   { id: "patio", name: "Patio" },
+  { id: "dusk", name: "Dusk" },
   { id: "orchid", name: "Orchid" },
   { id: "berry", name: "Berry" },
   { id: "flamingo", name: "Flamingo" },
