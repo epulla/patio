@@ -327,13 +327,18 @@ func main() {
 			}
 		}()
 		background.Add(6)
-		background.Add(1)
-		go func() {
-			defer background.Done()
-			if err := apiServer.StartTelegramBridge(backgroundCtx); err != nil {
-				log.Printf("run Telegram bridge: %v", err)
-			}
-		}()
+		// A test app on a database copy shares the keychain bot token; polling it too would steal the real app's updates.
+		if isDefaultDB(path, runtime.GOOS, os.Getenv, home) {
+			background.Add(1)
+			go func() {
+				defer background.Done()
+				if err := apiServer.StartTelegramBridge(backgroundCtx); err != nil {
+					log.Printf("run Telegram bridge: %v", err)
+				}
+			}()
+		} else {
+			log.Printf("Telegram bridge off: %s is not the default database", path)
+		}
 		go func() {
 			defer background.Done()
 			if err := apiServer.StartScheduledRunner(backgroundCtx, 30*time.Second); err != nil {
@@ -655,6 +660,11 @@ func runMCP(args []string) {
 	if err := server.Run(context.Background(), &sdk.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func isDefaultDB(path, goos string, getenv func(string) string, home string) bool {
+	def, err := dbPath("", goos, getenv, home)
+	return err == nil && filepath.Clean(path) == filepath.Clean(def)
 }
 
 func dbPath(flagValue, goos string, getenv func(string) string, home string) (string, error) {

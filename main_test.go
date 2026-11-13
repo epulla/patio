@@ -109,6 +109,20 @@ func TestDBPath(t *testing.T) {
 	}
 }
 
+func TestIsDefaultDB(t *testing.T) {
+	getenv := func(string) string { return "" }
+	home := "/Users/e"
+	for path, want := range map[string]bool{
+		"/Users/e/Library/Application Support/patio/patio.db":          true,
+		"/Users/e/Library/Application Support/patio/../patio/patio.db": true,
+		"/tmp/patio-test/patio.db":                                     false,
+	} {
+		if got := isDefaultDB(path, "darwin", getenv, home); got != want {
+			t.Errorf("isDefaultDB(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
 func TestLogPath(t *testing.T) {
 	tests := []struct {
 		name    string
