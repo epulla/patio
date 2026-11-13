@@ -29,13 +29,27 @@ export default function Menu({
     return () => document.removeEventListener("mousedown", outside);
   }, [open]);
 
+  // Pinned to the viewport where CSS placed it, so scrolling lists (chat list, panels) can't clip it.
   useLayoutEffect(() => {
     const el = list.current;
     if (!open || !el) return;
     const rect = el.getBoundingClientRect();
-    const overflow = rect.right - (document.documentElement.clientWidth - 8);
-    if (overflow > 0) el.style.translate = `${-overflow}px 0`;
-    else if (rect.left < 8) el.style.translate = `${8 - rect.left}px 0`;
+    const width = document.documentElement.clientWidth;
+    const height = document.documentElement.clientHeight;
+    let top = rect.top;
+    if (rect.bottom > height - 8 && trigger.current) top = Math.max(8, trigger.current.getBoundingClientRect().top - 6 - rect.height);
+    Object.assign(el.style, {
+      position: "fixed",
+      top: `${top}px`,
+      bottom: "auto",
+      left: `${Math.max(8, Math.min(rect.left, width - 8 - rect.width))}px`,
+      right: "auto",
+    });
+    const scrolled = (event: Event) => {
+      if (!el.contains(event.target as Node)) setOpen(false);
+    };
+    addEventListener("scroll", scrolled, true);
+    return () => removeEventListener("scroll", scrolled, true);
   }, [open]);
 
   function close(focusTrigger = true) {
