@@ -58,8 +58,11 @@ type mcpOAuthLogin struct {
 	done   chan struct{}
 }
 
-func (s *Server) cancelMCPOAuthLogin(id string) {
+// blockMCPOAuthLogin cancels and waits for a pending login and rejects new
+// ones until unblock is called, so a server edit can't race a token save.
+func (s *Server) blockMCPOAuthLogin(id string) (unblock func()) {
 	s.oauthMu.Lock()
+	s.oauthBlocked[id]++
 	login := s.oauthLogins[id]
 	if login != nil {
 		login.cancel()
@@ -68,25 +71,38 @@ func (s *Server) cancelMCPOAuthLogin(id string) {
 	if login != nil {
 		<-login.done
 	}
+	return func() {
+		s.oauthMu.Lock()
+		if s.oauthBlocked[id]--; s.oauthBlocked[id] <= 0 {
+			delete(s.oauthBlocked, id)
+		}
+		s.oauthMu.Unlock()
+	}
 }
 
 func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 	id := idParam(r, "id")
+	s.oauthMu.Lock()
+	if s.oauthBlocked[id] > 0 {
+		s.oauthMu.Unlock()
+		errw(w, http.StatusConflict, "MCP server is being changed; try again")
+		return
+	}
+	// Loaded under oauthMu so a login can't start from a config an edit is replacing.
 	server, err := s.loadMCPServer(id)
-	if errors.Is(err, sql.ErrNoRows) {
-		errw(w, http.StatusNotFound, "MCP server not found")
-		return
-	}
-	if err != nil {
-		errw(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if server.Kind != "http" || server.Auth != "oauth" {
-		errw(w, http.StatusBadRequest, "OAuth login requires an HTTP server with oauth auth")
+	if err != nil || server.Kind != "http" || server.Auth != "oauth" {
+		s.oauthMu.Unlock()
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			errw(w, http.StatusNotFound, "MCP server not found")
+		case err != nil:
+			errw(w, http.StatusInternalServerError, err.Error())
+		default:
+			errw(w, http.StatusBadRequest, "OAuth login requires an HTTP server with oauth auth")
+		}
 		return
 	}
 
-	s.oauthMu.Lock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	login := &mcpOAuthLogin{cancel: cancel, done: make(chan struct{})}
 	if previous := s.oauthLogins[id]; previous != nil {
@@ -546,14 +562,14 @@ func (s *Server) oauthHeader(ctx context.Context, serverID string) (string, erro
 		}
 		return "", err
 	}
-	if refreshed.AccessToken != token.AccessToken {
+	if refreshed.AccessToken != token.AccessToken || refreshed.RefreshToken != token.RefreshToken || !refreshed.Expiry.Equal(token.Expiry) {
 		mcpOAuthKeyringMu.Lock()
 		current, e := loadMCPOAuthCredential(serverID)
 		if e != nil {
 			mcpOAuthKeyringMu.Unlock()
 			return "", errors.New("Sign in again")
 		}
-		if current.AccessToken != token.AccessToken {
+		if current.AccessToken != token.AccessToken || current.RefreshToken != token.RefreshToken {
 			mcpOAuthKeyringMu.Unlock()
 			return "Bearer " + refreshed.AccessToken, nil
 		}

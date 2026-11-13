@@ -616,6 +616,9 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if old.Auth == "oauth" && (config.Auth != "oauth" || config.URL != old.URL || in.OAuthClientSecret != nil || in.OAuthClientID != nil && *in.OAuthClientID != old.OAuthClientID) {
+		defer s.blockMCPOAuthLogin(id)()
+	}
 	bearer, hasBearer, err := snapshotMCPSecret(id, "bearer")
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
@@ -671,7 +674,6 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "oauth-registered-secret")
 	}
 	if clientChanged || in.OAuthClientSecret != nil {
-		s.cancelMCPOAuthLogin(id)
 		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
 			_ = restoreMCPSecrets(id, previous, present, changed)
 			errw(w, http.StatusInternalServerError, err.Error())
@@ -690,7 +692,6 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "bearer")
 	}
 	if config.Auth != "oauth" && present["oauth"] {
-		s.cancelMCPOAuthLogin(id)
 		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
 			if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
 				err = fmt.Errorf("%w; restore secrets: %v", err, restoreErr)
@@ -763,7 +764,7 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.cancelMCPOAuthLogin(id)
+	defer s.blockMCPOAuthLogin(id)()
 	previous := map[string]string{}
 	present := map[string]bool{}
 	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client", "oauth-registered-secret"} {
