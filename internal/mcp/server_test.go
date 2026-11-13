@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"patio/internal/api"
@@ -1340,6 +1339,9 @@ func TestWorkflowTools(t *testing.T) {
 	}
 }
 
+// mkfifo is set on Unix (server_unix_test.go); opening a FIFO used to hang attach_file.
+var mkfifo func(string, uint32) error
+
 func TestMCPAttachFile(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "attach.db")
 	database, err := db.Open(dbPath)
@@ -1360,8 +1362,12 @@ func TestMCPAttachFile(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(workdir, "link.txt")); err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Mkfifo(filepath.Join(workdir, "pipe"), 0600); err != nil {
-		t.Fatal(err)
+	rejected := []string{"/etc/hosts", "../" + filepath.Base(outside) + "/secret.txt", filepath.Join(outside, "secret.txt"), "link.txt", "attachments"}
+	if mkfifo != nil {
+		if err := mkfifo(filepath.Join(workdir, "pipe"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		rejected = append(rejected, "pipe")
 	}
 	if _, err := database.Exec(`INSERT INTO chat(id,title,folder,created_at,updated_at) VALUES('c1','c1',?,'now','now')`, workdir); err != nil {
 		t.Fatal(err)
@@ -1388,7 +1394,7 @@ func TestMCPAttachFile(t *testing.T) {
 	}
 	decodeText(t, callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "T"}), &ticket)
 
-	for _, path := range []string{"/etc/hosts", "../" + filepath.Base(outside) + "/secret.txt", filepath.Join(outside, "secret.txt"), "link.txt", "attachments", "pipe"} {
+	for _, path := range rejected {
 		if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": path, "chat_id": "c1"}); !result.IsError {
 			t.Fatalf("attach %q should fail", path)
 		}
