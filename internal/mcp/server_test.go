@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"patio/internal/api"
@@ -1359,6 +1360,9 @@ func TestMCPAttachFile(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(workdir, "link.txt")); err != nil {
 		t.Fatal(err)
 	}
+	if err := syscall.Mkfifo(filepath.Join(workdir, "pipe"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.Exec(`INSERT INTO chat(id,title,folder,created_at,updated_at) VALUES('c1','c1',?,'now','now')`, workdir); err != nil {
 		t.Fatal(err)
 	}
@@ -1384,7 +1388,7 @@ func TestMCPAttachFile(t *testing.T) {
 	}
 	decodeText(t, callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "T"}), &ticket)
 
-	for _, path := range []string{"/etc/hosts", "../" + filepath.Base(outside) + "/secret.txt", filepath.Join(outside, "secret.txt"), "link.txt", "attachments"} {
+	for _, path := range []string{"/etc/hosts", "../" + filepath.Base(outside) + "/secret.txt", filepath.Join(outside, "secret.txt"), "link.txt", "attachments", "pipe"} {
 		if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": path, "chat_id": "c1"}); !result.IsError {
 			t.Fatalf("attach %q should fail", path)
 		}

@@ -193,13 +193,17 @@ func (s *Server) openChatFileForTicket(chatID, path string) (*os.File, string, e
 		return nil, "", err
 	}
 	defer root.Close()
-	f, err := root.Open(rel)
+	// Stat before Open: opening a FIFO blocks until a writer appears.
+	info, err := root.Stat(rel)
 	if err != nil {
 		return nil, "", err
 	}
-	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
-		f.Close()
+	if !info.Mode().IsRegular() {
 		return nil, "", errors.New("path is not a file")
+	}
+	f, err := root.Open(rel)
+	if err != nil {
+		return nil, "", err
 	}
 	return f, filepath.Base(rel), nil
 }
