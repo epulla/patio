@@ -920,7 +920,7 @@ const mcpReloadRequestKey = "mcp_reload_requested"
 // requestMCPReload is for the reload_mcp_servers tool: its `patio mcp` process can't reach the
 // desktop app's chat runtimes, so it leaves a request that ApplyMCPReloadRequest runs in the app.
 func (s *Server) requestMCPReload(w http.ResponseWriter, _ *http.Request) {
-	if _, err := s.db.Exec(`INSERT OR IGNORE INTO app_setting(key,value) VALUES(?,'true')`, mcpReloadRequestKey); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO app_setting(key,value) VALUES(?,hex(randomblob(8))) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, mcpReloadRequestKey); err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}

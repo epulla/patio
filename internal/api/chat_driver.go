@@ -979,14 +979,19 @@ func (m *chatManager) CloseConnector(id string) error {
 }
 
 func (m *chatManager) applyMCPReloadRequest() error {
-	result, err := m.db.Exec(`DELETE FROM app_setting WHERE key=?`, mcpReloadRequestKey)
-	if err != nil {
+	var request string
+	if err := m.db.QueryRow(`SELECT value FROM app_setting WHERE key=?`, mcpReloadRequestKey).Scan(&request); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
-	if n, err := result.RowsAffected(); err != nil || n == 0 {
-		return err
+	// Clear only after every runtime is marked, so a send in between still sees the request and reloads first.
+	_, _, err := m.ReloadMCP()
+	// A request made during the reload has a new value and stays for the next check.
+	if _, deleteErr := m.db.Exec(`DELETE FROM app_setting WHERE key=? AND value=?`, mcpReloadRequestKey, request); deleteErr != nil {
+		err = errors.Join(err, deleteErr)
 	}
-	_, _, err = m.ReloadMCP()
 	return err
 }
 

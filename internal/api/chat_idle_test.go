@@ -153,6 +153,42 @@ func TestMCPReloadRequestFromToolProcessReachesAppRuntimes(t *testing.T) {
 	}
 }
 
+func TestMCPReloadRequestStaysUntilRuntimesAreMarked(t *testing.T) {
+	m, c, d := newIdleTestManager(t, time.Hour)
+	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.finishTurn(c.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+	d.release = make(chan struct{})
+	if _, err := m.db.Exec(`INSERT INTO app_setting(key,value) VALUES(?,'first')`, mcpReloadRequestKey); err != nil {
+		t.Fatal(err)
+	}
+	applied := make(chan error, 1)
+	go func() { applied <- m.applyMCPReloadRequest() }()
+	waitForDriverClose(t, d)
+	requestCount := func() (n int) {
+		if err := m.db.QueryRow(`SELECT count(*) FROM app_setting WHERE key=?`, mcpReloadRequestKey).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if requestCount() != 1 {
+		t.Error("reload request cleared before runtimes were marked")
+	}
+	if _, err := m.db.Exec(`UPDATE app_setting SET value='second' WHERE key=?`, mcpReloadRequestKey); err != nil {
+		t.Fatal(err)
+	}
+	close(d.release)
+	if err := <-applied; err != nil {
+		t.Fatal(err)
+	}
+	if requestCount() != 1 {
+		t.Fatal("request made during the reload was dropped")
+	}
+}
+
 func TestFinishedChatStoresNotification(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
