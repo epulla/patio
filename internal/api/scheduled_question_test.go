@@ -68,10 +68,6 @@ func TestScheduledQuestionNotifiesWaitsAndAnswerCompletesRun(t *testing.T) {
 	if err := database.QueryRow(`SELECT status FROM scheduled_task_run WHERE id=?`, runID).Scan(&status); err != nil || status != "done" {
 		t.Fatalf("answered run status = %q, %v", status, err)
 	}
-	var answered bool
-	if err := database.QueryRow(`SELECT answered FROM chat_message WHERE id=?`, questionID).Scan(&answered); err != nil || !answered {
-		t.Fatalf("question answered = %v, %v", answered, err)
-	}
 }
 
 func TestWaitingScheduledRunDoesNotBlockNextClaim(t *testing.T) {

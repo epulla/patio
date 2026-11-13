@@ -224,6 +224,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	m.HandleFunc("DELETE /api/chats/{id}", s.deleteChat)
 	m.HandleFunc("POST /api/chats/{id}/approvals/{approval_id}", s.answerChatApproval)
 	m.HandleFunc("POST /api/chats/{id}/questions/{messageID}/answer", s.answerChatQuestion)
+	m.HandleFunc("POST /api/chats/{id}/questions/{messageID}/dismiss", s.dismissChatQuestion)
 	m.HandleFunc("POST /api/chats/{id}/reveal", s.revealChatFile)
 	m.HandleFunc("GET /api/chats/{id}/files", s.listChatFiles)
 	m.HandleFunc("GET /api/chats/{id}/files/raw", s.rawChatFile)

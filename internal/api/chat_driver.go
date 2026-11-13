@@ -673,7 +673,8 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	if lookupErr == nil {
 		var openQuestion int
-		if err := m.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chat_message WHERE chat_id=? AND role='question' AND answered=0)`, id).Scan(&openQuestion); err != nil {
+		// A person's later message counts as a reply for the run, even though the card stays open until answered or dismissed.
+		if err := m.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chat_message q WHERE q.chat_id=? AND q.role='question' AND q.answered=0 AND NOT EXISTS(SELECT 1 FROM chat_message u WHERE u.chat_id=q.chat_id AND u.role='user' AND u.from_chat_id IS NULL AND u.rowid>q.rowid))`, id).Scan(&openQuestion); err != nil {
 			return err
 		}
 		status, message := "done", "Scheduled task finished: "+title

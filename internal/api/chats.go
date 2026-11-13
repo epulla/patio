@@ -1368,7 +1368,18 @@ func (s *Server) answerQuestion(id, messageID string, answers []questionAnswer) 
 	if err != nil {
 		return fail(500, err.Error())
 	}
+	if _, err := s.db.Exec(`UPDATE chat_message SET answered=1 WHERE id=?`, messageID); err != nil {
+		return fail(500, err.Error())
+	}
 	return message, 0, nil
+}
+
+func (s *Server) dismissChatQuestion(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.db.Exec(`UPDATE chat_message SET answered=1 WHERE id=? AND chat_id=? AND role='question'`, idParam(r, "messageID"), idParam(r, "id")); err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ChatBotName is the name of the bot running chat id, or "" when it has none.
@@ -1456,8 +1467,8 @@ func insertChatMessage(database *sql.DB, chatID, role, content string, attachmen
 	}
 	m := ChatMessage{ID: uid(), ChatID: chatID, Role: role, Content: content, CreatedAt: now(), Attachments: attachments, FromChatID: fromChatID}
 	err = txrun(database, func(tx *sql.Tx) error {
-		// Messages from other chats are also role user; only the person's own message closes the question card.
-		if role == "user" && fromChatID == nil {
+		// A new question replaces any open one; plain messages leave the card open until it's answered or dismissed.
+		if role == "question" {
 			if _, err := tx.Exec(`UPDATE chat_message SET answered=1 WHERE chat_id=? AND role='question' AND answered=0`, chatID); err != nil {
 				return err
 			}

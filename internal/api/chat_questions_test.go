@@ -5,20 +5,39 @@ import (
 	"testing"
 )
 
-func TestNormalUserMessageDeactivatesOpenQuestions(t *testing.T) {
-	database, _, root := chatAPI(t)
+func TestQuestionStaysOpenUntilAnsweredReplacedOrDismissed(t *testing.T) {
+	database, handler, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
-	question, err := InsertChatMessage(database, chatID, "question", `{"questions":[]}`)
+	answered := func(id string) bool {
+		var v bool
+		if err := database.QueryRow(`SELECT answered FROM chat_message WHERE id=?`, id).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	first, err := InsertChatMessage(database, chatID, "question", `{"questions":[]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InsertChatMessage(database, chatID, "user", "reply"); err != nil {
+	if _, err := InsertChatMessage(database, chatID, "user", "unrelated"); err != nil {
 		t.Fatal(err)
 	}
-	var answered bool
-	if err := database.QueryRow(`SELECT answered FROM chat_message WHERE id=?`, question.ID).Scan(&answered); err != nil || !answered {
-		t.Fatalf("question answered = %v, %v", answered, err)
+	if answered(first.ID) {
+		t.Fatal("a plain message closed the question")
+	}
+	second, err := InsertChatMessage(database, chatID, "question", `{"questions":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !answered(first.ID) || answered(second.ID) {
+		t.Fatal("a new question should replace the open one")
+	}
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats/"+chatID+"/questions/"+second.ID+"/dismiss", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("dismiss status = %d", code)
+	}
+	if !answered(second.ID) {
+		t.Fatal("dismiss left the question open")
 	}
 }
 
@@ -60,8 +79,8 @@ func TestChatDetailOpenQuestionOlderThanPage(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK || detail.OpenQuestion == nil || detail.OpenQuestion.ID != question.ID {
 		t.Fatalf("open question = %d, %#v", code, detail.OpenQuestion)
 	}
-	if _, err := InsertChatMessage(database, chatID, "user", "answered elsewhere"); err != nil {
-		t.Fatal(err)
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats/"+chatID+"/questions/"+question.ID+"/dismiss", nil, nil); code != http.StatusNoContent {
+		t.Fatalf("dismiss status = %d", code)
 	}
 	detail.OpenQuestion = nil
 	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK || detail.OpenQuestion != nil {

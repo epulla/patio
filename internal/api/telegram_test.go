@@ -702,7 +702,7 @@ func TestTelegramPicksDroppedWhenAnsweredElsewhere(t *testing.T) {
 	if err := s.processTelegramCallback(context.Background(), "token", telegramTestCfg, telegramTap(12, 77, "q:"+question.ID+"#0:0")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InsertChatMessage(database, chatID, "user", "something else"); err != nil {
+	if _, err := InsertChatMessage(database, chatID, "question", `{"questions":[{"header":"C","options":[{"label":"z"}]}]}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.scanTelegramNotices(context.Background(), "token"); err != nil {
