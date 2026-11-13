@@ -46,6 +46,66 @@
   --sidebar-from: oklch(36% 0.13 355);
   --sidebar-to: oklch(38% 0.11 35);
 }
+[data-palette="orchid"] {
+  --primary: oklch(68% 0.22 355);
+  --primary-content: oklch(18% 0.05 355);
+  --primary-text: oklch(52% 0.21 355);
+  --sidebar-from: oklch(50% 0.2 355);
+  --sidebar-to: oklch(48% 0.19 305);
+}
+[data-theme="dark"][data-palette="orchid"],
+[data-theme="dark"] [data-palette="orchid"] {
+  --primary: oklch(76% 0.17 355);
+  --primary-content: oklch(18% 0.04 355);
+  --primary-text: oklch(78% 0.15 355);
+  --sidebar-from: oklch(36% 0.13 355);
+  --sidebar-to: oklch(34% 0.13 305);
+}
+[data-palette="berry"] {
+  --primary: oklch(68% 0.22 355);
+  --primary-content: oklch(18% 0.05 355);
+  --primary-text: oklch(52% 0.21 355);
+  --sidebar-from: oklch(48% 0.2 355);
+  --sidebar-to: oklch(32% 0.13 340);
+}
+[data-theme="dark"][data-palette="berry"],
+[data-theme="dark"] [data-palette="berry"] {
+  --primary: oklch(76% 0.17 355);
+  --primary-content: oklch(18% 0.04 355);
+  --primary-text: oklch(78% 0.15 355);
+  --sidebar-from: oklch(34% 0.13 355);
+  --sidebar-to: oklch(24% 0.08 340);
+}
+[data-palette="dusk"] {
+  --primary: oklch(68% 0.22 355);
+  --primary-content: oklch(18% 0.05 355);
+  --primary-text: oklch(52% 0.21 355);
+  --sidebar-from: oklch(50% 0.2 355);
+  --sidebar-to: oklch(40% 0.16 275);
+}
+[data-theme="dark"][data-palette="dusk"],
+[data-theme="dark"] [data-palette="dusk"] {
+  --primary: oklch(76% 0.17 355);
+  --primary-content: oklch(18% 0.04 355);
+  --primary-text: oklch(78% 0.15 355);
+  --sidebar-from: oklch(36% 0.13 355);
+  --sidebar-to: oklch(28% 0.11 275);
+}
+[data-palette="flamingo"] {
+  --primary: oklch(68% 0.22 355);
+  --primary-content: oklch(18% 0.05 355);
+  --primary-text: oklch(52% 0.21 355);
+  --sidebar-from: oklch(52% 0.2 355);
+  --sidebar-to: oklch(52% 0.11 195);
+}
+[data-theme="dark"][data-palette="flamingo"],
+[data-theme="dark"] [data-palette="flamingo"] {
+  --primary: oklch(76% 0.17 355);
+  --primary-content: oklch(18% 0.04 355);
+  --primary-text: oklch(78% 0.15 355);
+  --sidebar-from: oklch(36% 0.13 355);
+  --sidebar-to: oklch(36% 0.08 195);
+}
 [data-palette="mango"] {
   --primary: oklch(72% 0.18 50);
   --primary-content: oklch(20% 0.05 50);
