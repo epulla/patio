@@ -19,7 +19,6 @@ export const palettes = [
   { id: "patio", name: "Patio" },
   { id: "orchid", name: "Orchid" },
   { id: "berry", name: "Berry" },
-  { id: "dusk", name: "Dusk" },
   { id: "flamingo", name: "Flamingo" },
   { id: "mango", name: "Mango" },
   { id: "lagoon", name: "Lagoon" },

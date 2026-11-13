@@ -36,7 +36,7 @@
   --primary-content: oklch(18% 0.05 355);
   --primary-text: oklch(52% 0.21 355);
   --sidebar-from: oklch(50% 0.2 355);
-  --sidebar-to: oklch(56% 0.17 40);
+  --sidebar-to: oklch(40% 0.16 275);
 }
 [data-theme="dark"],
 [data-theme="dark"] [data-palette="patio"] {
@@ -44,65 +44,50 @@
   --primary-content: oklch(18% 0.04 355);
   --primary-text: oklch(78% 0.15 355);
   --sidebar-from: oklch(36% 0.13 355);
-  --sidebar-to: oklch(38% 0.11 35);
+  --sidebar-to: oklch(28% 0.11 275);
 }
 [data-palette="orchid"] {
-  --primary: oklch(68% 0.22 355);
-  --primary-content: oklch(18% 0.05 355);
-  --primary-text: oklch(52% 0.21 355);
+  --primary: oklch(66% 0.17 290);
+  --primary-content: oklch(16% 0.05 290);
+  --primary-text: oklch(50% 0.19 290);
   --sidebar-from: oklch(50% 0.2 355);
   --sidebar-to: oklch(48% 0.19 305);
 }
 [data-theme="dark"][data-palette="orchid"],
 [data-theme="dark"] [data-palette="orchid"] {
-  --primary: oklch(76% 0.17 355);
-  --primary-content: oklch(18% 0.04 355);
-  --primary-text: oklch(78% 0.15 355);
+  --primary: oklch(76% 0.13 290);
+  --primary-content: oklch(18% 0.05 290);
+  --primary-text: oklch(80% 0.11 290);
   --sidebar-from: oklch(36% 0.13 355);
   --sidebar-to: oklch(34% 0.13 305);
 }
 [data-palette="berry"] {
-  --primary: oklch(68% 0.22 355);
-  --primary-content: oklch(18% 0.05 355);
-  --primary-text: oklch(52% 0.21 355);
+  --primary: oklch(56% 0.2 330);
+  --primary-content: oklch(97% 0.02 330);
+  --primary-text: oklch(46% 0.19 330);
   --sidebar-from: oklch(48% 0.2 355);
   --sidebar-to: oklch(32% 0.13 340);
 }
 [data-theme="dark"][data-palette="berry"],
 [data-theme="dark"] [data-palette="berry"] {
-  --primary: oklch(76% 0.17 355);
-  --primary-content: oklch(18% 0.04 355);
-  --primary-text: oklch(78% 0.15 355);
+  --primary: oklch(70% 0.16 330);
+  --primary-content: oklch(16% 0.05 330);
+  --primary-text: oklch(76% 0.14 330);
   --sidebar-from: oklch(34% 0.13 355);
   --sidebar-to: oklch(24% 0.08 340);
 }
-[data-palette="dusk"] {
-  --primary: oklch(68% 0.22 355);
-  --primary-content: oklch(18% 0.05 355);
-  --primary-text: oklch(52% 0.21 355);
-  --sidebar-from: oklch(50% 0.2 355);
-  --sidebar-to: oklch(40% 0.16 275);
-}
-[data-theme="dark"][data-palette="dusk"],
-[data-theme="dark"] [data-palette="dusk"] {
-  --primary: oklch(76% 0.17 355);
-  --primary-content: oklch(18% 0.04 355);
-  --primary-text: oklch(78% 0.15 355);
-  --sidebar-from: oklch(36% 0.13 355);
-  --sidebar-to: oklch(28% 0.11 275);
-}
 [data-palette="flamingo"] {
-  --primary: oklch(68% 0.22 355);
-  --primary-content: oklch(18% 0.05 355);
-  --primary-text: oklch(52% 0.21 355);
+  --primary: oklch(72% 0.15 25);
+  --primary-content: oklch(18% 0.05 25);
+  --primary-text: oklch(54% 0.17 25);
   --sidebar-from: oklch(52% 0.2 355);
   --sidebar-to: oklch(52% 0.11 195);
 }
 [data-theme="dark"][data-palette="flamingo"],
 [data-theme="dark"] [data-palette="flamingo"] {
-  --primary: oklch(76% 0.17 355);
-  --primary-content: oklch(18% 0.04 355);
-  --primary-text: oklch(78% 0.15 355);
+  --primary: oklch(78% 0.12 25);
+  --primary-content: oklch(18% 0.04 25);
+  --primary-text: oklch(80% 0.11 25);
   --sidebar-from: oklch(36% 0.13 355);
   --sidebar-to: oklch(36% 0.08 195);
 }
