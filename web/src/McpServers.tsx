@@ -214,8 +214,8 @@ function ServerCard({
       window.clearInterval(poll.current);
       poll.current = window.setInterval(async () => {
         try {
-          const list = await api.get<McpServer[]>("/api/mcp-servers");
-          if (list.find((s) => s.id === server.id)?.has_oauth_token || Date.now() - started > 5 * 60_000) {
+          const current = (await api.get<McpServer[]>("/api/mcp-servers")).find((s) => s.id === server.id);
+          if (current?.has_oauth_token || current?.oauth_error || Date.now() - started > 5 * 60_000) {
             window.clearInterval(poll.current);
             setMessage("");
             onChanged();
@@ -272,6 +272,7 @@ function ServerCard({
         {server.kind === "stdio" ? [server.command, ...server.args].join(" ") : server.url}
       </code>
       {check && !check.ok && check.error && <p className="muted connector-note">{check.error}</p>}
+      {server.oauth_error && <p className="error connector-note" role="alert">{server.oauth_error}</p>}
       {check?.ok && check.tools.length > 0 && (
         <details className="mcp-tool-list">
           <summary>{t.tools}</summary>

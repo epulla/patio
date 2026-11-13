@@ -42,6 +42,7 @@ type Server struct {
 	notesBlocked    func() bool
 	oauthMu         sync.Mutex
 	oauthLogins     map[string]*mcpOAuthLogin
+	oauthErrors     map[string]string
 	handler         http.Handler
 	mcpCheckTimeout time.Duration
 	mcpConnect      mcpConnector
@@ -121,7 +122,7 @@ func New(db *sql.DB, userID string, showHidden bool, version, dbDir string, opti
 	if actualDBPath {
 		dbDir = filepath.Dir(dbPath)
 	}
-	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, notesURL: opts.ReleaseNotesURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), attachments: make(map[string]map[string]ChatAttachment), windowID: opts.WindowID, openChat: opts.OpenChatWindow, showMain: opts.ShowMain, telegramWake: make(chan struct{}, 1)}
+	s := &Server{db: db, mcpActor: opts.MCPActor, userID: userID, showHidden: showHidden, version: version, updateURL: opts.UpdateURL, notesURL: opts.ReleaseNotesURL, dbDir: filepath.Clean(dbDir), dbPath: filepath.Clean(dbPath), logPath: opts.LogPath, revealFile: openInFileManager, mcpCheckTimeout: opts.mcpCheckTimeout, mcpConnect: opts.mcpConnect, openOAuthURL: opts.openOAuthURL, notify: opts.Notify, notesBlocked: opts.NotificationsBlocked, oauthLogins: make(map[string]*mcpOAuthLogin), oauthErrors: make(map[string]string), attachments: make(map[string]map[string]ChatAttachment), windowID: opts.WindowID, openChat: opts.OpenChatWindow, showMain: opts.ShowMain, telegramWake: make(chan struct{}, 1)}
 	s.openFile = openDefaultApp
 	s.openFileWindow = opts.OpenFileWindow
 	if s.openOAuthURL == nil {

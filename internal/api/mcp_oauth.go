@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -71,6 +72,7 @@ func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 	if previous := s.oauthLogins[id]; previous != nil {
 		previous.cancel()
 	}
+	delete(s.oauthErrors, id)
 	s.oauthLogins[id] = login
 	s.oauthMu.Unlock()
 
@@ -86,7 +88,18 @@ func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 			}
 			s.oauthMu.Unlock()
 		}()
-		finished <- s.runMCPOAuthLogin(ctx, server, started)
+		err := s.runMCPOAuthLogin(ctx, server, started)
+		s.oauthMu.Lock()
+		if s.oauthLogins[id] == login {
+			if err != nil {
+				log.Printf("mcp oauth login %s (%s) failed: %v", server.Name, id, err)
+				s.oauthErrors[id] = err.Error()
+			} else {
+				delete(s.oauthErrors, id)
+			}
+		}
+		s.oauthMu.Unlock()
+		finished <- err
 	}()
 
 	select {

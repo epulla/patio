@@ -38,6 +38,7 @@ type mcpServer struct {
 	OAuthScopes          []string `json:"oauth_scopes"`
 	HasOAuthClientSecret bool     `json:"has_oauth_client_secret"`
 	CreatedAt            string   `json:"created_at"`
+	OAuthError           string   `json:"oauth_error,omitempty"`
 	argsJSON             string
 	envKeysJSON          string
 }
@@ -146,6 +147,9 @@ func (s *Server) listMCPServers(w http.ResponseWriter, _ *http.Request) {
 			errw(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		s.oauthMu.Lock()
+		server.OAuthError = s.oauthErrors[server.ID]
+		s.oauthMu.Unlock()
 		out = append(out, server)
 	}
 	if err := rows.Err(); err != nil {

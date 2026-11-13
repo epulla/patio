@@ -360,6 +360,7 @@ export type McpServer = {
   oauth_scopes: string[];
   has_oauth_client_secret: boolean;
   created_at: string;
+  oauth_error?: string;
 };
 export type McpServerCheck = {
   ok: boolean;

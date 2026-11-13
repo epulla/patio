@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -280,7 +281,7 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 		t.Fatalf("delete preregistered server = %d", code)
 	}
 	var listed []mcpServer
-	if code := requestJSON(t, server, http.MethodGet, "/api/mcp-servers", nil, &listed); code != http.StatusOK || len(listed) != 1 || !listed[0].HasOAuthToken {
+	if code := requestJSON(t, server, http.MethodGet, "/api/mcp-servers", nil, &listed); code != http.StatusOK || len(listed) != 1 || !listed[0].HasOAuthToken || listed[0].OAuthError != "" {
 		t.Fatalf("OAuth token not listed: status=%d servers=%#v", code, listed)
 	}
 	credentialRaw, err := keyring.Get(connectorService, mcpServerSecret(created.ID, "oauth"))
@@ -352,6 +353,15 @@ func TestMCPOAuthLoginAndRefresh(t *testing.T) {
 		t.Fatalf("mismatched-state login start = %d %#v", code, result)
 	}
 	waitOAuthLogin(t, server, mismatch.ID)
+	listed = nil
+	if code := requestJSON(t, server, http.MethodGet, "/api/mcp-servers", nil, &listed); code != http.StatusOK {
+		t.Fatalf("list after state mismatch = %d", code)
+	}
+	if !slices.ContainsFunc(listed, func(s mcpServer) bool {
+		return s.ID == mismatch.ID && strings.Contains(strings.ToLower(s.OAuthError), "state mismatch")
+	}) {
+		t.Fatalf("state mismatch OAuth error not listed: %#v", listed)
+	}
 	if _, err := keyring.Get(connectorService, mcpServerSecret(mismatch.ID, "oauth")); err == nil {
 		t.Fatal("state mismatch stored OAuth token")
 	}
