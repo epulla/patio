@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -633,6 +631,11 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "oauth-registered-secret")
 	}
 	if clientChanged || in.OAuthClientSecret != nil {
+		if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
+			_ = restoreMCPSecrets(id, previous, present, changed)
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
 			_ = restoreMCPSecrets(id, previous, present, changed)
 			errw(w, http.StatusInternalServerError, err.Error())
@@ -651,6 +654,11 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "bearer")
 	}
 	if config.Auth != "oauth" && present["oauth"] {
+		if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
+			_ = restoreMCPSecrets(id, previous, present, changed)
+			errw(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
 			if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
 				err = fmt.Errorf("%w; restore secrets: %v", err, restoreErr)
@@ -706,11 +714,6 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if slices.Contains(changed, "oauth") {
-		if err := deleteMCPOAuthChunks(id, 1); err != nil {
-			log.Printf("clean up MCP OAuth chunks %s: %v", id, err)
-		}
-	}
 	server, err := s.loadMCPServer(id)
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
@@ -725,6 +728,10 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusNotFound, "MCP server not found")
 		return
 	} else if err != nil {
+		errw(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -770,9 +777,6 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 			errw(w, http.StatusInternalServerError, err.Error())
 		}
 		return
-	}
-	if err := deleteMCPOAuthChunks(id, 1); err != nil {
-		log.Printf("clean up MCP OAuth chunks %s: %v", id, err)
 	}
 	noContent(w)
 }

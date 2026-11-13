@@ -33,8 +33,15 @@ type mcpOAuthCredential struct {
 	Resource     string    `json:"resource"`
 	ClientID     string    `json:"client_id,omitempty"`
 	ClientSecret string    `json:"client_secret,omitempty"`
-	Chunks       int       `json:"chunks,omitempty"`
 }
+
+type mcpOAuthMarker struct {
+	Chunks int    `json:"chunks"`
+	Slot   string `json:"slot"`
+}
+
+var mcpOAuthKeyringMu sync.Mutex
+var mcpKeyringGet, mcpKeyringSet, mcpKeyringDelete = keyring.Get, keyring.Set, keyring.Delete
 
 type mcpOAuthClient struct {
 	ClientID     string `json:"client_id"`
@@ -343,116 +350,154 @@ func (s *persistedOAuthTokenSource) Token() (*oauth2.Token, error) {
 }
 
 func storeMCPOAuthCredential(id string, credential mcpOAuthCredential) error {
+	mcpOAuthKeyringMu.Lock()
+	defer mcpOAuthKeyringMu.Unlock()
 	full, err := json.Marshal(credential)
 	if err != nil {
 		return err
 	}
+	old := mcpOAuthMarker{}
+	if raw, e := mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth")); e == nil {
+		_ = json.Unmarshal([]byte(raw), &old)
+	} else if !errors.Is(e, keyring.ErrNotFound) {
+		return e
+	}
 	if len(full) <= oauthSecretLimit {
-		if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(full)); err != nil {
+		if err := mcpKeyringSet(connectorService, mcpServerSecret(id, "oauth"), string(full)); err != nil {
 			return err
 		}
 		if err := deleteMCPOAuthClient(id); err != nil {
 			return err
 		}
-		return deleteMCPOAuthChunks(id, 1)
+		if old.Chunks > 0 {
+			return deleteMCPOAuthSlot(id, old.Slot)
+		}
+		return nil
 	}
-
-	client := mcpOAuthClient{ClientID: credential.ClientID, ClientSecret: credential.ClientSecret}
-	clientJSON, err := json.Marshal(client)
-	if err != nil {
-		return err
-	}
-	credential.ClientID, credential.ClientSecret = "", ""
-	tokenJSON, err := json.Marshal(credential)
-	if err != nil {
-		return err
-	}
-	if len(clientJSON) > oauthSecretLimit {
+	n := (len(full) + oauthSecretLimit - 1) / oauthSecretLimit
+	if n > 8 {
 		return errors.New("OAuth credentials exceed keychain item size limit")
 	}
-	if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth-client"), string(clientJSON)); err != nil {
-		return err
+	slot := "a"
+	if old.Slot == "a" {
+		slot = "b"
 	}
-	chunks := 0
-	if len(tokenJSON) > oauthSecretLimit {
-		for start := 0; start < len(tokenJSON); start += oauthSecretLimit {
-			chunks++
-			end := min(start+oauthSecretLimit, len(tokenJSON))
-			if err := keyring.Set(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%d", chunks)), string(tokenJSON[start:end])); err != nil {
-				return err
-			}
+	written := false
+	cleanup := func() {
+		if written {
+			_ = deleteMCPOAuthSlot(id, slot)
 		}
-		marker, _ := json.Marshal(mcpOAuthCredential{Chunks: chunks})
-		if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(marker)); err != nil {
+	}
+	for start, i := 0, 1; start < len(full); start, i = start+oauthSecretLimit, i+1 {
+		end := min(start+oauthSecretLimit, len(full))
+		if err := mcpKeyringSet(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%s-%d", slot, i)), string(full[start:end])); err != nil {
+			cleanup()
 			return err
 		}
-	} else if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(tokenJSON)); err != nil {
+		written = true
+	}
+	marker, _ := json.Marshal(mcpOAuthMarker{Chunks: n, Slot: slot})
+	if err := mcpKeyringSet(connectorService, mcpServerSecret(id, "oauth"), string(marker)); err != nil {
+		cleanup()
 		return err
 	}
-	return deleteMCPOAuthChunks(id, chunks+1)
+	if old.Chunks > 0 {
+		if err := deleteMCPOAuthSlot(id, old.Slot); err != nil {
+			return err
+		}
+	}
+	return deleteMCPOAuthClient(id)
 }
 
-func deleteMCPOAuthChunks(id string, from int) error {
-	for i := from; ; i++ {
-		err := keyring.Delete(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%d", i)))
-		if errors.Is(err, keyring.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
+func deleteMCPOAuthSlot(id string, slots ...string) error {
+	var first error
+	for _, slot := range slots {
+		for i := 1; i <= 8; i++ {
+			err := mcpKeyringDelete(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%s-%d", slot, i)))
+			if err != nil && !errors.Is(err, keyring.ErrNotFound) && first == nil {
+				first = err
+			}
 		}
 	}
+	return first
 }
 
 func deleteMCPOAuthClient(id string) error {
-	err := keyring.Delete(connectorService, mcpServerSecret(id, "oauth-client"))
+	err := mcpKeyringDelete(connectorService, mcpServerSecret(id, "oauth-client"))
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
 	return err
 }
 
-func (s *Server) oauthHeader(ctx context.Context, serverID string) (string, error) {
-	raw, err := keyring.Get(connectorService, mcpServerSecret(serverID, "oauth"))
+func loadMCPOAuthCredential(id string) (mcpOAuthCredential, error) {
+	raw, err := mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth"))
 	if errors.Is(err, keyring.ErrNotFound) {
-		return "", errors.New("Sign in again")
+		return mcpOAuthCredential{}, errors.New("Sign in again")
 	}
 	if err != nil {
-		return "", err
+		return mcpOAuthCredential{}, err
+	}
+	var marker mcpOAuthMarker
+	if json.Unmarshal([]byte(raw), &marker) == nil && marker.Chunks > 0 {
+		for attempt := 0; attempt < 2; attempt++ {
+			var joined strings.Builder
+			missing := false
+			for i := 1; i <= marker.Chunks; i++ {
+				chunk, e := mcpKeyringGet(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%s-%d", marker.Slot, i)))
+				if errors.Is(e, keyring.ErrNotFound) {
+					missing = true
+					break
+				}
+				if e != nil {
+					return mcpOAuthCredential{}, e
+				}
+				joined.WriteString(chunk)
+			}
+			if !missing {
+				var credential mcpOAuthCredential
+				if e := json.Unmarshal([]byte(joined.String()), &credential); e != nil {
+					return credential, fmt.Errorf("decode OAuth credentials: %w", e)
+				}
+				return credential, nil
+			}
+			if attempt == 0 {
+				raw, err = mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth"))
+				if err != nil {
+					return mcpOAuthCredential{}, errors.New("Sign in again")
+				}
+				_ = json.Unmarshal([]byte(raw), &marker)
+			}
+		}
+		return mcpOAuthCredential{}, errors.New("Sign in again")
 	}
 	var credential mcpOAuthCredential
 	if err := json.Unmarshal([]byte(raw), &credential); err != nil {
-		return "", fmt.Errorf("decode OAuth credentials: %w", err)
-	}
-	if credential.Chunks > 0 {
-		var tokenJSON strings.Builder
-		for i := 1; i <= credential.Chunks; i++ {
-			chunk, err := keyring.Get(connectorService, mcpServerSecret(serverID, fmt.Sprintf("oauth-%d", i)))
-			if errors.Is(err, keyring.ErrNotFound) {
-				return "", errors.New("Sign in again")
-			}
-			if err != nil {
-				return "", err
-			}
-			tokenJSON.WriteString(chunk)
-		}
-		if err := json.Unmarshal([]byte(tokenJSON.String()), &credential); err != nil {
-			return "", fmt.Errorf("decode OAuth credentials: %w", err)
-		}
+		return credential, fmt.Errorf("decode OAuth credentials: %w", err)
 	}
 	if credential.ClientID == "" {
-		clientRaw, err := keyring.Get(connectorService, mcpServerSecret(serverID, "oauth-client"))
-		if errors.Is(err, keyring.ErrNotFound) {
-			return "", errors.New("Sign in again")
+		clientRaw, e := mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth-client"))
+		if errors.Is(e, keyring.ErrNotFound) {
+			return credential, errors.New("Sign in again")
 		}
-		if err != nil {
-			return "", err
+		if e != nil {
+			return credential, e
 		}
 		var client mcpOAuthClient
-		if err := json.Unmarshal([]byte(clientRaw), &client); err != nil {
-			return "", fmt.Errorf("decode OAuth client registration: %w", err)
+		if e = json.Unmarshal([]byte(clientRaw), &client); e != nil {
+			return credential, fmt.Errorf("decode OAuth client registration: %w", e)
 		}
 		credential.ClientID, credential.ClientSecret = client.ClientID, client.ClientSecret
+	}
+	return credential, nil
+}
+
+func (s *Server) oauthHeader(ctx context.Context, serverID string) (string, error) {
+	mcpOAuthKeyringMu.Lock()
+	credential, err := loadMCPOAuthCredential(serverID)
+	mcpOAuthKeyringMu.Unlock()
+	if err != nil {
+		return "", err
 	}
 	if credential.AccessToken == "" {
 		return "", errors.New("Sign in again")

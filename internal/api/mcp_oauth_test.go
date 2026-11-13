@@ -422,7 +422,7 @@ func waitOAuthLogin(t *testing.T, server *Server, id string) {
 	}
 }
 
-func TestMCPOAuthCredentialUsesSeparateKeychainItemWhenLarge(t *testing.T) {
+func TestMCPOAuthCredentialChunksClientAndReadsLegacySplit(t *testing.T) {
 	keyring.MockInit()
 	id := "large-oauth"
 	credential := mcpOAuthCredential{
@@ -433,13 +433,23 @@ func TestMCPOAuthCredentialUsesSeparateKeychainItemWhenLarge(t *testing.T) {
 	if err := storeMCPOAuthCredential(id, credential); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth-client")); err != nil {
-		t.Fatalf("separate client registration not stored: %v", err)
+	if _, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth-a-1")); err != nil {
+		t.Fatalf("chunk missing: %v", err)
+	}
+	if _, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth-client")); !errors.Is(err, keyring.ErrNotFound) {
+		t.Fatalf("legacy item unexpectedly stored: %v", err)
 	}
 	s := &Server{}
 	header, err := s.oauthHeader(t.Context(), id)
 	if err != nil || header != "Bearer "+credential.AccessToken {
-		t.Fatalf("header from split credential = %q, %v", header, err)
+		t.Fatalf("header from chunked credential = %q, %v", header, err)
+	}
+	keyring.MockInit()
+	_ = keyring.Set(connectorService, mcpServerSecret(id, "oauth"), `{"access_token":"legacy","token_type":"Bearer","token_endpoint":"https://issuer.test/token","resource":"https://mcp.test/mcp"}`)
+	_ = keyring.Set(connectorService, mcpServerSecret(id, "oauth-client"), `{"client_id":"client"}`)
+	header, err = s.oauthHeader(t.Context(), id)
+	if err != nil || header != "Bearer legacy" {
+		t.Fatalf("legacy read = %q, %v", header, err)
 	}
 }
 
@@ -455,7 +465,7 @@ func TestMCPOAuthCredentialChunksLargeTokensAndCleansStaleChunks(t *testing.T) {
 		t.Fatalf("chunk marker = %q, %v", marker, err)
 	}
 	for i := 1; ; i++ {
-		chunk, err := keyring.Get(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%d", i)))
+		chunk, err := keyring.Get(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-a-%d", i)))
 		if errors.Is(err, keyring.ErrNotFound) {
 			break
 		}
@@ -480,6 +490,178 @@ func TestMCPOAuthCredentialChunksLargeTokensAndCleansStaleChunks(t *testing.T) {
 	header, err = (&Server{}).oauthHeader(t.Context(), id)
 	if err != nil || header != "Bearer small-token" {
 		t.Fatalf("small header = %q, %v", header, err)
+	}
+}
+
+func useFakeOAuthKeyring(t *testing.T) (map[string]string, *sync.Mutex) {
+	data, mu := map[string]string{}, &sync.Mutex{}
+	get, set, del := mcpKeyringGet, mcpKeyringSet, mcpKeyringDelete
+	t.Cleanup(func() { mcpKeyringGet, mcpKeyringSet, mcpKeyringDelete = get, set, del })
+	mcpKeyringGet = func(_, k string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		v, ok := data[k]
+		if !ok {
+			return "", keyring.ErrNotFound
+		}
+		return v, nil
+	}
+	mcpKeyringSet = func(_, k, v string) error { mu.Lock(); defer mu.Unlock(); data[k] = v; return nil }
+	mcpKeyringDelete = func(_, k string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if _, ok := data[k]; !ok {
+			return keyring.ErrNotFound
+		}
+		delete(data, k)
+		return nil
+	}
+	return data, mu
+}
+
+func TestMCPOAuthReplacementFailureKeepsOldSlot(t *testing.T) {
+	for _, failKey := range []string{"oauth-b-2", "oauth"} {
+		t.Run(failKey, func(t *testing.T) {
+			data, mu := useFakeOAuthKeyring(t)
+			id := "replace"
+			large := func(token string) mcpOAuthCredential {
+				return mcpOAuthCredential{AccessToken: token + strings.Repeat("x", 5000), ClientID: "c", TokenURL: "https://issuer.test/token", Resource: "https://mcp.test"}
+			}
+			if err := storeMCPOAuthCredential(id, large("A")); err != nil {
+				t.Fatal(err)
+			}
+			set := mcpKeyringSet
+			mcpKeyringSet = func(s, k, v string) error {
+				if k == mcpServerSecret(id, failKey) {
+					return errors.New("injected set failure")
+				}
+				return set(s, k, v)
+			}
+			if err := storeMCPOAuthCredential(id, large("B")); err == nil {
+				t.Fatal("expected failure")
+			}
+			mcpKeyringSet = set
+			mu.Lock()
+			for k := range data {
+				if strings.Contains(k, "oauth-b-") {
+					t.Errorf("new slot item remains: %s", k)
+				}
+			}
+			mu.Unlock()
+			header, err := (&Server{}).oauthHeader(t.Context(), id)
+			if err != nil || !strings.HasPrefix(header, "Bearer A") {
+				t.Fatalf("old credential = %q, %v", header, err)
+			}
+		})
+	}
+}
+
+func TestMCPOAuthLargeRefreshCanBeReadTwice(t *testing.T) {
+	keyring.MockInit()
+	requests := 0
+	var requestMu sync.Mutex
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestMu.Lock()
+		requests++
+		requestMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"short","token_type":"Bearer","expires_in":3600,"refresh_token":"r2"}`)
+	}))
+	defer endpoint.Close()
+	id := "refresh-large"
+	c := mcpOAuthCredential{AccessToken: strings.Repeat("a", 5000), RefreshToken: "r", ClientID: "c", TokenURL: endpoint.URL, Resource: "https://mcp.test", Expiry: time.Now().Add(-time.Hour)}
+	if err := storeMCPOAuthCredential(id, c); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		h, e := (&Server{}).oauthHeader(t.Context(), id)
+		if e != nil || h != "Bearer short" {
+			requestMu.Lock()
+			n := requests
+			requestMu.Unlock()
+			t.Fatalf("call %d = %q, %v (requests %d)", i, h, e, n)
+		}
+	}
+}
+
+func TestMCPOAuthSlotSweepContinuesAcrossHolesAndRetries(t *testing.T) {
+	data, mu := useFakeOAuthKeyring(t)
+	id := "sweep"
+	set := mcpKeyringSet
+	for _, i := range []int{1, 3} {
+		if e := set(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-a-%d", i)), "x"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := deleteMCPOAuthSlot(id, "a"); e != nil {
+		t.Fatal(e)
+	}
+	if e := set(connectorService, mcpServerSecret(id, "oauth-a-1"), "x"); e != nil {
+		t.Fatal(e)
+	}
+	if e := set(connectorService, mcpServerSecret(id, "oauth-a-3"), "x"); e != nil {
+		t.Fatal(e)
+	}
+	del := mcpKeyringDelete
+	mcpKeyringDelete = func(s, k string) error {
+		if k == mcpServerSecret(id, "oauth-a-2") {
+			return errors.New("injected delete failure")
+		}
+		return del(s, k)
+	}
+	if e := deleteMCPOAuthSlot(id, "a"); e == nil {
+		t.Fatal("expected sweep error")
+	}
+	mcpKeyringDelete = del
+	if e := deleteMCPOAuthSlot(id, "a"); e != nil {
+		t.Fatal(e)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(data) != 0 {
+		t.Fatalf("items remain: %v", data)
+	}
+}
+
+func TestMCPOAuthConcurrentStoreAndLoad(t *testing.T) {
+	useFakeOAuthKeyring(t)
+	id := "concurrent"
+	makeCred := func(token string) mcpOAuthCredential {
+		return mcpOAuthCredential{AccessToken: token + strings.Repeat("x", 5000), ClientID: "c", TokenURL: "https://issuer.test/token", Resource: "https://mcp.test"}
+	}
+	if e := storeMCPOAuthCredential(id, makeCred("A")); e != nil {
+		t.Fatal(e)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 100)
+	for g := 0; g < 4; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				if g < 2 {
+					token := "A"
+					if (i+g)%2 == 1 {
+						token = "B"
+					}
+					if e := storeMCPOAuthCredential(id, makeCred(token)); e != nil {
+						errs <- e
+						return
+					}
+				} else {
+					h, e := (&Server{}).oauthHeader(t.Context(), id)
+					if e != nil || (!strings.HasPrefix(h, "Bearer A") && !strings.HasPrefix(h, "Bearer B")) {
+						errs <- fmt.Errorf("load %q: %w", h, e)
+						return
+					}
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 

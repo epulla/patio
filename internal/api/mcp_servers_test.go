@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -183,7 +184,7 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	if err := keyring.Set(connectorService, mcpServerSecret(created.ID, "oauth-client"), `{"client_id":"oauth-client-secret"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := keyring.Set(connectorService, mcpServerSecret(created.ID, "oauth-1"), "chunk"); err != nil {
+	if err := keyring.Set(connectorService, mcpServerSecret(created.ID, "oauth-a-1"), "chunk"); err != nil {
 		t.Fatal(err)
 	}
 	if code, raw := requestRaw(t, handler, http.MethodPut, "/api/mcp-servers/"+created.ID, map[string]any{"auth": "none"}); code != http.StatusOK || strings.Contains(raw, "oauth-secret") {
@@ -197,7 +198,7 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	if err := keyring.Set(connectorService, mcpServerSecret(created.ID, "oauth"), `{"access_token":"oauth-secret"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := keyring.Set(connectorService, mcpServerSecret(created.ID, "oauth-1"), "chunk"); err != nil {
+	if err := keyring.Set(connectorService, mcpServerSecret(created.ID, "oauth-a-1"), "chunk"); err != nil {
 		t.Fatal(err)
 	}
 	code, raw = requestRaw(t, handler, http.MethodGet, "/api/mcp-servers", nil)
@@ -217,6 +218,70 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	}
 	if code := requestJSON(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "No Token", "kind": "http", "url": "https://example.test/mcp", "auth": "bearer"}, nil); code != http.StatusBadRequest {
 		t.Fatalf("bearer without token status = %d", code)
+	}
+}
+
+func TestMCPServerDeleteOAuthSlotsAndSweepFailure(t *testing.T) {
+	keyring.MockInit()
+	_, handler, _ := chatAPI(t)
+	create := func(name string) mcpServer {
+		var server mcpServer
+		if code := requestJSON(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{"name": name, "kind": "http", "url": "https://example.test/mcp", "auth": "oauth"}, &server); code != http.StatusCreated {
+			t.Fatalf("create = %d", code)
+		}
+		return server
+	}
+	seed := func(id string) {
+		for _, slot := range []string{"a", "b"} {
+			for i := 1; i <= 8; i++ {
+				if e := keyring.Set(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%s-%d", slot, i)), "secret"); e != nil {
+					t.Fatal(e)
+				}
+			}
+		}
+		if e := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), `{"chunks":1,"slot":"a"}`); e != nil {
+			t.Fatal(e)
+		}
+	}
+	good := create("Delete OAuth")
+	seed(good.ID)
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/mcp-servers/"+good.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete = %d", code)
+	}
+	for _, slot := range []string{"a", "b"} {
+		for i := 1; i <= 8; i++ {
+			if _, e := keyring.Get(connectorService, mcpServerSecret(good.ID, fmt.Sprintf("oauth-%s-%d", slot, i))); !errors.Is(e, keyring.ErrNotFound) {
+				t.Fatalf("slot %s-%d remains: %v", slot, i, e)
+			}
+		}
+	}
+	bad := create("Retry OAuth")
+	seed(bad.ID)
+	get, set, del := mcpKeyringGet, mcpKeyringSet, mcpKeyringDelete
+	t.Cleanup(func() { mcpKeyringGet, mcpKeyringSet, mcpKeyringDelete = get, set, del })
+	mcpKeyringGet = keyring.Get
+	mcpKeyringSet = keyring.Set
+	mcpKeyringDelete = func(s, k string) error {
+		if k == mcpServerSecret(bad.ID, "oauth-a-2") {
+			return errors.New("injected sweep failure")
+		}
+		return keyring.Delete(s, k)
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/mcp-servers/"+bad.ID, nil, nil); code != http.StatusInternalServerError {
+		t.Fatalf("failed delete = %d", code)
+	}
+	var listed []mcpServer
+	if code := requestJSON(t, handler, http.MethodGet, "/api/mcp-servers", nil, &listed); code != http.StatusOK {
+		t.Fatalf("list = %d", code)
+	}
+	found := false
+	for _, s := range listed {
+		if s.ID == bad.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("server removed after sweep failure")
 	}
 }
 
