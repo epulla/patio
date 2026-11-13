@@ -37,8 +37,8 @@
   --primary-text: oklch(52% 0.21 355);
   --sidebar-from: oklch(50% 0.2 355);
   --sidebar-to: oklch(56% 0.17 40);
-  --secondary: oklch(58% 0.15 275);
-  --secondary-text: oklch(48% 0.16 275);
+  --secondary: oklch(68% 0.22 355);
+  --secondary-text: oklch(52% 0.21 355);
 }
 [data-theme="dark"],
 [data-theme="dark"] [data-palette="patio"] {
@@ -47,8 +47,8 @@
   --primary-text: oklch(78% 0.15 355);
   --sidebar-from: oklch(36% 0.13 355);
   --sidebar-to: oklch(38% 0.11 35);
-  --secondary: oklch(74% 0.12 275);
-  --secondary-text: oklch(80% 0.1 275);
+  --secondary: oklch(76% 0.17 355);
+  --secondary-text: oklch(78% 0.15 355);
 }
 [data-palette="dusk"] {
   --primary: oklch(62% 0.16 265);
