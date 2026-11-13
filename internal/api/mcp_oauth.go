@@ -58,6 +58,18 @@ type mcpOAuthLogin struct {
 	done   chan struct{}
 }
 
+func (s *Server) cancelMCPOAuthLogin(id string) {
+	s.oauthMu.Lock()
+	login := s.oauthLogins[id]
+	if login != nil {
+		login.cancel()
+	}
+	s.oauthMu.Unlock()
+	if login != nil {
+		<-login.done
+	}
+}
+
 func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 	id := idParam(r, "id")
 	server, err := s.loadMCPServer(id)
@@ -89,12 +101,12 @@ func (s *Server) mcpServerLogin(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer cancel()
 		defer func() {
-			close(login.done)
 			s.oauthMu.Lock()
 			if s.oauthLogins[id] == login {
 				delete(s.oauthLogins, id)
 			}
 			s.oauthMu.Unlock()
+			close(login.done)
 		}()
 		err := s.runMCPOAuthLogin(ctx, server, started)
 		s.oauthMu.Lock()
@@ -356,6 +368,16 @@ func storeMCPOAuthCredential(id string, credential mcpOAuthCredential) error {
 	if err != nil {
 		return err
 	}
+	if err := storeMCPOAuthJSONLocked(id, full); err != nil {
+		return err
+	}
+	if len(full) <= oauthSecretLimit {
+		return deleteMCPOAuthClient(id)
+	}
+	return nil
+}
+
+func storeMCPOAuthJSONLocked(id string, full []byte) error {
 	old := mcpOAuthMarker{}
 	if raw, e := mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth")); e == nil {
 		_ = json.Unmarshal([]byte(raw), &old)
@@ -364,9 +386,6 @@ func storeMCPOAuthCredential(id string, credential mcpOAuthCredential) error {
 	}
 	if len(full) <= oauthSecretLimit {
 		if err := mcpKeyringSet(connectorService, mcpServerSecret(id, "oauth"), string(full)); err != nil {
-			return err
-		}
-		if err := deleteMCPOAuthClient(id); err != nil {
 			return err
 		}
 		if old.Chunks > 0 {
@@ -406,7 +425,7 @@ func storeMCPOAuthCredential(id string, credential mcpOAuthCredential) error {
 			return err
 		}
 	}
-	return deleteMCPOAuthClient(id)
+	return nil
 }
 
 func deleteMCPOAuthSlot(id string, slots ...string) error {
@@ -430,13 +449,10 @@ func deleteMCPOAuthClient(id string) error {
 	return err
 }
 
-func loadMCPOAuthCredential(id string) (mcpOAuthCredential, error) {
+func readMCPOAuthJSONLocked(id string) (string, error) {
 	raw, err := mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth"))
-	if errors.Is(err, keyring.ErrNotFound) {
-		return mcpOAuthCredential{}, errors.New("Sign in again")
-	}
 	if err != nil {
-		return mcpOAuthCredential{}, err
+		return "", err
 	}
 	var marker mcpOAuthMarker
 	if json.Unmarshal([]byte(raw), &marker) == nil && marker.Chunks > 0 {
@@ -450,26 +466,33 @@ func loadMCPOAuthCredential(id string) (mcpOAuthCredential, error) {
 					break
 				}
 				if e != nil {
-					return mcpOAuthCredential{}, e
+					return "", e
 				}
 				joined.WriteString(chunk)
 			}
 			if !missing {
-				var credential mcpOAuthCredential
-				if e := json.Unmarshal([]byte(joined.String()), &credential); e != nil {
-					return credential, fmt.Errorf("decode OAuth credentials: %w", e)
-				}
-				return credential, nil
+				return joined.String(), nil
 			}
 			if attempt == 0 {
 				raw, err = mcpKeyringGet(connectorService, mcpServerSecret(id, "oauth"))
 				if err != nil {
-					return mcpOAuthCredential{}, errors.New("Sign in again")
+					return "", errors.New("Sign in again")
 				}
 				_ = json.Unmarshal([]byte(raw), &marker)
 			}
 		}
+		return "", errors.New("Sign in again")
+	}
+	return raw, nil
+}
+
+func loadMCPOAuthCredential(id string) (mcpOAuthCredential, error) {
+	raw, err := readMCPOAuthJSONLocked(id)
+	if errors.Is(err, keyring.ErrNotFound) {
 		return mcpOAuthCredential{}, errors.New("Sign in again")
+	}
+	if err != nil {
+		return mcpOAuthCredential{}, err
 	}
 	var credential mcpOAuthCredential
 	if err := json.Unmarshal([]byte(raw), &credential); err != nil {
@@ -523,12 +546,29 @@ func (s *Server) oauthHeader(ctx context.Context, serverID string) (string, erro
 		}
 		return "", err
 	}
-	credential.AccessToken = refreshed.AccessToken
-	credential.RefreshToken = refreshed.RefreshToken
-	credential.TokenType = refreshed.TokenType
-	credential.Expiry = refreshed.Expiry
-	if err := storeMCPOAuthCredential(serverID, credential); err != nil {
-		return "", err
+	if refreshed.AccessToken != token.AccessToken {
+		mcpOAuthKeyringMu.Lock()
+		current, e := loadMCPOAuthCredential(serverID)
+		if e != nil {
+			mcpOAuthKeyringMu.Unlock()
+			return "", errors.New("Sign in again")
+		}
+		if current.AccessToken != token.AccessToken {
+			mcpOAuthKeyringMu.Unlock()
+			return "Bearer " + refreshed.AccessToken, nil
+		}
+		credential.AccessToken = refreshed.AccessToken
+		credential.RefreshToken = refreshed.RefreshToken
+		credential.TokenType = refreshed.TokenType
+		credential.Expiry = refreshed.Expiry
+		full, e := json.Marshal(credential)
+		if e == nil {
+			e = storeMCPOAuthJSONLocked(serverID, full)
+		}
+		mcpOAuthKeyringMu.Unlock()
+		if e != nil {
+			return "", e
+		}
 	}
 	return "Bearer " + refreshed.AccessToken, nil
 }

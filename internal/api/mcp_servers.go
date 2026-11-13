@@ -326,6 +326,37 @@ func decodeMCPEnv(raw json.RawMessage) (map[string]string, error) {
 }
 
 func applyMCPSecret(id, suffix, value string, present bool) error {
+	if suffix == "oauth" {
+		mcpOAuthKeyringMu.Lock()
+		defer mcpOAuthKeyringMu.Unlock()
+		if present {
+			if len(value) <= oauthSecretLimit {
+				return mcpKeyringSet(connectorService, mcpServerSecret(id, suffix), value)
+			}
+			return storeMCPOAuthJSONLocked(id, []byte(value))
+		}
+		full, err := readMCPOAuthJSONLocked(id)
+		if errors.Is(err, keyring.ErrNotFound) {
+			full, err = "", nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := mcpKeyringDelete(connectorService, mcpServerSecret(id, suffix)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return err
+		}
+		if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
+			if full != "" {
+				if len(full) <= oauthSecretLimit {
+					_ = mcpKeyringSet(connectorService, mcpServerSecret(id, suffix), full)
+				} else {
+					_ = storeMCPOAuthJSONLocked(id, []byte(full))
+				}
+			}
+			return err
+		}
+		return nil
+	}
 	if present {
 		return keyring.Set(connectorService, mcpServerSecret(id, suffix), value)
 	}
@@ -337,6 +368,15 @@ func applyMCPSecret(id, suffix, value string, present bool) error {
 }
 
 func snapshotMCPSecret(id, suffix string) (string, bool, error) {
+	if suffix == "oauth" {
+		mcpOAuthKeyringMu.Lock()
+		defer mcpOAuthKeyringMu.Unlock()
+		value, err := readMCPOAuthJSONLocked(id)
+		if errors.Is(err, keyring.ErrNotFound) {
+			return "", false, nil
+		}
+		return value, err == nil, err
+	}
 	value, err := keyring.Get(connectorService, mcpServerSecret(id, suffix))
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", false, nil
@@ -631,11 +671,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "oauth-registered-secret")
 	}
 	if clientChanged || in.OAuthClientSecret != nil {
-		if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
-			_ = restoreMCPSecrets(id, previous, present, changed)
-			errw(w, http.StatusInternalServerError, err.Error())
-			return
-		}
+		s.cancelMCPOAuthLogin(id)
 		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
 			_ = restoreMCPSecrets(id, previous, present, changed)
 			errw(w, http.StatusInternalServerError, err.Error())
@@ -654,11 +690,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "bearer")
 	}
 	if config.Auth != "oauth" && present["oauth"] {
-		if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
-			_ = restoreMCPSecrets(id, previous, present, changed)
-			errw(w, http.StatusInternalServerError, err.Error())
-			return
-		}
+		s.cancelMCPOAuthLogin(id)
 		if err := applyMCPSecret(id, "oauth", "", false); err != nil {
 			if restoreErr := restoreMCPSecrets(id, previous, present, changed); restoreErr != nil {
 				err = fmt.Errorf("%w; restore secrets: %v", err, restoreErr)
@@ -731,10 +763,7 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := deleteMCPOAuthSlot(id, "a", "b"); err != nil {
-		errw(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	s.cancelMCPOAuthLogin(id)
 	previous := map[string]string{}
 	present := map[string]bool{}
 	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client", "oauth-registered-secret"} {

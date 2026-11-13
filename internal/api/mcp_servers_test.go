@@ -190,7 +190,7 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	if code, raw := requestRaw(t, handler, http.MethodPut, "/api/mcp-servers/"+created.ID, map[string]any{"auth": "none"}); code != http.StatusOK || strings.Contains(raw, "oauth-secret") {
 		t.Fatalf("auth switch status/body = %d %s", code, raw)
 	}
-	for _, suffix := range []string{"bearer", "oauth", "oauth-client", "oauth-1"} {
+	for _, suffix := range []string{"bearer", "oauth", "oauth-client", "oauth-a-1"} {
 		if _, err := keyring.Get(connectorService, mcpServerSecret(created.ID, suffix)); !errors.Is(err, keyring.ErrNotFound) {
 			t.Fatalf("%s secret remains after auth switch: %v", suffix, err)
 		}
@@ -208,7 +208,7 @@ func TestMCPServerCRUDAndSecretSemantics(t *testing.T) {
 	if code := requestJSON(t, handler, http.MethodDelete, "/api/mcp-servers/"+created.ID, nil, nil); code != http.StatusNoContent {
 		t.Fatalf("delete status = %d", code)
 	}
-	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client", "oauth-1"} {
+	for _, suffix := range []string{"env", "bearer", "oauth", "oauth-client", "oauth-a-1"} {
 		if _, err := keyring.Get(connectorService, mcpServerSecret(created.ID, suffix)); !errors.Is(err, keyring.ErrNotFound) {
 			t.Fatalf("deleted %s secret remains: %v", suffix, err)
 		}
@@ -232,14 +232,7 @@ func TestMCPServerDeleteOAuthSlotsAndSweepFailure(t *testing.T) {
 		return server
 	}
 	seed := func(id string) {
-		for _, slot := range []string{"a", "b"} {
-			for i := 1; i <= 8; i++ {
-				if e := keyring.Set(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%s-%d", slot, i)), "secret"); e != nil {
-					t.Fatal(e)
-				}
-			}
-		}
-		if e := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), `{"chunks":1,"slot":"a"}`); e != nil {
+		if e := storeMCPOAuthCredential(id, mcpOAuthCredential{AccessToken: "original" + strings.Repeat("x", 5000), ClientID: "client", TokenURL: "https://issuer.test/token", Resource: "https://mcp.test"}); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -282,6 +275,33 @@ func TestMCPServerDeleteOAuthSlotsAndSweepFailure(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("server removed after sweep failure")
+	}
+	header, err := (&Server{}).oauthHeader(t.Context(), bad.ID)
+	if err != nil || !strings.HasPrefix(header, "Bearer original") {
+		t.Fatalf("credential after failed delete = %q, %v", header, err)
+	}
+}
+
+func TestMCPServerUpdateFailureRestoresChunkedOAuth(t *testing.T) {
+	keyring.MockInit()
+	db, handler, _ := chatAPI(t)
+	var created mcpServer
+	if code := requestJSON(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "Update OAuth", "kind": "http", "url": "https://example.test/mcp", "auth": "oauth"}, &created); code != http.StatusCreated {
+		t.Fatalf("create = %d", code)
+	}
+	credential := mcpOAuthCredential{AccessToken: "original" + strings.Repeat("x", 5000), ClientID: "client", TokenURL: "https://issuer.test/token", Resource: "https://mcp.test"}
+	if err := storeMCPOAuthCredential(created.ID, credential); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER fail_mcp_update BEFORE UPDATE ON mcp_server BEGIN SELECT RAISE(FAIL, 'injected update failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/mcp-servers/"+created.ID, map[string]any{"auth": "none"}, nil); code != http.StatusInternalServerError {
+		t.Fatalf("update = %d", code)
+	}
+	header, err := (&Server{}).oauthHeader(t.Context(), created.ID)
+	if err != nil || !strings.HasPrefix(header, "Bearer original") {
+		t.Fatalf("credential after failed update = %q, %v", header, err)
 	}
 }
 

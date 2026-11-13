@@ -484,7 +484,7 @@ func TestMCPOAuthCredentialChunksLargeTokensAndCleansStaleChunks(t *testing.T) {
 	if err := storeMCPOAuthCredential(id, small); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth-1")); !errors.Is(err, keyring.ErrNotFound) {
+	if _, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth-a-1")); !errors.Is(err, keyring.ErrNotFound) {
 		t.Fatalf("stale chunk remains: %v", err)
 	}
 	header, err = (&Server{}).oauthHeader(t.Context(), id)
@@ -580,6 +580,118 @@ func TestMCPOAuthLargeRefreshCanBeReadTwice(t *testing.T) {
 			n := requests
 			requestMu.Unlock()
 			t.Fatalf("call %d = %q, %v (requests %d)", i, h, e, n)
+		}
+	}
+}
+
+func TestMCPOAuthRefreshCannotRecreateDeletedCredential(t *testing.T) {
+	keyring.MockInit()
+	db, handler, _ := chatAPI(t)
+	var server mcpServer
+	if code := requestJSON(t, handler, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "Refresh Delete", "kind": "http", "url": "https://example.test/mcp", "auth": "oauth"}, &server); code != http.StatusCreated {
+		t.Fatalf("create = %d", code)
+	}
+	hit, release := make(chan struct{}), make(chan struct{})
+	tokenEndpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(hit)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"fresh","refresh_token":"r2","token_type":"Bearer","expires_in":3600}`)
+	}))
+	defer tokenEndpoint.Close()
+	credential := mcpOAuthCredential{AccessToken: strings.Repeat("old", 1000), RefreshToken: "r1", ClientID: "client", TokenURL: tokenEndpoint.URL, Resource: "https://example.test/mcp", Expiry: time.Now().Add(-time.Hour)}
+	if err := storeMCPOAuthCredential(server.ID, credential); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, "local", false, "dev", t.TempDir())
+	got := make(chan error, 1)
+	go func() { _, err := s.oauthHeader(t.Context(), server.ID); got <- err }()
+	select {
+	case <-hit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("token endpoint not reached")
+	}
+	if code := requestJSON(t, handler, http.MethodDelete, "/api/mcp-servers/"+server.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete = %d", code)
+	}
+	close(release)
+	select {
+	case err := <-got:
+		if err == nil {
+			t.Fatal("refresh succeeded after delete")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("refresh remained blocked")
+	}
+	for _, suffix := range []string{"oauth"} {
+		if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, suffix)); !errors.Is(err, keyring.ErrNotFound) {
+			t.Errorf("%s remains: %v", suffix, err)
+		}
+	}
+	for _, slot := range []string{"a", "b"} {
+		for i := 1; i <= 8; i++ {
+			suffix := fmt.Sprintf("oauth-%s-%d", slot, i)
+			if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, suffix)); !errors.Is(err, keyring.ErrNotFound) {
+				t.Errorf("%s remains: %v", suffix, err)
+			}
+		}
+	}
+}
+
+func TestMCPOAuthLoginDeleteWaitsForLogin(t *testing.T) {
+	keyring.MockInit()
+	authState := &fakeOAuthServer{}
+	authServer := httptest.NewServer(authState)
+	defer authServer.Close()
+	authState.issuer = authServer.URL
+	var resource *httptest.Server
+	resource = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/.well-known/oauth-protected-resource") {
+			_ = json.NewEncoder(w).Encode(map[string]any{"resource": resource.URL + "/mcp", "authorization_servers": []string{authServer.URL}})
+			return
+		}
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resource.URL+`/.well-known/oauth-protected-resource"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer resource.Close()
+	db, _, root := chatAPI(t)
+	s := New(db, "local", false, "dev", root, Options{openOAuthURL: func(string) error { return nil }})
+	var server mcpServer
+	if code := requestJSON(t, s, http.MethodPost, "/api/mcp-servers", map[string]any{"name": "Login Delete", "kind": "http", "url": resource.URL + "/mcp", "auth": "oauth", "oauth_client_id": "test-client"}, &server); code != http.StatusCreated {
+		t.Fatalf("create = %d", code)
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/mcp-servers/"+server.ID+"/login", nil, nil); code != http.StatusAccepted {
+		t.Fatalf("login = %d", code)
+	}
+	s.oauthMu.Lock()
+	login := s.oauthLogins[server.ID]
+	s.oauthMu.Unlock()
+	if login == nil {
+		t.Fatal("login did not remain pending")
+	}
+	if code := requestJSON(t, s, http.MethodDelete, "/api/mcp-servers/"+server.ID, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete = %d", code)
+	}
+	select {
+	case <-login.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delete returned before login completed")
+	}
+	s.oauthMu.Lock()
+	remains := s.oauthLogins[server.ID] != nil
+	s.oauthMu.Unlock()
+	if remains {
+		t.Fatal("login remains registered after delete")
+	}
+	if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, "oauth")); !errors.Is(err, keyring.ErrNotFound) {
+		t.Errorf("oauth remains: %v", err)
+	}
+	for _, slot := range []string{"a", "b"} {
+		for i := 1; i <= 8; i++ {
+			suffix := fmt.Sprintf("oauth-%s-%d", slot, i)
+			if _, err := keyring.Get(connectorService, mcpServerSecret(server.ID, suffix)); !errors.Is(err, keyring.ErrNotFound) {
+				t.Errorf("%s remains: %v", suffix, err)
+			}
 		}
 	}
 }
