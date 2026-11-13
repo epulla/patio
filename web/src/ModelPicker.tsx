@@ -134,7 +134,8 @@ export default function ModelPicker({
     position();
     setQuery("");
     setPins(pinKind ? loadPins(pinKind) : []);
-    setActive(Math.max(0, ordered.findIndex((m) => m.id === value)));
+    // Open at the top (pinned models first); the current model keeps its check mark.
+    setActive(0);
     setOpen(true);
   }
 
