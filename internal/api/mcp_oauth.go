@@ -33,6 +33,7 @@ type mcpOAuthCredential struct {
 	Resource     string    `json:"resource"`
 	ClientID     string    `json:"client_id,omitempty"`
 	ClientSecret string    `json:"client_secret,omitempty"`
+	Chunks       int       `json:"chunks,omitempty"`
 }
 
 type mcpOAuthClient struct {
@@ -350,7 +351,10 @@ func storeMCPOAuthCredential(id string, credential mcpOAuthCredential) error {
 		if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(full)); err != nil {
 			return err
 		}
-		return deleteMCPOAuthClient(id)
+		if err := deleteMCPOAuthClient(id); err != nil {
+			return err
+		}
+		return deleteMCPOAuthChunks(id, 1)
 	}
 
 	client := mcpOAuthClient{ClientID: credential.ClientID, ClientSecret: credential.ClientSecret}
@@ -363,16 +367,41 @@ func storeMCPOAuthCredential(id string, credential mcpOAuthCredential) error {
 	if err != nil {
 		return err
 	}
-	if len(tokenJSON) > oauthSecretLimit || len(clientJSON) > oauthSecretLimit {
+	if len(clientJSON) > oauthSecretLimit {
 		return errors.New("OAuth credentials exceed keychain item size limit")
 	}
 	if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth-client"), string(clientJSON)); err != nil {
 		return err
 	}
-	if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(tokenJSON)); err != nil {
+	chunks := 0
+	if len(tokenJSON) > oauthSecretLimit {
+		for start := 0; start < len(tokenJSON); start += oauthSecretLimit {
+			chunks++
+			end := min(start+oauthSecretLimit, len(tokenJSON))
+			if err := keyring.Set(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%d", chunks)), string(tokenJSON[start:end])); err != nil {
+				return err
+			}
+		}
+		marker, _ := json.Marshal(mcpOAuthCredential{Chunks: chunks})
+		if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(marker)); err != nil {
+			return err
+		}
+	} else if err := keyring.Set(connectorService, mcpServerSecret(id, "oauth"), string(tokenJSON)); err != nil {
 		return err
 	}
-	return nil
+	return deleteMCPOAuthChunks(id, chunks+1)
+}
+
+func deleteMCPOAuthChunks(id string, from int) error {
+	for i := from; ; i++ {
+		err := keyring.Delete(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%d", i)))
+		if errors.Is(err, keyring.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func deleteMCPOAuthClient(id string) error {
@@ -394,6 +423,22 @@ func (s *Server) oauthHeader(ctx context.Context, serverID string) (string, erro
 	var credential mcpOAuthCredential
 	if err := json.Unmarshal([]byte(raw), &credential); err != nil {
 		return "", fmt.Errorf("decode OAuth credentials: %w", err)
+	}
+	if credential.Chunks > 0 {
+		var tokenJSON strings.Builder
+		for i := 1; i <= credential.Chunks; i++ {
+			chunk, err := keyring.Get(connectorService, mcpServerSecret(serverID, fmt.Sprintf("oauth-%d", i)))
+			if errors.Is(err, keyring.ErrNotFound) {
+				return "", errors.New("Sign in again")
+			}
+			if err != nil {
+				return "", err
+			}
+			tokenJSON.WriteString(chunk)
+		}
+		if err := json.Unmarshal([]byte(tokenJSON.String()), &credential); err != nil {
+			return "", fmt.Errorf("decode OAuth credentials: %w", err)
+		}
 	}
 	if credential.ClientID == "" {
 		clientRaw, err := keyring.Get(connectorService, mcpServerSecret(serverID, "oauth-client"))

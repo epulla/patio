@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -704,6 +706,11 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if slices.Contains(changed, "oauth") {
+		if err := deleteMCPOAuthChunks(id, 1); err != nil {
+			log.Printf("clean up MCP OAuth chunks %s: %v", id, err)
+		}
+	}
 	server, err := s.loadMCPServer(id)
 	if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
@@ -763,6 +770,9 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 			errw(w, http.StatusInternalServerError, err.Error())
 		}
 		return
+	}
+	if err := deleteMCPOAuthChunks(id, 1); err != nil {
+		log.Printf("clean up MCP OAuth chunks %s: %v", id, err)
 	}
 	noContent(w)
 }

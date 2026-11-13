@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -439,6 +440,46 @@ func TestMCPOAuthCredentialUsesSeparateKeychainItemWhenLarge(t *testing.T) {
 	header, err := s.oauthHeader(t.Context(), id)
 	if err != nil || header != "Bearer "+credential.AccessToken {
 		t.Fatalf("header from split credential = %q, %v", header, err)
+	}
+}
+
+func TestMCPOAuthCredentialChunksLargeTokensAndCleansStaleChunks(t *testing.T) {
+	keyring.MockInit()
+	id := "chunked-oauth"
+	credential := mcpOAuthCredential{AccessToken: strings.Repeat("a", 6000), RefreshToken: strings.Repeat("r", 1000), TokenType: "Bearer", ClientID: "client", TokenURL: "https://issuer.test/token", Resource: "https://mcp.test/mcp", Expiry: time.Now().Add(time.Hour)}
+	if err := storeMCPOAuthCredential(id, credential); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth"))
+	if err != nil || len(marker) > oauthSecretLimit {
+		t.Fatalf("chunk marker = %q, %v", marker, err)
+	}
+	for i := 1; ; i++ {
+		chunk, err := keyring.Get(connectorService, mcpServerSecret(id, fmt.Sprintf("oauth-%d", i)))
+		if errors.Is(err, keyring.ErrNotFound) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(chunk) > oauthSecretLimit {
+			t.Fatalf("chunk %d has %d bytes", i, len(chunk))
+		}
+	}
+	header, err := (&Server{}).oauthHeader(t.Context(), id)
+	if err != nil || header != "Bearer "+credential.AccessToken {
+		t.Fatalf("header = %q, %v", header, err)
+	}
+	small := mcpOAuthCredential{AccessToken: "small-token", TokenType: "Bearer", ClientID: "client", TokenURL: "https://issuer.test/token", Resource: "https://mcp.test/mcp", Expiry: time.Now().Add(time.Hour)}
+	if err := storeMCPOAuthCredential(id, small); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keyring.Get(connectorService, mcpServerSecret(id, "oauth-1")); !errors.Is(err, keyring.ErrNotFound) {
+		t.Fatalf("stale chunk remains: %v", err)
+	}
+	header, err = (&Server{}).oauthHeader(t.Context(), id)
+	if err != nil || header != "Bearer small-token" {
+		t.Fatalf("small header = %q, %v", header, err)
 	}
 }
 
