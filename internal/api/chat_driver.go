@@ -592,7 +592,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	message, err := InsertChatMessage(m.db, id, role, content)
 	if err == nil && m.telegramResult != nil {
-		m.background.Go(func() { m.telegramResult(id, assistantText, turnErr) })
+		m.goBackground(func() { m.telegramResult(id, assistantText, turnErr) })
 	}
 	if err == nil && (turnErr != nil || stopping) {
 		if _, holdErr := m.db.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, id); holdErr != nil {
@@ -637,7 +637,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 	}
 	for _, parent := range parents {
 		parent := parent
-		m.background.Go(func() {
+		m.goBackground(func() {
 			if err := m.deliverHandoffReports(parent); err != nil {
 				log.Printf("deliver handoff reports to %s: %v", parent, err)
 			}
@@ -651,7 +651,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		if reportTo.Valid && m.reportBack != nil {
 			from := id
 			target := reportTo.String
-			m.background.Go(func() {
+			m.goBackground(func() {
 				if err := m.reportBack(target, from, result); err != nil {
 					log.Printf("report chat result %s to %s: %v", from, target, err)
 				}
@@ -659,7 +659,7 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		}
 	}
 	if turnErr == nil && !stopping {
-		m.background.Go(func() {
+		m.goBackground(func() {
 			if _, err := m.drainQueued(id, false); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				log.Printf("send queued chat messages %s: %v", id, err)
 			}
@@ -1161,6 +1161,22 @@ func (m *chatManager) stopRuntimeTimerLocked(rt *chatRuntime) {
 		rt.idleTimer.Stop()
 		rt.idleTimer = nil
 	}
+}
+
+// goBackground runs fn, tracked for Close until Close starts waiting: a WaitGroup Add from zero must not race Wait.
+func (m *chatManager) goBackground(fn func()) {
+	m.mu.Lock()
+	tracked := !m.closed
+	if tracked {
+		m.background.Add(1)
+	}
+	m.mu.Unlock()
+	go func() {
+		if tracked {
+			defer m.background.Done()
+		}
+		fn()
+	}()
 }
 
 func (m *chatManager) Close() error {
