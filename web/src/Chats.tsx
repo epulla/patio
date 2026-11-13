@@ -966,12 +966,12 @@ export default function Chats({
                         </div>
                         {index > 0 && (
                           <button role="menuitem" onClick={() => (close(), moveGroup(group.id, index - 1))}>
-                            <Icon name="chevronLeft" /> {t.moveUp}
+                            <Icon name="chevronUp" /> {t.moveUp}
                           </button>
                         )}
                         {index < groups.groups.length - 1 && (
                           <button role="menuitem" onClick={() => (close(), moveGroup(group.id, index + 2))}>
-                            <Icon name="chevronRight" /> {t.moveDown}
+                            <Icon name="chevronDown" /> {t.moveDown}
                           </button>
                         )}
                         {groups.groups.length > 1 && (
