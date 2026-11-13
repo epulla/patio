@@ -164,7 +164,7 @@ func startLocal(m *chatManager, c chat, _ string, _ *chatRuntime) (chatRuntimeDr
 var localMCPTools = map[string]bool{
 	"list_boards": true, "get_board": true, "create_board": true, "list_users": true,
 	"create_ticket": true, "get_ticket": true, "update_ticket": true, "move_ticket": true, "search_tickets": true,
-	"link_tickets": true, "unlink_tickets": true, "add_comment": true, "list_comments": true, "get_ticket_history": true,
+	"link_tickets": true, "unlink_tickets": true, "add_comment": true, "attach_file": true, "list_comments": true, "get_ticket_history": true,
 	"list_calendar": true, "create_calendar_item": true, "update_calendar_item": true, "delete_calendar_item": true,
 	"list_skills": true, "load_skill": true, "create_skill": true, "update_skill": true,
 	"list_bots": false, "create_bot": false, "update_bot": false, "delete_bot": false,

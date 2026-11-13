@@ -77,6 +77,23 @@ func (s *Server) uploadTicketAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	original := r.URL.Query().Get("name")
+	var body io.Reader = r.Body
+	if chatID := r.URL.Query().Get("chat_id"); chatID != "" {
+		f, name, err := s.openChatFileForTicket(chatID, r.URL.Query().Get("path"))
+		if errors.Is(err, sql.ErrNoRows) {
+			errw(w, 404, "chat not found")
+			return
+		}
+		if err != nil {
+			chatFileError(w, err)
+			return
+		}
+		defer f.Close()
+		body = f
+		if original == "" {
+			original = name
+		}
+	}
 	if original == "" {
 		errw(w, 400, "attachment name is required")
 		return
@@ -90,7 +107,7 @@ func (s *Server) uploadTicketAttachment(w http.ResponseWriter, r *http.Request) 
 		errw(w, 400, "at most 20 attachments are allowed")
 		return
 	}
-	prefix, e := io.ReadAll(io.LimitReader(r.Body, 512))
+	prefix, e := io.ReadAll(io.LimitReader(body, 512))
 	if e != nil {
 		writeAttachmentError(w, e)
 		return
@@ -129,7 +146,7 @@ func (s *Server) uploadTicketAttachment(w http.ResponseWriter, r *http.Request) 
 	if kind == "image" {
 		limit = ticketImageLimit
 	}
-	stored, size, e := streamChatAttachment(temp, dir, safe, prefix, r.Body, kind, ticketFileLimit, limit)
+	stored, size, e := streamChatAttachment(temp, dir, safe, prefix, body, kind, ticketFileLimit, limit)
 	if e != nil {
 		writeAttachmentError(w, e)
 		return
@@ -154,6 +171,37 @@ func (s *Server) uploadTicketAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	write(w, 201, ticketAttachment{stored, original, kind, contentType, size, t, filepath.Join(dir, stored)})
+}
+
+// openChatFileForTicket opens a file inside the chat's folder; absolute paths must point inside it.
+func (s *Server) openChatFileForTicket(chatID, path string) (*os.File, string, error) {
+	c, err := s.scanChat(s.db.QueryRow(`SELECT `+chatColumns+` FROM chat WHERE id=?`, chatID))
+	if err != nil {
+		return nil, "", err
+	}
+	if filepath.IsAbs(path) {
+		if path, err = filepath.Rel(c.Workdir, path); err != nil {
+			return nil, "", errPathOutsideWorkdir
+		}
+	}
+	rel, err := cleanChatFilePath(path)
+	if err != nil {
+		return nil, "", err
+	}
+	root, err := os.OpenRoot(c.Workdir)
+	if err != nil {
+		return nil, "", err
+	}
+	defer root.Close()
+	f, err := root.Open(rel)
+	if err != nil {
+		return nil, "", err
+	}
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, "", errors.New("path is not a file")
+	}
+	return f, filepath.Base(rel), nil
 }
 func (s *Server) ticketAttachmentPath(w http.ResponseWriter, id, name string) string {
 	var exists int

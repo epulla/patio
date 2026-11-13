@@ -163,6 +163,12 @@ type commentArgs struct {
 	Content  string `json:"content" jsonschema:"Comment text"`
 	ChatID   string `json:"chat_id,omitempty" jsonschema:"Optional chat ID; post as this chat's bot"`
 }
+type attachFileArgs struct {
+	TicketID string `json:"ticket_id" jsonschema:"Ticket UUID or code"`
+	Path     string `json:"path" jsonschema:"File path inside this chat's folder (e.g. attachments/x.png), relative or absolute"`
+	Name     string `json:"name,omitempty" jsonschema:"Optional attachment name; defaults to the file name"`
+	ChatID   string `json:"chat_id,omitempty" jsonschema:"This chat's ID from your instructions; selects the folder path is read from"`
+}
 type settingsDefaultsArgs struct {
 	ConnectorID  json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
 	Model        *string         `json:"model,omitempty" jsonschema:"Optional default model"`
@@ -714,6 +720,20 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 			body["as_bot"] = botID.String
 		}
 		return do(ctx, h, request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/comments", body})
+	})
+	addGenericHandler(s, "attach_file", "Attach a file from this chat's folder (e.g. pasted images in attachments/) to a ticket", func(ctx context.Context, a attachFileArgs) (*sdk.CallToolResult, error) {
+		chat := chatID
+		if chat == "" {
+			chat = a.ChatID
+		}
+		if chat == "" {
+			return errorResult(errors.New("chat_id is required")), nil
+		}
+		q := url.Values{"chat_id": {chat}, "path": {a.Path}}
+		if a.Name != "" {
+			q.Set("name", a.Name)
+		}
+		return do(ctx, h, request{http.MethodPost, "/api/tickets/" + url.PathEscape(a.TicketID) + "/attachments?" + q.Encode(), nil})
 	})
 	addGeneric(s, "list_comments", "List ticket comments", h, func(a ticketIDArgs) request {
 		return request{http.MethodGet, "/api/tickets/" + url.PathEscape(a.ID) + "/comments", nil}
@@ -1494,8 +1514,8 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 			id = mcpValue(result, "id")
 		}
 		fallback := firstMap(result, old)
-		if strings.Contains(r.path, "/links") {
-			fallback = old // the response is the link, not the ticket
+		if strings.Contains(r.path, "/links") || strings.Contains(r.path, "/attachments") {
+			fallback = old // the response is the link or attachment, not the ticket
 		}
 		item := mcpTicket(ctx, h, id, fallback)
 		code, ticketTitle := item["code"], item["title"]
@@ -1504,6 +1524,8 @@ func mcpChange(ctx context.Context, h http.Handler, r request, prior, response [
 		}
 		if strings.Contains(r.path, "/links") {
 			title = actor + " linked " + code
+		} else if strings.Contains(r.path, "/attachments") {
+			title = actor + " attached " + mcpValue(result, "original_name") + " to " + code
 		} else if strings.Contains(r.path, "/move") {
 			title = actor + " moved " + code
 			if parsed, err := url.Parse(r.path); err == nil && parsed.Query().Get("mcp_status_label") != "" {

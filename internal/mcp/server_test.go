@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -270,7 +271,7 @@ func TestMCPToolsAndAudit(t *testing.T) {
 		"list_boards": true, "get_board": true, "create_board": true, "create_ticket": true,
 		"get_ticket": true, "update_ticket": true, "move_ticket": true, "search_tickets": true,
 		"link_tickets": true, "unlink_tickets": true,
-		"add_comment": true, "list_calendar": true, "create_calendar_item": true,
+		"add_comment": true, "attach_file": true, "list_calendar": true, "create_calendar_item": true,
 		"update_calendar_item": true, "delete_calendar_item": true,
 		"list_scheduled_tasks": true, "get_scheduled_task": true, "create_scheduled_task": true, "update_scheduled_task": true, "delete_scheduled_task": true,
 		"list_monitors": true, "create_monitor": true, "update_monitor": true, "delete_monitor": true, "test_monitor": true,
@@ -325,8 +326,8 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			count++
 		}
 	}
-	if count != 68 {
-		t.Fatalf("tool count = %d, want 68", count)
+	if count != 69 {
+		t.Fatalf("tool count = %d, want 69", count)
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)
@@ -1334,6 +1335,78 @@ func TestWorkflowTools(t *testing.T) {
 	}
 	var title string
 	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != "Martin created workflow Solo" {
+		t.Fatalf("notification = %q, %v", title, err)
+	}
+}
+
+func TestMCPAttachFile(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "attach.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	workdir, outside := t.TempDir(), t.TempDir()
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+	if err := os.MkdirAll(filepath.Join(workdir, "attachments"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for path, data := range map[string][]byte{filepath.Join(workdir, "attachments", "shot.png"): png, filepath.Join(outside, "secret.txt"): []byte("secret")} {
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(workdir, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO chat(id,title,folder,created_at,updated_at) VALUES('c1','c1',?,'now','now')`, workdir); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(api.New(database, "ai", true, "dev", filepath.Dir(dbPath)), "dev", database, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := server.Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	var board struct {
+		ID string `json:"id"`
+	}
+	decodeText(t, callTool(t, session, "create_board", map[string]any{"name": "Board", "short_name": "AT", "statuses": []map[string]any{{"name": "Todo"}}}), &board)
+	var ticket struct {
+		Code string `json:"code"`
+	}
+	decodeText(t, callTool(t, session, "create_ticket", map[string]any{"board_id": board.ID, "title": "T"}), &ticket)
+
+	for _, path := range []string{"/etc/hosts", "../" + filepath.Base(outside) + "/secret.txt", filepath.Join(outside, "secret.txt"), "link.txt", "attachments"} {
+		if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": path, "chat_id": "c1"}); !result.IsError {
+			t.Fatalf("attach %q should fail", path)
+		}
+	}
+	if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": "attachments/shot.png"}); !result.IsError {
+		t.Fatal("attach without chat_id should fail")
+	}
+	if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": filepath.Join(workdir, "attachments", "shot.png"), "chat_id": "c1"}); result.IsError {
+		t.Fatalf("attach: %#v", result.Content)
+	}
+	var got struct {
+		Attachments []struct {
+			OriginalName string `json:"original_name"`
+			Kind         string `json:"kind"`
+		} `json:"attachments"`
+	}
+	decodeText(t, callTool(t, session, "get_ticket", map[string]any{"id": ticket.Code}), &got)
+	if len(got.Attachments) != 1 || got.Attachments[0].OriginalName != "shot.png" || got.Attachments[0].Kind != "image" {
+		t.Fatalf("attachments = %#v", got.Attachments)
+	}
+	var title string
+	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != "Martin attached shot.png to "+ticket.Code {
 		t.Fatalf("notification = %q, %v", title, err)
 	}
 }
