@@ -6,6 +6,7 @@ web/dist/*
 *.tsbuildinfo
 /build/*
 !/build/appicon.png
+!/build/tray/
 !/build/windows/
 /build/windows/*
 !/build/windows/icon.ico
