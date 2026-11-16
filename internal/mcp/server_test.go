@@ -1405,7 +1405,7 @@ func TestMCPAttachFile(t *testing.T) {
 	if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": "attachments/shot.png"}); !result.IsError {
 		t.Fatal("attach without chat_id should fail")
 	}
-	if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": filepath.Join(workdir, "attachments", "shot.png"), "chat_id": "c1"}); result.IsError {
+	if result := callTool(t, session, "attach_file", map[string]any{"ticket_id": ticket.Code, "path": filepath.Join(workdir, "attachments", "shot.png"), "name": "Login screen", "chat_id": "c1"}); result.IsError {
 		t.Fatalf("attach: %#v", result.Content)
 	}
 	var got struct {
@@ -1415,11 +1415,11 @@ func TestMCPAttachFile(t *testing.T) {
 		} `json:"attachments"`
 	}
 	decodeText(t, callTool(t, session, "get_ticket", map[string]any{"id": ticket.Code}), &got)
-	if len(got.Attachments) != 1 || got.Attachments[0].OriginalName != "shot.png" || got.Attachments[0].Kind != "image" {
+	if len(got.Attachments) != 1 || got.Attachments[0].OriginalName != "Login screen.png" || got.Attachments[0].Kind != "image" {
 		t.Fatalf("attachments = %#v", got.Attachments)
 	}
 	var title string
-	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != "Martin attached shot.png to "+ticket.Code {
+	if err := database.QueryRow(`SELECT title FROM notification WHERE kind='change' ORDER BY created_at DESC,rowid DESC LIMIT 1`).Scan(&title); err != nil || title != "Martin attached Login screen.png to "+ticket.Code {
 		t.Fatalf("notification = %q, %v", title, err)
 	}
 }

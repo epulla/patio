@@ -92,6 +92,9 @@ func (s *Server) uploadTicketAttachment(w http.ResponseWriter, r *http.Request) 
 		body = f
 		if original == "" {
 			original = name
+		} else if filepath.Ext(original) == "" {
+			// Agents often pass a title as the name; keep the file's extension so it previews and opens.
+			original += filepath.Ext(name)
 		}
 	}
 	if original == "" {
