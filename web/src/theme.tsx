@@ -94,13 +94,13 @@ function luminance(L: number, C: number, H: number) {
 }
 
 // Label colour on the primary fill: the tinted dark or light text with more contrast,
-// or plain black/white when neither tinted one reaches WCAG AA (4.5:1).
+// or plain black/white when neither clears WCAG AA (4.5:1) with margin for CSS rounding.
 function primaryContent(l: number, c: number, h: number) {
   const fill = luminance(l, c, h);
   const contrast = (y: number) => (Math.max(fill, y) + 0.05) / (Math.min(fill, y) + 0.05);
   const darkText = contrast(luminance(0.18, 0.05, h));
   const lightText = contrast(luminance(0.97, 0.02, h));
-  if (Math.max(darkText, lightText) >= 4.5) return darkText >= lightText ? color(0.18, 0.05, h) : color(0.97, 0.02, h);
+  if (Math.max(darkText, lightText) >= 4.6) return darkText >= lightText ? color(0.18, 0.05, h) : color(0.97, 0.02, h);
   return contrast(0) >= contrast(1) ? color(0, 0, 0) : color(1, 0, 0);
 }
 
