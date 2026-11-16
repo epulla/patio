@@ -252,8 +252,10 @@ func (s *Server) getTicketAttachment(w http.ResponseWriter, r *http.Request) {
 	var sniff [512]byte
 	n, _ := f.Read(sniff[:])
 	ct := http.DetectContentType(sniff[:n])
+	// PDFs render inline in the preview iframe, like chat files; WebKit's PDF viewer breaks under the sandbox CSP.
+	pdf := ct == "application/pdf"
 	disposition := "attachment"
-	if strings.HasPrefix(ct, "image/") {
+	if strings.HasPrefix(ct, "image/") || pdf {
 		disposition = "inline"
 	}
 	if v := mime.FormatMediaType(disposition, map[string]string{"filename": name}); v != "" {
@@ -261,7 +263,9 @@ func (s *Server) getTicketAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	if !pdf {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	}
 	_, _ = f.Seek(0, 0)
 	http.ServeContent(w, r, name, info.ModTime(), f)
 }

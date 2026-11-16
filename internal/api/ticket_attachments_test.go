@@ -58,6 +58,23 @@ func TestTicketAttachmentUploadServeAndCode(t *testing.T) {
 	}
 }
 
+func TestTicketAttachmentServesPDFInline(t *testing.T) {
+	_, h, _, ticket, _ := ticketAttachmentFixture(t)
+	res := postTicketAttachment(t, h, ticket.ID, "doc.pdf", []byte("%PDF-1.4\n%%EOF\n"))
+	if res.Code != 201 {
+		t.Fatalf("upload %d: %s", res.Code, res.Body)
+	}
+	var a ticketAttachment
+	if err := json.Unmarshal(res.Body.Bytes(), &a); err != nil {
+		t.Fatal(err)
+	}
+	get := httptest.NewRecorder()
+	h.ServeHTTP(get, httptest.NewRequest("GET", "/api/tickets/"+ticket.ID+"/attachments/"+url.PathEscape(a.Name), nil))
+	if get.Code != 200 || get.Header().Get("Content-Type") != "application/pdf" || !strings.HasPrefix(get.Header().Get("Content-Disposition"), "inline") || get.Header().Get("Content-Security-Policy") != "" {
+		t.Fatalf("serve status=%d headers=%v", get.Code, get.Header())
+	}
+}
+
 func TestTicketAttachmentImageLimit(t *testing.T) {
 	_, h, _, ticket, _ := ticketAttachmentFixture(t)
 	data := append([]byte(nil), testPNG...)
