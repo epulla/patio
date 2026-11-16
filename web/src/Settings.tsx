@@ -598,18 +598,20 @@ export function Appearance() {
 
   async function saveThemes(list: SavedTheme[], select?: Palette) {
     try {
-      if (!(await saveSavedThemes(list))) return;
+      if (!(await saveSavedThemes(list))) return false;
       if (select) setThemePrefs({ palette: select });
       setNaming(undefined);
       setError(undefined);
+      return true;
     } catch (reason) {
       setError(reason);
+      return false;
     }
   }
 
   function addTheme(name: string, colors: CustomTheme) {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    void saveThemes([...prefs.saved, { id, name, colors }], `custom:${id}`);
+    return saveThemes([...prefs.saved, { id, name, colors }], `custom:${id}`);
   }
 
   function submitName(event: FormEvent) {
@@ -814,7 +816,7 @@ export function Appearance() {
         </div>
         <ErrorText error={error} />
       </section>
-      {importing && <ImportThemeDialog onImport={importTheme} onClose={() => setImporting(false)} />}
+      {importing && <ImportThemeDialog error={error} onImport={importTheme} onClose={() => setImporting(false)} />}
     </section>
   );
 }
@@ -854,7 +856,15 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
-function ImportThemeDialog({ onImport, onClose }: { onImport: (theme: { name: string; colors: CustomTheme }) => void; onClose: () => void }) {
+function ImportThemeDialog({
+  error,
+  onImport,
+  onClose,
+}: {
+  error: unknown;
+  onImport: (theme: { name: string; colors: CustomTheme }) => Promise<boolean>;
+  onClose: () => void;
+}) {
   const t = useText(text);
   const dialog = useRef<HTMLDialogElement>(null);
   const [json, setJson] = useState("");
@@ -864,12 +874,12 @@ function ImportThemeDialog({ onImport, onClose }: { onImport: (theme: { name: st
     if (!dialog.current?.open) dialog.current?.showModal();
   }, []);
 
-  function submit(event: FormEvent) {
+  // Stays open until the save succeeds, so a failed import keeps the pasted text.
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const theme = parseSharedTheme(json);
     if (!theme) return setInvalid(true);
-    onImport(theme);
-    dialog.current?.close();
+    if (await onImport(theme)) dialog.current?.close();
   }
 
   return (
@@ -893,6 +903,7 @@ function ImportThemeDialog({ onImport, onClose }: { onImport: (theme: { name: st
           />
         </label>
         {invalid && <p className="error" role="alert">{t.importInvalid}</p>}
+        <ErrorText error={error} />
         <div className="modal-actions">
           <button type="button" onClick={() => dialog.current?.close()}>
             {t.cancel}
