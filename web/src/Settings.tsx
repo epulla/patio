@@ -20,7 +20,7 @@ import {
   palettes,
   previewSavedTheme,
   setCustomTheme,
-  setSavedThemes,
+  saveSavedThemes,
   setThemePrefs,
   useThemePrefs,
   type CustomTheme,
@@ -557,8 +557,7 @@ export function Appearance() {
   const [error, setError] = useState<unknown>();
   const [naming, setNaming] = useState<{ rename: boolean; name: string }>();
   const saveTimer = useRef<number>(undefined);
-  const savingRef = useRef(false);
-  const [saving, setSaving] = useState(false);
+  const saving = prefs.savingThemes;
   const selected = prefs.saved.find((theme) => `custom:${theme.id}` === prefs.palette);
   const editing = selected && prefs.preview?.id === selected.id ? prefs.preview : selected;
   const colors = editing?.colors ?? prefs.custom;
@@ -573,21 +572,14 @@ export function Appearance() {
     setThemePrefs({ palette });
   }
 
-  // Each save sends the whole list, so one at a time: an overlapping save would restore stale themes.
   async function saveThemes(list: SavedTheme[], select?: Palette) {
-    if (savingRef.current) return;
-    savingRef.current = true;
-    setSaving(true);
     try {
-      setSavedThemes(await api.put<SavedTheme[]>("/api/settings/custom-themes", list));
+      if (!(await saveSavedThemes(list))) return;
       if (select) setThemePrefs({ palette: select });
       setNaming(undefined);
       setError(undefined);
     } catch (reason) {
       setError(reason);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
     }
   }
 

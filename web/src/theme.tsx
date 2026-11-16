@@ -33,7 +33,7 @@ export type Palette = (typeof palettes)[number]["id"] | `custom:${string}`;
 export type CustomTheme = { primary: string; secondary: string; base: string; sidebar_from: string; sidebar_to: string };
 export type SavedTheme = { id: string; name: string; colors: CustomTheme };
 // preview: unsaved colours for a saved theme while it's being edited.
-type Prefs = { mode: Mode; palette: Palette; style: SidebarStyle; custom: CustomTheme; saved: SavedTheme[]; preview?: SavedTheme };
+type Prefs = { mode: Mode; palette: Palette; style: SidebarStyle; custom: CustomTheme; saved: SavedTheme[]; preview?: SavedTheme; savingThemes?: boolean };
 
 // Patio's own colours, so a fresh custom theme starts from the default look.
 export const defaultCustomTheme: CustomTheme = {
@@ -185,11 +185,28 @@ export function setCustomTheme(custom: CustomTheme) {
 }
 
 /** Caches the saved themes the DB returned; a deleted selected theme falls back to Patio. */
-export function setSavedThemes(saved: SavedTheme[]) {
+function setSavedThemes(saved: SavedTheme[]) {
   prefs = { ...prefs, saved, preview: undefined };
   localStorage.setItem("custom-themes", JSON.stringify(saved));
   applyCustom();
   setThemePrefs({ palette: knownPalette(prefs.palette, saved) });
+}
+
+// Each save sends the whole list, so one at a time across Settings remounts: an overlapping save would restore stale themes.
+/** Saves the list to the DB and applies the result; returns false without saving while another save is in flight. */
+export async function saveSavedThemes(list: SavedTheme[]) {
+  if (prefs.savingThemes) return false;
+  const setSaving = (savingThemes: boolean) => {
+    prefs = { ...prefs, savingThemes };
+    listeners.forEach((listener) => listener());
+  };
+  setSaving(true);
+  try {
+    setSavedThemes(await api.put<SavedTheme[]>("/api/settings/custom-themes", list));
+    return true;
+  } finally {
+    setSaving(false);
+  }
 }
 
 /** Shows unsaved colours for a saved theme without caching them; undefined drops the preview. */
