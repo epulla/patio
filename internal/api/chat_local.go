@@ -795,7 +795,7 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 				if value := effortFor(effort, capabilities.thinkingValues); value != "" {
 					body["think"] = value
 				}
-			} else if capabilities.thinkingPresent && capabilities.thinkingBoolean {
+			} else if capabilities.thinkingBoolean {
 				body["think"] = effort != "small"
 			} else {
 				body["think"] = effort != "small"
@@ -855,7 +855,6 @@ func (d *localRuntime) ollamaThinkingSupported(ctx context.Context) bool {
 
 type ollamaModelCapabilities struct {
 	thinking        bool
-	thinkingPresent bool
 	thinkingBoolean bool
 	thinkingValues  []string
 	vision          bool
@@ -903,19 +902,31 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 		return ollamaModelCapabilities{}, false
 	}
 	capabilities := ollamaModelCapabilities{}
+	thinkingValuesPresent := false
 	if len(details.Thinking) > 0 && string(details.Thinking) != "null" {
-		capabilities.thinkingPresent = true
-		capabilities.thinking = true
 		var thinking struct {
-			Values []string `json:"values"`
+			Values []json.RawMessage `json:"values"`
 		}
-		if json.Unmarshal(details.Thinking, &thinking) == nil && len(thinking.Values) > 0 {
-			capabilities.thinkingValues = thinking.Values
+		if json.Unmarshal(details.Thinking, &thinking) == nil {
+			thinkingValuesPresent = thinking.Values != nil
+			for _, raw := range thinking.Values {
+				var value string
+				if json.Unmarshal(raw, &value) == nil {
+					capabilities.thinkingValues = append(capabilities.thinkingValues, value)
+					continue
+				}
+				var enabled bool
+				if json.Unmarshal(raw, &enabled) == nil && enabled {
+					capabilities.thinkingBoolean, capabilities.thinking = true, true
+				}
+			}
+			capabilities.thinking = capabilities.thinking || len(capabilities.thinkingValues) > 0
 		} else if err := json.Unmarshal(details.Thinking, &capabilities.thinkingBoolean); err == nil {
+			capabilities.thinking = capabilities.thinkingBoolean
 		}
 	}
 	for _, capability := range details.Capabilities {
-		capabilities.thinking = capabilities.thinking || capability == "thinking"
+		capabilities.thinking = capabilities.thinking || (!thinkingValuesPresent && capability == "thinking")
 		capabilities.vision = capabilities.vision || capability == "vision"
 	}
 	for key, value := range details.ModelInfo {

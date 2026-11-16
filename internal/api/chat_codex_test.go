@@ -371,16 +371,6 @@ func TestCodexEffortFallbackSelection(t *testing.T) {
 	if got := effortFor("small", codexModelEfforts(models, "missing")); got != "" {
 		t.Fatalf("unknown model effort=%q, want empty", got)
 	}
-	models = []connectorcli.Model{{ID: "selected", Efforts: []string{"low", "minimal"}}}
-	value := effortFor("small", codexModelEfforts(models, "selected"))
-	for _, supported := range codexModelEfforts(models, "selected") {
-		if supported == "minimal" {
-			value = "minimal"
-		}
-	}
-	if value != "minimal" {
-		t.Fatalf("small effort=%q, want minimal", value)
-	}
 }
 
 func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {

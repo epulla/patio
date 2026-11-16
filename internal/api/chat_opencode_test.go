@@ -264,6 +264,115 @@ func TestOpenCodeDefaultModelCatalogRetriesAfterFailure(t *testing.T) {
 	}
 }
 
+func TestOpenCodeV1PromptUsesCatalogVariant(t *testing.T) {
+	for _, tc := range []struct{ name, model, effort, want string }{
+		{"nearest", "provider/model", "medium", "low"},
+		{"implicit", "", "high", "high"},
+		{"default", "provider/model", "default", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, _, root := chatAPI(t)
+			connector := createTestConnector(t, database)
+			chatID := createDriverTestChat(t, database, connector, root)
+			if _, err := database.Exec(`UPDATE chat SET model=?,effort=? WHERE id=?`, tc.model, tc.effort, chatID); err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/config/providers":
+					if r.URL.Query().Get("directory") == "" {
+						t.Error("v1 catalog missing directory")
+					}
+					_, _ = w.Write([]byte(`{"providers":[{"id":"provider","models":{"model":{"id":"model","variants":{"low":{},"high":{}}}}}],"default":{"provider":"model"}}`))
+				case strings.HasSuffix(r.URL.Path, "/prompt_async"):
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer fake.Close()
+			manager := newChatManager(database, Options{})
+			runtime := &opencodeRuntime{manager: manager, chatID: chatID, server: &opencodeServer{major: 1, baseURL: fake.URL, client: fake.Client()}, session: "session", directory: filepath.Join(root, "chats", chatID), model: tc.model, ctx: context.Background(), mcpReconnect: true}
+			if err := runtime.send(ChatSendRequest{Text: "prompt"}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.want != "" && body["variant"] != tc.want {
+				t.Fatalf("prompt variant=%#v, want %q", body["variant"], tc.want)
+			}
+			if tc.want == "" {
+				if _, ok := body["variant"]; ok {
+					t.Fatalf("default prompt included variant: %#v", body)
+				}
+			}
+			if tc.model != "" && body["model"] == nil {
+				t.Fatalf("explicit model missing from prompt: %#v", body)
+			}
+		})
+	}
+}
+
+func TestOpenCodeV2ImplicitModelVariantReconciliation(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connector := createTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connector, root)
+	if _, err := database.Exec(`UPDATE chat SET model='',effort='high' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	var created, updated []map[string]any
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/model/default":
+			_, _ = w.Write([]byte(`{"data":{"id":"model-id","providerID":"provider-id","variants":[{"id":"low"},{"id":"high"}]}}`))
+		case "/api/session":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			created = append(created, body)
+			_, _ = w.Write([]byte(`{"data":{"id":"session-implicit"}}`))
+		case "/api/session/session-implicit/model":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			updated = append(updated, body)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+	manager := newChatManager(database, Options{})
+	server := &opencodeServer{major: 2, baseURL: fake.URL, client: fake.Client()}
+	runtime := &opencodeRuntime{manager: manager, chatID: chatID, server: server, directory: root, ctx: context.Background()}
+	if err := runtime.createSession(); err != nil {
+		t.Fatal(err)
+	}
+	model := created[0]["model"].(map[string]any)
+	if model["providerID"] != "provider-id" || model["id"] != "model-id" || model["variant"] != "high" {
+		t.Fatalf("implicit create model=%v", model)
+	}
+	resumed := &opencodeRuntime{manager: manager, chatID: chatID, server: server, session: runtime.session, ctx: context.Background(), storedSession: true}
+	if err := resumed.applyVariant("medium"); err != nil {
+		t.Fatal(err)
+	}
+	changed := updated[0]["model"].(map[string]any)
+	if changed["providerID"] != "provider-id" || changed["id"] != "model-id" || changed["variant"] != "low" {
+		t.Fatalf("resumed effort change model=%v", changed)
+	}
+	if err := resumed.applyVariant("high"); err != nil {
+		t.Fatal(err)
+	}
+	restarted := &opencodeRuntime{manager: manager, chatID: chatID, server: server, session: runtime.session, ctx: context.Background(), storedSession: true}
+	if err := restarted.applyVariant("default"); err != nil {
+		t.Fatal(err)
+	}
+	cleared := updated[len(updated)-1]["model"].(map[string]any)
+	if cleared["providerID"] != "provider-id" || cleared["id"] != "model-id" || cleared["variant"] != nil {
+		t.Fatalf("default reconciliation model=%v", cleared)
+	}
+}
+
 func TestOpenCodeV1ParentLookupRetriesAfterFailure(t *testing.T) {
 	var requests atomic.Int32
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

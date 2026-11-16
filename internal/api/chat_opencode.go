@@ -351,7 +351,9 @@ func (d *opencodeRuntime) currentEffort() string {
 func (d *opencodeRuntime) resolveVariant(level string) string {
 	if !d.variantsLoaded {
 		path := "/api/model"
-		if d.model == "" {
+		if d.server.major < 2 {
+			path = d.endpoint("/config/providers")
+		} else if d.model == "" {
 			path = "/api/model/default"
 		}
 		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
@@ -360,9 +362,42 @@ func (d *opencodeRuntime) resolveVariant(level string) string {
 		if err == nil {
 			defer resp.Body.Close()
 			var catalog struct {
-				Data json.RawMessage `json:"data"`
+				Data      json.RawMessage `json:"data"`
+				Providers []struct {
+					ID     string `json:"id"`
+					Models map[string]struct {
+						ID       string                     `json:"id"`
+						Variants map[string]json.RawMessage `json:"variants"`
+					} `json:"models"`
+				} `json:"providers"`
+				Default map[string]string `json:"default"`
 			}
 			if resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&catalog) == nil {
+				if d.server.major < 2 {
+					provider, modelID, ok := strings.Cut(d.model, "/")
+					if d.model == "" && len(catalog.Default) == 1 {
+						for p, m := range catalog.Default {
+							provider, modelID, ok = p, m, true
+						}
+					}
+					if ok {
+						for _, p := range catalog.Providers {
+							if p.ID == provider {
+								for key, model := range p.Models {
+									if key == modelID || model.ID == modelID {
+										for name := range model.Variants {
+											d.modelVariants = append(d.modelVariants, name)
+										}
+										break
+									}
+								}
+								break
+							}
+						}
+					}
+					d.variantsLoaded = true
+					return effortFor(level, d.modelVariants)
+				}
 				d.variantsLoaded = true
 				var models []struct {
 					ID         string `json:"id"`
@@ -472,15 +507,14 @@ func (d *opencodeRuntime) createSession() error {
 	if d.server.major >= 2 {
 		endpoint = "/api/session"
 		body["location"] = map[string]string{"directory": d.directory}
+		variant := d.resolveVariant(d.currentEffort())
 		if provider, modelID, ok := strings.Cut(d.model, "/"); ok && provider != "" && modelID != "" {
 			body["model"] = map[string]string{"providerID": provider, "id": modelID}
 		} else {
-			d.resolveVariant(d.currentEffort())
 			if d.defaultModelRef != nil {
 				body["model"] = map[string]string{"providerID": d.defaultModelRef["providerID"], "id": d.defaultModelRef["id"]}
 			}
 		}
-		variant := d.resolveVariant(d.currentEffort())
 		if variant != "" {
 			ref, _ := body["model"].(map[string]string)
 			if ref != nil {
@@ -570,7 +604,7 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		if model != nil {
 			body["model"] = model
 		}
-		if variant := effortFor(level, []string{"low", "medium", "high", "xhigh"}); variant != "" {
+		if variant := d.resolveVariant(level); variant != "" {
 			body["variant"] = variant
 		}
 	}

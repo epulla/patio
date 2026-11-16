@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1128,6 +1129,44 @@ func TestLocalOllamaThinkingCapabilitySendsThink(t *testing.T) {
 	waitLocalDone(t, events)
 	if calls.Load() != 1 || localAssistant(t, database, chatID) != "Hello" {
 		t.Fatalf("calls/reply = %d/%q", calls.Load(), localAssistant(t, database, chatID))
+	}
+}
+
+func TestOllamaThinkingValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, effort, values string
+		want                 any
+		present              bool
+	}{
+		{"false-only", "high", `[false]`, nil, false},
+		{"booleans-small", "small", `[true,false]`, false, true},
+		{"booleans-high", "high", `[true,false]`, true, true},
+		{"levels-nearest", "medium", `["low","high"]`, "low", true},
+		{"default-omits", "default", `["low","high"]`, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got map[string]any
+			fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/show":
+					_, _ = fmt.Fprintf(w, `{"thinking":{"values":%s}}`, tc.values)
+				case "/api/chat":
+					_ = json.NewDecoder(r.Body).Decode(&got)
+					_, _ = io.WriteString(w, `{"message":{"content":"ok"},"done":true}`+"\n")
+				}
+			}))
+			defer fake.Close()
+			model := "thinking-" + tc.name
+			localModelCapabilities.Delete(fake.URL + "\x00" + model)
+			d := &localRuntime{manager: newChatManager(nil, Options{}), model: model, ollama: true, ollamaURL: fake.URL, client: fake.Client()}
+			if _, err := d.streamOllamaWithImages(context.Background(), []map[string]any{{"role": "user", "content": "hi"}}, false, tc.effort, nil); err != nil {
+				t.Fatal(err)
+			}
+			value, exists := got["think"]
+			if exists != tc.present || (exists && value != tc.want) {
+				t.Fatalf("think=%#v present=%v, want %#v present=%v", value, exists, tc.want, tc.present)
+			}
+		})
 	}
 }
 
