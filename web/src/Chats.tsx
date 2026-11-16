@@ -617,7 +617,7 @@ export default function Chats({
     const onNavigate = () => {
       if (!new URLSearchParams(location.search).has("new")) return;
       history.replaceState({}, "", location.pathname);
-      newChat();
+      if (connectors.length) newChat();
     };
     onNavigate();
     addEventListener("popstate", onNavigate);
