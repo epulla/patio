@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newHandoffChats(t *testing.T) (*Server, string, string, string) {
@@ -178,6 +179,72 @@ func TestDiscardedQueuedHandoffReleasesParentReports(t *testing.T) {
 	}
 	if len(got) != 1 || !strings.Contains(got[0], "(stopped)") || !strings.Contains(got[0], "(ok)") {
 		t.Fatalf("reports=%v", got)
+	}
+}
+
+func TestDiscardWaitsForConcurrentDeliveryAndKeepsHandoff(t *testing.T) {
+	s, parent, child, _ := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	queueHandoff(t, s, parent, child, true)
+	var ids []string
+	rows, err := s.db.Query(`SELECT id FROM chat_queue WHERE chat_id=? ORDER BY rowid`, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil || len(ids) != 2 {
+		t.Fatalf("queued=%v err=%v", ids, err)
+	}
+	// Mimic drainQueuedMode: under the queue lock the claimed row is gone before its chat_message exists.
+	lock := s.chats.queueLock(child)
+	lock.Lock()
+	if _, err := s.db.Exec(`DELETE FROM chat_queue WHERE id=?`, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan int)
+	go func() {
+		done <- requestJSON(t, s, http.MethodDelete, "/api/chats/"+child+"/queue/"+ids[1], nil, nil)
+	}()
+	select {
+	case code := <-done:
+		t.Fatalf("delete finished during delivery: %d", code)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if _, err := insertChatMessage(s.db, child, "user", "work", nil, &parent, &parent); err != nil {
+		t.Fatal(err)
+	}
+	lock.Unlock()
+	if code := <-done; code != http.StatusNoContent {
+		t.Fatalf("delete status=%d", code)
+	}
+	var status string
+	if err := s.db.QueryRow(`SELECT status FROM chat_handoff WHERE from_chat_id=? AND to_chat_id=?`, parent, child).Scan(&status); err != nil || status != "pending" {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
+
+func TestDiscardKeepsQueuedMessageWhenHandoffStopFails(t *testing.T) {
+	s, parent, child, _ := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	if _, err := s.db.Exec(`CREATE TRIGGER fail_handoff BEFORE UPDATE ON chat_handoff BEGIN SELECT RAISE(ABORT,'boom'); END`); err != nil {
+		t.Fatal(err)
+	}
+	var qid string
+	if err := s.db.QueryRow(`SELECT id FROM chat_queue WHERE chat_id=?`, child).Scan(&qid); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodDelete, "/api/chats/"+child+"/queue/"+qid, nil, nil); code != http.StatusInternalServerError {
+		t.Fatalf("delete status=%d", code)
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, qid).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("queued=%d err=%v", n, err)
 	}
 }
 

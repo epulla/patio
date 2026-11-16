@@ -108,7 +108,23 @@ func (s *Server) pausedOutgoing(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 	chatID := idParam(r, "id")
 	var reportTo sql.NullString
-	err := s.db.QueryRow(`DELETE FROM chat_queue WHERE id=? AND chat_id=? RETURNING report_to_chat_id`, idParam(r, "qid"), chatID).Scan(&reportTo)
+	var stopped int64
+	// The queue lock keeps a concurrent drain from sitting between claiming a sibling row and recording its delivery.
+	lock := s.chats.queueLock(chatID)
+	lock.Lock()
+	err := txrun(s.db, func(tx *sql.Tx) error {
+		if err := tx.QueryRow(`DELETE FROM chat_queue WHERE id=? AND chat_id=? RETURNING report_to_chat_id`, idParam(r, "qid"), chatID).Scan(&reportTo); err != nil || !reportTo.Valid {
+			return err
+		}
+		// A discarded report_back message never reaches the child, so its handoff would otherwise hold the parent's other reports until it times out.
+		res, err := tx.Exec(`UPDATE chat_handoff SET status='stopped',result='The user discarded this queued message before it was delivered.',finished_at=? WHERE from_chat_id=? AND to_chat_id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND report_to_chat_id=?) AND NOT EXISTS(SELECT 1 FROM chat_message m WHERE m.chat_id=? AND m.from_chat_id=? AND m.created_at>=chat_handoff.created_at)`, now(), reportTo.String, chatID, chatID, reportTo.String, chatID, reportTo.String)
+		if err != nil {
+			return err
+		}
+		stopped, err = res.RowsAffected()
+		return err
+	})
+	lock.Unlock()
 	if errors.Is(err, sql.ErrNoRows) {
 		errw(w, 404, "queued message not found")
 		return
@@ -118,15 +134,9 @@ func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.chats.emit(chatID, map[string]any{"type": "queue"})
-	// A discarded report_back message never reaches the child, so its handoff would otherwise hold the parent's other reports until it times out.
-	if reportTo.Valid {
-		res, err := s.db.Exec(`UPDATE chat_handoff SET status='stopped',result='The user discarded this queued message before it was delivered.',finished_at=? WHERE from_chat_id=? AND to_chat_id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND report_to_chat_id=?) AND NOT EXISTS(SELECT 1 FROM chat_message m WHERE m.chat_id=? AND m.from_chat_id=? AND m.created_at>=chat_handoff.created_at)`, now(), reportTo.String, chatID, chatID, reportTo.String, chatID, reportTo.String)
-		if err != nil {
-			log.Printf("stop handoff for discarded message to %s: %v", chatID, err)
-		} else if n, _ := res.RowsAffected(); n > 0 {
-			if err := s.chats.deliverHandoffReports(reportTo.String); err != nil {
-				log.Printf("deliver handoff reports to %s: %v", reportTo.String, err)
-			}
+	if stopped > 0 {
+		if err := s.chats.deliverHandoffReports(reportTo.String); err != nil {
+			log.Printf("deliver handoff reports to %s: %v", reportTo.String, err)
 		}
 	}
 	noContent(w)
