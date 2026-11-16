@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -246,6 +247,46 @@ func TestDiscardKeepsQueuedMessageWhenHandoffStopFails(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT count(*) FROM chat_queue WHERE id=?`, qid).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("queued=%d err=%v", n, err)
 	}
+}
+
+func TestReplaceDropsOwnQueuedMessages(t *testing.T) {
+	s, parent, child, other := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	queueHandoff(t, s, parent, child, true)
+	queueHandoff(t, s, other, child, false)
+	queueHandoff(t, s, parent, other, true)
+	var got []string
+	var mu sync.Mutex
+	s.chats.reportBack = func(_, _, text string) error { mu.Lock(); got = append(got, text); mu.Unlock(); return nil }
+	if _, _, err := s.chats.finishHandoffs(other, "done", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	replace := func(report bool) {
+		t.Helper()
+		if code := requestJSON(t, s, http.MethodPost, "/api/chats/"+child+"/agent-messages", map[string]any{"from_chat_id": parent, "text": "newer", "report_back": report, "replace": true}, nil); code != 200 {
+			t.Fatalf("replace status=%d", code)
+		}
+		var mine, others int
+		if err := s.db.QueryRow(`SELECT count(*) FILTER (WHERE from_chat_id=?),count(*) FILTER (WHERE from_chat_id=?) FROM chat_queue WHERE chat_id=?`, parent, other, child).Scan(&mine, &others); err != nil || mine != 1 || others != 1 {
+			t.Fatalf("queued mine=%d others=%d err=%v", mine, others, err)
+		}
+	}
+	status := func() string {
+		var st string
+		if err := s.db.QueryRow(`SELECT status FROM chat_handoff WHERE from_chat_id=? AND to_chat_id=?`, parent, child).Scan(&st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	replace(true)
+	if st := status(); st != "pending" {
+		t.Fatalf("status after report_back replace=%s", st)
+	}
+	replace(false)
+	if st := status(); st != "stopped" {
+		t.Fatalf("status after plain replace=%s", st)
+	}
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(got) == 1 && strings.Contains(got[0], "(stopped)") })
 }
 
 func TestHandoffStatusLabelForSingleReport(t *testing.T) {

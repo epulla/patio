@@ -116,12 +116,8 @@ func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 		if err := tx.QueryRow(`DELETE FROM chat_queue WHERE id=? AND chat_id=? RETURNING report_to_chat_id`, idParam(r, "qid"), chatID).Scan(&reportTo); err != nil || !reportTo.Valid {
 			return err
 		}
-		// A discarded report_back message never reaches the child, so its handoff would otherwise hold the parent's other reports until it times out.
-		res, err := tx.Exec(`UPDATE chat_handoff SET status='stopped',result='The user discarded this queued message before it was delivered.',finished_at=? WHERE from_chat_id=? AND to_chat_id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND report_to_chat_id=?) AND NOT EXISTS(SELECT 1 FROM chat_message m WHERE m.chat_id=? AND m.from_chat_id=? AND m.created_at>=chat_handoff.created_at)`, now(), reportTo.String, chatID, chatID, reportTo.String, chatID, reportTo.String)
-		if err != nil {
-			return err
-		}
-		stopped, err = res.RowsAffected()
+		var err error
+		stopped, err = stopDiscardedHandoff(tx, reportTo.String, chatID, "The user discarded this queued message before it was delivered.")
 		return err
 	})
 	lock.Unlock()
@@ -140,6 +136,16 @@ func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	noContent(w)
+}
+
+// stopDiscardedHandoff closes parent's pending handoff to chatID once no queued or delivered message backs it;
+// a discarded report_back message never reaches the child, so the handoff would otherwise hold the parent's other reports until it times out.
+func stopDiscardedHandoff(tx *sql.Tx, parent, chatID, result string) (int64, error) {
+	res, err := tx.Exec(`UPDATE chat_handoff SET status='stopped',result=?,finished_at=? WHERE from_chat_id=? AND to_chat_id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND report_to_chat_id=?) AND NOT EXISTS(SELECT 1 FROM chat_message m WHERE m.chat_id=? AND m.from_chat_id=? AND m.created_at>=chat_handoff.created_at)`, result, now(), parent, chatID, chatID, parent, chatID, parent)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // updateChatQueue edits a queued message's text before it is sent; attachments stay as they are.

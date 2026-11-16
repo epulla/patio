@@ -25,6 +25,7 @@ type agentMessageRequest struct {
 	WorkflowEdge   string `json:"workflow_edge,omitempty"`
 	TimeoutMinutes int    `json:"timeout_minutes,omitempty"`
 	Mode           string `json:"mode,omitempty"`
+	Replace        bool   `json:"replace,omitempty"`
 }
 
 func workflowModeWait(g workflowGraph, node string) int {
@@ -533,9 +534,25 @@ func agentMessageLabel(fromID, title string, reportBack bool) string {
 func (s *Server) queueAgentMessage(id string, in agentMessageRequest) (string, error) {
 	created := now()
 	rowID := uid()
+	var stopped int64
 	err := txrun(s.db, func(tx *sql.Tx) error {
+		var replacedReport bool
+		if in.Replace {
+			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND from_chat_id=? AND report_to_chat_id IS NOT NULL)`, id, in.FromChatID).Scan(&replacedReport); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DELETE FROM chat_queue WHERE chat_id=? AND from_chat_id=?`, id, in.FromChatID); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at,from_chat_id,report_to_chat_id,steer) VALUES(?,?,?,'[]',?,?,?,?)`, rowID, id, in.Text, created, in.FromChatID, reportTarget(in.ReportBack, in.FromChatID), in.Mode == "steer"); err != nil {
 			return err
+		}
+		if replacedReport {
+			var err error
+			if stopped, err = stopDiscardedHandoff(tx, in.FromChatID, id, "Replaced by a newer message without report_back before delivery."); err != nil {
+				return err
+			}
 		}
 		if in.ReportBack {
 			var runID sql.NullString
@@ -568,6 +585,13 @@ func (s *Server) queueAgentMessage(id string, in agentMessageRequest) (string, e
 		return "", err
 	}
 	s.chats.emit(id, map[string]any{"type": "queue"})
+	if stopped > 0 {
+		s.chats.goBackground(func() {
+			if err := s.chats.deliverHandoffReports(in.FromChatID); err != nil {
+				log.Printf("deliver handoff reports to %s: %v", in.FromChatID, err)
+			}
+		})
+	}
 	return rowID, nil
 }
 
