@@ -282,9 +282,11 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
         ) : (
         <Preview
           key={version}
-          chatId={chatId}
-          path={path}
+          url={rawURL(chatId, path)}
+          name={name}
           kind={quickLook ? "quicklook" : kind}
+          quickLookURL={`/api/chats/${chatId}/files/quicklook?path=${encodeURIComponent(path)}`}
+          zipURL={`/api/chats/${chatId}/files/zip?path=${encodeURIComponent(path)}`}
           source={source}
           web={web}
           onOfficeError={() => kind === "pptx" && setQuickLook(true)}
@@ -317,10 +319,29 @@ export default function FileViewer({ chatId, path, standalone, onClose }: { chat
   );
 }
 
-function Preview({ chatId, path, kind, source, web, fallback, onOfficeError }: { chatId: string; path: string; kind: string; source: boolean; web: boolean; fallback: ReactNode; onOfficeError: () => void }) {
+// Kinds whose extra URL is missing (quicklook, zip) show the fallback.
+export function Preview({
+  url,
+  name,
+  kind = fileKind(name),
+  source = false,
+  web = false,
+  fallback,
+  onOfficeError,
+  quickLookURL,
+  zipURL,
+}: {
+  url: string;
+  name: string;
+  kind?: string;
+  source?: boolean;
+  web?: boolean;
+  fallback: ReactNode;
+  onOfficeError?: () => void;
+  quickLookURL?: string;
+  zipURL?: string;
+}) {
   const t = useText(text);
-  const url = rawURL(chatId, path);
-  const name = path.split("/").pop() ?? path;
   const streamed = kind === "audio" || kind === "video";
   const { data: size, error } = useLoad(
     () => (streamed ? Promise.resolve(0) : fetchFile(url, "HEAD").then((response) => Number(response.headers.get("content-length")))),
@@ -349,14 +370,14 @@ function Preview({ chatId, path, kind, source, web, fallback, onOfficeError }: {
     case "text":
       return <TextPreview url={url} kind={kind} source={source} web={web} name={name} />;
     case "quicklook":
-      return <TextPreview url={`/api/chats/${chatId}/files/quicklook?path=${encodeURIComponent(path)}`} kind="quicklook" source={false} web={false} name={name} />;
+      return quickLookURL ? <TextPreview url={quickLookURL} kind="quicklook" source={false} web={false} name={name} /> : fallback;
     case "sheet":
       return <SheetPreview url={url} csv={/\.(csv|tsv)$/i.test(name)} />;
     case "docx":
     case "pptx":
       return <OfficePreview url={url} kind={kind} name={name} onError={onOfficeError} />;
     case "zip":
-      return <ZipPreview chatId={chatId} path={path} />;
+      return zipURL ? <ZipPreview url={zipURL} /> : fallback;
     default:
       return fallback;
   }
@@ -451,7 +472,7 @@ function SheetPreview({ url, csv }: { url: string; csv: boolean }) {
 }
 
 // docx/pptx render in office.html, whose CSP stops script smuggled in through document text.
-function OfficePreview({ url, kind, name, onError }: { url: string; kind: string; name: string; onError: () => void }) {
+function OfficePreview({ url, kind, name, onError }: { url: string; kind: string; name: string; onError?: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const { data, error } = useLoad(() => fetchFile(url).then((response) => response.arrayBuffer()), [url]);
   const [failed, setFailed] = useState<string>();
@@ -462,7 +483,7 @@ function OfficePreview({ url, kind, name, onError }: { url: string; kind: string
       if (event.data?.ready) frame.current?.contentWindow?.postMessage({ kind, data }, "*");
       if (event.data?.error) {
         setFailed(event.data.error);
-        onError();
+        onError?.();
       }
     };
     addEventListener("message", onMessage);
@@ -473,12 +494,9 @@ function OfficePreview({ url, kind, name, onError }: { url: string; kind: string
   return <iframe ref={frame} className="file-viewer-frame" sandbox="allow-scripts allow-same-origin" src="/office.html" title={name} />;
 }
 
-function ZipPreview({ chatId, path }: { chatId: string; path: string }) {
+function ZipPreview({ url }: { url: string }) {
   const t = useText(text);
-  const { data, error } = useLoad(
-    () => api.get<{ name: string; size: number; dir: boolean }[]>(`/api/chats/${chatId}/files/zip?path=${encodeURIComponent(path)}`),
-    [chatId, path],
-  );
+  const { data, error } = useLoad(() => api.get<{ name: string; size: number; dir: boolean }[]>(url), [url]);
   if (!data) return <Loading error={error} />;
   return (
     <div className="file-viewer-doc">
