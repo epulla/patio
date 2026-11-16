@@ -148,6 +148,46 @@ func TestRunWorkflowStartsRootChatAndTree(t *testing.T) {
 	}
 }
 
+func TestWorkflowRootAndJoinUseBotEffort(t *testing.T) {
+	g := fanJoinGraph()
+	s, parentID, firstID, secondID, workflowID := workflowHandoffFixture(t, g, 10)
+	if _, err := s.db.Exec(`UPDATE "user" SET effort='high' WHERE id='ai'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE chat SET effort='medium' WHERE id=?`, firstID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO app_setting(key,value) VALUES('effort','"small"') ON CONFLICT(key) DO UPDATE SET value=excluded.value`); err != nil {
+		t.Fatal(err)
+	}
+	var root struct {
+		ChatID string `json:"chat_id"`
+	}
+	if code := requestJSON(t, s, http.MethodPost, "/api/workflows/"+workflowID+"/run", map[string]string{"prompt": "root effort"}, &root); code != http.StatusOK {
+		t.Fatalf("run workflow=%d", code)
+	}
+	for _, tc := range []struct{ name, id, want string }{{"root", root.ChatID, "high"}} {
+		var got string
+		if err := s.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, tc.id).Scan(&got); err != nil || got != tc.want {
+			t.Fatalf("%s effort=%q, %v; want %q", tc.name, got, err, tc.want)
+		}
+	}
+	for _, from := range []struct{ id, edge string }{{firstID, "a-join"}, {secondID, "b-join"}} {
+		var result map[string]any
+		if code := postWorkflowEdge(t, s, from.id, from.edge, "input", &result); code != http.StatusOK {
+			t.Fatalf("handoff %s=%d %v", from.edge, code, result)
+		}
+	}
+	var joinID string
+	if err := s.db.QueryRow(`SELECT id FROM chat WHERE workflow_run_id=? AND workflow_node='join'`, parentID).Scan(&joinID); err != nil {
+		t.Fatal(err)
+	}
+	var joinEffort string
+	if err := s.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, joinID).Scan(&joinEffort); err != nil || joinEffort != "high" {
+		t.Fatalf("join effort=%q, %v; parent=medium default=small bot=high", joinEffort, err)
+	}
+}
+
 func attachWorkflowFixture(t *testing.T) (*Server, string, string, string, string) {
 	t.Helper()
 	database, err := db.Open(filepath.Join(t.TempDir(), "attach.db"))
