@@ -72,6 +72,9 @@ func throttle(every time.Duration, fn func()) func() {
 //go:embed build/appicon.png
 var appIcon []byte
 
+//go:embed build/tray/PatioStatusTemplate.png
+var trayTemplateIcon []byte
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		runMCP(os.Args[2:])
@@ -247,6 +250,19 @@ func main() {
 	wins.app = app
 	wins.mu.Unlock()
 	wins.showMain(*openPath)
+	trayMenu := application.NewMenu()
+	trayMenu.Add("Open Patio").OnClick(func(*application.Context) { wins.showMain("") })
+	// The chats page starts a chat when it sees ?new.
+	trayMenu.Add("New chat").OnClick(func(*application.Context) { wins.showMain("/ai/chats?new") })
+	trayMenu.AddSeparator()
+	trayMenu.Add("Quit Patio").OnClick(func(*application.Context) { app.Quit() })
+	tray := app.SystemTray.New().SetMenu(trayMenu)
+	if runtime.GOOS == "darwin" {
+		tray.SetTemplateIcon(trayTemplateIcon)
+	} else {
+		tray.SetIcon(appIcon)
+	}
+	tray.SetTooltip("Patio")
 	// Dock click brings the main window back, whether it was closed or hidden.
 	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
 		wins.showMain("")
@@ -444,8 +460,8 @@ func (w *windows) showMain(path string) {
 	w.main = win
 	// A hook runs synchronously before Wails' own close listener destroys the window.
 	win.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		// Keep running so chats, scheduled tasks and bridges continue. Without a tray, other
-		// platforms minimize so the window stays reachable from the taskbar.
+		// Keep running so chats, scheduled tasks and bridges continue. Other platforms
+		// minimize so the window stays reachable from the taskbar.
 		if !w.quitting.Load() && api.KeepRunningOnClose(w.db) {
 			event.Cancel()
 			if runtime.GOOS == "darwin" {

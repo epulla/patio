@@ -611,6 +611,18 @@ export default function Chats({
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
   }, [windowed, loaded, connectors]);
+  // The tray menu's New chat opens /ai/chats?new.
+  useEffect(() => {
+    if (windowed || !loaded) return;
+    const onNavigate = () => {
+      if (!new URLSearchParams(location.search).has("new")) return;
+      history.replaceState({}, "", location.pathname);
+      newChat();
+    };
+    onNavigate();
+    addEventListener("popstate", onNavigate);
+    return () => removeEventListener("popstate", onNavigate);
+  }, [windowed, loaded, connectors]);
   // Where a tab dragged over pane would land, or undefined when it can't drop there.
   function splitDrop(event: DragEvent<HTMLElement>, chatID: string) {
     const chat = dragged.current;
