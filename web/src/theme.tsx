@@ -28,9 +28,12 @@ export const palettes = [
   { id: "lime", name: "Lime Pop" },
   { id: "custom", name: "Custom" },
 ] as const;
-export type Palette = (typeof palettes)[number]["id"];
+// A built-in palette id, or `custom:<id>` for a saved theme.
+export type Palette = (typeof palettes)[number]["id"] | `custom:${string}`;
 export type CustomTheme = { primary: string; secondary: string; base: string; sidebar_from: string; sidebar_to: string };
-type Prefs = { mode: Mode; palette: Palette; style: SidebarStyle; custom: CustomTheme };
+export type SavedTheme = { id: string; name: string; colors: CustomTheme };
+// preview: unsaved colours for a saved theme while it's being edited.
+type Prefs = { mode: Mode; palette: Palette; style: SidebarStyle; custom: CustomTheme; saved: SavedTheme[]; preview?: SavedTheme };
 
 // Patio's own colours, so a fresh custom theme starts from the default look.
 export const defaultCustomTheme: CustomTheme = {
@@ -48,17 +51,25 @@ function read(): Prefs {
   const mode = localStorage.getItem("theme");
   const palette = localStorage.getItem("palette");
   let custom = defaultCustomTheme;
+  let saved: SavedTheme[] = [];
   try {
     custom = { ...custom, ...JSON.parse(localStorage.getItem("custom-theme") ?? "{}") };
+    saved = JSON.parse(localStorage.getItem("custom-themes") ?? "[]");
   } catch {
     // A broken cache falls back to the defaults; the DB copy loads in initTheme.
   }
   return {
     mode: mode === "light" || mode === "dark" ? mode : "system",
-    palette: palettes.find((p) => p.id === palette)?.id ?? "patio",
+    palette: knownPalette(palette ?? "", saved),
     style: localStorage.getItem("sidebar-style") === "flat" ? "flat" : "gradient",
     custom,
+    saved,
   };
+}
+
+function knownPalette(palette: string, saved: SavedTheme[]): Palette {
+  const known = palettes.some((p) => p.id === palette) || saved.some((theme) => `custom:${theme.id}` === palette);
+  return known ? (palette as Palette) : "patio";
 }
 
 // sRGB hex → oklch [lightness 0–1, chroma, hue°] (Björn Ottosson's OKLab matrices).
@@ -156,15 +167,34 @@ function applyCustom() {
     style.id = "custom-theme";
     document.head.append(style);
   }
-  style.textContent =
-    `[data-palette="custom"] { ${customVars(prefs.custom, "light")} }\n` +
-    `[data-theme="dark"][data-palette="custom"], [data-theme="dark"] [data-palette="custom"] { ${customVars(prefs.custom, "dark")} }`;
+  const rules = (palette: string, colors: CustomTheme) =>
+    `[data-palette="${palette}"] { ${customVars(colors, "light")} }\n` +
+    `[data-theme="dark"][data-palette="${palette}"], [data-theme="dark"] [data-palette="${palette}"] { ${customVars(colors, "dark")} }`;
+  style.textContent = [
+    rules("custom", prefs.custom),
+    ...prefs.saved.map((theme) => rules(`custom:${theme.id}`, prefs.preview?.id === theme.id ? prefs.preview.colors : theme.colors)),
+  ].join("\n");
 }
 
 /** Previews and caches a custom theme; the caller saves it to the DB. */
 export function setCustomTheme(custom: CustomTheme) {
   prefs = { ...prefs, custom };
   localStorage.setItem("custom-theme", JSON.stringify(custom));
+  applyCustom();
+  listeners.forEach((listener) => listener());
+}
+
+/** Caches the saved themes the DB returned; a deleted selected theme falls back to Patio. */
+export function setSavedThemes(saved: SavedTheme[]) {
+  prefs = { ...prefs, saved, preview: undefined };
+  localStorage.setItem("custom-themes", JSON.stringify(saved));
+  applyCustom();
+  setThemePrefs({ palette: knownPalette(prefs.palette, saved) });
+}
+
+/** Shows unsaved colours for a saved theme without caching them; undefined drops the preview. */
+export function previewSavedTheme(preview: SavedTheme | undefined) {
+  prefs = { ...prefs, preview };
   applyCustom();
   listeners.forEach((listener) => listener());
 }
@@ -201,6 +231,11 @@ export function initTheme() {
     // An edit made while this loads is newer than the DB copy; keep it.
     .then((saved) => saved && prefs.custom === cached && setCustomTheme(saved))
     .catch((reason) => console.error("load custom theme", reason));
+  const cachedSaved = prefs.saved;
+  api
+    .get<SavedTheme[]>("/api/settings/custom-themes")
+    .then((saved) => prefs.saved === cachedSaved && setSavedThemes(saved))
+    .catch((reason) => console.error("load custom themes", reason));
   dark.addEventListener("change", () => {
     if (prefs.mode !== "system") return;
     prefs = { ...prefs };
