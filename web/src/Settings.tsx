@@ -35,6 +35,7 @@ import {
 import { confirmDialog } from "./confirm";
 import Picker from "./Picker";
 import ModelPicker from "./ModelPicker";
+import EffortPicker from "./EffortPicker";
 import { useModels } from "./Chats";
 import { openNotificationSettings, useNotificationsBlocked } from "./Notifications";
 import { locale, setLanguage, useLanguage, useText, type Language } from "./i18n";
@@ -127,7 +128,7 @@ const text = {
     folder: "Folder",
     scratchFolder: "Scratch folder (no files shared)",
     autoAllow: "Auto-allow file changes and commands",
-    thinking: "Thinking",
+    effort: "Reasoning effort",
     showThinking: "Show thinking",
     aiTitles: "AI chat titles",
     aiTitlesHint: "Name new chats with a short AI title after the first reply. Renamed chats keep their title.",
@@ -254,7 +255,7 @@ const text = {
     folder: "Carpeta",
     scratchFolder: "Carpeta temporal (sin archivos compartidos)",
     autoAllow: "Permitir cambios de archivos y comandos automáticamente",
-    thinking: "Razonamiento",
+    effort: "Esfuerzo de razonamiento",
     showThinking: "Mostrar razonamiento",
     aiTitles: "Títulos de chat con IA",
     aiTitlesHint: "Nombra los chats nuevos con un título corto de IA tras la primera respuesta. Los chats renombrados conservan su título.",
@@ -1002,6 +1003,10 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
                 </div>
               )}
               <label>
+                {t.effort}
+                <EffortPicker value={defaults.effort} onChange={(effort) => save({ effort })} />
+              </label>
+              <label>
                 {t.folder}
                 <Picker
                   label={t.folder}
@@ -1017,11 +1022,6 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
               label={t.autoAllow}
               checked={defaults.auto_allow}
               onChange={(auto_allow) => save({ auto_allow })}
-            />
-            <Switch
-              label={t.thinking}
-              checked={defaults.thinking}
-              onChange={(thinking) => save({ thinking })}
             />
             <Switch
               label={t.showThinking}

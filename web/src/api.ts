@@ -7,12 +7,13 @@ export type Board = {
   updated_at: string;
 };
 export type Config = { show_hidden: boolean; version: string };
+export type Effort = "default" | "small" | "medium" | "high" | "xhigh";
 export type ChatDefaults = {
   connector_id: string | null;
   model: string;
   folder: string | null;
   auto_allow: boolean;
-  thinking: boolean;
+  effort: Effort;
   default_bot_id: string;
   show_thinking: boolean;
   language: "system" | "en" | "es";
@@ -208,7 +209,7 @@ export type Chat = {
   pending_count?: number;
   paused?: boolean;
   paused_reason?: "hop_cap" | "error";
-  thinking: boolean;
+  effort: Effort;
   show_thinking: boolean;
   auto_allow: boolean;
   capabilities: { thinking: { supported: boolean; reason: string }; steer: boolean };
@@ -226,6 +227,7 @@ export type Bot = {
   color: string;
   connector_id: string | null;
   model: string;
+  effort: Effort;
 };
 export type WorkflowNode = { id: string; bot_id: string; x: number; y: number; connector_id?: string | null; model?: string; mode?: "auto" | "wait" };
 export type WorkflowEdge = { id: string; from: string; to: string; report_back: boolean; instruction: string; timeout_minutes: number };
@@ -265,7 +267,7 @@ export type ScheduledTask = {
   bot_id: string | null;
   model: string;
   folder: string | null;
-  thinking: boolean;
+  effort: Effort;
   auto_allow: boolean;
   schedule: string;
   run_at: string | null;

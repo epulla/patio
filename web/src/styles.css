@@ -4249,10 +4249,14 @@ main.chat-window .app-version {
 .composer-model > .muted {
   white-space: nowrap;
 }
-.composer-model .model-trigger {
+.composer-model .model-trigger,
+.composer-model .picker-trigger {
   height: 32px;
   max-width: 220px;
   font-size: 13px;
+}
+.composer-model .picker-trigger {
+  max-width: 170px;
 }
 /* Narrow composers (side dock): keep one row by showing the page chip as an icon and dropping the
    model picker while a reply runs (it is disabled then anyway); wrap only as a last resort. */
@@ -4267,6 +4271,9 @@ main.chat-window .app-version {
   }
   .composer-model .model-trigger {
     max-width: 150px;
+  }
+  .composer-model .picker-trigger {
+    max-width: 110px;
   }
 }
 @container (max-width: 440px) {

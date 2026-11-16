@@ -1,10 +1,11 @@
 import { confirmDialog } from "./confirm";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { api, type Bot, type ChatDefaults, type Connector } from "./api";
+import { api, type Bot, type ChatDefaults, type Connector, type Effort } from "./api";
 import { ErrorText, navigate } from "./App";
 import { startModel, useModels } from "./Chats";
 import { ConnectorRequired } from "./Connectors";
 import ModelPicker from "./ModelPicker";
+import EffortPicker from "./EffortPicker";
 import Picker from "./Picker";
 import History from "./History";
 import { forgetMentionUsers } from "./mentions";
@@ -18,7 +19,7 @@ const text = {
     empty: "No bots yet", count: (n: number) => `${n} bot${n === 1 ? "" : "s"}`, back: "Bots", gone: "This bot no longer exists.", create: "create a bot",
     name: "Name", nameTitle: "Letters, digits and _ only: it's how you @mention the bot", description: "Role", descriptionPlaceholder: "Developer: writes and tests code",
     persona: "Persona prompt", personaPlaceholder: "You are Billy, a careful developer. Keep changes small and always run the tests.",
-    color: "Color", connector: "Connector", model: "Model", loadingModels: "Loading models", noConnector: "No connector",
+    color: "Color", connector: "Connector", model: "Model", effort: "Reasoning effort", loadingModels: "Loading models", noConnector: "No connector",
     save: "Save", saved: "Saved", createBot: "Create bot", delete: (name: string) => `Delete ${name}`, confirmDelete: (name: string) => `Delete bot "${name}"?`, protected: "Martin is the built-in bot; you can edit him but not delete him.",
     training: "Training", trainingHelp: "Skills and memories only this bot (and any other bots you chose) can see. Everything else is shared by all bots.", trainingEmpty: "Nothing bot-only yet.", skill: "Skill", memory: "Memory",
     addItem: "Add a skill or memory", removeItem: (name: string) => `Remove ${name} from this bot`,
@@ -30,7 +31,7 @@ const text = {
     empty: "Aún no hay bots", count: (n: number) => `${n} bot${n === 1 ? "" : "s"}`, back: "Bots", gone: "Este bot ya no existe.", create: "crear un bot",
     name: "Nombre", nameTitle: "Solo letras, números y _: así lo mencionas con @", description: "Rol", descriptionPlaceholder: "Desarrollador: escribe y prueba código",
     persona: "Instrucciones de personalidad", personaPlaceholder: "Eres Billy, un desarrollador cuidadoso. Haz cambios pequeños y siempre ejecuta las pruebas.",
-    color: "Color", connector: "Conector", model: "Modelo", loadingModels: "Cargando modelos", noConnector: "Sin conector",
+    color: "Color", connector: "Conector", model: "Modelo", effort: "Esfuerzo de razonamiento", loadingModels: "Cargando modelos", noConnector: "Sin conector",
     save: "Guardar", saved: "Guardado", createBot: "Crear bot", delete: (name: string) => `Eliminar ${name}`, confirmDelete: (name: string) => `¿Eliminar el bot "${name}"?`, protected: "Martin es el bot incluido; puedes editarlo, pero no eliminarlo.",
     training: "Entrenamiento", trainingHelp: "Habilidades y recuerdos que solo ve este bot (y los otros bots que elegiste). Todo lo demás lo comparten todos los bots.", trainingEmpty: "Aún no hay nada exclusivo de este bot.", skill: "Habilidad", memory: "Recuerdo",
     addItem: "Agregar una habilidad o recuerdo", removeItem: (name: string) => `Quitar ${name} de este bot`,
@@ -179,6 +180,7 @@ function BotEditor({
   const [color, setColor] = useState(bot?.color || "#3b82f6");
   const [connectorID, setConnectorID] = useState(bot?.connector_id ?? "");
   const [model, setModel] = useState(bot?.model ?? "");
+  const [effort, setEffort] = useState<Effort>(bot?.effort ?? "default");
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
@@ -199,7 +201,7 @@ function BotEditor({
     setModel(startModel(connectors, defaults, id));
   }, [defaults, connectors]);
 
-  const fields = { name: name.trim(), description, persona_prompt: persona, color, connector_id: connectorID || null, model };
+  const fields = { name: name.trim(), description, persona_prompt: persona, color, connector_id: connectorID || null, model, effort };
   const dirty = !bot || Object.entries(fields).some(([key, value]) => value !== bot[key as keyof Bot]);
 
   async function submit(event: FormEvent) {
@@ -266,6 +268,10 @@ function BotEditor({
             </span>
             <ModelPicker models={models} value={model} loading={modelsLoading} pinKind={connectors?.find((c) => c.id === connectorID)?.kind} onChange={setModel} />
           </div>
+          <label>
+            {t.effort}
+            <EffortPicker value={effort} onChange={setEffort} />
+          </label>
         </div>
         <label>
           {t.persona}
