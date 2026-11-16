@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -17,12 +18,15 @@ import (
 )
 
 type selectableModel struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Description string `json:"description"`
+	ID          string    `json:"id"`
+	Label       string    `json:"label"`
+	Description string    `json:"description"`
+	Efforts     *[]string `json:"efforts,omitempty"`
 }
 
 var defaultModel = selectableModel{ID: "", Label: "Default", Description: "Use connector default"}
+var claudeEfforts = []string{"low", "medium", "high", "xhigh", "max"}
+var copilotEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	var c struct {
@@ -46,20 +50,31 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	if c.Kind == "local" {
 		clearLocalModelCapabilities(c.ID)
 	}
+	defaultEntry := defaultModel
+	if c.Kind == "claude" {
+		defaultEntry.Efforts = &claudeEfforts
+	}
+	if c.Kind == "copilot" {
+		defaultEntry.Efforts = &copilotEfforts
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String)
+	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry)
 	if err != nil {
 		write(w, http.StatusOK, map[string]any{"models": []selectableModel{defaultModel}, "note": err.Error()})
 		return
 	}
-	write(w, http.StatusOK, map[string][]selectableModel{"models": append([]selectableModel{defaultModel}, models...)})
+	if c.Kind == "codex" && len(models) > 0 {
+		efforts := append([]string{}, (*models[0].Efforts)...)
+		defaultEntry.Efforts = &efforts
+	}
+	write(w, http.StatusOK, map[string][]selectableModel{"models": append([]selectableModel{defaultEntry}, models...)})
 }
 
-func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, configDir string) ([]selectableModel, error) {
+func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, configDir string, defaultEntry *selectableModel) ([]selectableModel, error) {
 	switch kind {
 	case "claude":
-		return []selectableModel{{"opus", "Opus", "Most capable"}, {"sonnet", "Sonnet", "Fast and capable"}, {"haiku", "Haiku", "Fastest"}}, nil
+		return []selectableModel{{ID: "opus", Label: "Opus", Description: "Most capable", Efforts: &claudeEfforts}, {ID: "sonnet", Label: "Sonnet", Description: "Fast and capable", Efforts: &claudeEfforts}, {ID: "haiku", Label: "Haiku", Description: "Fastest", Efforts: &claudeEfforts}}, nil
 	case "codex":
 		path, err := connectorcli.Find(kind)
 		if err != nil {
@@ -106,9 +121,15 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 			return nil, runErr
 		}
 		if kind == "opencode" {
-			return parseOpenCodeModels(string(output)), nil
+			models := parseOpenCodeModels(string(output))
+			addOpenCodeEfforts(ctx, path, env, models, defaultEntry)
+			return models, nil
 		}
-		return parseCopilotModels(string(output)), nil
+		models := parseCopilotModels(string(output))
+		for i := range models {
+			models[i].Efforts = &copilotEfforts
+		}
+		return models, nil
 	case "local":
 		secret, err := keyring.Get(connectorService, connectorSecret(id))
 		if errors.Is(err, keyring.ErrNotFound) {
@@ -138,9 +159,59 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 func convertModels(models []connectorcli.Model) []selectableModel {
 	out := make([]selectableModel, 0, len(models))
 	for _, model := range models {
-		out = append(out, selectableModel{model.ID, model.Label, model.Description})
+		efforts := append([]string{}, model.Efforts...)
+		out = append(out, selectableModel{ID: model.ID, Label: model.Label, Description: model.Description, Efforts: &efforts})
 	}
 	return out
+}
+
+func addOpenCodeEfforts(ctx context.Context, path string, env []string, models []selectableModel, defaultEntry *selectableModel) {
+	output, err := connectorcli.OpencodeCommandCombinedOutput(ctx, path, []string{"api", "GET", "/api/model"}, env)
+	if err == nil {
+		var catalog struct {
+			Data []struct {
+				ID         string `json:"id"`
+				ProviderID string `json:"providerID"`
+				Variants   *[]struct {
+					ID string `json:"id"`
+				} `json:"variants"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(output, &catalog) == nil && catalog.Data != nil {
+			for _, model := range catalog.Data {
+				if model.Variants == nil {
+					continue
+				}
+				id := model.ProviderID + "/" + model.ID
+				for i := range models {
+					if models[i].ID == id {
+						efforts := make([]string, 0, len(*model.Variants))
+						for _, variant := range *model.Variants {
+							efforts = append(efforts, variant.ID)
+						}
+						models[i].Efforts = &efforts
+					}
+				}
+			}
+		}
+	}
+	output, err = connectorcli.OpencodeCommandCombinedOutput(ctx, path, []string{"api", "GET", "/api/model/default"}, env)
+	if err == nil {
+		var response struct {
+			Data struct {
+				Variants *[]struct {
+					ID string `json:"id"`
+				} `json:"variants"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(output, &response) == nil && response.Data.Variants != nil {
+			efforts := make([]string, 0, len(*response.Data.Variants))
+			for _, variant := range *response.Data.Variants {
+				efforts = append(efforts, variant.ID)
+			}
+			defaultEntry.Efforts = &efforts
+		}
+	}
 }
 
 func parseOpenCodeModels(output string) []selectableModel {

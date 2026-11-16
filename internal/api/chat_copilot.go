@@ -113,7 +113,7 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	}
 	args := []string{"--acp", "--stdio"}
 	args = append(args, "--additional-mcp-config", "@"+configPath)
-	if value := effortFor(c.Effort, []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}); value != "" {
+	if value := effortFor(c.Effort, copilotEfforts); value != "" {
 		args = append(args, "--reasoning-effort", value)
 	}
 	process, err := factory(path, args, connectorcli.Env("copilot", configDir, secret), c.Workdir)

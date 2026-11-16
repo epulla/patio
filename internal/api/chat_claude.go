@@ -86,7 +86,7 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		}
 		args = append(args, "--append-system-prompt", prompt)
 	}
-	if value := effortFor(c.Effort, []string{"low", "medium", "high", "xhigh", "max"}); value != "" {
+	if value := effortFor(c.Effort, claudeEfforts); value != "" {
 		args = append(args, "--effort", value)
 	}
 	factory := m.options.processFactory
