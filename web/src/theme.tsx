@@ -44,6 +44,43 @@ export const defaultCustomTheme: CustomTheme = {
   sidebar_to: "#c2460d",
 };
 
+export const themeColor = /^#[0-9a-f]{6}$/i;
+const colorKeys = ["primary", "secondary", "base", "sidebar_from", "sidebar_to"] as const;
+
+/** Reads a theme shared as JSON `{name, colors}`; undefined unless every colour is #rrggbb. */
+export function parseSharedTheme(json: string): { name: string; colors: CustomTheme } | undefined {
+  try {
+    const { name, colors } = JSON.parse(json);
+    if (!colorKeys.every((key) => typeof colors?.[key] === "string" && themeColor.test(colors[key]))) return undefined;
+    return { name: typeof name === "string" ? name : "", colors: Object.fromEntries(colorKeys.map((key) => [key, colors[key].toLowerCase()])) as CustomTheme };
+  } catch {
+    return undefined;
+  }
+}
+
+function hslHex(h: number, s: number, l: number) {
+  const channel = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const value = l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(value * 255).toString(16).padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
+}
+
+/** Random related colours; customVars keeps any pick readable. */
+export function randomCustomTheme(): CustomTheme {
+  const random = (min: number, max: number) => min + Math.random() * (max - min);
+  const hue = random(0, 360);
+  const near = (offset: number) => (hue + offset + 360) % 360;
+  return {
+    primary: hslHex(hue, random(0.6, 0.9), random(0.45, 0.6)),
+    secondary: hslHex(near(random(90, 270)), random(0.5, 0.8), 0.5),
+    base: hslHex(near(random(-30, 30)), random(0.2, 0.6), 0.92),
+    sidebar_from: hslHex(near(random(-20, 20)), random(0.6, 0.9), 0.4),
+    sidebar_to: hslHex(near(random(30, 90)), random(0.6, 0.9), 0.45),
+  };
+}
+
 const dark = matchMedia("(prefers-color-scheme: dark)");
 const listeners = new Set<() => void>();
 
