@@ -1133,7 +1133,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 				return
 			}
 			_ = resp.Body.Close()
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			if resp.StatusCode == http.StatusNotFound {
+				log.Printf("OpenCode permission %s for chat %s already resolved; ignoring answer", permission.ID, driver.chatID)
+			} else if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				driver.fail(fmt.Errorf("answer opencode permission returned %s", resp.Status))
 			}
 		}()
@@ -1430,7 +1432,9 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 				return
 			}
 			_ = resp.Body.Close()
-			if resp.StatusCode != http.StatusNoContent {
+			if resp.StatusCode == http.StatusNotFound {
+				log.Printf("OpenCode permission %s for chat %s already resolved; ignoring answer", permission.ID, driver.chatID)
+			} else if resp.StatusCode != http.StatusNoContent {
 				driver.fail(fmt.Errorf("answer opencode permission returned %s", resp.Status))
 			}
 		}()

@@ -178,7 +178,7 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 		id       string
 		allow    bool
 		response string
-	}{{"per-once", true, "once"}, {"per-reject", false, "reject"}} {
+	}{{"per-once", true, "once"}, {"per-reject", false, "reject"}, {"stale-once", true, "once"}} {
 		if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "permission test"}, nil); code != http.StatusAccepted {
 			t.Fatalf("permission turn send status = %d", code)
 		}
@@ -196,6 +196,10 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 		}
 		fake.publish(t, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": firstSession, "status": map[string]any{"type": "idle"}}})
 		waitFor(t, func() bool { return !server.chats.Running(chatID) })
+		var failures int
+		if err := database.QueryRow(`SELECT count(*) FROM chat_message WHERE chat_id=? AND role='error'`, chatID).Scan(&failures); err != nil || failures != 0 {
+			t.Fatalf("%s: error messages = %d, %v", answer.id, failures, err)
+		}
 	}
 
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "abort me"}, nil); code != http.StatusAccepted {
@@ -457,6 +461,10 @@ func (f *openCodeFake) start(args, env []string) (opencodeProcess, error) {
 			f.permissions[permissionID] = body.Response
 			f.mu.Unlock()
 			f.permissionDone <- permissionID
+			if strings.HasPrefix(permissionID, "stale-") {
+				http.NotFound(w, r)
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
