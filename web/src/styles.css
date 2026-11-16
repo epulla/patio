@@ -4975,6 +4975,26 @@ main.chat-window .app-version {
   gap: 8px;
   font-size: 14px;
 }
+.custom-theme-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.custom-theme-name label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.custom-theme-name .muted {
+  padding-bottom: 8px;
+  font-size: 12px;
+}
+.custom-theme-name .error {
+  flex-basis: 100%;
+  margin: 0;
+}
 .palette-swatch {
   width: 28px;
   height: 28px;

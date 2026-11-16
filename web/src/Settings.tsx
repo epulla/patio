@@ -18,13 +18,18 @@ import Switch from "./Switch";
 import {
   defaultCustomTheme,
   palettes,
+  previewSavedTheme,
   setCustomTheme,
+  setSavedThemes,
   setThemePrefs,
   useThemePrefs,
   type CustomTheme,
   type Mode,
+  type Palette,
+  type SavedTheme,
   type SidebarStyle,
 } from "./theme";
+import { confirmDialog } from "./confirm";
 import Picker from "./Picker";
 import ModelPicker from "./ModelPicker";
 import { useModels } from "./Chats";
@@ -93,6 +98,14 @@ const text = {
     customSidebarFrom: "Sidebar start",
     customSidebarTo: "Sidebar end",
     reset: "Reset",
+    saveAs: "Save as…",
+    themeName: "Theme name",
+    save: "Save",
+    rename: "Rename",
+    cancel: "Cancel",
+    delete: "Delete",
+    deleteTheme: (name: string) => `Delete the theme “${name}”?`,
+    nameTaken: "A theme with this name already exists.",
     defaults: "Defaults",
     defaultsHelp: "New chats start with these. Each chat can change them afterwards.",
     connector: "Connector",
@@ -203,6 +216,14 @@ const text = {
     customSidebarFrom: "Inicio de la barra lateral",
     customSidebarTo: "Fin de la barra lateral",
     reset: "Restablecer",
+    saveAs: "Guardar como…",
+    themeName: "Nombre del tema",
+    save: "Guardar",
+    rename: "Renombrar",
+    cancel: "Cancelar",
+    delete: "Eliminar",
+    deleteTheme: (name: string) => `¿Eliminar el tema «${name}»?`,
+    nameTaken: "Ya existe un tema con este nombre.",
     defaults: "Valores predeterminados",
     defaultsHelp: "Los chats nuevos empiezan con estos valores. Cada chat puede cambiarlos después.",
     connector: "Conector",
@@ -534,7 +555,49 @@ export function Appearance() {
   const prefs = useThemePrefs();
   const language = useLanguage();
   const [error, setError] = useState<unknown>();
+  const [naming, setNaming] = useState<{ rename: boolean; name: string }>();
   const saveTimer = useRef<number>(undefined);
+  const selected = prefs.saved.find((theme) => `custom:${theme.id}` === prefs.palette);
+  const editing = selected && prefs.preview?.id === selected.id ? prefs.preview : selected;
+  const colors = editing?.colors ?? prefs.custom;
+  const nameTaken = naming && prefs.saved.some((theme) => theme.id !== (naming.rename ? selected?.id : undefined) && theme.name.toLowerCase() === naming.name.trim().toLowerCase());
+
+  // Unsaved edits to a saved theme are only a preview; leaving Appearance drops them.
+  useEffect(() => () => previewSavedTheme(undefined), []);
+
+  function selectPalette(palette: Palette) {
+    previewSavedTheme(undefined);
+    setNaming(undefined);
+    setThemePrefs({ palette });
+  }
+
+  async function saveThemes(list: SavedTheme[], select?: Palette) {
+    try {
+      setSavedThemes(await api.put<SavedTheme[]>("/api/settings/custom-themes", list));
+      if (select) setThemePrefs({ palette: select });
+      setNaming(undefined);
+      setError(undefined);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  function submitName(event: FormEvent) {
+    event.preventDefault();
+    if (!naming || nameTaken || !naming.name.trim()) return;
+    const name = naming.name.trim();
+    if (naming.rename && editing) {
+      // Renaming also keeps colour edits made so far.
+      void saveThemes(prefs.saved.map((theme) => (theme.id === editing.id ? { ...editing, name } : theme)));
+      return;
+    }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    void saveThemes([...prefs.saved, { id, name, colors: prefs.custom }], `custom:${id}`);
+  }
+
+  async function deleteTheme(theme: SavedTheme) {
+    if (await confirmDialog(t.deleteTheme(theme.name))) void saveThemes(prefs.saved.filter((saved) => saved.id !== theme.id));
+  }
 
   // Colour inputs fire on every drag step: preview each one, save once the user pauses.
   function editCustom(next: CustomTheme, delay = 400) {
@@ -611,16 +674,29 @@ export function Appearance() {
                 name="palette"
                 value={palette.id}
                 checked={prefs.palette === palette.id}
-                onChange={() => setThemePrefs({ palette: palette.id })}
+                onChange={() => selectPalette(palette.id)}
               />
               <span className="palette-swatch" aria-hidden="true" />
               {palette.id === "custom" ? t.custom : palette.name}
             </label>
           ))}
+          {prefs.saved.map((theme) => (
+            <label key={theme.id} className="palette-option" data-palette={`custom:${theme.id}`}>
+              <input
+                type="radio"
+                name="palette"
+                value={`custom:${theme.id}`}
+                checked={prefs.palette === `custom:${theme.id}`}
+                onChange={() => selectPalette(`custom:${theme.id}`)}
+              />
+              <span className="palette-swatch" aria-hidden="true" />
+              {theme.name}
+            </label>
+          ))}
         </fieldset>
-        {prefs.palette === "custom" && (
+        {(prefs.palette === "custom" || editing) && (
           <fieldset className="custom-theme">
-            <legend>{t.customColors}</legend>
+            <legend>{editing?.name ?? t.customColors}</legend>
             {(
               [
                 ["primary", t.customPrimary],
@@ -631,14 +707,68 @@ export function Appearance() {
               ] as const
             ).map(([key, label]) => (
               <label key={key}>
-                <input type="color" value={prefs.custom[key]} onChange={(event) => editCustom({ ...prefs.custom, [key]: event.target.value })} />
+                <input
+                  type="color"
+                  value={colors[key]}
+                  onChange={(event) => {
+                    const next = { ...colors, [key]: event.target.value };
+                    if (editing) previewSavedTheme({ ...editing, colors: next });
+                    else editCustom(next);
+                  }}
+                />
                 {label}
               </label>
             ))}
-            <button type="button" className="ghost" onClick={() => editCustom(defaultCustomTheme, 0)}>
-              {t.reset}
-            </button>
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={editing === selected}
+                  onClick={() => saveThemes(prefs.saved.map((theme) => (theme.id === editing.id ? editing : theme)))}
+                >
+                  {t.save}
+                </button>
+                <button type="button" className="ghost" onClick={() => setNaming({ rename: true, name: editing.name })}>
+                  {t.rename}
+                </button>
+                <button type="button" className="danger-text" onClick={() => deleteTheme(editing)}>
+                  {t.delete}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="ghost" onClick={() => editCustom(defaultCustomTheme, 0)}>
+                  {t.reset}
+                </button>
+                <button type="button" className="ghost" onClick={() => setNaming({ rename: false, name: "" })}>
+                  {t.saveAs}
+                </button>
+              </>
+            )}
           </fieldset>
+        )}
+        {naming && (
+          <form className="custom-theme-name" onSubmit={submitName}>
+            <label>
+              {t.themeName}
+              <input
+                autoFocus
+                maxLength={24}
+                value={naming.name}
+                aria-invalid={nameTaken || undefined}
+                onChange={(event) => setNaming({ ...naming, name: event.target.value })}
+              />
+            </label>
+            <span className="muted">{naming.name.length}/24</span>
+            <button type="submit" className="ghost" disabled={!naming.name.trim() || nameTaken}>
+              {t.save}
+            </button>
+            <button type="button" className="ghost" onClick={() => setNaming(undefined)}>
+              {t.cancel}
+            </button>
+            {nameTaken && <p className="error" role="alert">{t.nameTaken}</p>}
+          </form>
         )}
         <ErrorText error={error} />
       </section>
