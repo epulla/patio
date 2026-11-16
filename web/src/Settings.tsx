@@ -824,7 +824,6 @@ export function Appearance() {
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const t = useText(text);
   const id = useId();
-  const picker = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value);
 
   useEffect(() => setDraft(value), [value]);
@@ -834,7 +833,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
       <label htmlFor={id}>{label}</label>
       <div className="color-pill" style={{ "--pill": value } as CSSProperties}>
         <span className="color-dot">
-          <input ref={picker} type="color" tabIndex={-1} aria-hidden="true" value={value} onChange={(event) => onChange(event.target.value)} />
+          <input type="color" aria-label={t.pickColor(label)} title={t.pickColor(label)} value={value} onChange={(event) => onChange(event.target.value)} />
         </span>
         <input
           id={id}
@@ -850,7 +849,6 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
           }}
           onBlur={() => setDraft(value)}
         />
-        <IconButton type="button" className="ghost" icon="pencil" label={t.pickColor(label)} onClick={() => picker.current?.click()} />
       </div>
     </div>
   );
