@@ -1885,6 +1885,10 @@ button.ticket-link-item {
   font-weight: inherit;
   text-align: left;
 }
+/* The row already tints on hover; a second tint on the button looked like a dark box. */
+.ticket-link-list button.ticket-link-item:hover {
+  background: transparent;
+}
 button.ticket-link-item svg {
   flex-shrink: 0;
   width: 14px;
