@@ -1,5 +1,5 @@
 import { startTour } from "./Tour";
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent } from "react";
 import { ShortcutList } from "./Shortcuts";
 import { WhatsNewDialog } from "./WhatsNew";
 import {
@@ -18,10 +18,13 @@ import Switch from "./Switch";
 import {
   defaultCustomTheme,
   palettes,
+  parseSharedTheme,
   previewSavedTheme,
+  randomCustomTheme,
   setCustomTheme,
   saveSavedThemes,
   setThemePrefs,
+  themeColor,
   useThemePrefs,
   type CustomTheme,
   type Mode,
@@ -91,15 +94,24 @@ const text = {
     gradient: "Gradient",
     palette: "Palette",
     custom: "Custom",
-    customColors: "Custom colours",
+    themesTab: "Themes",
+    customTab: "Custom theme",
     customPrimary: "Primary",
     customSecondary: "Secondary",
     customBase: "Background",
     customSidebarFrom: "Sidebar start",
     customSidebarTo: "Sidebar end",
     reset: "Reset",
-    saveAs: "Save as…",
+    saveAsNew: "Save as new theme",
     themeName: "Theme name",
+    surprise: "Surprise me",
+    share: "Copy theme to share",
+    importTheme: "Import theme",
+    importHelp: "Paste a theme someone shared with you.",
+    importInvalid: "That isn't a Patio theme.",
+    imported: "Imported theme",
+    pickColor: (label: string) => `Pick ${label.toLowerCase()} colour`,
+    close: "Close",
     save: "Save",
     rename: "Rename",
     cancel: "Cancel",
@@ -209,15 +221,24 @@ const text = {
     gradient: "Degradado",
     palette: "Paleta",
     custom: "Personalizada",
-    customColors: "Colores personalizados",
+    themesTab: "Temas",
+    customTab: "Tema personalizado",
     customPrimary: "Principal",
     customSecondary: "Secundario",
     customBase: "Fondo",
     customSidebarFrom: "Inicio de la barra lateral",
     customSidebarTo: "Fin de la barra lateral",
     reset: "Restablecer",
-    saveAs: "Guardar como…",
+    saveAsNew: "Guardar como tema nuevo",
     themeName: "Nombre del tema",
+    surprise: "Sorpréndeme",
+    share: "Copiar tema para compartir",
+    importTheme: "Importar tema",
+    importHelp: "Pega un tema que alguien compartió contigo.",
+    importInvalid: "Eso no es un tema de Patio.",
+    imported: "Tema importado",
+    pickColor: (label: string) => `Elegir color: ${label.toLowerCase()}`,
+    close: "Cerrar",
     save: "Guardar",
     rename: "Renombrar",
     cancel: "Cancelar",
@@ -555,7 +576,10 @@ export function Appearance() {
   const prefs = useThemePrefs();
   const language = useLanguage();
   const [error, setError] = useState<unknown>();
+  const [tab, setTab] = useState<"themes" | "custom">("themes");
   const [naming, setNaming] = useState<{ rename: boolean; name: string }>();
+  const [importing, setImporting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const saveTimer = useRef<number>(undefined);
   const saving = prefs.savingThemes;
   const selected = prefs.saved.find((theme) => `custom:${theme.id}` === prefs.palette);
@@ -583,25 +607,49 @@ export function Appearance() {
     }
   }
 
+  function addTheme(name: string, colors: CustomTheme) {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    void saveThemes([...prefs.saved, { id, name, colors }], `custom:${id}`);
+  }
+
   function submitName(event: FormEvent) {
     event.preventDefault();
     if (!naming || nameTaken || !naming.name.trim()) return;
     const name = naming.name.trim();
-    if (naming.rename && editing) {
-      // Renaming also keeps colour edits made so far.
-      void saveThemes(prefs.saved.map((theme) => (theme.id === editing.id ? { ...editing, name } : theme)));
-      return;
-    }
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    void saveThemes([...prefs.saved, { id, name, colors: prefs.custom }], `custom:${id}`);
+    // Renaming also keeps colour edits made so far.
+    if (naming.rename && editing) void saveThemes(prefs.saved.map((theme) => (theme.id === editing.id ? { ...editing, name } : theme)));
+    else addTheme(name, colors);
   }
 
   async function deleteTheme(theme: SavedTheme) {
     if (await confirmDialog(t.deleteTheme(theme.name))) void saveThemes(prefs.saved.filter((saved) => saved.id !== theme.id));
   }
 
-  // Colour inputs fire on every drag step: preview each one, save once the user pauses.
-  function editCustom(next: CustomTheme, delay = 400) {
+  // Imported names keep at most 24 characters and get a number when taken.
+  function importTheme(shared: { name: string; colors: CustomTheme }) {
+    const base = Array.from(shared.name.trim() || t.imported);
+    const taken = new Set(prefs.saved.map((theme) => theme.name.toLowerCase()));
+    for (let n = 1; ; n++) {
+      const suffix = n === 1 ? "" : ` ${n}`;
+      const name = base.slice(0, 24 - suffix.length).join("").trimEnd() + suffix;
+      if (!taken.has(name.toLowerCase())) return addTheme(name, shared.colors);
+    }
+  }
+
+  async function share() {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify({ name: editing?.name ?? t.custom, colors }, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (reason) {
+      setError(reason);
+    }
+  }
+
+  // Colour inputs fire on every drag step: preview each one; the unsaved Custom theme saves once the user pauses.
+  function editColors(next: CustomTheme, delay = 400) {
+    if (editing) return previewSavedTheme({ ...editing, colors: next });
+    if (prefs.palette !== "custom") setThemePrefs({ palette: "custom" });
     setCustomTheme(next);
     clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -666,114 +714,195 @@ export function Appearance() {
             />
           </label>
         </div>
-        <fieldset className="palette-picker" data-tour="palette" disabled={saving}>
-          <legend>{t.palette}</legend>
-          {palettes.map((palette) => (
-            <label key={palette.id} className="palette-option" data-palette={palette.id}>
-              <input
-                type="radio"
-                name="palette"
-                value={palette.id}
-                checked={prefs.palette === palette.id}
-                onChange={() => selectPalette(palette.id)}
-              />
-              <span className="palette-swatch" aria-hidden="true" />
-              {palette.id === "custom" ? t.custom : palette.name}
-            </label>
-          ))}
-          {prefs.saved.map((theme) => (
-            <label key={theme.id} className="palette-option" data-palette={`custom:${theme.id}`}>
-              <input
-                type="radio"
-                name="palette"
-                value={`custom:${theme.id}`}
-                checked={prefs.palette === `custom:${theme.id}`}
-                onChange={() => selectPalette(`custom:${theme.id}`)}
-              />
-              <span className="palette-swatch" aria-hidden="true" />
-              {theme.name}
-            </label>
-          ))}
-        </fieldset>
-        {(prefs.palette === "custom" || editing) && (
-          <fieldset className="custom-theme" disabled={saving}>
-            <legend>{editing?.name ?? t.customColors}</legend>
-            {(
-              [
-                ["primary", t.customPrimary],
-                ["secondary", t.customSecondary],
-                ["base", t.customBase],
-                ["sidebar_from", t.customSidebarFrom],
-                ["sidebar_to", t.customSidebarTo],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key}>
-                <input
-                  type="color"
-                  value={colors[key]}
-                  onChange={(event) => {
-                    const next = { ...colors, [key]: event.target.value };
-                    if (editing) previewSavedTheme({ ...editing, colors: next });
-                    else editCustom(next);
-                  }}
-                />
-                {label}
-              </label>
+        <div className="stack" data-tour="palette">
+          <div className="tabs" role="tablist">
+            {(["themes", "custom"] as const).map((value) => (
+              <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>
+                {value === "themes" ? t.themesTab : t.customTab}
+              </button>
             ))}
-            {editing ? (
-              <>
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={editing === selected}
-                  onClick={() => saveThemes(prefs.saved.map((theme) => (theme.id === editing.id ? editing : theme)))}
-                >
-                  {t.save}
-                </button>
-                <button type="button" className="ghost" onClick={() => setNaming({ rename: true, name: editing.name })}>
-                  {t.rename}
-                </button>
-                <button type="button" className="danger-text" onClick={() => deleteTheme(editing)}>
-                  {t.delete}
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" className="ghost" onClick={() => editCustom(defaultCustomTheme, 0)}>
-                  {t.reset}
-                </button>
-                <button type="button" className="ghost" onClick={() => setNaming({ rename: false, name: "" })}>
-                  {t.saveAs}
-                </button>
-              </>
-            )}
-          </fieldset>
-        )}
-        {naming && (
-          <form className="custom-theme-name" onSubmit={submitName}>
-            <label>
-              {t.themeName}
-              <input
-                autoFocus
-                maxLength={24}
-                value={naming.name}
-                aria-invalid={nameTaken || undefined}
-                onChange={(event) => setNaming({ ...naming, name: event.target.value })}
-              />
-            </label>
-            <span className="muted">{naming.name.length}/24</span>
-            <button type="submit" className="ghost" disabled={!naming.name.trim() || nameTaken || saving}>
-              {t.save}
-            </button>
-            <button type="button" className="ghost" onClick={() => setNaming(undefined)}>
-              {t.cancel}
-            </button>
-            {nameTaken && <p className="error" role="alert">{t.nameTaken}</p>}
-          </form>
-        )}
+          </div>
+          {tab === "themes" ? (
+            <fieldset className="palette-picker" disabled={saving} aria-label={t.palette}>
+              {palettes.map((palette) => (
+                <label key={palette.id} className="palette-option" data-palette={palette.id}>
+                  <input
+                    type="radio"
+                    name="palette"
+                    value={palette.id}
+                    checked={prefs.palette === palette.id}
+                    onChange={() => selectPalette(palette.id)}
+                  />
+                  <span className="palette-swatch" aria-hidden="true" />
+                  {palette.id === "custom" ? t.custom : palette.name}
+                </label>
+              ))}
+              {prefs.saved.map((theme) => (
+                <label key={theme.id} className="palette-option" data-palette={`custom:${theme.id}`}>
+                  <input
+                    type="radio"
+                    name="palette"
+                    value={`custom:${theme.id}`}
+                    checked={prefs.palette === `custom:${theme.id}`}
+                    onChange={() => selectPalette(`custom:${theme.id}`)}
+                  />
+                  <span className="palette-swatch" aria-hidden="true" />
+                  {theme.name}
+                </label>
+              ))}
+            </fieldset>
+          ) : (
+            <fieldset className="custom-theme" disabled={saving}>
+              <div className="custom-theme-head">
+                {naming ? (
+                  <form className="custom-theme-name" onSubmit={submitName}>
+                    <input
+                      autoFocus
+                      maxLength={24}
+                      value={naming.name}
+                      placeholder={t.themeName}
+                      aria-label={t.themeName}
+                      aria-invalid={nameTaken || undefined}
+                      onChange={(event) => setNaming({ ...naming, name: event.target.value })}
+                      onKeyDown={(event) => event.key === "Escape" && setNaming(undefined)}
+                    />
+                    <span className="muted">{naming.name.length}/24</span>
+                    <IconButton type="submit" className="ghost" icon="check" label={t.save} disabled={!naming.name.trim() || nameTaken} />
+                    <IconButton type="button" className="ghost" icon="x" label={t.cancel} onClick={() => setNaming(undefined)} />
+                  </form>
+                ) : (
+                  <h3>{editing?.name ?? t.custom}</h3>
+                )}
+                <div className="custom-theme-actions">
+                  {editing && (
+                    <>
+                      <IconButton
+                        type="button"
+                        className="ghost"
+                        icon="check"
+                        label={t.save}
+                        disabled={editing === selected}
+                        onClick={() => saveThemes(prefs.saved.map((theme) => (theme.id === editing.id ? editing : theme)))}
+                      />
+                      <IconButton type="button" className="ghost" icon="pencil" label={t.rename} onClick={() => setNaming({ rename: true, name: editing.name })} />
+                    </>
+                  )}
+                  <IconButton type="button" className="ghost" icon="plus" label={t.saveAsNew} onClick={() => setNaming({ rename: false, name: "" })} />
+                  <IconButton type="button" className="ghost" icon="sparkles" label={t.surprise} onClick={() => editColors(randomCustomTheme(), 0)} />
+                  <IconButton type="button" className="ghost" icon="refresh" label={t.reset} onClick={() => editColors(defaultCustomTheme, 0)} />
+                  <IconButton type="button" className="ghost" icon="copy" label={t.share} tip={copied ? t.copied : t.share} onClick={share} />
+                  <IconButton type="button" className="ghost" icon="download" label={t.importTheme} onClick={() => setImporting(true)} />
+                  {editing && <IconButton type="button" className="danger-text" icon="trash" label={t.delete} onClick={() => deleteTheme(editing)} />}
+                </div>
+              </div>
+              {nameTaken && <p className="error" role="alert">{t.nameTaken}</p>}
+              <div className="color-grid">
+                {(
+                  [
+                    ["primary", t.customPrimary],
+                    ["secondary", t.customSecondary],
+                    ["base", t.customBase],
+                    ["sidebar_from", t.customSidebarFrom],
+                    ["sidebar_to", t.customSidebarTo],
+                  ] as const
+                ).map(([key, label]) => (
+                  <ColorField key={key} label={label} value={colors[key]} onChange={(value) => editColors({ ...colors, [key]: value })} />
+                ))}
+              </div>
+            </fieldset>
+          )}
+        </div>
         <ErrorText error={error} />
       </section>
+      {importing && <ImportThemeDialog onImport={importTheme} onClose={() => setImporting(false)} />}
     </section>
+  );
+}
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const t = useText(text);
+  const id = useId();
+  const picker = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <div className="color-field">
+      <label htmlFor={id}>{label}</label>
+      <div className="color-pill" style={{ "--pill": value } as CSSProperties}>
+        <span className="color-dot">
+          <input ref={picker} type="color" tabIndex={-1} aria-hidden="true" value={value} onChange={(event) => onChange(event.target.value)} />
+        </span>
+        <input
+          id={id}
+          className="color-hex"
+          maxLength={7}
+          spellCheck={false}
+          value={draft}
+          aria-invalid={!themeColor.test(draft) || undefined}
+          onChange={(event) => {
+            const next = event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`;
+            setDraft(next);
+            if (themeColor.test(next)) onChange(next.toLowerCase());
+          }}
+          onBlur={() => setDraft(value)}
+        />
+        <IconButton type="button" className="ghost" icon="pencil" label={t.pickColor(label)} onClick={() => picker.current?.click()} />
+      </div>
+    </div>
+  );
+}
+
+function ImportThemeDialog({ onImport, onClose }: { onImport: (theme: { name: string; colors: CustomTheme }) => void; onClose: () => void }) {
+  const t = useText(text);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [json, setJson] = useState("");
+  const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal();
+  }, []);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const theme = parseSharedTheme(json);
+    if (!theme) return setInvalid(true);
+    onImport(theme);
+    dialog.current?.close();
+  }
+
+  return (
+    <dialog ref={dialog} className="create-dialog" aria-labelledby="import-theme-title" onClose={onClose}>
+      <form className="panel create create-modal" onSubmit={submit}>
+        <div className="page-heading">
+          <h2 id="import-theme-title">{t.importTheme}</h2>
+          <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
+        </div>
+        <label>
+          {t.importHelp}
+          <textarea
+            autoFocus
+            rows={8}
+            value={json}
+            aria-invalid={invalid || undefined}
+            onChange={(event) => {
+              setJson(event.target.value);
+              setInvalid(false);
+            }}
+          />
+        </label>
+        {invalid && <p className="error" role="alert">{t.importInvalid}</p>}
+        <div className="modal-actions">
+          <button type="button" onClick={() => dialog.current?.close()}>
+            {t.cancel}
+          </button>
+          <button type="submit" className="primary" disabled={!json.trim()}>
+            {t.importTheme}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
