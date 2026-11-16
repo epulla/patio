@@ -5012,6 +5012,7 @@ main.chat-window .app-version {
 .color-field {
   grid-column: span 2;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 .color-field:nth-child(n + 4) {
@@ -5062,6 +5063,7 @@ main.chat-window .app-version {
 }
 .color-pill .color-hex {
   flex: 1;
+  width: 0;
   min-width: 0;
   height: 30px;
   padding: 0;
