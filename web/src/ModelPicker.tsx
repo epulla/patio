@@ -7,7 +7,7 @@ const text = {
   es: { pinned: "Fijados", loading: "cargando", none: "ninguno", modelLabel: "Modelo", loadingModels: "Cargando modelos…", chooseModel: "Elige un modelo", searchModels: "Buscar modelos", noMatch: (query: string) => `Ningún modelo coincide con “${query}”`, unpin: "Quitar de fijados", pin: "Fijar", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Quitar de fijados" : "Fijar"} (${shortcut})` },
 };
 
-export type ModelOption = { id: string; label: string; description?: string };
+export type ModelOption = { id: string; label: string; description?: string; efforts?: string[] };
 
 const popWidth = 320;
 const popHeight = 390;

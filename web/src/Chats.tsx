@@ -2631,13 +2631,11 @@ export function Conversation({
                 disabled={!connector || running}
                 onChange={(model) => update({ model })}
               />
-              <span className="tip-up tip-wide effort-tip" data-tour="effort" data-tip={thinkingTitle(detail.chat, running)}>
-                <EffortPicker
-                  value={detail.chat.effort}
-                  disabled={!connector || running || !detail.chat.capabilities.thinking.supported}
-                  onChange={(effort) => update({ effort })}
-                />
-              </span>
+              {detail.chat.capabilities.thinking.supported && models.find((m) => m.id === detail.chat.model)?.efforts?.length !== 0 && (
+                <span className="tip-up tip-wide effort-tip" data-tour="effort" data-tip={thinkingTitle(detail.chat, running)}>
+                  <EffortPicker value={detail.chat.effort} disabled={!connector || running} onChange={(effort) => update({ effort })} />
+                </span>
+              )}
             </div>
             {running ? (
               <>
@@ -2760,8 +2758,7 @@ function SettingRow({
 
 function thinkingTitle(chat: Chat, running: boolean) {
   const t = labels[lang()];
-  const { supported, reason } = chat.capabilities.thinking;
-  if (!supported) return reason;
+  const { reason } = chat.capabilities.thinking;
   if (running) return t.stopThinking;
   return [t.thinkingHint, reason].filter(Boolean).join(" ");
 }
