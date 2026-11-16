@@ -371,6 +371,16 @@ func TestCodexEffortFallbackSelection(t *testing.T) {
 	if got := effortFor("small", codexModelEfforts(models, "missing")); got != "" {
 		t.Fatalf("unknown model effort=%q, want empty", got)
 	}
+	models = []connectorcli.Model{{ID: "selected", Efforts: []string{"low", "minimal"}}}
+	value := effortFor("small", codexModelEfforts(models, "selected"))
+	for _, supported := range codexModelEfforts(models, "selected") {
+		if supported == "minimal" {
+			value = "minimal"
+		}
+	}
+	if value != "minimal" {
+		t.Fatalf("small effort=%q, want minimal", value)
+	}
 }
 
 func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {
@@ -387,6 +397,21 @@ func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {
 	}
 	if _, exists := client.turnParams["effort"]; exists {
 		t.Fatalf("unknown model turn/start effort = %#v", client.turnParams["effort"])
+	}
+}
+
+func TestCodexSmallUsesMinimalWhenSupported(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createCodexTestConnector(t, database)
+	chatID := createDriverTestChat(t, database, connectorID, root)
+	_, _ = database.Exec(`UPDATE chat SET model='selected',effort='small' WHERE id=?`, chatID)
+	client := &effortTestCodexClient{models: []connectorcli.Model{{ID: "selected", Efforts: []string{"low", "minimal"}}}}
+	driver := &codexRuntime{manager: newChatManager(database, Options{}), chatID: chatID, client: client, threadID: "thread", ctx: context.Background(), model: "selected"}
+	if err := driver.send(ChatSendRequest{Text: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if client.turnParams["effort"] != "minimal" {
+		t.Fatalf("turn/start effort=%#v, want minimal", client.turnParams["effort"])
 	}
 }
 

@@ -787,12 +787,19 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 		body["options"] = map[string]any{"num_ctx": contextSize}
 	}
 	if !d.ollama || d.ollamaThinkingSupported(ctx) {
-		if effort == "default" {
-			body["think"] = true
-		} else if effort == "small" {
-			body["think"] = false
-		} else if value := effortFor(effort, []string{"medium", "high"}); value != "" {
-			body["think"] = value
+		if effort != "default" {
+			capabilities, ok := d.ollamaModelCapabilities(ctx)
+			if !ok {
+				body["think"] = effort != "small"
+			} else if len(capabilities.thinkingValues) > 0 {
+				if value := effortFor(effort, capabilities.thinkingValues); value != "" {
+					body["think"] = value
+				}
+			} else if capabilities.thinkingPresent && capabilities.thinkingBoolean {
+				body["think"] = effort != "small"
+			} else {
+				body["think"] = effort != "small"
+			}
 		}
 	}
 	if withTools {
@@ -847,9 +854,12 @@ func (d *localRuntime) ollamaThinkingSupported(ctx context.Context) bool {
 }
 
 type ollamaModelCapabilities struct {
-	thinking      bool
-	vision        bool
-	contextLength int
+	thinking        bool
+	thinkingPresent bool
+	thinkingBoolean bool
+	thinkingValues  []string
+	vision          bool
+	contextLength   int
 }
 
 var localModelCapabilities sync.Map
@@ -885,13 +895,25 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 		return ollamaModelCapabilities{}, false
 	}
 	var details struct {
-		Capabilities []string       `json:"capabilities"`
-		ModelInfo    map[string]any `json:"model_info"`
+		Capabilities []string        `json:"capabilities"`
+		ModelInfo    map[string]any  `json:"model_info"`
+		Thinking     json.RawMessage `json:"thinking"`
 	}
 	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&details) != nil {
 		return ollamaModelCapabilities{}, false
 	}
 	capabilities := ollamaModelCapabilities{}
+	if len(details.Thinking) > 0 && string(details.Thinking) != "null" {
+		capabilities.thinkingPresent = true
+		capabilities.thinking = true
+		var thinking struct {
+			Values []string `json:"values"`
+		}
+		if json.Unmarshal(details.Thinking, &thinking) == nil && len(thinking.Values) > 0 {
+			capabilities.thinkingValues = thinking.Values
+		} else if err := json.Unmarshal(details.Thinking, &capabilities.thinkingBoolean); err == nil {
+		}
+	}
 	for _, capability := range details.Capabilities {
 		capabilities.thinking = capabilities.thinking || capability == "thinking"
 		capabilities.vision = capabilities.vision || capability == "vision"

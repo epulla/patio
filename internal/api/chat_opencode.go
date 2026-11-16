@@ -74,6 +74,7 @@ type opencodeRuntime struct {
 	effortVariant   string
 	variantApplied  bool
 	modelVariants   []string
+	defaultModelRef map[string]string
 	variantsLoaded  bool
 	storedSession   bool
 	ctx             context.Context
@@ -349,18 +350,20 @@ func (d *opencodeRuntime) currentEffort() string {
 
 func (d *opencodeRuntime) resolveVariant(level string) string {
 	if !d.variantsLoaded {
-		d.variantsLoaded = true
 		path := "/api/model"
 		if d.model == "" {
 			path = "/api/model/default"
 		}
-		resp, err := d.server.request(context.Background(), http.MethodGet, path, nil)
+		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
+		defer cancel()
+		resp, err := d.server.request(ctx, http.MethodGet, path, nil)
 		if err == nil {
 			defer resp.Body.Close()
 			var catalog struct {
 				Data json.RawMessage `json:"data"`
 			}
 			if resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&catalog) == nil {
+				d.variantsLoaded = true
 				var models []struct {
 					ID         string `json:"id"`
 					ProviderID string `json:"providerID"`
@@ -370,11 +373,16 @@ func (d *opencodeRuntime) resolveVariant(level string) string {
 				}
 				if d.model == "" {
 					var model struct {
-						Variants []struct {
+						ID         string `json:"id"`
+						ProviderID string `json:"providerID"`
+						Variants   []struct {
 							ID string `json:"id"`
 						} `json:"variants"`
 					}
 					if json.Unmarshal(catalog.Data, &model) == nil {
+						if model.ID != "" && model.ProviderID != "" {
+							d.defaultModelRef = map[string]string{"id": model.ID, "providerID": model.ProviderID}
+						}
 						for _, v := range model.Variants {
 							d.modelVariants = append(d.modelVariants, v.ID)
 						}
@@ -404,20 +412,29 @@ func (d *opencodeRuntime) applyVariant(level string) error {
 	if variant == d.effortVariant && d.variantApplied {
 		return nil
 	}
-	if level == "default" && !d.variantApplied {
+	if level == "default" && !d.variantApplied && !d.storedSession {
 		return nil
 	}
 	provider, id, ok := strings.Cut(d.model, "/")
-	if !ok || provider == "" || id == "" {
+	model := map[string]string{"providerID": provider, "id": id}
+	if (!ok || provider == "" || id == "") && d.defaultModelRef != nil {
+		model = map[string]string{"providerID": d.defaultModelRef["providerID"], "id": d.defaultModelRef["id"]}
+	}
+	if model["providerID"] == "" || model["id"] == "" {
 		return nil
 	}
-	model := map[string]string{"providerID": provider, "id": id}
 	if variant != "" {
 		model["variant"] = variant
 	}
-	resp, err := d.server.request(context.Background(), http.MethodPost, "/api/session/"+url.PathEscape(d.session)+"/model", map[string]any{"model": model})
+	ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
+	defer cancel()
+	resp, err := d.server.request(ctx, http.MethodPost, "/api/session/"+url.PathEscape(d.session)+"/model", map[string]any{"model": model})
 	if err != nil {
 		return err
+	}
+	if d.storedSession && resp.StatusCode == http.StatusNotFound && opencodeSessionNotFound(resp) {
+		resp.Body.Close()
+		return errOpenCodeSessionMissing
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
@@ -425,6 +442,28 @@ func (d *opencodeRuntime) applyVariant(level string) error {
 	}
 	d.effortVariant, d.variantApplied = variant, true
 	return nil
+}
+
+var errOpenCodeSessionMissing = errors.New("opencode session not found")
+
+func (d *opencodeRuntime) recoverSession(request ChatSendRequest) error {
+	oldSession := d.session
+	if err := d.createSession(); err != nil {
+		return err
+	}
+	d.server.mu.Lock()
+	if d.server.chats[oldSession] == d {
+		delete(d.server.chats, oldSession)
+	}
+	d.server.chats[d.session] = d
+	d.server.mu.Unlock()
+	d.storedSession, d.personaPrompt = false, true
+	const note = "opencode was upgraded; earlier context was not carried over."
+	if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err != nil {
+		return err
+	}
+	d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
+	return d.send(request)
 }
 
 func (d *opencodeRuntime) createSession() error {
@@ -435,6 +474,11 @@ func (d *opencodeRuntime) createSession() error {
 		body["location"] = map[string]string{"directory": d.directory}
 		if provider, modelID, ok := strings.Cut(d.model, "/"); ok && provider != "" && modelID != "" {
 			body["model"] = map[string]string{"providerID": provider, "id": modelID}
+		} else {
+			d.resolveVariant(d.currentEffort())
+			if d.defaultModelRef != nil {
+				body["model"] = map[string]string{"providerID": d.defaultModelRef["providerID"], "id": d.defaultModelRef["id"]}
+			}
 		}
 		variant := d.resolveVariant(d.currentEffort())
 		if variant != "" {
@@ -516,13 +560,18 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 		endpoint = "/api/session/" + url.PathEscape(d.session) + "/prompt"
 		body = opencodeV2Prompt(request.Text, files)
 		if err := d.applyVariant(level); err != nil {
+			if errors.Is(err, errOpenCodeSessionMissing) {
+				return d.recoverSession(request)
+			}
 			d.discardTurn()
 			return err
 		}
-	} else if model != nil {
-		body["model"] = model
-		if level != "default" {
-			body["variant"] = level
+	} else {
+		if model != nil {
+			body["model"] = model
+		}
+		if variant := effortFor(level, []string{"low", "medium", "high", "xhigh"}); variant != "" {
+			body["variant"] = variant
 		}
 	}
 	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)
@@ -534,26 +583,7 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if d.server.major >= 2 && d.storedSession && resp.StatusCode == http.StatusNotFound && opencodeSessionNotFound(resp) {
 			_ = resp.Body.Close()
-			oldSession := d.session
-			if err := d.createSession(); err != nil {
-				d.discardTurn()
-				return err
-			}
-			d.server.mu.Lock()
-			if d.server.chats[oldSession] == d {
-				delete(d.server.chats, oldSession)
-			}
-			d.server.chats[d.session] = d
-			d.server.mu.Unlock()
-			d.storedSession = false
-			d.personaPrompt = true
-			const note = "opencode was upgraded; earlier context was not carried over."
-			if _, err := InsertChatMessage(d.manager.db, d.chatID, "error", note); err != nil {
-				d.discardTurn()
-				return err
-			}
-			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": note})
-			return d.send(request)
+			return d.recoverSession(request)
 		}
 		err := fmt.Errorf("opencode prompt returned %s", resp.Status)
 		d.discardTurn()

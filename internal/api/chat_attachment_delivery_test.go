@@ -392,6 +392,9 @@ func TestOllamaImageCapabilityAndNativePayload(t *testing.T) {
 				t.Fatalf("vision capability=%v show calls=%d", gotVision, showCalls.Load())
 			}
 			messages := chatBody["messages"].([]any)
+			if _, ok := chatBody["think"]; ok {
+				t.Fatalf("default Ollama request included think: %#v", chatBody["think"])
+			}
 			last := messages[len(messages)-1].(map[string]any)
 			images, hasImages := last["images"].([]any)
 			if vision {

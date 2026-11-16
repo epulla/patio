@@ -19,6 +19,9 @@ func TestTicketMentionOpensBotChats(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err := db.Exec(`UPDATE "user" SET effort='high' WHERE id IN ('billy','sammy')`); err != nil {
+		t.Fatal(err)
+	}
 	var processes []*pipeChatProcess
 	s := New(db, "local", false, "dev", root, Options{findClaude: func() (string, error) { return "claude-test", nil }, commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil }, processFactory: func(string, []string, []string, string) (chatProcess, error) {
 		p := newPipeChatProcess()
@@ -31,6 +34,10 @@ func TestTicketMentionOpensBotChats(t *testing.T) {
 		t.Fatalf("create status=%d", code)
 	}
 	assertMentionChats(t, db, processes, ticket.ID, ticket.Code, ticket.Title, 2, []string{"Task: do X", "Task: do Y"})
+	var effort string
+	if err := db.QueryRow(`SELECT effort FROM chat WHERE bot_id='billy' ORDER BY rowid LIMIT 1`).Scan(&effort); err != nil || effort != "high" {
+		t.Fatalf("ticket mention effort=%q, %v", effort, err)
+	}
 	var billy, sammy string
 	if err := db.QueryRow(`SELECT id FROM chat WHERE bot_id='billy'`).Scan(&billy); err != nil {
 		t.Fatal(err)

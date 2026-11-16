@@ -219,7 +219,16 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 		} `json:"turn"`
 	}
 	params := map[string]any{"threadId": d.threadID, "input": codexUserInput(request.Text, files)}
-	if value := effortFor(effort, d.modelEfforts); value != "" {
+	value := effortFor(effort, d.modelEfforts)
+	if effort == "small" {
+		for _, supported := range d.modelEfforts {
+			if supported == "minimal" {
+				value = "minimal"
+				break
+			}
+		}
+	}
+	if value != "" {
 		params["effort"] = value
 	}
 	if err := d.client.Call(d.ctx, "turn/start", params, &response); err != nil {

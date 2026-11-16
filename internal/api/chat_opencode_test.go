@@ -239,6 +239,31 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	fake.mu.Unlock()
 }
 
+func TestOpenCodeDefaultModelCatalogRetriesAfterFailure(t *testing.T) {
+	var calls atomic.Int32
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/model/default" {
+			t.Errorf("catalog path=%q", r.URL.Path)
+		}
+		if calls.Add(1) == 1 {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"id":"model-id","providerID":"provider-id","variants":[{"id":"low"},{"id":"high"}]}}`))
+	}))
+	defer fake.Close()
+	d := &opencodeRuntime{server: &opencodeServer{baseURL: fake.URL, client: fake.Client(), major: 2}, ctx: context.Background()}
+	if got := d.resolveVariant("high"); got != "" {
+		t.Fatalf("failed catalog variant=%q", got)
+	}
+	if got := d.resolveVariant("xhigh"); got != "high" {
+		t.Fatalf("recovered catalog variant=%q", got)
+	}
+	if calls.Load() != 2 || d.defaultModelRef["id"] != "model-id" || d.defaultModelRef["providerID"] != "provider-id" {
+		t.Fatalf("catalog calls=%d model=%v", calls.Load(), d.defaultModelRef)
+	}
+}
+
 func TestOpenCodeV1ParentLookupRetriesAfterFailure(t *testing.T) {
 	var requests atomic.Int32
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -728,7 +753,7 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 		}
 	}
 	fake.mu.Unlock()
-	if len(resumePrompts) != 2 || !strings.Contains(resumePrompts[1], "You are Martin") {
+	if len(resumePrompts) != 1 || !strings.Contains(resumePrompts[0], "You are Martin") {
 		t.Fatalf("recreated session prompt = %q; want persona", resumePrompts)
 	}
 
@@ -740,7 +765,7 @@ func TestOpenCodeV2ChatAndMissingSessionFallback(t *testing.T) {
 	}
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	if fake.creates != 2 || !slices.Contains(fake.promptSessions, "missing-session") || fake.interrupts != 1 {
+	if fake.creates != 2 || slices.Contains(fake.promptSessions, "missing-session") || !slices.Contains(fake.promptSessions, "ses-v2-2") || fake.interrupts != 1 {
 		t.Fatalf("v2 creates=%d prompt sessions=%v interrupts=%d", fake.creates, fake.promptSessions, fake.interrupts)
 	}
 	if fake.model != "opencode/big-pickle" || fake.directory == "" || !fake.configParsed {
@@ -1175,12 +1200,25 @@ func (f *openCodeV2Fake) start(args, env []string) (opencodeProcess, error) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"id": id}})
 	})
+	mux.HandleFunc("/api/model", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"big-pickle","providerID":"opencode","variants":[{"id":"low"},{"id":"high"}]}]}`))
+	})
 	mux.HandleFunc("/api/session/", func(w http.ResponseWriter, r *http.Request) {
 		if !f.auth(w, r) {
 			return
 		}
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/session/"), "/")
 		sid := parts[0]
+		if len(parts) == 2 && parts[1] == "model" {
+			if sid == "missing-session" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"_tag":"SessionNotFoundError"}`))
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if r.Method == http.MethodGet && len(parts) == 1 {
 			parent := ""
 			if sid == "child-session" {

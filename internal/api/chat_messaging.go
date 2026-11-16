@@ -159,6 +159,10 @@ func fireWorkflowJoin(s *Server, run, workflowID, node string, edge workflowEdge
 	}
 	id := uid()
 	created := now()
+	effort := parent.Effort
+	if bot.ConnectorID != nil && *bot.ConnectorID == *connector {
+		effort = bot.Effort
+	}
 	title := prompt
 	if len(title) > 60 {
 		title = title[:60]
@@ -178,7 +182,7 @@ func fireWorkflowJoin(s *Server, run, workflowID, node string, edge workflowEdge
 			return "", cleanupConnectorDir(dir, err)
 		}
 	}
-	if _, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, *connector, title, model, parent.Folder, created, created, parent.Effort, parent.ShowThinking, parent.AutoAllow, parentID, bot.ID, wf.ID, node, run, workflowModeWait(wf.Graph, node)); err != nil {
+	if _, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, *connector, title, model, parent.Folder, created, created, effort, parent.ShowThinking, parent.AutoAllow, parentID, bot.ID, wf.ID, node, run, workflowModeWait(wf.Graph, node)); err != nil {
 		if madeDir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}

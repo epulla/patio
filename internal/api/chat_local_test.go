@@ -1027,8 +1027,8 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 		t.Fatalf("context note count = %d, %v", contextNotes, err)
 	}
 	var updated chat
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "default"}, &updated); code != http.StatusOK || updated.Effort != "default" {
-		t.Fatalf("enable Ollama thinking = %d, %#v", code, updated)
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "high"}, &updated); code != http.StatusOK || updated.Effort != "high" {
+		t.Fatalf("set Ollama high effort = %d, %#v", code, updated)
 	}
 	if code := sendLocalMessage(t, server, chatID, "second turn"); code != http.StatusAccepted {
 		t.Fatalf("second native send = %d", code)
@@ -1114,8 +1114,8 @@ func TestLocalOllamaThinkingCapabilitySendsThink(t *testing.T) {
 	var calls atomic.Int32
 	database, _, chatID, server, events, _, _ := newOllamaChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
 		calls.Add(1)
-		if request["think"] != true {
-			t.Errorf("thinking-capable model think = %#v", request["think"])
+		if _, exists := request["think"]; exists {
+			t.Errorf("default effort included think = %#v", request["think"])
 		}
 		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
 	})
