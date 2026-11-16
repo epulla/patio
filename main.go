@@ -75,6 +75,17 @@ var appIcon []byte
 //go:embed build/tray/PatioStatusTemplate.png
 var trayTemplateIcon []byte
 
+// Rendered from SF Symbols, so macOS only.
+//
+//go:embed build/tray/menu/open.png
+var trayOpenIcon []byte
+
+//go:embed build/tray/menu/new-chat.png
+var trayNewChatIcon []byte
+
+//go:embed build/tray/menu/quit.png
+var trayQuitIcon []byte
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		runMCP(os.Args[2:])
@@ -251,13 +262,16 @@ func main() {
 	wins.mu.Unlock()
 	wins.showMain(*openPath)
 	trayMenu := application.NewMenu()
-	trayMenu.Add("Open Patio").OnClick(func(*application.Context) { wins.showMain("") })
+	openItem := trayMenu.Add("Open Patio").OnClick(func(*application.Context) { wins.showMain("") })
 	// The chats page starts a chat when it sees ?new.
-	trayMenu.Add("New chat").OnClick(func(*application.Context) { wins.showMain("/ai/chats?new") })
+	newChatItem := trayMenu.Add("New chat").OnClick(func(*application.Context) { wins.showMain("/ai/chats?new") })
 	trayMenu.AddSeparator()
-	trayMenu.Add("Quit Patio").OnClick(func(*application.Context) { app.Quit() })
+	quitItem := trayMenu.Add("Quit Patio").OnClick(func(*application.Context) { app.Quit() })
 	tray := app.SystemTray.New().SetMenu(trayMenu)
 	if runtime.GOOS == "darwin" {
+		openItem.SetBitmap(trayOpenIcon)
+		newChatItem.SetBitmap(trayNewChatIcon)
+		quitItem.SetBitmap(trayQuitIcon)
 		tray.SetTemplateIcon(trayTemplateIcon)
 	} else {
 		tray.SetIcon(appIcon)
