@@ -5287,6 +5287,17 @@ main.chat-window .app-version {
   height: 100vh;
   box-sizing: border-box;
 }
+.file-viewer.attachment-preview {
+  width: min(1100px, calc(100vw - 48px));
+  height: calc(100vh - 48px);
+  margin: auto;
+  border: 1px solid var(--base-300);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.attachment-preview::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
 .file-viewer-body {
   flex: 1;
   min-height: 0;

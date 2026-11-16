@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import AIBadge from "./AIBadge";
 import {
   api,
@@ -28,7 +28,9 @@ import { formatBytes } from "./Settings";
 import { commentDraftKey, ticketAttachmentURL, type TicketAttachment } from "./attachments";
 import { lang, locale, useText } from "./i18n";
 
-const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by", order: "Order", newest: "Newest first", oldest: "Oldest first", attachments: "Attachments", showFile: (name: string) => `Show ${name} in folder`, deleteFile: (name: string) => `Delete ${name}`, confirmDeleteFile: (name: string) => `Delete ${name}? Links to it in the description or comments will break.` }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por", order: "Orden", newest: "Más recientes primero", oldest: "Más antiguos primero", attachments: "Adjuntos", showFile: (name: string) => `Mostrar ${name} en la carpeta`, deleteFile: (name: string) => `Eliminar ${name}`, confirmDeleteFile: (name: string) => `¿Eliminar ${name}? Los enlaces a este archivo en la descripción o los comentarios dejarán de funcionar.` } };
+const text = { en: { loading: "Loading ticket...", comments: "Comments", history: "History", transitions: "Transitions", back: "Back to board", print: "Print", exportJson: "Export JSON", exportMarkdown: "Export Markdown", newChat: "New chat", title: "Title", description: "Description", status: "Status", type: "Type", noType: "No type", dueDate: "Due date", assignee: "Assignee", unassigned: "Unassigned", created: "Created", updated: "Updated", new: "New", comment: "Comment", addComment: "Add comment", links: "Links", addLink: "Add link", removeLink: (code: string) => `Remove link to ${code}`, linkType: "Link type", ticketCode: "Ticket code", ticketCodeExample: "Ticket code, e.g. PROJ-5", link: "Link", cancel: "Cancel", blocks: "blocks", blockedBy: "is blocked by", relates: "relates to", duplicates: "duplicates", duplicatedBy: "is duplicated by", order: "Order", newest: "Newest first", oldest: "Oldest first", attachments: "Attachments", showFile: (name: string) => `Show ${name} in folder`, showInFolder: "Show in folder", previewFile: (name: string) => `Preview ${name}`, close: "Close", noPreview: "No preview for this file type.", deleteFile: (name: string) => `Delete ${name}`, confirmDeleteFile: (name: string) => `Delete ${name}? Links to it in the description or comments will break.` }, es: { loading: "Cargando ticket...", comments: "Comentarios", history: "Historial", transitions: "Transiciones", back: "Volver al tablero", print: "Imprimir", exportJson: "Exportar JSON", exportMarkdown: "Exportar Markdown", newChat: "Nuevo chat", title: "Título", description: "Descripción", status: "Estado", type: "Tipo", noType: "Sin tipo", dueDate: "Fecha de vencimiento", assignee: "Asignado a", unassigned: "Sin asignar", created: "Creado", updated: "Actualizado", new: "Nuevo", comment: "Comentario", addComment: "Agregar comentario", links: "Enlaces", addLink: "Agregar enlace", removeLink: (code: string) => `Quitar enlace a ${code}`, linkType: "Tipo de enlace", ticketCode: "Código del ticket", ticketCodeExample: "Código del ticket, p. ej. PROJ-5", link: "Enlazar", cancel: "Cancelar", blocks: "bloquea", blockedBy: "está bloqueado por", relates: "se relaciona con", duplicates: "duplica", duplicatedBy: "está duplicado por", order: "Orden", newest: "Más recientes primero", oldest: "Más antiguos primero", attachments: "Adjuntos", showFile: (name: string) => `Mostrar ${name} en la carpeta`, showInFolder: "Mostrar en la carpeta", previewFile: (name: string) => `Vista previa de ${name}`, close: "Cerrar", noPreview: "No hay vista previa para este tipo de archivo.", deleteFile: (name: string) => `Eliminar ${name}`, confirmDeleteFile: (name: string) => `¿Eliminar ${name}? Los enlaces a este archivo en la descripción o los comentarios dejarán de funcionar.` } };
+
+const Preview = lazy(() => import("./FileViewer").then((module) => ({ default: module.Preview })));
 
 const orderKey = "ticket-activity-order";
 type Order = "newest" | "oldest";
@@ -599,9 +601,11 @@ function Links({
 
 function Attachments({ ticket, onReload, onError }: { ticket: Ticket; onReload: () => void; onError: (reason: unknown) => void }) {
   const t = useText(text);
+  const [viewing, setViewing] = useState<TicketAttachment>();
   const attachments = ticket.attachments ?? [];
   if (!attachments.length) return null;
   const url = (attachment: TicketAttachment) => ticketAttachmentURL(ticket.id, attachment.name);
+  const reveal = (attachment: TicketAttachment) => api.post(`${url(attachment)}/reveal`, {}).catch(onError);
   async function remove(attachment: TicketAttachment) {
     if (!(await confirmDialog(t.confirmDeleteFile(attachment.original_name)))) return;
     try {
@@ -624,18 +628,62 @@ function Attachments({ ticket, onReload, onError }: { ticket: Ticket; onReload: 
             <button
               type="button"
               className="ghost ticket-link-item"
-              aria-label={t.showFile(attachment.original_name)}
-              onClick={() => api.post(`${url(attachment)}/reveal`, {}).catch(onError)}
+              aria-label={t.previewFile(attachment.original_name)}
+              onClick={() => setViewing(attachment)}
             >
               <Icon name={attachment.kind === "image" ? "image" : "file"} />
               <span className="ticket-link-title">{attachment.original_name}</span>
               <span className="muted">{formatBytes(attachment.size)}</span>
             </button>
+            <IconButton className="ghost ticket-link-remove" icon="folder" label={t.showFile(attachment.original_name)} onClick={() => reveal(attachment)} />
             <IconButton className="ghost ticket-link-remove" icon="trash" label={t.deleteFile(attachment.original_name)} onClick={() => remove(attachment)} />
           </li>
         ))}
       </ul>
+      {viewing && <AttachmentPreview attachment={viewing} url={url(viewing)} onReveal={() => reveal(viewing)} onClose={() => setViewing(undefined)} />}
     </section>
+  );
+}
+
+function AttachmentPreview({ attachment, url, onReveal, onClose }: { attachment: TicketAttachment; url: string; onReveal: () => void; onClose: () => void }) {
+  const t = useText(text);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="file-viewer attachment-preview"
+      aria-labelledby="attachment-preview-title"
+      onClose={onClose}
+      onClick={(event) => event.target === dialog.current && dialog.current.close()}
+    >
+      <header className="file-viewer-head">
+        <h2 className="attachment-name" id="attachment-preview-title" title={attachment.original_name}>
+          {attachment.original_name}
+        </h2>
+        <span className="muted">{formatBytes(attachment.size)}</span>
+        <IconButton type="button" className="ghost" icon="folder" label={t.showInFolder} onClick={onReveal} />
+        <IconButton type="button" className="ghost" icon="x" label={t.close} onClick={() => dialog.current?.close()} />
+      </header>
+      <div className="file-viewer-body">
+        <Suspense fallback={null}>
+          <Preview
+            url={url}
+            name={attachment.name}
+            fallback={
+              <p className="file-viewer-note">
+                {t.noPreview}{" "}
+                <button type="button" className="ghost" onClick={onReveal}>
+                  <Icon name="folder" /> {t.showInFolder}
+                </button>
+              </p>
+            }
+          />
+        </Suspense>
+      </div>
+    </dialog>
   );
 }
 
