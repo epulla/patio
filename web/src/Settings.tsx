@@ -602,7 +602,7 @@ export function Appearance() {
             />
           </label>
         </div>
-        <fieldset className="palette-picker">
+        <fieldset className="palette-picker" data-tour="palette">
           <legend>{t.palette}</legend>
           {palettes.map((palette) => (
             <label key={palette.id} className="palette-option" data-palette={palette.id}>

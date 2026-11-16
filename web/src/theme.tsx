@@ -78,6 +78,32 @@ function oklch(hex: string): [number, number, number] {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const color = (l: number, c: number, h: number) => `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(3)} ${h.toFixed(1)})`;
 
+// WCAG relative luminance of an oklch colour, clipped to sRGB.
+function luminance(L: number, C: number, H: number) {
+  const a = C * Math.cos((H * Math.PI) / 180);
+  const b = C * Math.sin((H * Math.PI) / 180);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const [r, g, bl] = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((v) => clamp(v, 0, 1));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+}
+
+// Label colour on the primary fill: the tinted dark or light text with more contrast,
+// or plain black/white when neither tinted one reaches WCAG AA (4.5:1).
+function primaryContent(l: number, c: number, h: number) {
+  const fill = luminance(l, c, h);
+  const contrast = (y: number) => (Math.max(fill, y) + 0.05) / (Math.min(fill, y) + 0.05);
+  const darkText = contrast(luminance(0.18, 0.05, h));
+  const lightText = contrast(luminance(0.97, 0.02, h));
+  if (Math.max(darkText, lightText) >= 4.5) return darkText >= lightText ? color(0.18, 0.05, h) : color(0.97, 0.02, h);
+  return contrast(0) >= contrast(1) ? color(0, 0, 0) : color(1, 0, 0);
+}
+
 // Same recipe as the built-in palettes in styles.css: the picked hue and chroma, with
 // lightness fixed per mode so text and the white sidebar labels stay readable.
 function customVars({ primary, secondary, base, sidebar_from, sidebar_to }: CustomTheme, mode: "light" | "dark") {
@@ -90,9 +116,10 @@ function customVars({ primary, secondary, base, sidebar_from, sidebar_to }: Cust
     return mode === "light" ? color(clamp(l, 0.3, 0.56), Math.min(c, 0.2), h) : color(clamp(l * 0.72, 0.24, 0.4), c * 0.65, h);
   };
   const fill = mode === "light" ? clamp(pl, 0.45, 0.85) : clamp(pl + 0.08, 0.72, 0.88);
+  const fillChroma = Math.min(pc, mode === "light" ? 0.22 : 0.17);
   const vars = {
-    "--primary": color(fill, Math.min(pc, mode === "light" ? 0.22 : 0.17), ph),
-    "--primary-content": fill > 0.62 ? color(0.18, 0.05, ph) : color(0.97, 0.02, ph),
+    "--primary": color(fill, fillChroma, ph),
+    "--primary-content": primaryContent(fill, fillChroma, ph),
     "--primary-text": mode === "light" ? color(0.5, Math.min(pc, 0.2), ph) : color(0.8, Math.min(pc, 0.13), ph),
     "--secondary": mode === "light" ? color(0.62, Math.min(sc, 0.14), sh) : color(0.76, Math.min(sc, 0.12), sh),
     "--secondary-text": mode === "light" ? color(0.48, Math.min(sc, 0.14), sh) : color(0.8, Math.min(sc, 0.11), sh),
@@ -168,9 +195,11 @@ export function setThemePrefs(change: Partial<Prefs>) {
 export function initTheme() {
   applyCustom();
   apply();
+  const cached = prefs.custom;
   api
     .get<CustomTheme | null>("/api/settings/custom-theme")
-    .then((saved) => saved && setCustomTheme(saved))
+    // An edit made while this loads is newer than the DB copy; keep it.
+    .then((saved) => saved && prefs.custom === cached && setCustomTheme(saved))
     .catch((reason) => console.error("load custom theme", reason));
   dark.addEventListener("change", () => {
     if (prefs.mode !== "system") return;
