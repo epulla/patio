@@ -18,7 +18,7 @@ type settingsDefaults struct {
 	Language         string  `json:"language"`
 	Folder           *string `json:"folder"`
 	AutoAllow        bool    `json:"auto_allow"`
-	Thinking         bool    `json:"thinking"`
+	Effort           string  `json:"effort"`
 	ShowThinking     bool    `json:"show_thinking"`
 	DefaultBotID     string  `json:"default_bot_id"`
 	AITitles         bool    `json:"ai_titles"`
@@ -44,7 +44,7 @@ func hopLimitReached(hops, limit int) bool {
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Thinking: true, DefaultBotID: "ai", Language: "system", AITitles: true, AgentHopLimit: defaultAgentHopLimit}
+	defaults := settingsDefaults{AutoAllow: true, Effort: "default", DefaultBotID: "ai", Language: "system", AITitles: true, AgentHopLimit: defaultAgentHopLimit}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -134,8 +134,8 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 			return defaults, err
 		}
 	}
-	if raw, ok := values["thinking"]; ok {
-		if err := json.Unmarshal([]byte(raw), &defaults.Thinking); err != nil {
+	if raw, ok := values["effort"]; ok {
+		if err := json.Unmarshal([]byte(raw), &defaults.Effort); err != nil {
 			return defaults, err
 		}
 	}
@@ -198,7 +198,8 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		Language         *string         `json:"language"`
 		Folder           json.RawMessage `json:"folder"`
 		AutoAllow        *bool           `json:"auto_allow"`
-		Thinking         *bool           `json:"thinking"`
+		Effort           *string         `json:"effort"`
+		LegacyThinking   *bool           `json:"thinking"`
 		ShowThinking     *bool           `json:"show_thinking"`
 		DefaultBotID     *string         `json:"default_bot_id"`
 		AITitles         *bool           `json:"ai_titles"`
@@ -228,7 +229,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusBadRequest, "language must be system, en, or es")
 		return
 	}
-	autoAllow, thinking, showThinking, defaultBotID := defaults.AutoAllow, defaults.Thinking, defaults.ShowThinking, defaults.DefaultBotID
+	autoAllow, effort, showThinking, defaultBotID := defaults.AutoAllow, defaults.Effort, defaults.ShowThinking, defaults.DefaultBotID
 	aiTitles, titleConnectorID, titleModel := defaults.AITitles, defaults.TitleConnectorID, defaults.TitleModel
 	if in.AITitles != nil {
 		aiTitles = *in.AITitles
@@ -265,8 +266,14 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
 	}
-	if in.Thinking != nil {
-		thinking = *in.Thinking
+	if in.Effort != nil {
+		effort = *in.Effort
+	} else if in.LegacyThinking != nil {
+		effort = effortFromThinking(*in.LegacyThinking)
+	}
+	if !validEffort(effort) {
+		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		return
 	}
 	if in.ShowThinking != nil {
 		showThinking = *in.ShowThinking
@@ -330,7 +337,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		"language":           language,
 		"folder":             folder,
 		"auto_allow":         autoAllow,
-		"thinking":           thinking,
+		"effort":             effort,
 		"show_thinking":      showThinking,
 		"default_bot_id":     defaultBotID,
 		"ai_titles":          aiTitles,
@@ -358,7 +365,7 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Thinking: thinking, ShowThinking: showThinking, DefaultBotID: defaultBotID, AITitles: aiTitles, TitleConnectorID: titleConnectorID, TitleModel: titleModel, AgentHopLimit: agentHops})
+	write(w, http.StatusOK, settingsDefaults{ConnectorID: connectorID, Model: model, Language: language, Folder: folder, AutoAllow: autoAllow, Effort: effort, ShowThinking: showThinking, DefaultBotID: defaultBotID, AITitles: aiTitles, TitleConnectorID: titleConnectorID, TitleModel: titleModel, AgentHopLimit: agentHops})
 }
 
 func sameConnectorID(a, b *string) bool {

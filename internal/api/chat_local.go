@@ -335,8 +335,8 @@ func (d *localRuntime) runTurn(ctx context.Context) {
 }
 
 func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest) (string, error) {
-	var thinking bool
-	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
+	var effort string
+	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
 		return "", err
 	}
 	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
@@ -372,7 +372,7 @@ func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest
 	retriedWithoutImages := false
 	for {
 		withTools := !d.toolsOff && !retriedWithoutTools
-		response, err := d.streamWithImages(ctx, messages, withTools, thinking, images)
+		response, err := d.streamWithImages(ctx, messages, withTools, effort != "small", images)
 		if err != nil {
 			if errors.Is(err, errLocalUnsupportedImage) && len(images) > 0 && !retriedWithoutImages {
 				if err := appendCurrentImagePaths(messages, images); err != nil {
@@ -959,7 +959,7 @@ type ollamaChunk struct {
 	PromptEvalCount int  `json:"prompt_eval_count"`
 	Message         struct {
 		Content   string `json:"content"`
-		Thinking  string `json:"thinking"`
+		Reasoning string `json:"thinking"`
 		ToolCalls []struct {
 			Function struct {
 				Name      string          `json:"name"`
@@ -994,7 +994,7 @@ func (d *localRuntime) readOllamaNDJSON(ctx context.Context, body io.Reader) (lo
 		if chunk.Error != nil {
 			return localStreamResult{}, fmt.Errorf("Ollama stream error: %v", chunk.Error)
 		}
-		d.manager.emitThinking(d.chatID, chunk.Message.Thinking)
+		d.manager.emitThinking(d.chatID, chunk.Message.Reasoning)
 		emitText(chunk.Message.Content)
 		for _, tool := range chunk.Message.ToolCalls {
 			var arguments map[string]any

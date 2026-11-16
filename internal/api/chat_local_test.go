@@ -836,12 +836,15 @@ func TestOpenAIFallbackThinkingChangesNextTurnWithoutRestart(t *testing.T) {
 		writeSSE(w, `{"choices":[{"delta":{"content":"OK"}}]}`)
 	})
 	defer server.Close()
+	if _, err := database.Exec(`UPDATE chat SET effort='small' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	if code := sendLocalMessage(t, server, chatID, "first"); code != http.StatusAccepted {
 		t.Fatalf("first send = %d", code)
 	}
 	waitLocalDone(t, events)
 	var updated chat
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, &updated); code != http.StatusOK || !updated.Thinking {
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "default"}, &updated); code != http.StatusOK || updated.Effort != "default" {
 		t.Fatalf("enable thinking = %d, %#v", code, updated)
 	}
 	if code := sendLocalMessage(t, server, chatID, "second"); code != http.StatusAccepted {
@@ -1021,7 +1024,7 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 		t.Fatalf("context note count = %d, %v", contextNotes, err)
 	}
 	var updated chat
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, &updated); code != http.StatusOK || !updated.Thinking {
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "default"}, &updated); code != http.StatusOK || updated.Effort != "default" {
 		t.Fatalf("enable Ollama thinking = %d, %#v", code, updated)
 	}
 	if code := sendLocalMessage(t, server, chatID, "second turn"); code != http.StatusAccepted {
@@ -1080,7 +1083,7 @@ func TestLocalOllamaModelWithoutThinkingCapability(t *testing.T) {
 		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
 	})
 	var updated chat
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, &updated); code != http.StatusOK {
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "default"}, &updated); code != http.StatusOK {
 		t.Fatalf("enable thinking = %d", code)
 	}
 	var detail struct {
@@ -1092,7 +1095,7 @@ func TestLocalOllamaModelWithoutThinkingCapability(t *testing.T) {
 	if detail.Chat.ID != chatID {
 		t.Fatalf("GET chat ID = %q", detail.Chat.ID)
 	}
-	if detail.Chat.Capabilities.Thinking.Supported {
+	if detail.Chat.Capabilities.Reasoning.Supported {
 		t.Errorf("thinking capability supported = true")
 	}
 	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
@@ -1113,7 +1116,7 @@ func TestLocalOllamaThinkingCapabilitySendsThink(t *testing.T) {
 		}
 		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
 	})
-	if _, err := database.Exec(`UPDATE chat SET model='thinking-model',thinking=1 WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET model='thinking-model',effort='default' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
@@ -1141,7 +1144,7 @@ func TestLocalOllamaRefreshClearsThinkingCapabilityCache(t *testing.T) {
 		if code := requestJSON(t, server, http.MethodGet, "/api/chats/"+chatID, nil, &detail); code != http.StatusOK {
 			t.Fatalf("get chat = %d", code)
 		}
-		return detail.Chat.Capabilities.Thinking.Supported
+		return detail.Chat.Capabilities.Reasoning.Supported
 	}
 	if !getSupported() {
 		t.Fatal("cached thinking support was not used")

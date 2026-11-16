@@ -579,27 +579,26 @@ func TestChatDetailVersion(t *testing.T) {
 	}
 }
 
-func TestChatThinkingUpdate(t *testing.T) {
+func TestChatEffortUpdate(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	var created chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || !created.Thinking {
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Effort != "default" {
 		t.Fatalf("create chat = %d, %#v", code, created)
 	}
 	var listed struct {
 		Chats []chat `json:"chats"`
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 1 || !listed.Chats[0].Thinking {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 1 || listed.Chats[0].Effort != "default" {
 		t.Fatalf("list chats = %d, %#v", code, listed)
 	}
-	updated := true
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": updated}, &created); code != http.StatusOK || !created.Thinking {
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "high"}, &created); code != http.StatusOK || created.Effort != "high" {
 		t.Fatalf("enable thinking = %d, %#v", code, created)
 	}
 	var got struct {
 		Chat chat `json:"chat"`
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &got); code != http.StatusOK || !got.Chat.Thinking {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &got); code != http.StatusOK || got.Chat.Effort != "high" {
 		t.Fatalf("get chat thinking = %d, %#v", code, got.Chat)
 	}
 	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]string{"title": ""}, nil); code != http.StatusBadRequest {
@@ -609,16 +608,27 @@ func TestChatThinkingUpdate(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.busy.Store(true)
 	runtime.mu.Unlock()
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "high"}, nil); code != http.StatusOK {
 		t.Fatalf("unchanged thinking while running = %d", code)
 	}
-	changed := false
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]bool{"thinking": changed}, nil); code != http.StatusConflict {
-		t.Fatalf("thinking change while running = %d, want %d", code, http.StatusConflict)
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "small"}, nil); code != http.StatusConflict {
+		t.Fatalf("effort change while running = %d, want %d", code, http.StatusConflict)
 	}
 	runtime.mu.Lock()
 	runtime.busy.Store(false)
 	runtime.mu.Unlock()
+}
+
+func TestChatThinkingCompatibilityMapsFalseToSmallAndRejectsInvalidEffort(t *testing.T) {
+	database, handler, _ := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	var created chat
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "thinking": false}, &created); code != http.StatusCreated || created.Effort != "small" {
+		t.Fatalf("legacy thinking false = %d, %#v", code, created)
+	}
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "invalid"}, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid effort status = %d", code)
+	}
 }
 
 func TestChatThinkingCapabilities(t *testing.T) {
@@ -632,7 +642,7 @@ func TestChatThinkingCapabilities(t *testing.T) {
 		{"codex", true, ""},
 		{"copilot", true, ""},
 		{"local", true, ""},
-		{"opencode", false, "opencode picks reasoning with model variants"},
+		{"opencode", true, ""},
 	}
 	for _, test := range tests {
 		t.Run(test.kind, func(t *testing.T) {
@@ -645,14 +655,14 @@ func TestChatThinkingCapabilities(t *testing.T) {
 				t.Fatalf("create chat = %d", code)
 			}
 			want := thinkingCapability{Supported: test.supported, Reason: test.reason}
-			if created.Capabilities.Thinking != want {
-				t.Fatalf("create capabilities = %#v, want %#v", created.Capabilities.Thinking, want)
+			if created.Capabilities.Reasoning != want {
+				t.Fatalf("create capabilities = %#v, want %#v", created.Capabilities.Reasoning, want)
 			}
 			var detail struct {
 				Chat chat `json:"chat"`
 			}
-			if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &detail); code != http.StatusOK || detail.Chat.Capabilities.Thinking != want {
-				t.Fatalf("get capabilities = %d %#v, want %#v", code, detail.Chat.Capabilities.Thinking, want)
+			if code := requestJSON(t, handler, http.MethodGet, "/api/chats/"+created.ID, nil, &detail); code != http.StatusOK || detail.Chat.Capabilities.Reasoning != want {
+				t.Fatalf("get capabilities = %d %#v, want %#v", code, detail.Chat.Capabilities.Reasoning, want)
 			}
 		})
 	}

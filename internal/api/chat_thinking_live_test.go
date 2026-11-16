@@ -93,7 +93,7 @@ func TestChatThinkingOffLive(t *testing.T) {
 func createThinkingLiveChat(t *testing.T, server *Server, connectorID string) string {
 	t.Helper()
 	var c chat
-	if code := requestJSON(t, server, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "thinking": false}, &c); code != http.StatusCreated {
+	if code := requestJSON(t, server, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "effort": "small"}, &c); code != http.StatusCreated {
 		t.Fatalf("create live chat = %d", code)
 	}
 	return c.ID

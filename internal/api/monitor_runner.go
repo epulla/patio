@@ -396,7 +396,7 @@ func (s *Server) startMonitorChat(m monitor, prompt string) error {
 		return err
 	}
 	created := now()
-	c := chat{ID: uid(), ConnectorID: defaults.ConnectorID, Title: "Monitor: " + m.Name + " · " + time.Now().Format("Jan 2, 15:04"), Model: defaults.Model, Folder: defaults.Folder, CreatedAt: created, UpdatedAt: created, Thinking: defaults.Thinking, AutoAllow: defaults.AutoAllow}
+	c := chat{ID: uid(), ConnectorID: defaults.ConnectorID, Title: "Monitor: " + m.Name + " · " + time.Now().Format("Jan 2, 15:04"), Model: defaults.Model, Folder: defaults.Folder, CreatedAt: created, UpdatedAt: created, Effort: defaults.Effort, AutoAllow: defaults.AutoAllow}
 	if c.Folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -407,7 +407,7 @@ func (s *Server) startMonitorChat(m monitor, prompt string) error {
 		}
 	}
 	if err := txrun(s.db, func(tx *sql.Tx) error {
-		_, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,title_locked,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow) VALUES(?,?,?,1,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, defaults.ShowThinking, c.AutoAllow)
+		_, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,title_locked,model,folder,created_at,updated_at,effort,show_thinking,auto_allow) VALUES(?,?,?,1,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Effort, defaults.ShowThinking, c.AutoAllow)
 		return err
 	}); err != nil {
 		return err

@@ -458,6 +458,9 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createCopilotTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET effort='small' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
 	loaded := make(chan string, 2)
 	prompts := make(chan string, 2)
@@ -484,7 +487,7 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 		t.Fatalf("first send = %d", code)
 	}
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "high"}, nil); code != http.StatusOK {
 		t.Fatalf("thinking update = %d", code)
 	}
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "second"}, nil); code != http.StatusAccepted {

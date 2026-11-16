@@ -19,7 +19,7 @@ func TestCodexStartFailureLeavesMessageAndRetryCanHang(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connectorID := createCodexTestConnector(t, db)
 	chatID := createDriverTestChat(t, db, connectorID, root)
-	if _, err := db.Exec(`UPDATE chat SET thinking=1 WHERE id=?`, chatID); err != nil {
+	if _, err := db.Exec(`UPDATE chat SET effort='default' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex

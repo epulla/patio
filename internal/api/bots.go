@@ -17,13 +17,14 @@ type bot struct {
 	Color         string  `json:"color"`
 	ConnectorID   *string `json:"connector_id"`
 	Model         string  `json:"model"`
+	Effort        string  `json:"effort"`
 }
 
-const botColumns = `id,name,description,persona_prompt,color,connector_id,model`
+const botColumns = `id,name,description,persona_prompt,color,connector_id,model,effort`
 
 func scanBot(row interface{ Scan(...any) error }) (bot, error) {
 	var b bot
-	err := row.Scan(&b.ID, &b.Name, &b.Description, &b.PersonaPrompt, &b.Color, &b.ConnectorID, &b.Model)
+	err := row.Scan(&b.ID, &b.Name, &b.Description, &b.PersonaPrompt, &b.Color, &b.ConnectorID, &b.Model, &b.Effort)
 	return b, err
 }
 func (s *Server) listBots(w http.ResponseWriter, _ *http.Request) {
@@ -56,6 +57,7 @@ func (s *Server) saveBot(w http.ResponseWriter, r *http.Request, create bool) {
 		Color         *string         `json:"color"`
 		ConnectorID   json.RawMessage `json:"connector_id"`
 		Model         *string         `json:"model"`
+		Effort        *string         `json:"effort"`
 	}
 	if decode(r, &fields) != nil {
 		errw(w, 400, "invalid bot JSON")
@@ -88,6 +90,16 @@ func (s *Server) saveBot(w http.ResponseWriter, r *http.Request, create bool) {
 	}
 	if fields.Model != nil {
 		in.Model = *fields.Model
+	}
+	if fields.Effort != nil {
+		in.Effort = *fields.Effort
+	}
+	if in.Effort == "" {
+		in.Effort = "default"
+	}
+	if !validEffort(in.Effort) {
+		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		return
 	}
 	if fields.ConnectorID != nil {
 		if string(fields.ConnectorID) == "null" {
@@ -135,10 +147,10 @@ func (s *Server) saveBot(w http.ResponseWriter, r *http.Request, create bool) {
 	var err error
 	if create {
 		id = uid()
-		_, err = s.db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,description,persona_prompt,color,connector_id,model) VALUES(?,?,?,1,1,?,?,?,?,?)`, id, in.Name, id+"@bot.local", in.Description, in.PersonaPrompt, in.Color, in.ConnectorID, in.Model)
+		_, err = s.db.Exec(`INSERT INTO "user"(id,name,email,email_verified,is_ai,description,persona_prompt,color,connector_id,model,effort) VALUES(?,?,?,1,1,?,?,?,?,?,?)`, id, in.Name, id+"@bot.local", in.Description, in.PersonaPrompt, in.Color, in.ConnectorID, in.Model, in.Effort)
 	} else {
 		var res sql.Result
-		res, err = s.db.Exec(`UPDATE "user" SET name=?,description=?,persona_prompt=?,color=?,connector_id=?,model=?,updated_at=? WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, in.Name, in.Description, in.PersonaPrompt, in.Color, in.ConnectorID, in.Model, now(), id)
+		res, err = s.db.Exec(`UPDATE "user" SET name=?,description=?,persona_prompt=?,color=?,connector_id=?,model=?,effort=?,updated_at=? WHERE id=? AND is_ai=1 AND deleted_at IS NULL`, in.Name, in.Description, in.PersonaPrompt, in.Color, in.ConnectorID, in.Model, in.Effort, now(), id)
 		if err == nil {
 			n, _ := res.RowsAffected()
 			if n == 0 {

@@ -391,7 +391,7 @@ func (s *Server) runWorkflow(w http.ResponseWriter, r *http.Request) {
 	if root.Mode == "wait" {
 		wait = 1
 	}
-	_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,NULL,?,?,?,?,?,NULL,?,?,?,?,?)`, id, *connector, title, model, created, created, defaults.Thinking, defaults.ShowThinking, defaults.AutoAllow, botID, wf.ID, root.ID, id, wait)
+	_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,NULL,?,?,?,?,?,NULL,?,?,?,?,?)`, id, *connector, title, model, created, created, defaults.Effort, defaults.ShowThinking, defaults.AutoAllow, botID, wf.ID, root.ID, id, wait)
 	if err != nil {
 		errw(w, 500, cleanupConnectorDir(workdir, err).Error())
 		return

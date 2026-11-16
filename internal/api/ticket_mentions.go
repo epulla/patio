@@ -84,7 +84,7 @@ func (s *Server) openTicketMentionChats(ticketID, source string, mentions []ment
 			continue
 		}
 		created := now()
-		_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id) VALUES(?,?,?,?,NULL,?,?,?,?,?,NULL,?)`, id, *connector, chatTitle, model, created, created, defaults.Thinking, defaults.ShowThinking, defaults.AutoAllow, b.ID)
+		_, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,parent_chat_id,bot_id) VALUES(?,?,?,?,NULL,?,?,?,?,?,NULL,?)`, id, *connector, chatTitle, model, created, created, defaults.Effort, defaults.ShowThinking, defaults.AutoAllow, b.ID)
 		if err != nil {
 			log.Printf("create ticket mention chat: %v", cleanupConnectorDir(workdir, err))
 			continue

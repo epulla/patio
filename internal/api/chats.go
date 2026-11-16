@@ -46,7 +46,7 @@ type chat struct {
 	PendingCount    int              `json:"pending_count,omitempty"`
 	Paused          bool             `json:"paused,omitempty"`
 	PausedReason    string           `json:"paused_reason,omitempty"`
-	Thinking        bool             `json:"thinking"`
+	Effort          string           `json:"effort"`
 	ShowThinking    bool             `json:"show_thinking"`
 	AutoAllow       bool             `json:"auto_allow"`
 	Capabilities    chatCapabilities `json:"capabilities"`
@@ -58,8 +58,8 @@ type chat struct {
 }
 
 type chatCapabilities struct {
-	Thinking thinkingCapability `json:"thinking"`
-	Steer    bool               `json:"steer"`
+	Reasoning thinkingCapability `json:"thinking"`
+	Steer     bool               `json:"steer"`
 }
 
 type thinkingCapability struct {
@@ -193,7 +193,7 @@ func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 		d := &localRuntime{connectorID: *c.ConnectorID, model: model, baseURL: baseURL, ollamaURL: ollamaOrigin(baseURL), secret: secret, ctx: ctx, client: &http.Client{}}
 		d.detectOllama()
 		if d.ollama && !d.ollamaThinkingSupported(ctx) {
-			c.Capabilities.Thinking = thinkingCapability{Reason: "This model doesn't support thinking"}
+			c.Capabilities.Reasoning = thinkingCapability{Reason: "This model doesn't support thinking"}
 		}
 		cancel()
 	}
@@ -202,11 +202,11 @@ func (s *Server) scanChat(row interface{ Scan(...any) error }) (chat, error) {
 
 func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string, string, string, error) {
 	var c chat
-	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.TitleLocked, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Thinking, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID, &c.BotID); err != nil {
+	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.TitleLocked, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Effort, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID, &c.BotID); err != nil {
 		return c, "", "", "", err
 	}
 	c.Workdir = s.chatWorkdir(c)
-	c.Capabilities = chatCapabilities{Thinking: thinkingCapability{Supported: true}}
+	c.Capabilities = chatCapabilities{Reasoning: thinkingCapability{Supported: true}}
 	var kind, baseURL, connectorModel string
 	if c.ConnectorID != nil {
 		if err := s.db.QueryRow(`SELECT kind,base_url,model FROM connector WHERE id=?`, *c.ConnectorID).Scan(&kind, &baseURL, &connectorModel); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -220,12 +220,10 @@ func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string,
 func capabilitiesForKind(kind string) chatCapabilities {
 	capability := thinkingCapability{Supported: true}
 	switch kind {
-	case "opencode":
-		capability = thinkingCapability{Reason: "opencode picks reasoning with model variants"}
 	case "claude":
 		capability.Reason = "Some models always think"
 	}
-	return chatCapabilities{Thinking: capability, Steer: kind == "codex" || kind == "opencode" || kind == "copilot" || kind == "claude"}
+	return chatCapabilities{Reasoning: capability, Steer: kind == "codex" || kind == "opencode" || kind == "copilot" || kind == "claude"}
 }
 
 func (s *Server) chatWorkdir(c chat) string {
@@ -235,7 +233,7 @@ func (s *Server) chatWorkdir(c chat) string {
 	return filepath.Join(s.dbDir, "chats", c.ID)
 }
 
-const chatColumns = `id,connector_id,title,title_locked,model,folder,session_id,created_at,updated_at,thinking,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id,bot_id`
+const chatColumns = `id,connector_id,title,title_locked,model,folder,session_id,created_at,updated_at,effort,show_thinking,auto_allow,scheduled_task_id,COALESCE((SELECT late FROM scheduled_task_run WHERE chat_id=chat.id),0),parent_chat_id,bot_id`
 
 func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 	ids, idsPresent := r.URL.Query()["ids"]
@@ -342,14 +340,15 @@ func (s *Server) listChats(w http.ResponseWriter, r *http.Request) {
 }
 
 type createChatInput struct {
-	ConnectorID  json.RawMessage `json:"connector_id"`
-	Title        string          `json:"title"`
-	Model        string          `json:"model"`
-	Folder       json.RawMessage `json:"folder"`
-	AutoAllow    *bool           `json:"auto_allow"`
-	Thinking     *bool           `json:"thinking"`
-	ShowThinking *bool           `json:"show_thinking"`
-	BotID        *string         `json:"bot_id"`
+	ConnectorID    json.RawMessage `json:"connector_id"`
+	Title          string          `json:"title"`
+	Model          string          `json:"model"`
+	Folder         json.RawMessage `json:"folder"`
+	AutoAllow      *bool           `json:"auto_allow"`
+	Effort         *string         `json:"effort"`
+	LegacyThinking *bool           `json:"thinking"`
+	ShowThinking   *bool           `json:"show_thinking"`
+	BotID          *string         `json:"bot_id"`
 }
 
 func (s *Server) createChat(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +386,8 @@ func (s *Server) newChat(in createChatInput) (chat, int, error) {
 			return chat{}, 400, errors.New("bot not found")
 		}
 	}
-	if len(in.ConnectorID) == 0 && botConnector != nil {
+	usingBotConnector := len(in.ConnectorID) == 0 && botConnector != nil
+	if usingBotConnector {
 		in.ConnectorID, _ = json.Marshal(*botConnector)
 		if in.Model == "" {
 			in.Model = botModel
@@ -418,12 +418,19 @@ func (s *Server) newChat(in createChatInput) (chat, int, error) {
 			folder = &value
 		}
 	}
-	autoAllow, thinking, showThinking := defaults.AutoAllow, defaults.Thinking, defaults.ShowThinking
+	autoAllow, effort, showThinking := defaults.AutoAllow, defaults.Effort, defaults.ShowThinking
 	if in.AutoAllow != nil {
 		autoAllow = *in.AutoAllow
 	}
-	if in.Thinking != nil {
-		thinking = *in.Thinking
+	if in.Effort != nil {
+		effort = *in.Effort
+	} else if in.LegacyThinking != nil {
+		effort = effortFromThinking(*in.LegacyThinking)
+	} else if usingBotConnector {
+		_ = s.db.QueryRow(`SELECT effort FROM "user" WHERE id=?`, *botID).Scan(&effort)
+	}
+	if !validEffort(effort) {
+		return chat{}, 400, errors.New("effort must be default, small, medium, high or xhigh")
 	}
 	if in.ShowThinking != nil {
 		showThinking = *in.ShowThinking
@@ -455,7 +462,7 @@ func (s *Server) newChat(in createChatInput) (chat, int, error) {
 	}
 	id, created := uid(), now()
 	c := chat{ID: id, ConnectorID: &connectorID, Title: in.Title, Model: in.Model, Folder: folder, CreatedAt: created, UpdatedAt: created, Capabilities: capabilitiesForKind(kind)}
-	c.Thinking, c.ShowThinking, c.AutoAllow = thinking, showThinking, autoAllow
+	c.Effort, c.ShowThinking, c.AutoAllow = effort, showThinking, autoAllow
 	if folder == nil {
 		dir := s.chatWorkdir(c)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -466,7 +473,7 @@ func (s *Server) newChat(in createChatInput) (chat, int, error) {
 		}
 	}
 	c.BotID = botID
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,bot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Effort, c.ShowThinking, c.AutoAllow, c.BotID); err != nil {
 		if folder == nil {
 			err = cleanupConnectorDir(s.chatWorkdir(c), err)
 		}
@@ -994,16 +1001,17 @@ func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Title        *string         `json:"title"`
-		TitleAuto    bool            `json:"title_auto"`
-		Model        *string         `json:"model"`
-		Thinking     *bool           `json:"thinking"`
-		ShowThinking *bool           `json:"show_thinking"`
-		AutoAllow    *bool           `json:"auto_allow"`
-		Folder       json.RawMessage `json:"folder"`
+		Title          *string         `json:"title"`
+		TitleAuto      bool            `json:"title_auto"`
+		Model          *string         `json:"model"`
+		Effort         *string         `json:"effort"`
+		LegacyThinking *bool           `json:"thinking"`
+		ShowThinking   *bool           `json:"show_thinking"`
+		AutoAllow      *bool           `json:"auto_allow"`
+		Folder         json.RawMessage `json:"folder"`
 	}
-	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Thinking == nil && in.ShowThinking == nil && in.AutoAllow == nil && len(in.Folder) == 0 {
-		errw(w, 400, "title, model, thinking, auto_allow, or folder required")
+	if decode(r, &in) != nil || in.Title == nil && in.Model == nil && in.Effort == nil && in.LegacyThinking == nil && in.ShowThinking == nil && in.AutoAllow == nil && len(in.Folder) == 0 {
+		errw(w, 400, "title, model, effort, auto_allow, or folder required")
 		return
 	}
 	if in.Title != nil && !required(*in.Title) {
@@ -1043,7 +1051,16 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		errw(w, 500, err.Error())
 		return
 	}
-	title, model, thinking, showThinking, autoAllow, folder := c.Title, c.Model, c.Thinking, c.ShowThinking, c.AutoAllow, c.Folder
+	title, model, effort, showThinking, autoAllow, folder := c.Title, c.Model, c.Effort, c.ShowThinking, c.AutoAllow, c.Folder
+	if in.Effort != nil {
+		effort = *in.Effort
+	} else if in.LegacyThinking != nil {
+		effort = effortFromThinking(*in.LegacyThinking)
+	}
+	if !validEffort(effort) {
+		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		return
+	}
 	folderChanged := len(in.Folder) > 0 && (folderIn == nil) != (c.Folder == nil) || folderIn != nil && c.Folder != nil && *folderIn != *c.Folder
 	var moved []movedFile
 	if folderChanged {
@@ -1081,9 +1098,6 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	if in.Model != nil {
 		model = *in.Model
 	}
-	if in.Thinking != nil {
-		thinking = *in.Thinking
-	}
 	if in.ShowThinking != nil {
 		showThinking = *in.ShowThinking
 	}
@@ -1096,7 +1110,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	}) error {
 		// The composer's placeholder title from the first message (title_auto) leaves room for an AI title.
 		titleLocked := c.TitleLocked || in.Title != nil && title != c.Title && !in.TitleAuto
-		res, err := exec.Exec(`UPDATE chat SET title=?,title_locked=?,model=?,thinking=?,show_thinking=?,auto_allow=?,session_id=CASE WHEN folder IS ? THEN session_id ELSE NULL END,folder=?,updated_at=? WHERE id=?`, title, titleLocked, model, thinking, showThinking, autoAllow, folder, folder, updated, id)
+		res, err := exec.Exec(`UPDATE chat SET title=?,title_locked=?,model=?,effort=?,show_thinking=?,auto_allow=?,session_id=CASE WHEN folder IS ? THEN session_id ELSE NULL END,folder=?,updated_at=? WHERE id=?`, title, titleLocked, model, effort, showThinking, autoAllow, folder, folder, updated, id)
 		if err != nil {
 			return err
 		}
@@ -1133,7 +1147,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		err = s.chats.ChangeFolder(id, update)
 	} else if in.Model != nil && model != c.Model {
 		err = s.chats.ChangeModel(id, update)
-	} else if in.Thinking != nil && thinking != c.Thinking {
+	} else if (in.Effort != nil || in.LegacyThinking != nil) && effort != c.Effort {
 		err = s.chats.UpdateChat(id, update)
 	} else {
 		err = update()
@@ -1148,7 +1162,7 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		errw(w, http.StatusInternalServerError, err.Error())
 	} else {
-		c.Title, c.Model, c.Thinking, c.AutoAllow, c.UpdatedAt = title, model, thinking, autoAllow, updated
+		c.Title, c.Model, c.Effort, c.AutoAllow, c.UpdatedAt = title, model, effort, autoAllow, updated
 		if folderChanged {
 			c.Folder, c.SessionID = folder, nil
 			c.Workdir = s.chatWorkdir(c)

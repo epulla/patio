@@ -25,7 +25,7 @@ func TestCodexTurnOverPipes(t *testing.T) {
 			connectorID := createCodexTestConnector(t, database)
 			chatID := createDriverTestChat(t, database, connectorID, root)
 			if allow {
-				if _, err := database.Exec(`UPDATE chat SET thinking=1,show_thinking=1 WHERE id=?`, chatID); err != nil {
+				if _, err := database.Exec(`UPDATE chat SET effort='default',show_thinking=1 WHERE id=?`, chatID); err != nil {
 					t.Fatal(err)
 				}
 			}

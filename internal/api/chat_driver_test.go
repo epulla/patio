@@ -1154,7 +1154,7 @@ func TestCreateChatHandoffInheritsChatSettings(t *testing.T) {
 	db, _, root := chatAPI(t)
 	connector := createTestConnector(t, db)
 	caller := createDriverTestChat(t, db, connector, root)
-	if _, err := db.Exec(`UPDATE chat SET model='caller-model',thinking=1,show_thinking=1,auto_allow=1 WHERE id=?`, caller); err != nil {
+	if _, err := db.Exec(`UPDATE chat SET model='caller-model',effort='default',show_thinking=1,auto_allow=1 WHERE id=?`, caller); err != nil {
 		t.Fatal(err)
 	}
 	fake := newPipeChatProcess()
@@ -1167,12 +1167,13 @@ func TestCreateChatHandoffInheritsChatSettings(t *testing.T) {
 		t.Fatalf("handoff=%d", code)
 	}
 	var gotConnector, model string
-	var thinking, showThinking, autoAllow bool
-	if err := db.QueryRow(`SELECT connector_id,model,thinking,show_thinking,auto_allow FROM chat WHERE id=?`, out.ChatID).Scan(&gotConnector, &model, &thinking, &showThinking, &autoAllow); err != nil {
+	var effort string
+	var showThinking, autoAllow bool
+	if err := db.QueryRow(`SELECT connector_id,model,effort,show_thinking,auto_allow FROM chat WHERE id=?`, out.ChatID).Scan(&gotConnector, &model, &effort, &showThinking, &autoAllow); err != nil {
 		t.Fatal(err)
 	}
-	if gotConnector != connector || model != "caller-model" || !thinking || !showThinking || !autoAllow {
-		t.Fatalf("child settings=%q %q %v %v %v", gotConnector, model, thinking, showThinking, autoAllow)
+	if gotConnector != connector || model != "caller-model" || effort != "default" || !showThinking || !autoAllow {
+		t.Fatalf("child settings=%q %q %q %v %v", gotConnector, model, effort, showThinking, autoAllow)
 	}
 	var explicit struct {
 		ChatID string `json:"chat_id"`
@@ -1795,6 +1796,9 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
+	if _, err := database.Exec(`UPDATE chat SET effort='small' WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
 	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
 	var launches [][]string
 	launch := 0
@@ -1835,7 +1839,7 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 		t.Fatalf("first send = %d", code)
 	}
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]bool{"thinking": true}, nil); code != http.StatusOK {
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "high"}, nil); code != http.StatusOK {
 		t.Fatalf("thinking update = %d", code)
 	}
 	if code := requestJSON(t, server, http.MethodPost, "/api/chats/"+chatID+"/messages", map[string]string{"text": "second"}, nil); code != http.StatusAccepted {
@@ -1885,7 +1889,7 @@ func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 func createDriverTestChat(t *testing.T, database *sql.DB, connectorID, root string) string {
 	t.Helper()
 	id := uid()
-	if _, err := database.Exec(`INSERT INTO chat(id,connector_id,title,model,created_at,updated_at,bot_id) VALUES(?,?, 'New chat','',?,?,'ai')`, id, connectorID, now(), now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO chat(id,connector_id,title,model,effort,created_at,updated_at,bot_id) VALUES(?,?, 'New chat','', 'small',?,?,'ai')`, id, connectorID, now(), now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "chats", id), 0o700); err != nil {

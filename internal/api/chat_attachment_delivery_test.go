@@ -219,7 +219,7 @@ func TestCodexSendWritesLocalImageInputItem(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
-	if _, err := database.Exec(`UPDATE chat SET thinking=1 WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET effort='default' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	workdir, attachments, _ := deliveryAttachments(t)

@@ -120,14 +120,14 @@ func mcpSpecHeaders(spec mcpServerSpec) map[string]string {
 }
 
 type chatRuntime struct {
-	mu              sync.Mutex
-	driver          chatRuntimeDriver
-	busy            atomic.Bool
-	stopping        bool
-	changingModel   bool
-	stopDone        chan struct{}
-	connectorID     string
-	startedThinking *bool
+	mu            sync.Mutex
+	driver        chatRuntimeDriver
+	busy          atomic.Bool
+	stopping      bool
+	changingModel bool
+	stopDone      chan struct{}
+	connectorID   string
+	startedEffort *string
 	// streamMu guards the fields below. Drivers emit deltas while holding their own lock,
 	// and Send holds mu while calling the driver, so these must not need mu.
 	streamMu         sync.Mutex
@@ -271,7 +271,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, err
 	}
 	c.Model = model
-	if err := m.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, c.ID).Scan(&c.Thinking); err != nil {
+	if err := m.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, c.ID).Scan(&c.Effort); err != nil {
 		return ChatMessage{}, err
 	}
 	if err := m.db.QueryRow(`SELECT show_thinking FROM chat WHERE id=?`, c.ID).Scan(&c.ShowThinking); err != nil {
@@ -286,7 +286,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, errChatConnectorMissing
 	}
 	if err := m.restartThinkingLocked(kind, c, rt); err != nil {
-		return ChatMessage{}, fmt.Errorf("restart chat for thinking change: %w", err)
+		return ChatMessage{}, fmt.Errorf("restart chat for reasoning effort change: %w", err)
 	}
 	if rt.driver != nil {
 		specs, specErr := m.chatMCPServersWithNotes(c.ID, false)
@@ -370,8 +370,8 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		}
 		rt.mcpSpecs = specs
 		if kind == "claude" || kind == "copilot" {
-			thinking := c.Thinking
-			rt.startedThinking = &thinking
+			effort := c.Effort
+			rt.startedEffort = &effort
 		}
 	}
 	if note, ok := m.turnNotes.LoadAndDelete(c.ID); ok {
@@ -418,7 +418,7 @@ func (m *chatManager) releaseTurn(id string) error {
 var errChatTurnOtherWindow = errors.New("A reply is already running in another window")
 
 func (m *chatManager) restartThinkingLocked(kind string, c chat, rt *chatRuntime) error {
-	if (kind != "claude" && kind != "copilot") || rt.driver == nil || rt.startedThinking == nil || *rt.startedThinking == c.Thinking {
+	if (kind != "claude" && kind != "copilot") || rt.driver == nil || rt.startedEffort == nil || *rt.startedEffort == c.Effort {
 		return nil
 	}
 	driver := rt.driver
@@ -432,7 +432,7 @@ func (m *chatManager) restartThinkingLocked(kind string, c chat, rt *chatRuntime
 	if rt.driver == driver {
 		rt.driver = nil
 		rt.busy.Store(false)
-		rt.startedThinking = nil
+		rt.startedEffort = nil
 	}
 	rt.stopping = false
 	rt.stopDone = nil
@@ -460,7 +460,7 @@ func (m *chatManager) workdir(chatID string) (string, error) {
 var (
 	errChatTurnRunning        = errors.New("chat turn already running")
 	errChatModelChangeBusy    = errors.New("Stop the reply before changing the model")
-	errChatThinkingChangeBusy = errors.New("Stop the reply before changing thinking")
+	errChatThinkingChangeBusy = errors.New("Stop the reply before changing reasoning effort")
 	errChatFolderChangeBusy   = errors.New("Stop the reply before changing the folder")
 	errChatFolderLocked       = errors.New("Start a new chat to use another folder")
 	errChatUnsupported        = errors.New("not supported yet")
@@ -886,7 +886,7 @@ func (m *chatManager) Stop(id string) error {
 	if rt.driver == driver {
 		rt.driver = nil
 		rt.busy.Store(false)
-		rt.startedThinking = nil
+		rt.startedEffort = nil
 	}
 	rt.stopping = false
 	rt.stopDone = nil

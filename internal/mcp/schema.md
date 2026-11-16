@@ -2,7 +2,7 @@
 
 ```mermaid
 erDiagram
-  user { TEXT id; TEXT name; TEXT last_name; TEXT email; INTEGER email_verified; TEXT id_card; TEXT phone; TEXT image; TEXT role; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER is_ai; TEXT description; TEXT persona_prompt; TEXT color; TEXT connector_id; TEXT model }
+  user { TEXT id; TEXT name; TEXT last_name; TEXT email; INTEGER email_verified; TEXT id_card; TEXT phone; TEXT image; TEXT role; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER is_ai; TEXT description; TEXT persona_prompt; TEXT color; TEXT connector_id; TEXT model; TEXT effort }
   board { TEXT id; TEXT name; TEXT short_name; TEXT template; TEXT created_at; TEXT updated_at; TEXT deleted_at; INTEGER position }
   status { TEXT id; TEXT name; TEXT type; TEXT additional_fields; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
   ticket_type { TEXT id; TEXT name; TEXT color; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT board_id }
@@ -20,7 +20,7 @@ erDiagram
   calendar_item { TEXT id; TEXT kind; TEXT title; TEXT description; TEXT starts_at; TEXT ends_at; INTEGER all_day; TEXT board_id; TEXT ticket_id; TEXT created_by; TEXT created_at; TEXT updated_at; TEXT deleted_at; TEXT notified_at }
   connector { TEXT id; TEXT kind; TEXT name; TEXT config_dir; TEXT base_url; TEXT model; TEXT quota_json; TEXT created_at }
   allowed_folder { TEXT id; TEXT path; TEXT created_at }
-  chat { TEXT id; TEXT connector_id; TEXT title; INTEGER title_locked; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held; TEXT bot_id; TEXT workflow_id; TEXT workflow_node; TEXT workflow_run_id; INTEGER workflow_wait }
+  chat { TEXT id; TEXT connector_id; TEXT title; INTEGER title_locked; TEXT model; TEXT folder; TEXT session_id; TEXT created_at; TEXT updated_at; TEXT effort; INTEGER thinking; INTEGER show_thinking; INTEGER auto_allow; TEXT scheduled_task_id; TEXT parent_chat_id; INTEGER agent_hops; INTEGER agent_hops_notified; INTEGER queue_held; TEXT bot_id; TEXT workflow_id; TEXT workflow_node; TEXT workflow_run_id; INTEGER workflow_wait }
   workflow { TEXT id; TEXT name; TEXT description; INTEGER hop_budget; TEXT graph; TEXT created_at; TEXT updated_at; TEXT deleted_at }
   chat_handoff { TEXT id; TEXT run_id; TEXT from_chat_id; TEXT to_chat_id; TEXT workflow_edge; TEXT status; TEXT result; TEXT created_at; TEXT deadline_at; TEXT finished_at; INTEGER delivered; INTEGER held }
   chat_draft { TEXT chat_id; TEXT text; TEXT attachments; TEXT updated_at }
@@ -32,7 +32,7 @@ erDiagram
   skill { TEXT id; TEXT name; TEXT description; TEXT body; INTEGER enabled; TEXT created_at; TEXT updated_at; TEXT kind }
   skill_bot { TEXT skill_id; TEXT bot_id }
   app_setting { TEXT key; TEXT value }
-  scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT bot_id; TEXT model; TEXT folder; INTEGER thinking; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
+  scheduled_task { TEXT id; TEXT title; TEXT prompt; TEXT connector_id; TEXT bot_id; TEXT model; TEXT folder; INTEGER thinking; TEXT effort; INTEGER auto_allow; TEXT schedule; TEXT run_at; INTEGER enabled; TEXT next_run_at; TEXT created_at; TEXT updated_at }
   scheduled_task_run { TEXT id; TEXT task_id; TEXT chat_id; TEXT scheduled_for; TEXT status; INTEGER late; TEXT error; TEXT created_at }
   monitor { TEXT id; TEXT name; TEXT mcp_server_id; TEXT tool; TEXT args; TEXT schedule; TEXT next_run_at; TEXT condition; TEXT result_path; TEXT id_path; TEXT actions; INTEGER enabled; TEXT last_run_at; TEXT last_status; TEXT last_error; TEXT last_hash; INTEGER fail_streak; TEXT created_at; TEXT updated_at }
   monitor_run { TEXT id; TEXT monitor_id; TEXT started_at; TEXT status; TEXT result_hash; INTEGER new_count; TEXT error }

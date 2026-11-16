@@ -48,18 +48,18 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 48 {
-		t.Fatalf("migration count = %d, want 48", migrations)
+	if migrations != 49 {
+		t.Fatalf("migration count = %d, want 49", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
 	}
-	var thinking int
-	if err := second.QueryRow(`SELECT thinking FROM chat WHERE id='migration-test'`).Scan(&thinking); err != nil {
-		t.Fatalf("read chat thinking default: %v", err)
+	var effort string
+	if err := second.QueryRow(`SELECT effort FROM chat WHERE id='migration-test'`).Scan(&effort); err != nil {
+		t.Fatalf("read chat effort default: %v", err)
 	}
-	if thinking != 0 {
-		t.Fatalf("new chat thinking = %d, want 0", thinking)
+	if effort != "default" {
+		t.Fatalf("new chat effort = %q, want default", effort)
 	}
 	if _, err := second.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES('migration-question','migration-test','question','{}','now')`); err != nil {
 		t.Fatalf("insert question message: %v", err)
@@ -93,6 +93,63 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	}
 	if _, err := second.Exec(`INSERT INTO scheduled_task_run(id,task_id,scheduled_for,status,created_at) VALUES('migration-waiting','migration-task','now','waiting','now')`); err != nil {
 		t.Fatalf("insert waiting run: %v", err)
+	}
+}
+
+func TestEffortMigrationBackfillsLegacyThinking(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "effort-legacy.db")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for version, entry := range entries[:48] {
+		script, err := migrations.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(string(script)); err != nil {
+			t.Fatalf("apply %s: %v", entry.Name(), err)
+		}
+		if _, err := legacy.Exec(fmt.Sprintf("PRAGMA user_version=%d", version+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range []string{
+		`INSERT INTO chat(id,title,created_at,updated_at,thinking) VALUES('small-chat','Small','now','now',0),('default-chat','Default','now','now',1)`,
+		`INSERT INTO scheduled_task(id,title,prompt,thinking,schedule,created_at,updated_at) VALUES('small-task','Small','work',0,'0 9 * * *','now','now'),('default-task','Default','work',1,'0 9 * * *','now','now')`,
+		`INSERT INTO "user"(id,name,email) VALUES('small-bot','Small','small@bot.local'),('default-bot','Default','default@bot.local')`,
+		`INSERT INTO app_setting(key,value) VALUES('thinking','false')`,
+	} {
+		if _, err := legacy.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, check := range []struct{ query, id, want string }{
+		{`SELECT effort FROM chat WHERE id=?`, "small-chat", "small"}, {`SELECT effort FROM chat WHERE id=?`, "default-chat", "default"},
+		{`SELECT effort FROM scheduled_task WHERE id=?`, "small-task", "small"}, {`SELECT effort FROM scheduled_task WHERE id=?`, "default-task", "default"},
+		{`SELECT effort FROM "user" WHERE id=?`, "small-bot", "default"}, {`SELECT effort FROM "user" WHERE id=?`, "default-bot", "default"},
+	} {
+		var got string
+		if err := database.QueryRow(check.query, check.id).Scan(&got); err != nil || got != check.want {
+			t.Errorf("%s effort=%q, %v; want %q", check.id, got, err, check.want)
+		}
+	}
+	var setting string
+	if err := database.QueryRow(`SELECT value FROM app_setting WHERE key='effort'`).Scan(&setting); err != nil || setting != `"small"` {
+		t.Errorf("effort setting=%q, %v; want JSON small", setting, err)
 	}
 }
 

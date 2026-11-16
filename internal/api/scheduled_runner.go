@@ -148,7 +148,7 @@ func (s *Server) startScheduled(claim scheduledClaim) error {
 	}
 	chatID, created := uid(), now()
 	title := t.Title + " · " + time.Now().Format("Jan 2, 15:04")
-	c := chat{ID: chatID, ConnectorID: t.ConnectorID, Title: title, Model: t.Model, Folder: t.Folder, CreatedAt: created, UpdatedAt: created, Thinking: t.Thinking, AutoAllow: t.AutoAllow, BotID: t.BotID}
+	c := chat{ID: chatID, ConnectorID: t.ConnectorID, Title: title, Model: t.Model, Folder: t.Folder, CreatedAt: created, UpdatedAt: created, Effort: t.Effort, AutoAllow: t.AutoAllow, BotID: t.BotID}
 	if c.BotID == nil {
 		d, e := s.chatDefaults()
 		if e != nil {
@@ -174,7 +174,7 @@ func (s *Server) startScheduled(claim scheduledClaim) error {
 		}
 	}
 	if err := txrun(s.db, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,title_locked,model,folder,created_at,updated_at,thinking,auto_allow,scheduled_task_id,bot_id) VALUES(?,?,?,1,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Thinking, c.AutoAllow, t.ID, c.BotID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chat(id,connector_id,title,title_locked,model,folder,created_at,updated_at,effort,auto_allow,scheduled_task_id,bot_id) VALUES(?,?,?,1,?,?,?,?,?,?,?,?)`, c.ID, c.ConnectorID, c.Title, c.Model, c.Folder, c.CreatedAt, c.UpdatedAt, c.Effort, c.AutoAllow, t.ID, c.BotID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(`UPDATE scheduled_task_run SET chat_id=? WHERE id=?`, chatID, claim.runID)

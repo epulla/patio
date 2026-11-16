@@ -196,11 +196,11 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 	if err != nil {
 		return err
 	}
-	var thinking bool
-	if err := d.manager.db.QueryRow(`SELECT thinking FROM chat WHERE id=?`, d.chatID).Scan(&thinking); err != nil {
+	var effort string
+	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
 		return err
 	}
-	if !thinking && !d.modelsLoaded {
+	if effort == "small" && !d.modelsLoaded {
 		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
 		models, err := d.client.Models(ctx)
 		cancel()
@@ -219,7 +219,7 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 		} `json:"turn"`
 	}
 	params := map[string]any{"threadId": d.threadID, "input": codexUserInput(request.Text, files)}
-	if !thinking && d.lowestEffort != "" {
+	if effort == "small" && d.lowestEffort != "" {
 		params["effort"] = d.lowestEffort
 	}
 	if err := d.client.Call(d.ctx, "turn/start", params, &response); err != nil {

@@ -182,13 +182,14 @@ type attachFileArgs struct {
 	ChatID   string `json:"chat_id,omitempty" jsonschema:"This chat's ID from your instructions; selects the folder path is read from"`
 }
 type settingsDefaultsArgs struct {
-	ConnectorID  json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
-	Model        *string         `json:"model,omitempty" jsonschema:"Optional default model"`
-	Language     *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
-	Folder       json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
-	Thinking     *bool           `json:"thinking,omitempty"`
-	ShowThinking *bool           `json:"show_thinking,omitempty"`
-	DefaultBotID *string         `json:"default_bot_id,omitempty"`
+	ConnectorID    json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
+	Model          *string         `json:"model,omitempty" jsonschema:"Optional default model"`
+	Language       *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
+	Folder         json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
+	Effort         *string         `json:"effort,omitempty" jsonschema:"Reasoning effort: default, small, medium, high or xhigh"`
+	LegacyThinking *bool           `json:"thinking,omitempty"`
+	ShowThinking   *bool           `json:"show_thinking,omitempty"`
+	DefaultBotID   *string         `json:"default_bot_id,omitempty"`
 }
 type apiBotArgs struct {
 	Name          string  `json:"name" jsonschema:"Unique bot name without whitespace"`
@@ -197,6 +198,7 @@ type apiBotArgs struct {
 	Color         string  `json:"color,omitempty"`
 	ConnectorID   *string `json:"connector_id,omitempty"`
 	Model         string  `json:"model,omitempty"`
+	Effort        string  `json:"effort,omitempty" jsonschema:"Reasoning effort: default, small, medium, high or xhigh"`
 }
 type apiBotUpdateArgs struct {
 	ID string `json:"id"`
@@ -292,17 +294,18 @@ type updateScheduledTaskArgs struct {
 	scheduledTaskArgs
 }
 type scheduledTaskArgs struct {
-	Title       string  `json:"title" jsonschema:"Task title"`
-	Prompt      string  `json:"prompt" jsonschema:"Prompt to run"`
-	ConnectorID *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
-	BotID       *string `json:"bot_id,omitempty" jsonschema:"Optional bot UUID"`
-	Model       string  `json:"model"`
-	Folder      *string `json:"folder,omitempty"`
-	Thinking    bool    `json:"thinking"`
-	AutoAllow   *bool   `json:"auto_allow,omitempty" jsonschema:"Defaults true when omitted"`
-	Schedule    string  `json:"schedule,omitempty" jsonschema:"5-field cron in local time; exactly one of schedule or run_at"`
-	RunAt       *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
-	Enabled     *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
+	Title          string  `json:"title" jsonschema:"Task title"`
+	Prompt         string  `json:"prompt" jsonschema:"Prompt to run"`
+	ConnectorID    *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
+	BotID          *string `json:"bot_id,omitempty" jsonschema:"Optional bot UUID"`
+	Model          string  `json:"model"`
+	Folder         *string `json:"folder,omitempty"`
+	Effort         string  `json:"effort,omitempty" jsonschema:"Reasoning effort: default, small, medium, high or xhigh"`
+	LegacyThinking *bool   `json:"thinking,omitempty"`
+	AutoAllow      *bool   `json:"auto_allow,omitempty" jsonschema:"Defaults true when omitted"`
+	Schedule       string  `json:"schedule,omitempty" jsonschema:"5-field cron in local time; exactly one of schedule or run_at"`
+	RunAt          *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
+	Enabled        *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
 }
 type monitorIDArgs struct {
 	ID string `json:"id" jsonschema:"Monitor UUID"`
@@ -774,7 +777,13 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 				body[key] = value
 			}
 		}
-		for key, value := range map[string]*bool{"thinking": a.Thinking, "show_thinking": a.ShowThinking} {
+		if a.Effort != nil {
+			body["effort"] = *a.Effort
+		}
+		if a.LegacyThinking != nil {
+			body["thinking"] = *a.LegacyThinking
+		}
+		for key, value := range map[string]*bool{"show_thinking": a.ShowThinking} {
 			if value != nil {
 				body[key] = *value
 			}
@@ -1360,9 +1369,10 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			properties["model"] = map[string]any{"type": "string"}
 			properties["bot"] = map[string]any{"type": "string"}
 			properties["prompt"] = map[string]any{"type": "string"}
+			properties["effort"] = map[string]any{"type": "string", "enum": []string{"default", "small", "medium", "high", "xhigh"}}
 			properties["workflow_edge"] = map[string]any{"type": "string"}
 			required = append(required, "prompt")
-			description = "Create child chat handoff. In a workflow chat, pass workflow_edge from your instructions; Patio picks the bot. bot: name of the bot to run the child (its connector, model and persona); explicit connector_id/model override. Without bot, connector, model, thinking and auto-allow default to the calling chat's."
+			description = "Create child chat handoff. In a workflow chat, pass workflow_edge from your instructions; Patio picks the bot. bot: name of the bot to run the child (its connector, model and persona); explicit connector_id/model override. Without bot, connector, model, effort and auto-allow default to the calling chat's."
 		}
 		n := name
 		s.AddTool(&sdk.Tool{Name: n, Description: description, InputSchema: map[string]any{"type": "object", "properties": properties, "required": required}}, func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {

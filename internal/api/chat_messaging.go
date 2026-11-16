@@ -178,7 +178,7 @@ func fireWorkflowJoin(s *Server, run, workflowID, node string, edge workflowEdge
 			return "", cleanupConnectorDir(dir, err)
 		}
 	}
-	if _, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, *connector, title, model, parent.Folder, created, created, parent.Thinking, parent.ShowThinking, parent.AutoAllow, parentID, bot.ID, wf.ID, node, run, workflowModeWait(wf.Graph, node)); err != nil {
+	if _, err = s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, *connector, title, model, parent.Folder, created, created, parent.Effort, parent.ShowThinking, parent.AutoAllow, parentID, bot.ID, wf.ID, node, run, workflowModeWait(wf.Graph, node)); err != nil {
 		if madeDir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}
@@ -628,6 +628,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ConnectorID  string `json:"connector_id"`
 		Model        string `json:"model"`
+		Effort       string `json:"effort"`
 		Bot          string `json:"bot"`
 		Prompt       string `json:"prompt"`
 		ReportBack   bool   `json:"report_back"`
@@ -788,6 +789,17 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	if model == "" && defaults.ConnectorID != nil && connectorID == *defaults.ConnectorID {
 		model = defaults.Model
 	}
+	effort := caller.Effort
+	if selectedBot.ID != "" && selectedBot.ConnectorID != nil && connectorID == *selectedBot.ConnectorID {
+		effort = selectedBot.Effort
+	}
+	if in.Effort != "" {
+		effort = in.Effort
+	}
+	if !validEffort(effort) {
+		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		return
+	}
 	depth := 0
 	parent := caller.ID
 	for parent != "" {
@@ -873,7 +885,7 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 	if in.WorkflowEdge != "" {
 		workflowID, workflowNode, runID = workflowIDValue, edge.To, workflowRun
 	}
-	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,thinking,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, caller.Thinking, caller.ShowThinking, caller.AutoAllow, caller.ID, botID, workflowID, workflowNode, runID, workflowModeWait(wf.Graph, edge.To)); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO chat(id,connector_id,title,model,folder,created_at,updated_at,effort,show_thinking,auto_allow,parent_chat_id,bot_id,workflow_id,workflow_node,workflow_run_id,workflow_wait) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, connectorID, title, model, folder, created, created, effort, caller.ShowThinking, caller.AutoAllow, caller.ID, botID, workflowID, workflowNode, runID, workflowModeWait(wf.Graph, edge.To)); err != nil {
 		if createdWorkdir {
 			err = cleanupConnectorDir(s.chatWorkdir(child), err)
 		}
