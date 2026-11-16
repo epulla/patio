@@ -106,21 +106,29 @@ func (s *Server) pausedOutgoing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteChatQueue(w http.ResponseWriter, r *http.Request) {
-	res, err := s.db.Exec(`DELETE FROM chat_queue WHERE id=? AND chat_id=?`, idParam(r, "qid"), idParam(r, "id"))
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		errw(w, 500, err.Error())
-		return
-	}
-	if n == 0 {
+	chatID := idParam(r, "id")
+	var reportTo sql.NullString
+	err := s.db.QueryRow(`DELETE FROM chat_queue WHERE id=? AND chat_id=? RETURNING report_to_chat_id`, idParam(r, "qid"), chatID).Scan(&reportTo)
+	if errors.Is(err, sql.ErrNoRows) {
 		errw(w, 404, "queued message not found")
 		return
 	}
-	s.chats.emit(idParam(r, "id"), map[string]any{"type": "queue"})
+	if err != nil {
+		errw(w, 500, err.Error())
+		return
+	}
+	s.chats.emit(chatID, map[string]any{"type": "queue"})
+	// A discarded report_back message never reaches the child, so its handoff would otherwise hold the parent's other reports until it times out.
+	if reportTo.Valid {
+		res, err := s.db.Exec(`UPDATE chat_handoff SET status='stopped',result='The user discarded this queued message before it was delivered.',finished_at=? WHERE from_chat_id=? AND to_chat_id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM chat_queue WHERE chat_id=? AND report_to_chat_id=?) AND NOT EXISTS(SELECT 1 FROM chat_message m WHERE m.chat_id=? AND m.from_chat_id=? AND m.created_at>=chat_handoff.created_at)`, now(), reportTo.String, chatID, chatID, reportTo.String, chatID, reportTo.String)
+		if err != nil {
+			log.Printf("stop handoff for discarded message to %s: %v", chatID, err)
+		} else if n, _ := res.RowsAffected(); n > 0 {
+			if err := s.chats.deliverHandoffReports(reportTo.String); err != nil {
+				log.Printf("deliver handoff reports to %s: %v", reportTo.String, err)
+			}
+		}
+	}
 	noContent(w)
 }
 

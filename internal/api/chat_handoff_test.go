@@ -160,6 +160,27 @@ func TestHandoffCombinedReportsWaitForAllChildren(t *testing.T) {
 	}
 }
 
+func TestDiscardedQueuedHandoffReleasesParentReports(t *testing.T) {
+	s, parent, discarded, finished := newHandoffChats(t)
+	queueHandoff(t, s, parent, discarded, true)
+	queueHandoff(t, s, parent, finished, true)
+	var got []string
+	s.chats.reportBack = func(_, _, text string) error { got = append(got, text); return nil }
+	if _, _, err := s.chats.finishHandoffs(finished, "done", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	var qid string
+	if err := s.db.QueryRow(`SELECT id FROM chat_queue WHERE chat_id=?`, discarded).Scan(&qid); err != nil {
+		t.Fatal(err)
+	}
+	if code := requestJSON(t, s, http.MethodDelete, "/api/chats/"+discarded+"/queue/"+qid, nil, nil); code != http.StatusNoContent {
+		t.Fatalf("delete status=%d", code)
+	}
+	if len(got) != 1 || !strings.Contains(got[0], "(stopped)") || !strings.Contains(got[0], "(ok)") {
+		t.Fatalf("reports=%v", got)
+	}
+}
+
 func TestHandoffStatusLabelForSingleReport(t *testing.T) {
 	for _, tc := range []struct {
 		stopped bool
