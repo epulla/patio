@@ -20,14 +20,14 @@ import (
 	"patio/internal/filetools"
 )
 
-func TestLocalChatPlainAndThinkStripping(t *testing.T) {
+func TestLocalChatPlainWithoutThinkSuffix(t *testing.T) {
 	database, root, chatID, handler, events := newLocalChatFixture(t, func(w http.ResponseWriter, _ *http.Request, request map[string]any) {
 		if request["stream"] != true || request["model"] != "qwen3:4b" {
 			t.Errorf("completion request = %#v", request)
 		}
 		messages, _ := request["messages"].([]any)
 		last, _ := messages[len(messages)-1].(map[string]any)
-		if last["content"] != "reply /no_think" {
+		if last["content"] != "reply" {
 			t.Errorf("fallback user message = %#v", last)
 		}
 		writeSSE(w,
@@ -827,8 +827,11 @@ func TestOpenAIFallbackThinkingChangesNextTurnWithoutRestart(t *testing.T) {
 		if _, exists := request["think"]; exists {
 			t.Error("OpenAI-compatible request included native think field")
 		}
-		if calls.Add(1) == 1 && last["content"] != "first /no_think" {
-			t.Errorf("thinking-off user content = %#v", last["content"])
+		if calls.Add(1) == 1 && last["content"] != "first" {
+			t.Errorf("small-effort user content = %#v", last["content"])
+		}
+		if calls.Load() == 1 && request["reasoning_effort"] != "low" {
+			t.Errorf("reasoning_effort = %#v", request["reasoning_effort"])
 		}
 		if calls.Load() == 2 && last["content"] != "second" {
 			t.Errorf("thinking-on user content = %#v", last["content"])

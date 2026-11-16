@@ -372,7 +372,7 @@ func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest
 	retriedWithoutImages := false
 	for {
 		withTools := !d.toolsOff && !retriedWithoutTools
-		response, err := d.streamWithImages(ctx, messages, withTools, effort != "small", images)
+		response, err := d.streamWithImages(ctx, messages, withTools, effort, images)
 		if err != nil {
 			if errors.Is(err, errLocalUnsupportedImage) && len(images) > 0 && !retriedWithoutImages {
 				if err := appendCurrentImagePaths(messages, images); err != nil {
@@ -653,18 +653,21 @@ type localStreamResult struct {
 	promptEvalCount int
 }
 
-func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, withTools, thinking bool) (localStreamResult, error) {
-	return d.streamWithImages(ctx, messages, withTools, thinking, nil)
+func (d *localRuntime) stream(ctx context.Context, messages []map[string]any, withTools bool, effort string) (localStreamResult, error) {
+	return d.streamWithImages(ctx, messages, withTools, effort, nil)
 }
 
 var errLocalUnsupportedImage = errors.New("local model rejected image input")
 
-func (d *localRuntime) streamWithImages(ctx context.Context, messages []map[string]any, withTools, thinking bool, images []chatAttachmentFile) (localStreamResult, error) {
+func (d *localRuntime) streamWithImages(ctx context.Context, messages []map[string]any, withTools bool, effort string, images []chatAttachmentFile) (localStreamResult, error) {
 	if d.ollama {
-		return d.streamOllamaWithImages(ctx, messages, withTools, thinking, images)
+		return d.streamOllamaWithImages(ctx, messages, withTools, effort, images)
 	}
-	requestMessages := openAIMessagesWithImages(messages, thinking, images)
+	requestMessages := openAIMessagesWithImages(messages, images)
 	body := map[string]any{"model": d.model, "stream": true, "messages": requestMessages}
+	if value := effortFor(effort, []string{"low", "medium", "high"}); value != "" {
+		body["reasoning_effort"] = value
+	}
 	if withTools {
 		body["tools"] = d.tools
 	}
@@ -701,7 +704,7 @@ func (d *localRuntime) streamWithImages(ctx context.Context, messages []map[stri
 				return localStreamResult{}, err
 			}
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localToolNote})
-			return d.streamWithImages(ctx, messages, false, thinking, images)
+			return d.streamWithImages(ctx, messages, false, effort, images)
 		}
 		return localStreamResult{}, fmt.Errorf("local chat completion returned %s: %s", resp.Status, message)
 	}
@@ -709,8 +712,8 @@ func (d *localRuntime) streamWithImages(ctx context.Context, messages []map[stri
 	return d.readSSE(ctx, resp.Body)
 }
 
-func openAIMessagesWithImages(messages []map[string]any, thinking bool, images []chatAttachmentFile) []map[string]any {
-	result := openAIMessages(messages, thinking)
+func openAIMessagesWithImages(messages []map[string]any, images []chatAttachmentFile) []map[string]any {
+	result := openAIMessages(messages)
 	if len(images) == 0 {
 		return result
 	}
@@ -745,7 +748,7 @@ func isUnsupportedLocalImageResponse(status int, body string) bool {
 	return false
 }
 
-func openAIMessages(messages []map[string]any, thinking bool) []map[string]any {
+func openAIMessages(messages []map[string]any) []map[string]any {
 	copyMessages := make([]map[string]any, len(messages))
 	for i, message := range messages {
 		copyMessages[i] = make(map[string]any, len(message))
@@ -753,23 +756,14 @@ func openAIMessages(messages []map[string]any, thinking bool) []map[string]any {
 			copyMessages[i][key] = value
 		}
 	}
-	if !thinking {
-		for i := len(copyMessages) - 1; i >= 0; i-- {
-			if copyMessages[i]["role"] == "user" {
-				content, _ := copyMessages[i]["content"].(string)
-				copyMessages[i]["content"] = content + " /no_think"
-				break
-			}
-		}
-	}
 	return copyMessages
 }
 
-func (d *localRuntime) streamOllama(ctx context.Context, messages []map[string]any, withTools, thinking bool) (localStreamResult, error) {
-	return d.streamOllamaWithImages(ctx, messages, withTools, thinking, nil)
+func (d *localRuntime) streamOllama(ctx context.Context, messages []map[string]any, withTools bool, effort string) (localStreamResult, error) {
+	return d.streamOllamaWithImages(ctx, messages, withTools, effort, nil)
 }
 
-func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []map[string]any, withTools, thinking bool, images []chatAttachmentFile) (localStreamResult, error) {
+func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []map[string]any, withTools bool, effort string, images []chatAttachmentFile) (localStreamResult, error) {
 	d.ollamaContextSize(ctx)
 	nativeMessages, err := ollamaMessages(messages)
 	if err != nil {
@@ -793,7 +787,13 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 		body["options"] = map[string]any{"num_ctx": contextSize}
 	}
 	if !d.ollama || d.ollamaThinkingSupported(ctx) {
-		body["think"] = thinking
+		if effort == "default" {
+			body["think"] = true
+		} else if effort == "small" {
+			body["think"] = false
+		} else if value := effortFor(effort, []string{"medium", "high"}); value != "" {
+			body["think"] = value
+		}
 	}
 	if withTools {
 		body["tools"] = d.tools
@@ -828,7 +828,7 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 				return localStreamResult{}, err
 			}
 			d.manager.emit(d.chatID, map[string]any{"type": "error", "message": localToolNote})
-			return d.streamOllamaWithImages(ctx, messages, false, thinking, images)
+			return d.streamOllamaWithImages(ctx, messages, false, effort, images)
 		}
 		return localStreamResult{}, fmt.Errorf("local chat completion returned %s: %s", resp.Status, message)
 	}

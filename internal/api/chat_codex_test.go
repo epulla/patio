@@ -363,19 +363,13 @@ func TestCodexMCPRequestsOverPipe(t *testing.T) {
 	}
 }
 
-func TestLowestCodexEffortSelection(t *testing.T) {
-	models := []connectorcli.Model{
-		{ID: "other", Efforts: []string{"minimal"}},
-		{ID: "selected", Efforts: []string{"high", "medium", "low"}},
+func TestCodexEffortFallbackSelection(t *testing.T) {
+	models := []connectorcli.Model{{ID: "other", Efforts: []string{"minimal"}}, {ID: "selected", Efforts: []string{"high", "medium", "low"}}}
+	if got := effortFor("small", codexModelEfforts(models, "selected")); got != "low" {
+		t.Fatalf("selected effort=%q, want low", got)
 	}
-	if got := lowestCodexEffort(models, "selected"); got != "low" {
-		t.Fatalf("selected model effort = %q, want low", got)
-	}
-	if got := lowestCodexEffort(models, "missing"); got != "" {
-		t.Fatalf("unknown model effort = %q, want empty", got)
-	}
-	if got := lowestCodexEffort([]connectorcli.Model{{ID: "selected", Efforts: []string{"custom"}}}, "selected"); got != "" {
-		t.Fatalf("unknown supported effort = %q, want empty", got)
+	if got := effortFor("small", codexModelEfforts(models, "missing")); got != "" {
+		t.Fatalf("unknown model effort=%q, want empty", got)
 	}
 }
 

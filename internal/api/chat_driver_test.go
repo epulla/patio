@@ -539,7 +539,7 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 		findClaude:     func() (string, error) { return "claude-test", nil },
 		commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil },
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
-			if path != "claude-test" || len(args) != 3 || args[1] != "--append-system-prompt" || !strings.Contains(args[2], "/tickets/<ticket id>") || !strings.Contains(args[2], "/ai/chats/<chat id>") || !strings.Contains(args[2], "This chat's ID is "+chatID) || cwd != filepath.Join(root, "chats", chatID) {
+			if path != "claude-test" || len(args) != 5 || args[1] != "--append-system-prompt" || args[3] != "--effort" || args[4] != "low" || !strings.Contains(args[2], "/tickets/<ticket id>") || !strings.Contains(args[2], "/ai/chats/<chat id>") || !strings.Contains(args[2], "This chat's ID is "+chatID) || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("process launch = %q %#v %q", path, args, cwd)
 			}
 			return fake, nil
@@ -1813,8 +1813,8 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 		},
 		processFactory: func(_ string, args, env []string, _ string) (chatProcess, error) {
 			launches = append(launches, append([]string(nil), args...))
-			if launch == 0 && !hasEnv(env, "MAX_THINKING_TOKENS", "0") {
-				t.Errorf("thinking-off Claude env missing MAX_THINKING_TOKENS=0: %v", env)
+			if launch == 0 && !reflect.DeepEqual(args[len(args)-2:], []string{"--effort", "low"}) {
+				t.Errorf("small-effort Claude args = %v", args)
 			}
 			if launch == 1 && !reflect.DeepEqual(env, connectorEnv("claude", "")) {
 				t.Errorf("thinking-on Claude env changed defaults: %v", env)

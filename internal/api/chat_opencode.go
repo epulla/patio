@@ -71,6 +71,10 @@ type opencodeRuntime struct {
 	session         string
 	directory       string
 	model           string
+	effortVariant   string
+	variantApplied  bool
+	modelVariants   []string
+	variantsLoaded  bool
 	storedSession   bool
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -337,6 +341,92 @@ func (d *opencodeRuntime) endpoint(path string) string {
 	return path + "?" + query.Encode()
 }
 
+func (d *opencodeRuntime) currentEffort() string {
+	var level string
+	_ = d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&level)
+	return level
+}
+
+func (d *opencodeRuntime) resolveVariant(level string) string {
+	if !d.variantsLoaded {
+		d.variantsLoaded = true
+		path := "/api/model"
+		if d.model == "" {
+			path = "/api/model/default"
+		}
+		resp, err := d.server.request(context.Background(), http.MethodGet, path, nil)
+		if err == nil {
+			defer resp.Body.Close()
+			var catalog struct {
+				Data json.RawMessage `json:"data"`
+			}
+			if resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&catalog) == nil {
+				var models []struct {
+					ID         string `json:"id"`
+					ProviderID string `json:"providerID"`
+					Variants   []struct {
+						ID string `json:"id"`
+					} `json:"variants"`
+				}
+				if d.model == "" {
+					var model struct {
+						Variants []struct {
+							ID string `json:"id"`
+						} `json:"variants"`
+					}
+					if json.Unmarshal(catalog.Data, &model) == nil {
+						for _, v := range model.Variants {
+							d.modelVariants = append(d.modelVariants, v.ID)
+						}
+					}
+				} else if json.Unmarshal(catalog.Data, &models) == nil {
+					provider, id, _ := strings.Cut(d.model, "/")
+					for _, m := range models {
+						if m.ProviderID == provider && m.ID == id {
+							for _, v := range m.Variants {
+								d.modelVariants = append(d.modelVariants, v.ID)
+							}
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	return effortFor(level, d.modelVariants)
+}
+
+func (d *opencodeRuntime) applyVariant(level string) error {
+	variant := d.resolveVariant(level)
+	if len(d.modelVariants) == 0 {
+		return nil
+	}
+	if variant == d.effortVariant && d.variantApplied {
+		return nil
+	}
+	if level == "default" && !d.variantApplied {
+		return nil
+	}
+	provider, id, ok := strings.Cut(d.model, "/")
+	if !ok || provider == "" || id == "" {
+		return nil
+	}
+	model := map[string]string{"providerID": provider, "id": id}
+	if variant != "" {
+		model["variant"] = variant
+	}
+	resp, err := d.server.request(context.Background(), http.MethodPost, "/api/session/"+url.PathEscape(d.session)+"/model", map[string]any{"model": model})
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("opencode set model returned %s", resp.Status)
+	}
+	d.effortVariant, d.variantApplied = variant, true
+	return nil
+}
+
 func (d *opencodeRuntime) createSession() error {
 	endpoint := d.endpoint("/session")
 	body := map[string]any{}
@@ -345,6 +435,15 @@ func (d *opencodeRuntime) createSession() error {
 		body["location"] = map[string]string{"directory": d.directory}
 		if provider, modelID, ok := strings.Cut(d.model, "/"); ok && provider != "" && modelID != "" {
 			body["model"] = map[string]string{"providerID": provider, "id": modelID}
+		}
+		variant := d.resolveVariant(d.currentEffort())
+		if variant != "" {
+			ref, _ := body["model"].(map[string]string)
+			if ref != nil {
+				ref["variant"] = variant
+				d.effortVariant = variant
+				d.variantApplied = true
+			}
 		}
 	}
 	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)
@@ -375,6 +474,10 @@ func (d *opencodeRuntime) createSession() error {
 }
 
 func (d *opencodeRuntime) send(request ChatSendRequest) error {
+	var level string
+	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&level); err != nil {
+		return err
+	}
 	if d.firstPrompt {
 		d.firstPrompt = false
 		d.waitMCP()
@@ -412,8 +515,15 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	if d.server.major >= 2 {
 		endpoint = "/api/session/" + url.PathEscape(d.session) + "/prompt"
 		body = opencodeV2Prompt(request.Text, files)
+		if err := d.applyVariant(level); err != nil {
+			d.discardTurn()
+			return err
+		}
 	} else if model != nil {
 		body["model"] = model
+		if level != "default" {
+			body["variant"] = level
+		}
 	}
 	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)
 	if err != nil {

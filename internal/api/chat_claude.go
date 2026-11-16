@@ -86,14 +86,14 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		}
 		args = append(args, "--append-system-prompt", prompt)
 	}
+	if value := effortFor(c.Effort, []string{"low", "medium", "high", "xhigh", "max"}); value != "" {
+		args = append(args, "--effort", value)
+	}
 	factory := m.options.processFactory
 	if factory == nil {
 		factory = startOSChatProcess
 	}
 	env := connectorEnv("claude", configDir)
-	if c.Effort == "small" {
-		env = setChatEnv(env, "MAX_THINKING_TOKENS", "0")
-	}
 	process, err := factory(path, args, env, c.Workdir)
 	if err != nil {
 		if configPath != "" {
@@ -370,9 +370,9 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			Event struct {
 				Type  string `json:"type"`
 				Delta struct {
-					Type      string `json:"type"`
-					Text      string `json:"text"`
-					Reasoning string `json:"thinking"`
+					Type     string `json:"type"`
+					Text     string `json:"text"`
+					Thinking string `json:"thinking"`
 				} `json:"delta"`
 			} `json:"event"`
 		}
@@ -384,18 +384,18 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 			d.assistant.WriteString(d.manager.emitDelta(d.chatID, frame.Event.Delta.Text))
 		} else if frame.Event.Type == "content_block_delta" && frame.Event.Delta.Type == "thinking_delta" {
 			d.thinkingDeltas = true
-			d.manager.emitThinking(d.chatID, frame.Event.Delta.Reasoning)
+			d.manager.emitThinking(d.chatID, frame.Event.Delta.Thinking)
 		}
 	case "assistant":
 		var assistant struct {
 			Message struct {
 				Content []struct {
-					Type      string          `json:"type"`
-					ID        string          `json:"id"`
-					Text      string          `json:"text"`
-					Reasoning string          `json:"thinking"`
-					Name      string          `json:"name"`
-					Input     json.RawMessage `json:"input"`
+					Type     string          `json:"type"`
+					ID       string          `json:"id"`
+					Text     string          `json:"text"`
+					Thinking string          `json:"thinking"`
+					Name     string          `json:"name"`
+					Input    json.RawMessage `json:"input"`
 				} `json:"content"`
 			} `json:"message"`
 		}
@@ -413,7 +413,7 @@ func (d *claudeRuntime) parseLine(raw []byte) error {
 				}
 			case "thinking":
 				if !d.thinkingDeltas {
-					d.manager.emitThinking(d.chatID, block.Reasoning)
+					d.manager.emitThinking(d.chatID, block.Thinking)
 				}
 			case "tool_use":
 				args, err := compactJSON(block.Input)

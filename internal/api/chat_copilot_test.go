@@ -473,7 +473,7 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 			if launch == 1 {
 				want = []string{"--acp", "--stdio", "--additional-mcp-config"}
 			}
-			if len(args) < 4 || !reflect.DeepEqual(args[:3], want) || !strings.HasPrefix(args[3], "@") || (launch == 0 && !reflect.DeepEqual(args[4:], []string{"--reasoning-effort", "low"})) || (launch == 1 && len(args) != 4) {
+			if len(args) < 4 || !reflect.DeepEqual(args[:3], want) || !strings.HasPrefix(args[3], "@") || (launch == 0 && !reflect.DeepEqual(args[4:], []string{"--reasoning-effort", "low"})) || (launch == 1 && !reflect.DeepEqual(args[4:], []string{"--reasoning-effort", "high"})) {
 				t.Errorf("Copilot args = %v, want %v", args, want)
 			}
 			process := processes[launch]

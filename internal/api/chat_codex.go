@@ -40,7 +40,7 @@ type codexRuntime struct {
 	items        map[string]json.RawMessage
 	model        string
 	modelsLoaded bool
-	lowestEffort string
+	modelEfforts []string
 }
 
 func init() { runtimes["codex"] = startCodex }
@@ -200,13 +200,13 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
 		return err
 	}
-	if effort == "small" && !d.modelsLoaded {
+	if effort != "default" && !d.modelsLoaded {
 		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
 		models, err := d.client.Models(ctx)
 		cancel()
 		d.modelsLoaded = true
 		if err == nil {
-			d.lowestEffort = lowestCodexEffort(models, d.model)
+			d.modelEfforts = codexModelEfforts(models, d.model)
 		}
 	}
 	d.mu.Lock()
@@ -219,8 +219,8 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 		} `json:"turn"`
 	}
 	params := map[string]any{"threadId": d.threadID, "input": codexUserInput(request.Text, files)}
-	if effort == "small" && d.lowestEffort != "" {
-		params["effort"] = d.lowestEffort
+	if value := effortFor(effort, d.modelEfforts); value != "" {
+		params["effort"] = value
 	}
 	if err := d.client.Call(d.ctx, "turn/start", params, &response); err != nil {
 		return err
@@ -266,28 +266,19 @@ func codexUserInput(text string, files []chatAttachmentFile) []map[string]string
 	return input
 }
 
-func lowestCodexEffort(models []connectorcli.Model, selected string) string {
-	ranks := map[string]int{"minimal": 0, "low": 1, "medium": 2, "high": 3, "xhigh": 4}
-	var efforts []string
+func codexModelEfforts(models []connectorcli.Model, selected string) []string {
 	if selected == "" {
 		if len(models) > 0 {
-			efforts = models[0].Efforts
+			return models[0].Efforts
 		}
-	} else {
-		for _, model := range models {
-			if model.ID == selected {
-				efforts = model.Efforts
-				break
-			}
+		return nil
+	}
+	for _, model := range models {
+		if model.ID == selected {
+			return model.Efforts
 		}
 	}
-	lowest, rank := "", int(^uint(0)>>1)
-	for _, effort := range efforts {
-		if current, ok := ranks[effort]; ok && current < rank {
-			lowest, rank = effort, current
-		}
-	}
-	return lowest
+	return nil
 }
 
 func (d *codexRuntime) watch() {

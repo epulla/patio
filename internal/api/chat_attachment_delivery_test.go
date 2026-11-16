@@ -321,7 +321,7 @@ func TestLocalOpenAIImageAcceptAndUnsupportedRetry(t *testing.T) {
 			}
 			if !reject {
 				content, ok := firstContent.([]any)
-				if !ok || len(content) != 2 || !strings.HasPrefix(content[0].(map[string]any)["text"].(string), "What color? /no_think") {
+				if !ok || len(content) != 2 || !strings.HasPrefix(content[0].(map[string]any)["text"].(string), "What color?") {
 					t.Fatalf("OpenAI image content = %#v", firstContent)
 				}
 				imagePart := content[1].(map[string]any)
@@ -384,7 +384,7 @@ func TestOllamaImageCapabilityAndNativePayload(t *testing.T) {
 			if !vision {
 				toSend = nil
 			}
-			result, err := driver.streamOllamaWithImages(context.Background(), []map[string]any{{"role": "user", "content": "what color"}}, false, true, toSend)
+			result, err := driver.streamOllamaWithImages(context.Background(), []map[string]any{{"role": "user", "content": "what color"}}, false, "default", toSend)
 			if err != nil || result.text != "red" {
 				t.Fatalf("Ollama stream = %#v, %v", result, err)
 			}
@@ -502,7 +502,7 @@ func TestLocalHistoryIncludesOldAttachmentPathButDoesNotResendImage(t *testing.T
 	if oldMessage == nil || !strings.Contains(oldMessage["content"].(string), attachmentPathLine(oldPath)) {
 		t.Fatalf("old attachment path missing from history: %#v", oldMessage)
 	}
-	openAI := openAIMessagesWithImages(messages, true, nil)
+	openAI := openAIMessagesWithImages(messages, nil)
 	encodedHistory, _ := json.Marshal(openAI)
 	if strings.Contains(string(encodedHistory), "data:image/png") || strings.Contains(string(encodedHistory), base64.StdEncoding.EncodeToString(imageData)) {
 		t.Fatalf("old image resent in history: %s", encodedHistory)
