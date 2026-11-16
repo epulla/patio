@@ -156,16 +156,32 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	if got := streamed.String(); got != "Checking:\n\nDone." {
 		t.Fatalf("streamed assistant = %q", got)
 	}
+	if _, err := database.Exec(`UPDATE chat SET queue_held=1 WHERE id=?`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO chat_queue(id,chat_id,text,attachments,created_at) VALUES('held-1',?,'held after failure','[]',?)`, chatID, now()); err != nil {
+		t.Fatal(err)
+	}
 	fake.publish(t, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": firstSession, "status": map[string]string{"type": "busy"}}})
 	waitFor(t, func() bool { return server.chats.Running(chatID) })
+	var held int
+	if err := database.QueryRow(`SELECT queue_held FROM chat WHERE id=?`, chatID).Scan(&held); err != nil || held != 0 {
+		t.Fatalf("queue_held after autonomous turn start = %d, %v", held, err)
+	}
 	fake.publish(t, map[string]any{"type": "message.updated", "properties": map[string]any{"sessionID": firstSession, "info": map[string]any{"id": "late-assistant", "role": "assistant"}}})
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"sessionID": firstSession, "part": map[string]any{"id": "late-text", "messageID": "late-assistant", "type": "text"}}})
 	fake.publish(t, map[string]any{"type": "message.part.delta", "properties": map[string]any{"sessionID": firstSession, "messageID": "late-assistant", "partID": "late-text", "field": "text", "delta": "late reply"}})
 	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
-	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	waitFor(t, func() bool {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		return slices.ContainsFunc(fake.prompts, func(p string) bool { return strings.Contains(p, "held after failure") })
+	})
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "late reply" {
 		t.Fatalf("autonomous v1 assistant = %q, %v", assistant, err)
 	}
+	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
+	waitFor(t, func() bool { return !server.chats.Running(chatID) })
 	fake.mu.Lock()
 	for _, prompt := range fake.prompts {
 		if strings.Contains(prompt, "echo must not appear") {

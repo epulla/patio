@@ -1474,6 +1474,12 @@ func (d *opencodeRuntime) startAutonomousTurnLocked() bool {
 	if err := d.manager.claimTurn(d.chatID); err != nil {
 		return false
 	}
+	// The session outlived a failed turn; its held queue would otherwise never drain.
+	if res, err := d.manager.db.Exec(`UPDATE chat SET queue_held=0 WHERE id=? AND queue_held!=0`, d.chatID); err != nil {
+		log.Printf("release held queue for chat %s: %v", d.chatID, err)
+	} else if n, _ := res.RowsAffected(); n > 0 {
+		d.manager.emit(d.chatID, map[string]any{"type": "queue"})
+	}
 	d.text.Reset()
 	d.active = true
 	return true
