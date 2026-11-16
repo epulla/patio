@@ -61,7 +61,12 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry)
 	if err != nil {
-		write(w, http.StatusOK, map[string]any{"models": []selectableModel{defaultModel}, "note": err.Error()})
+		if c.Kind == "opencode" && len(models) > 0 {
+			models = append([]selectableModel{defaultEntry}, models...)
+		} else {
+			models = []selectableModel{defaultModel}
+		}
+		write(w, http.StatusOK, map[string]any{"models": models, "note": err.Error()})
 		return
 	}
 	if c.Kind == "codex" && len(models) > 0 {
@@ -122,7 +127,9 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		}
 		if kind == "opencode" {
 			models := parseOpenCodeModels(string(output))
-			addOpenCodeEfforts(ctx, path, env, models, defaultEntry)
+			if err := addOpenCodeEfforts(ctx, path, env, models, defaultEntry); err != nil {
+				return models, err
+			}
 			return models, nil
 		}
 		models := parseCopilotModels(string(output))
@@ -165,53 +172,60 @@ func convertModels(models []connectorcli.Model) []selectableModel {
 	return out
 }
 
-func addOpenCodeEfforts(ctx context.Context, path string, env []string, models []selectableModel, defaultEntry *selectableModel) {
+func addOpenCodeEfforts(ctx context.Context, path string, env []string, models []selectableModel, defaultEntry *selectableModel) error {
 	output, err := connectorcli.OpencodeCommandCombinedOutput(ctx, path, []string{"api", "GET", "/api/model"}, env)
-	if err == nil {
-		var catalog struct {
-			Data []struct {
-				ID         string `json:"id"`
-				ProviderID string `json:"providerID"`
-				Variants   *[]struct {
-					ID string `json:"id"`
-				} `json:"variants"`
-			} `json:"data"`
+	if err != nil {
+		return err
+	}
+	var catalog struct {
+		Data []struct {
+			ID         string `json:"id"`
+			ProviderID string `json:"providerID"`
+			Variants   *[]struct {
+				ID string `json:"id"`
+			} `json:"variants"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(output, &catalog); err != nil || catalog.Data == nil {
+		return errors.New("invalid OpenCode model catalog")
+	}
+	for _, model := range catalog.Data {
+		if model.Variants == nil {
+			continue
 		}
-		if json.Unmarshal(output, &catalog) == nil && catalog.Data != nil {
-			for _, model := range catalog.Data {
-				if model.Variants == nil {
-					continue
+		id := model.ProviderID + "/" + model.ID
+		for i := range models {
+			if models[i].ID == id {
+				efforts := make([]string, 0, len(*model.Variants))
+				for _, variant := range *model.Variants {
+					efforts = append(efforts, variant.ID)
 				}
-				id := model.ProviderID + "/" + model.ID
-				for i := range models {
-					if models[i].ID == id {
-						efforts := make([]string, 0, len(*model.Variants))
-						for _, variant := range *model.Variants {
-							efforts = append(efforts, variant.ID)
-						}
-						models[i].Efforts = &efforts
-					}
-				}
+				models[i].Efforts = &efforts
 			}
 		}
 	}
 	output, err = connectorcli.OpencodeCommandCombinedOutput(ctx, path, []string{"api", "GET", "/api/model/default"}, env)
-	if err == nil {
-		var response struct {
-			Data struct {
-				Variants *[]struct {
-					ID string `json:"id"`
-				} `json:"variants"`
-			} `json:"data"`
-		}
-		if json.Unmarshal(output, &response) == nil && response.Data.Variants != nil {
-			efforts := make([]string, 0, len(*response.Data.Variants))
-			for _, variant := range *response.Data.Variants {
-				efforts = append(efforts, variant.ID)
-			}
-			defaultEntry.Efforts = &efforts
-		}
+	if err != nil {
+		return err
 	}
+	var response struct {
+		Data *struct {
+			Variants *[]struct {
+				ID string `json:"id"`
+			} `json:"variants"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(output, &response); err != nil || response.Data == nil {
+		return errors.New("invalid OpenCode default model catalog")
+	}
+	if response.Data.Variants != nil {
+		efforts := make([]string, 0, len(*response.Data.Variants))
+		for _, variant := range *response.Data.Variants {
+			efforts = append(efforts, variant.ID)
+		}
+		defaultEntry.Efforts = &efforts
+	}
+	return nil
 }
 
 func parseOpenCodeModels(output string) []selectableModel {

@@ -138,6 +138,7 @@ esac
 			server := New(database, "local", false, "dev", root)
 			var result struct {
 				Models []selectableModel `json:"models"`
+				Note   string            `json:"note"`
 			}
 			if code := requestJSON(t, server, http.MethodGet, "/api/connectors/"+id+"/models", nil, &result); code != http.StatusOK {
 				t.Fatalf("models status=%d", code)
@@ -146,12 +147,18 @@ esac
 				t.Fatalf("models=%#v", result.Models)
 			}
 			if fail {
+				if result.Note == "" {
+					t.Fatal("failed catalog response missing note")
+				}
 				for _, model := range result.Models {
 					if model.Efforts != nil {
 						t.Fatalf("failed catalog effort for %q = %v", model.ID, *model.Efforts)
 					}
 				}
 				return
+			}
+			if result.Note != "" {
+				t.Fatalf("success response has note %q", result.Note)
 			}
 			if result.Models[0].Efforts == nil || len(*result.Models[0].Efforts) != 1 || (*result.Models[0].Efforts)[0] != "medium" {
 				t.Fatalf("default efforts=%v", result.Models[0].Efforts)
