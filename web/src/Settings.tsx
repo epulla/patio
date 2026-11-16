@@ -557,6 +557,8 @@ export function Appearance() {
   const [error, setError] = useState<unknown>();
   const [naming, setNaming] = useState<{ rename: boolean; name: string }>();
   const saveTimer = useRef<number>(undefined);
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
   const selected = prefs.saved.find((theme) => `custom:${theme.id}` === prefs.palette);
   const editing = selected && prefs.preview?.id === selected.id ? prefs.preview : selected;
   const colors = editing?.colors ?? prefs.custom;
@@ -571,7 +573,11 @@ export function Appearance() {
     setThemePrefs({ palette });
   }
 
+  // Each save sends the whole list, so one at a time: an overlapping save would restore stale themes.
   async function saveThemes(list: SavedTheme[], select?: Palette) {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
       setSavedThemes(await api.put<SavedTheme[]>("/api/settings/custom-themes", list));
       if (select) setThemePrefs({ palette: select });
@@ -579,6 +585,9 @@ export function Appearance() {
       setError(undefined);
     } catch (reason) {
       setError(reason);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -665,7 +674,7 @@ export function Appearance() {
             />
           </label>
         </div>
-        <fieldset className="palette-picker" data-tour="palette">
+        <fieldset className="palette-picker" data-tour="palette" disabled={saving}>
           <legend>{t.palette}</legend>
           {palettes.map((palette) => (
             <label key={palette.id} className="palette-option" data-palette={palette.id}>
@@ -695,7 +704,7 @@ export function Appearance() {
           ))}
         </fieldset>
         {(prefs.palette === "custom" || editing) && (
-          <fieldset className="custom-theme">
+          <fieldset className="custom-theme" disabled={saving}>
             <legend>{editing?.name ?? t.customColors}</legend>
             {(
               [
@@ -761,7 +770,7 @@ export function Appearance() {
               />
             </label>
             <span className="muted">{naming.name.length}/24</span>
-            <button type="submit" className="ghost" disabled={!naming.name.trim() || nameTaken}>
+            <button type="submit" className="ghost" disabled={!naming.name.trim() || nameTaken || saving}>
               {t.save}
             </button>
             <button type="button" className="ghost" onClick={() => setNaming(undefined)}>
