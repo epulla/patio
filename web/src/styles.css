@@ -4955,6 +4955,26 @@ main.chat-window .app-version {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+.custom-theme {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.custom-theme legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.custom-theme label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
 .palette-swatch {
   width: 28px;
   height: 28px;

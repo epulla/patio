@@ -1,5 +1,5 @@
 import { startTour } from "./Tour";
-import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ShortcutList } from "./Shortcuts";
 import { WhatsNewDialog } from "./WhatsNew";
 import {
@@ -15,7 +15,16 @@ import {
 import { ErrorText } from "./App";
 import { Icon, IconButton } from "./icons";
 import Switch from "./Switch";
-import { palettes, setThemePrefs, useThemePrefs, type Mode, type SidebarStyle } from "./theme";
+import {
+  defaultCustomTheme,
+  palettes,
+  setCustomTheme,
+  setThemePrefs,
+  useThemePrefs,
+  type CustomTheme,
+  type Mode,
+  type SidebarStyle,
+} from "./theme";
 import Picker from "./Picker";
 import ModelPicker from "./ModelPicker";
 import { useModels } from "./Chats";
@@ -76,6 +85,14 @@ const text = {
     flat: "Flat",
     gradient: "Gradient",
     palette: "Palette",
+    custom: "Custom",
+    customColors: "Custom colours",
+    customPrimary: "Primary",
+    customSecondary: "Secondary",
+    customBase: "Background",
+    customSidebarFrom: "Sidebar start",
+    customSidebarTo: "Sidebar end",
+    reset: "Reset",
     defaults: "Defaults",
     defaultsHelp: "New chats start with these. Each chat can change them afterwards.",
     connector: "Connector",
@@ -178,6 +195,14 @@ const text = {
     flat: "Plano",
     gradient: "Degradado",
     palette: "Paleta",
+    custom: "Personalizada",
+    customColors: "Colores personalizados",
+    customPrimary: "Principal",
+    customSecondary: "Secundario",
+    customBase: "Fondo",
+    customSidebarFrom: "Inicio de la barra lateral",
+    customSidebarTo: "Fin de la barra lateral",
+    reset: "Restablecer",
     defaults: "Valores predeterminados",
     defaultsHelp: "Los chats nuevos empiezan con estos valores. Cada chat puede cambiarlos después.",
     connector: "Conector",
@@ -509,6 +534,19 @@ export function Appearance() {
   const prefs = useThemePrefs();
   const language = useLanguage();
   const [error, setError] = useState<unknown>();
+  const saveTimer = useRef<number>(undefined);
+
+  // Colour inputs fire on every drag step: preview each one, save once the user pauses.
+  function editCustom(next: CustomTheme, delay = 400) {
+    setCustomTheme(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      api
+        .put<CustomTheme>("/api/settings/custom-theme", next)
+        .then(() => setError(undefined))
+        .catch(setError);
+    }, delay);
+  }
 
   async function saveLanguage(next: Language) {
     try {
@@ -576,10 +614,32 @@ export function Appearance() {
                 onChange={() => setThemePrefs({ palette: palette.id })}
               />
               <span className="palette-swatch" aria-hidden="true" />
-              {palette.name}
+              {palette.id === "custom" ? t.custom : palette.name}
             </label>
           ))}
         </fieldset>
+        {prefs.palette === "custom" && (
+          <fieldset className="custom-theme">
+            <legend>{t.customColors}</legend>
+            {(
+              [
+                ["primary", t.customPrimary],
+                ["secondary", t.customSecondary],
+                ["base", t.customBase],
+                ["sidebar_from", t.customSidebarFrom],
+                ["sidebar_to", t.customSidebarTo],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key}>
+                <input type="color" value={prefs.custom[key]} onChange={(event) => editCustom({ ...prefs.custom, [key]: event.target.value })} />
+                {label}
+              </label>
+            ))}
+            <button type="button" className="ghost" onClick={() => editCustom(defaultCustomTheme, 0)}>
+              {t.reset}
+            </button>
+          </fieldset>
+        )}
         <ErrorText error={error} />
       </section>
     </section>
