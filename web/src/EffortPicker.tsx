@@ -5,12 +5,12 @@ import type { Effort } from "./api";
 const text = {
   en: {
     label: "Reasoning effort",
-    levels: { default: "Default effort", small: "Low effort", medium: "Medium effort", high: "High effort", xhigh: "Extra high effort" },
+    levels: { default: "Default", small: "Low", medium: "Medium", high: "High", xhigh: "Extra high" },
     hint: "Unsupported levels use the closest one the model has",
   },
   es: {
     label: "Esfuerzo de razonamiento",
-    levels: { default: "Esfuerzo predeterminado", small: "Esfuerzo bajo", medium: "Esfuerzo medio", high: "Esfuerzo alto", xhigh: "Esfuerzo muy alto" },
+    levels: { default: "Predeterminado", small: "Bajo", medium: "Medio", high: "Alto", xhigh: "Muy alto" },
     hint: "Los niveles no compatibles usan el más cercano del modelo",
   },
 };

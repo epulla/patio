@@ -4256,7 +4256,13 @@ main.chat-window .app-version {
   font-size: 13px;
 }
 .composer-model .picker-trigger {
-  max-width: 170px;
+  max-width: 130px;
+}
+/* The effort picker sits next to Send; anchor its tooltip to the right so it stays on screen. */
+.effort-tip[data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 /* Narrow composers (side dock): keep one row by showing the page chip as an icon and dropping the
    model picker while a reply runs (it is disabled then anyway); wrap only as a last resort. */

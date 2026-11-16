@@ -2631,7 +2631,7 @@ export function Conversation({
                 disabled={!connector || running}
                 onChange={(model) => update({ model })}
               />
-              <span className="tip-up" data-tour="effort" data-tip={thinkingTitle(detail.chat, running)}>
+              <span className="tip-up tip-wide effort-tip" data-tour="effort" data-tip={thinkingTitle(detail.chat, running)}>
                 <EffortPicker
                   value={detail.chat.effort}
                   disabled={!connector || running || !detail.chat.capabilities.thinking.supported}
