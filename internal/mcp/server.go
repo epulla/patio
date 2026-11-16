@@ -64,9 +64,15 @@ type boardUpdateArgs struct {
 	ShortName string `json:"short_name"`
 	Template  string `json:"template,omitempty"`
 }
+type createColumnArgs struct {
+	BoardID string `json:"board_id" jsonschema:"Board UUID"`
+	columnArgs
+}
+type updateColumnArgs struct {
+	ID string `json:"id" jsonschema:"Column (status) UUID"`
+	columnArgs
+}
 type columnArgs struct {
-	ID            string  `json:"id,omitempty"`
-	BoardID       string  `json:"board_id,omitempty"`
 	Name          string  `json:"name"`
 	Type          string  `json:"type"`
 	HideAfterDays *int    `json:"hide_after_days,omitempty"`
@@ -82,11 +88,17 @@ type reorderBoardsArgs struct {
 type columnIDArgs struct {
 	ID string `json:"id"`
 }
+type createTicketTypeArgs struct {
+	BoardID string `json:"board_id" jsonschema:"Board UUID"`
+	ticketTypeArgs
+}
+type updateTicketTypeArgs struct {
+	ID string `json:"id" jsonschema:"Ticket type UUID"`
+	ticketTypeArgs
+}
 type ticketTypeArgs struct {
-	ID      string `json:"id,omitempty"`
-	BoardID string `json:"board_id,omitempty"`
-	Name    string `json:"name"`
-	Color   string `json:"color"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
 }
 type createTicketArgs struct {
 	BoardID      string  `json:"board_id" jsonschema:"Board UUID"`
@@ -275,8 +287,11 @@ type calendarItemIDArgs struct {
 type scheduledTaskIDArgs struct {
 	ID string `json:"id" jsonschema:"Scheduled task UUID"`
 }
+type updateScheduledTaskArgs struct {
+	ID string `json:"id" jsonschema:"Scheduled task UUID"`
+	scheduledTaskArgs
+}
 type scheduledTaskArgs struct {
-	ID          string  `json:"id,omitempty" jsonschema:"Scheduled task UUID for updates"`
 	Title       string  `json:"title" jsonschema:"Task title"`
 	Prompt      string  `json:"prompt" jsonschema:"Prompt to run"`
 	ConnectorID *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
@@ -648,10 +663,10 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	addGeneric(s, "update_board", "Update board name, short name, and template", h, func(a boardUpdateArgs) request {
 		return request{http.MethodPut, "/api/boards/" + url.PathEscape(a.BoardID), map[string]any{"name": a.Name, "short_name": a.ShortName, "template": a.Template}}
 	})
-	addGeneric(s, "create_column", "Create a board column; type is classic or temporary", h, func(a columnArgs) request {
+	addGeneric(s, "create_column", "Create a board column; type is classic or temporary", h, func(a createColumnArgs) request {
 		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/statuses", map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays, "counts_as": a.CountsAs}}
 	})
-	addGeneric(s, "update_column", "Update column name, type, and optional hide_after_days", h, func(a columnArgs) request {
+	addGeneric(s, "update_column", "Update column name, type, and optional hide_after_days", h, func(a updateColumnArgs) request {
 		return request{http.MethodPut, "/api/statuses/" + url.PathEscape(a.ID), map[string]any{"name": a.Name, "type": a.Type, "hide_after_days": a.HideAfterDays, "counts_as": a.CountsAs}}
 	})
 	addGeneric(s, "reorder_columns", "Set board column order", h, func(a reorderColumnsArgs) request {
@@ -664,10 +679,10 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil
 	})
-	addGeneric(s, "create_ticket_type", "Create a ticket type for a board", h, func(a ticketTypeArgs) request {
+	addGeneric(s, "create_ticket_type", "Create a ticket type for a board", h, func(a createTicketTypeArgs) request {
 		return request{http.MethodPost, "/api/boards/" + url.PathEscape(a.BoardID) + "/ticket-types", map[string]string{"name": a.Name, "color": a.Color}}
 	})
-	addGeneric(s, "update_ticket_type", "Update ticket type name and color", h, func(a ticketTypeArgs) request {
+	addGeneric(s, "update_ticket_type", "Update ticket type name and color", h, func(a updateTicketTypeArgs) request {
 		return request{http.MethodPut, "/api/ticket-types/" + url.PathEscape(a.ID), map[string]string{"name": a.Name, "color": a.Color}}
 	})
 	addGeneric(s, "create_ticket", "Create a ticket", h, func(a createTicketArgs) request {
@@ -782,14 +797,10 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 	})
 	description := "Schedule is a 5-field cron in local time or run_at RFC3339 for one-off (exactly one); auto_allow defaults true; connector_id must come from existing connectors."
 	addGeneric(s, "create_scheduled_task", "Create scheduled task. "+description, h, func(a scheduledTaskArgs) request {
-		a.ID = ""
 		return request{http.MethodPost, "/api/scheduled-tasks", a}
 	})
-	addGeneric(s, "update_scheduled_task", "Update scheduled task; all fields are replaced. "+description, h, func(a scheduledTaskArgs) request {
-		path := "/api/scheduled-tasks/" + url.PathEscape(a.ID)
-		// The API rejects unknown body fields, and the ID belongs in the path.
-		a.ID = ""
-		return request{http.MethodPut, path, a}
+	addGeneric(s, "update_scheduled_task", "Update scheduled task; all fields are replaced. "+description, h, func(a updateScheduledTaskArgs) request {
+		return request{http.MethodPut, "/api/scheduled-tasks/" + url.PathEscape(a.ID), a.scheduledTaskArgs}
 	})
 	addGenericHandler(s, "delete_scheduled_task", "Delete scheduled task", func(ctx context.Context, a scheduledTaskIDArgs) (*sdk.CallToolResult, error) {
 		_, err := doJSON(ctx, h, request{http.MethodDelete, "/api/scheduled-tasks/" + url.PathEscape(a.ID), nil})

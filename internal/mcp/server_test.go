@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -291,7 +292,9 @@ func TestMCPToolsAndAudit(t *testing.T) {
 			t.Fatal(err)
 		}
 		if tool != nil {
-			if tool.Name == "create_monitor" || tool.Name == "update_monitor" {
+			verb, noun, _ := strings.Cut(tool.Name, "_")
+			create, update := verb == "create", verb == "update"
+			if (create || update) && slices.Contains([]string{"monitor", "scheduled_task", "column", "ticket_type"}, noun) {
 				encoded, err := json.Marshal(tool.InputSchema)
 				if err != nil {
 					t.Fatal(err)
@@ -309,11 +312,11 @@ func TestMCPToolsAndAudit(t *testing.T) {
 						requiredID = true
 					}
 				}
-				if tool.Name == "create_monitor" && hasID {
-					t.Fatal("create_monitor schema must omit id")
+				if create && hasID {
+					t.Fatalf("%s schema must omit id", tool.Name)
 				}
-				if tool.Name == "update_monitor" && (!hasID || !requiredID) {
-					t.Fatalf("update_monitor schema must require id: %s", encoded)
+				if update && (!hasID || !requiredID) {
+					t.Fatalf("%s schema must require id: %s", tool.Name, encoded)
 				}
 			}
 			if tool.Name == "approve" {
