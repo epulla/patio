@@ -1525,9 +1525,10 @@ a:has(> .svg-icon) {
   min-width: 0;
 }
 .picker-option-text small {
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .add-ticket,
 .add-column {

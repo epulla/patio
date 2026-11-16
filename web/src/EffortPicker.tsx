@@ -6,12 +6,12 @@ const text = {
   en: {
     label: "Reasoning effort",
     levels: { default: "Default", small: "Low", medium: "Medium", high: "High", xhigh: "Extra high" },
-    hint: "Unsupported levels use the closest one the model has",
+    hint: "The model decides",
   },
   es: {
     label: "Esfuerzo de razonamiento",
     levels: { default: "Predeterminado", small: "Bajo", medium: "Medio", high: "Alto", xhigh: "Muy alto" },
-    hint: "Los niveles no compatibles usan el más cercano del modelo",
+    hint: "El modelo decide",
   },
 };
 

@@ -214,7 +214,7 @@ export default function Picker({
         {option.description ? (
           <span className="picker-option-text">
             {text(option)}
-            <small className="muted">{option.description}</small>
+            <small className="muted" title={option.description}>{option.description}</small>
           </span>
         ) : (
           text(option)
