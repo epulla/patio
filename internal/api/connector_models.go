@@ -56,11 +56,8 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry)
-	if c.Kind == "local" {
-		clearLocalModelCapabilities(c.ID)
-	}
 	if err != nil {
-		if c.Kind == "opencode" && len(models) > 0 {
+		if (c.Kind == "opencode" || c.Kind == "copilot") && len(models) > 0 {
 			models = append([]selectableModel{defaultEntry}, models...)
 		} else {
 			models = []selectableModel{defaultModel}
@@ -92,7 +89,7 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		if err != nil {
 			return nil, err
 		}
-		filtered := claudeModels[:0]
+		filtered := make([]selectableModel, 0, len(claudeModels))
 		for _, model := range claudeModels {
 			if model.ID == "default" {
 				*defaultEntry = model
@@ -162,15 +159,17 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		if lookup == nil {
 			lookup = copilotModelsList
 		}
-		if catalog, err := lookup(ctx, path, env); err == nil {
-			for _, item := range catalog {
-				if item.isDefault {
-					defaultEntry.Efforts, defaultEntry.DefaultEffort = item.Efforts, item.DefaultEffort
-				}
-				for i := range models {
-					if models[i].ID == item.ID {
-						models[i].Efforts, models[i].DefaultEffort = item.Efforts, item.DefaultEffort
-					}
+		catalog, err := lookup(ctx, path, env)
+		if err != nil {
+			return models, fmt.Errorf("read Copilot reasoning levels: %w", err)
+		}
+		for _, item := range catalog {
+			if item.isDefault {
+				defaultEntry.Efforts, defaultEntry.DefaultEffort = item.Efforts, item.DefaultEffort
+			}
+			for i := range models {
+				if models[i].ID == item.ID {
+					models[i].Efforts, models[i].DefaultEffort = item.Efforts, item.DefaultEffort
 				}
 			}
 		}
@@ -193,12 +192,24 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		}
 		models := make([]selectableModel, 0, len(ids))
 		for _, modelID := range ids {
-			model := selectableModel{ID: modelID, Label: modelID}
-			if caps, ok := cachedOllamaModelCapabilities(id, modelID); ok {
-				efforts, defaultEffort := ollamaEfforts(caps)
-				model.Efforts, model.DefaultEffort = efforts, defaultEffort
+			models = append(models, selectableModel{ID: modelID, Label: modelID})
+		}
+		// Only Ollama reports thinking levels; OpenAI-compatible servers stay unknown.
+		clearLocalModelCapabilities(id)
+		d := &localRuntime{connectorID: id, ollamaURL: ollamaOrigin(baseURL), secret: secret, ctx: ctx, client: &http.Client{}}
+		d.detectOllama()
+		if d.ollama {
+			var connectorModel string
+			_ = s.db.QueryRow(`SELECT model FROM connector WHERE id=?`, id).Scan(&connectorModel)
+			for i := range models {
+				d.model = models[i].ID
+				if caps, ok := d.ollamaModelCapabilities(ctx); ok {
+					models[i].Efforts, models[i].DefaultEffort = ollamaEfforts(caps)
+					if models[i].ID == connectorModel {
+						defaultEntry.Efforts, defaultEntry.DefaultEffort = models[i].Efforts, models[i].DefaultEffort
+					}
+				}
 			}
-			models = append(models, model)
 		}
 		return models, nil
 	default:
@@ -252,14 +263,6 @@ func derefModelEfforts(efforts *[]string) []string {
 		return nil
 	}
 	return *efforts
-}
-
-func cachedOllamaModelCapabilities(connectorID, model string) (ollamaModelCapabilities, bool) {
-	value, ok := localModelCapabilities.Load(connectorID + "\x00" + model)
-	if !ok {
-		return ollamaModelCapabilities{}, false
-	}
-	return value.(ollamaModelCapabilities), true
 }
 
 func ollamaEfforts(capabilities ollamaModelCapabilities) (*[]string, string) {
@@ -376,24 +379,29 @@ func copilotModelsList(ctx context.Context, path string, env []string) ([]select
 
 func parseCopilotModelCatalog(data []byte) ([]selectableModel, error) {
 	var response struct {
-		Result struct {
+		ID     *int            `json:"id"`
+		Error  json.RawMessage `json:"error"`
+		Result *struct {
 			Models []struct {
-				ID           string `json:"id"`
-				Name         string `json:"name"`
-				DisplayName  string `json:"displayName"`
-				IsDefault    bool   `json:"isDefault"`
-				Capabilities struct {
+				ID                        string   `json:"id"`
+				Name                      string   `json:"name"`
+				DisplayName               string   `json:"displayName"`
+				IsDefault                 bool     `json:"isDefault"`
+				SupportedReasoningEfforts []string `json:"supportedReasoningEfforts"`
+				DefaultReasoningEffort    string   `json:"defaultReasoningEffort"`
+				Capabilities              struct {
 					Supports struct {
 						ReasoningEffort bool `json:"reasoningEffort"`
 					} `json:"supports"`
-					SupportedReasoningEfforts []string `json:"supportedReasoningEfforts"`
-					DefaultReasoningEffort    string   `json:"defaultReasoningEffort"`
 				} `json:"capabilities"`
 			} `json:"models"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
 		return nil, err
+	}
+	if response.ID == nil || *response.ID != 1 || (len(response.Error) > 0 && string(response.Error) != "null") || response.Result == nil {
+		return nil, fmt.Errorf("Copilot models.list failed: %s", data)
 	}
 	models := make([]selectableModel, 0, len(response.Result.Models))
 	for _, item := range response.Result.Models {
@@ -406,8 +414,8 @@ func parseCopilotModelCatalog(data []byte) ([]selectableModel, error) {
 		}
 		model := selectableModel{ID: item.ID, Label: label, isDefault: item.IsDefault}
 		if item.Capabilities.Supports.ReasoningEffort {
-			efforts := append([]string{}, item.Capabilities.SupportedReasoningEfforts...)
-			model.Efforts, model.DefaultEffort = &efforts, item.Capabilities.DefaultReasoningEffort
+			efforts := append([]string{}, item.SupportedReasoningEfforts...)
+			model.Efforts, model.DefaultEffort = &efforts, item.DefaultReasoningEffort
 		}
 		models = append(models, model)
 	}

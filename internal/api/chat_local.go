@@ -896,10 +896,13 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 	if len(details.Thinking) > 0 && string(details.Thinking) != "null" {
 		var thinking struct {
 			Values  []json.RawMessage `json:"values"`
-			Default string            `json:"default"`
+			Default json.RawMessage   `json:"default"`
 		}
 		if json.Unmarshal(details.Thinking, &thinking) == nil {
-			capabilities.thinkingDefault = thinking.Default
+			var enabled bool
+			if json.Unmarshal(thinking.Default, &capabilities.thinkingDefault) != nil && json.Unmarshal(thinking.Default, &enabled) == nil {
+				capabilities.thinkingDefault = map[bool]string{true: "thinking", false: "none"}[enabled]
+			}
 			thinkingValuesPresent = thinking.Values != nil
 			for _, raw := range thinking.Values {
 				var value string
