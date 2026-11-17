@@ -57,7 +57,7 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry)
 	if err != nil {
-		if (c.Kind == "opencode" || c.Kind == "copilot") && len(models) > 0 {
+		if (c.Kind == "opencode" || c.Kind == "copilot" || c.Kind == "local") && len(models) > 0 {
 			models = append([]selectableModel{defaultEntry}, models...)
 		} else {
 			models = []selectableModel{defaultModel}
@@ -201,15 +201,20 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		if d.ollama {
 			var connectorModel string
 			_ = s.db.QueryRow(`SELECT model FROM connector WHERE id=?`, id).Scan(&connectorModel)
+			var lookupErr error
 			for i := range models {
 				d.model = models[i].ID
-				if caps, ok := d.ollamaModelCapabilities(ctx); ok {
-					models[i].Efforts, models[i].DefaultEffort = ollamaEfforts(caps)
-					if models[i].ID == connectorModel {
-						defaultEntry.Efforts, defaultEntry.DefaultEffort = models[i].Efforts, models[i].DefaultEffort
-					}
+				caps, ok := d.ollamaModelCapabilities(ctx)
+				if !ok {
+					lookupErr = fmt.Errorf("read Ollama thinking levels for %s", models[i].ID)
+					continue
+				}
+				models[i].Efforts, models[i].DefaultEffort = ollamaEfforts(caps)
+				if models[i].ID == connectorModel {
+					defaultEntry.Efforts, defaultEntry.DefaultEffort = models[i].Efforts, models[i].DefaultEffort
 				}
 			}
+			return models, lookupErr
 		}
 		return models, nil
 	default:

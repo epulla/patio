@@ -300,3 +300,30 @@ func TestClaudeModelListKeepsCachedDefaultEffort(t *testing.T) {
 		t.Fatalf("Claude args = %v", args)
 	}
 }
+
+func TestLocalModelsNoteFailedOllamaLookup(t *testing.T) {
+	keyring.MockInit()
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version":
+			_, _ = w.Write([]byte(`{"version":"test"}`))
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-oss"}]}`))
+		default:
+			http.Error(w, "busy", http.StatusServiceUnavailable)
+		}
+	}))
+	defer ollama.Close()
+	database, handler, _ := chatAPI(t)
+	id := uid()
+	if _, err := database.Exec(`INSERT INTO connector(id,kind,name,base_url,created_at) VALUES(?,'local','Local',?,?)`, id, ollama.URL+"/v1", now()); err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Models []selectableModel `json:"models"`
+		Note   string            `json:"note"`
+	}
+	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/"+id+"/models", nil, &response); code != http.StatusOK || len(response.Models) != 2 || response.Models[1].ID != "gpt-oss" || response.Models[1].Efforts != nil || response.Note == "" {
+		t.Fatalf("failed lookup models = %d %#v", code, response)
+	}
+}
