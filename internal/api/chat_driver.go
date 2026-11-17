@@ -271,7 +271,7 @@ func (m *chatManager) Send(c chat, kind, configDir string, request ChatSendReque
 		return ChatMessage{}, err
 	}
 	c.Model = model
-	if err := m.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, c.ID).Scan(&c.Effort); err != nil {
+	if err := m.db.QueryRow(`SELECT CASE effort WHEN 'default' THEN '' ELSE effort END FROM chat WHERE id=?`, c.ID).Scan(&c.Effort); err != nil {
 		return ChatMessage{}, err
 	}
 	if err := m.db.QueryRow(`SELECT show_thinking FROM chat WHERE id=?`, c.ID).Scan(&c.ShowThinking); err != nil {

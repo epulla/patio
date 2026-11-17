@@ -79,6 +79,8 @@ type Options struct {
 	UpdateURL       string
 	ReleaseNotesURL string
 	findCopilot     func() (string, error)
+	claudeModels    func(context.Context, string, []string) ([]selectableModel, error)
+	copilotModels   func(context.Context, string, []string) ([]selectableModel, error)
 	mcpExecutable   string
 	PatioMCPTools   []string
 	MCPActor        string

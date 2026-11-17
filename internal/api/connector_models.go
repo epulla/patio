@@ -1,15 +1,19 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zalando/go-keyring"
@@ -18,15 +22,16 @@ import (
 )
 
 type selectableModel struct {
-	ID          string    `json:"id"`
-	Label       string    `json:"label"`
-	Description string    `json:"description"`
-	Efforts     *[]string `json:"efforts,omitempty"`
+	ID            string    `json:"id"`
+	Label         string    `json:"label"`
+	Description   string    `json:"description"`
+	Efforts       *[]string `json:"efforts,omitempty"`
+	DefaultEffort string    `json:"default_effort,omitempty"`
+	isDefault     bool
 }
 
 var defaultModel = selectableModel{ID: "", Label: "Default", Description: "Use connector default"}
-var claudeEfforts = []string{"low", "medium", "high", "xhigh", "max"}
-var copilotEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+var claudeModelCache sync.Map
 
 func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	var c struct {
@@ -47,19 +52,13 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 		errw(w, http.StatusNotFound, "unknown connector")
 		return
 	}
-	if c.Kind == "local" {
-		clearLocalModelCapabilities(c.ID)
-	}
 	defaultEntry := defaultModel
-	if c.Kind == "claude" {
-		defaultEntry.Efforts = &claudeEfforts
-	}
-	if c.Kind == "copilot" {
-		defaultEntry.Efforts = &copilotEfforts
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry)
+	if c.Kind == "local" {
+		clearLocalModelCapabilities(c.ID)
+	}
 	if err != nil {
 		if c.Kind == "opencode" && len(models) > 0 {
 			models = append([]selectableModel{defaultEntry}, models...)
@@ -70,8 +69,9 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Kind == "codex" && len(models) > 0 {
-		efforts := append([]string{}, (*models[0].Efforts)...)
+		efforts := append([]string{}, derefModelEfforts(models[0].Efforts)...)
 		defaultEntry.Efforts = &efforts
+		defaultEntry.DefaultEffort = models[0].DefaultEffort
 	}
 	write(w, http.StatusOK, map[string][]selectableModel{"models": append([]selectableModel{defaultEntry}, models...)})
 }
@@ -79,7 +79,31 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, configDir string, defaultEntry *selectableModel) ([]selectableModel, error) {
 	switch kind {
 	case "claude":
-		return []selectableModel{{ID: "opus", Label: "Opus", Description: "Most capable", Efforts: &claudeEfforts}, {ID: "sonnet", Label: "Sonnet", Description: "Fast and capable", Efforts: &claudeEfforts}, {ID: "haiku", Label: "Haiku", Description: "Fastest", Efforts: &claudeEfforts}}, nil
+		finder := s.chats.options.findClaude
+		if finder == nil {
+			finder = func() (string, error) { return connectorcli.Find(kind) }
+		}
+		path, err := finder()
+		if err != nil {
+			return nil, err
+		}
+		env := connectorcli.Env(kind, configDir, "")
+		claudeModels, err := loadClaudeModels(ctx, s.chats.options, id, path, env)
+		if err != nil {
+			return nil, err
+		}
+		filtered := claudeModels[:0]
+		for _, model := range claudeModels {
+			if model.ID == "default" {
+				*defaultEntry = model
+				defaultEntry.ID = ""
+				defaultEntry.Label = "Default"
+				defaultEntry.Description = "Use connector default"
+				continue
+			}
+			filtered = append(filtered, model)
+		}
+		return filtered, nil
 	case "codex":
 		path, err := connectorcli.Find(kind)
 		if err != nil {
@@ -97,10 +121,6 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 		if err != nil {
 			return nil, err
 		}
-		args := []string{"models"}
-		if kind == "copilot" {
-			args = []string{"--help"}
-		}
 		secret := ""
 		if kind == "copilot" {
 			secret, err = keyring.Get(connectorService, connectorSecret(id))
@@ -112,6 +132,10 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 			}
 		}
 		env := connectorcli.Env(kind, configDir, secret)
+		args := []string{"models"}
+		if kind == "copilot" {
+			args = []string{"--help"}
+		}
 		var output []byte
 		var runErr error
 		if kind == "opencode" {
@@ -133,8 +157,22 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 			return models, nil
 		}
 		models := parseCopilotModels(string(output))
-		for i := range models {
-			models[i].Efforts = &copilotEfforts
+		// Levels only come from models.list; a failed lookup leaves them unknown.
+		lookup := s.chats.options.copilotModels
+		if lookup == nil {
+			lookup = copilotModelsList
+		}
+		if catalog, err := lookup(ctx, path, env); err == nil {
+			for _, item := range catalog {
+				if item.isDefault {
+					defaultEntry.Efforts, defaultEntry.DefaultEffort = item.Efforts, item.DefaultEffort
+				}
+				for i := range models {
+					if models[i].ID == item.ID {
+						models[i].Efforts, models[i].DefaultEffort = item.Efforts, item.DefaultEffort
+					}
+				}
+			}
 		}
 		return models, nil
 	case "local":
@@ -154,8 +192,13 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 			return nil, err
 		}
 		models := make([]selectableModel, 0, len(ids))
-		for _, id := range ids {
-			models = append(models, selectableModel{ID: id, Label: id})
+		for _, modelID := range ids {
+			model := selectableModel{ID: modelID, Label: modelID}
+			if caps, ok := cachedOllamaModelCapabilities(id, modelID); ok {
+				efforts, defaultEffort := ollamaEfforts(caps)
+				model.Efforts, model.DefaultEffort = efforts, defaultEffort
+			}
+			models = append(models, model)
 		}
 		return models, nil
 	default:
@@ -163,13 +206,212 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 	}
 }
 
+func loadClaudeModels(ctx context.Context, options Options, connectorID, path string, env []string) ([]selectableModel, error) {
+	if cached, ok := claudeModelCache.Load(connectorID); ok {
+		return cached.([]selectableModel), nil
+	}
+	lookup := options.claudeModels
+	if lookup == nil {
+		lookup = claudeInitializeModels
+	}
+	models, err := lookup(ctx, path, env)
+	if err != nil {
+		return nil, err
+	}
+	cached, _ := claudeModelCache.LoadOrStore(connectorID, models)
+	return cached.([]selectableModel), nil
+}
+
+func claudeEffortFor(ctx context.Context, options Options, connectorID, path, configDir, model, level string) string {
+	models, err := loadClaudeModels(ctx, options, connectorID, path, connectorcli.Env("claude", configDir, ""))
+	if err != nil {
+		return ""
+	}
+	if model == "" {
+		model = "default"
+	}
+	for _, item := range models {
+		if item.ID == model && hasEffort(level, derefModelEfforts(item.Efforts)) {
+			return level
+		}
+	}
+	return ""
+}
+
 func convertModels(models []connectorcli.Model) []selectableModel {
 	out := make([]selectableModel, 0, len(models))
 	for _, model := range models {
 		efforts := append([]string{}, model.Efforts...)
-		out = append(out, selectableModel{ID: model.ID, Label: model.Label, Description: model.Description, Efforts: &efforts})
+		out = append(out, selectableModel{ID: model.ID, Label: model.Label, Description: model.Description, Efforts: &efforts, DefaultEffort: model.DefaultEffort})
 	}
 	return out
+}
+
+func derefModelEfforts(efforts *[]string) []string {
+	if efforts == nil {
+		return nil
+	}
+	return *efforts
+}
+
+func cachedOllamaModelCapabilities(connectorID, model string) (ollamaModelCapabilities, bool) {
+	value, ok := localModelCapabilities.Load(connectorID + "\x00" + model)
+	if !ok {
+		return ollamaModelCapabilities{}, false
+	}
+	return value.(ollamaModelCapabilities), true
+}
+
+func ollamaEfforts(capabilities ollamaModelCapabilities) (*[]string, string) {
+	if len(capabilities.thinkingValues) > 0 {
+		efforts := append([]string{}, capabilities.thinkingValues...)
+		return &efforts, capabilities.thinkingDefault
+	}
+	if capabilities.thinking {
+		efforts := []string{"none", "thinking"}
+		return &efforts, capabilities.thinkingDefault
+	}
+	efforts := []string{}
+	return &efforts, ""
+}
+
+func claudeInitializeModels(ctx context.Context, path string, env []string) ([]selectableModel, error) {
+	cmd := exec.CommandContext(ctx, path, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose")
+	cmd.Env = env
+	proc.HideConsole(cmd)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	if _, err := io.WriteString(stdin, "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"initialize\"}}\n"); err != nil {
+		return nil, err
+	}
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 4096), 4<<20)
+	for scanner.Scan() {
+		var response struct {
+			Type     string `json:"type"`
+			Response struct {
+				Response struct {
+					Models []struct {
+						Value                 string   `json:"value"`
+						DisplayName           string   `json:"displayName"`
+						SupportsEffort        *bool    `json:"supportsEffort"`
+						SupportedEffortLevels []string `json:"supportedEffortLevels"`
+					} `json:"models"`
+				} `json:"response"`
+				RequestID string `json:"request_id"`
+			} `json:"response"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &response) != nil || response.Type != "control_response" || response.Response.RequestID != "r1" {
+			continue
+		}
+		models := make([]selectableModel, 0, len(response.Response.Response.Models))
+		for _, model := range response.Response.Response.Models {
+			efforts := append([]string{}, model.SupportedEffortLevels...)
+			if model.SupportsEffort == nil || !*model.SupportsEffort {
+				efforts = []string{}
+			}
+			models = append(models, selectableModel{ID: model.Value, Label: model.DisplayName, Efforts: &efforts})
+		}
+		return models, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("Claude initialize response missing")
+}
+
+func copilotModelsList(ctx context.Context, path string, env []string) ([]selectableModel, error) {
+	cmd := exec.CommandContext(ctx, path, "--headless", "--stdio")
+	cmd.Env = env
+	proc.HideConsole(cmd)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"models.list","params":{}}`)
+	if _, err := fmt.Fprintf(stdin, "Content-Length: %d\r\n\r\n%s", len(body), body); err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReader(stdout)
+	length := 0
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		if strings.EqualFold(strings.TrimSpace(line), "") {
+			break
+		}
+		if _, err := fmt.Sscanf(strings.TrimSpace(line), "Content-Length: %d", &length); err != nil {
+			return nil, err
+		}
+	}
+	if length < 1 || length > 4<<20 {
+		return nil, errors.New("invalid Copilot models.list response length")
+	}
+	data := make([]byte, length)
+	if _, err := io.ReadFull(reader, data); err != nil {
+		return nil, err
+	}
+	return parseCopilotModelCatalog(data)
+}
+
+func parseCopilotModelCatalog(data []byte) ([]selectableModel, error) {
+	var response struct {
+		Result struct {
+			Models []struct {
+				ID           string `json:"id"`
+				Name         string `json:"name"`
+				DisplayName  string `json:"displayName"`
+				IsDefault    bool   `json:"isDefault"`
+				Capabilities struct {
+					Supports struct {
+						ReasoningEffort bool `json:"reasoningEffort"`
+					} `json:"supports"`
+					SupportedReasoningEfforts []string `json:"supportedReasoningEfforts"`
+					DefaultReasoningEffort    string   `json:"defaultReasoningEffort"`
+				} `json:"capabilities"`
+			} `json:"models"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, err
+	}
+	models := make([]selectableModel, 0, len(response.Result.Models))
+	for _, item := range response.Result.Models {
+		label := item.DisplayName
+		if label == "" {
+			label = item.Name
+		}
+		if label == "" {
+			label = item.ID
+		}
+		model := selectableModel{ID: item.ID, Label: label, isDefault: item.IsDefault}
+		if item.Capabilities.Supports.ReasoningEffort {
+			efforts := append([]string{}, item.Capabilities.SupportedReasoningEfforts...)
+			model.Efforts, model.DefaultEffort = &efforts, item.Capabilities.DefaultReasoningEffort
+		}
+		models = append(models, model)
+	}
+	return models, nil
 }
 
 func addOpenCodeEfforts(ctx context.Context, path string, env []string, models []selectableModel, defaultEntry *selectableModel) error {

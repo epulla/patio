@@ -36,6 +36,9 @@ func TestCopilotACPDriver(t *testing.T) {
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath:      filepath.Join(root, "test.db"),
 		findCopilot: func() (string, error) { return "copilot-test", nil },
+		copilotModels: func(context.Context, string, []string) ([]selectableModel, error) {
+			return []selectableModel{{ID: "gpt", isDefault: true, Efforts: &[]string{"low", "high"}}}, nil
+		},
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
 			if path != "copilot-test" || len(args) < 6 || args[0] != "--acp" || args[1] != "--stdio" || args[2] != "--additional-mcp-config" || !strings.HasPrefix(args[3], "@") || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("Copilot process launch = %q %v %q", path, args, cwd)
@@ -458,7 +461,7 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createCopilotTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
-	if _, err := database.Exec(`UPDATE chat SET effort='small' WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET effort='low' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
@@ -468,6 +471,9 @@ func TestCopilotThinkingChangeRestartsAndLoadsSession(t *testing.T) {
 	server := New(database, "local", false, "dev", root, Options{
 		DBPath:      filepath.Join(root, "test.db"),
 		findCopilot: func() (string, error) { return "copilot-test", nil },
+		copilotModels: func(context.Context, string, []string) ([]selectableModel, error) {
+			return []selectableModel{{ID: "gpt", isDefault: true, Efforts: &[]string{"low", "high"}}}, nil
+		},
 		processFactory: func(_ string, args, _ []string, _ string) (chatProcess, error) {
 			want := []string{"--acp", "--stdio", "--additional-mcp-config"}
 			if launch == 1 {

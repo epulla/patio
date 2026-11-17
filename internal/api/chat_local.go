@@ -336,7 +336,7 @@ func (d *localRuntime) runTurn(ctx context.Context) {
 
 func (d *localRuntime) completeTurn(ctx context.Context, request ChatSendRequest) (string, error) {
 	var effort string
-	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
+	if err := d.manager.db.QueryRow(`SELECT CASE effort WHEN 'default' THEN '' ELSE effort END FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
 		return "", err
 	}
 	files, err := loadChatAttachmentFiles(d.workdir, request.Attachments)
@@ -665,9 +665,6 @@ func (d *localRuntime) streamWithImages(ctx context.Context, messages []map[stri
 	}
 	requestMessages := openAIMessagesWithImages(messages, images)
 	body := map[string]any{"model": d.model, "stream": true, "messages": requestMessages}
-	if value := effortFor(effort, []string{"low", "medium", "high"}); value != "" {
-		body["reasoning_effort"] = value
-	}
 	if withTools {
 		body["tools"] = d.tools
 	}
@@ -786,19 +783,12 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 	if contextSize := d.ollamaContextSize(ctx); contextSize > 0 && d.contextLength > 0 {
 		body["options"] = map[string]any{"num_ctx": contextSize}
 	}
-	if !d.ollama || d.ollamaThinkingSupported(ctx) {
-		if effort != "default" {
-			capabilities, ok := d.ollamaModelCapabilities(ctx)
-			if !ok {
-				body["think"] = effort != "small"
-			} else if len(capabilities.thinkingValues) > 0 {
-				if value := effortFor(effort, capabilities.thinkingValues); value != "" {
-					body["think"] = value
-				}
-			} else if capabilities.thinkingBoolean {
-				body["think"] = effort != "small"
-			} else {
-				body["think"] = effort != "small"
+	if effort != "" {
+		if capabilities, ok := d.ollamaModelCapabilities(ctx); ok {
+			if hasEffort(effort, capabilities.thinkingValues) {
+				body["think"] = effort
+			} else if len(capabilities.thinkingValues) == 0 && capabilities.thinking && (effort == "none" || effort == "thinking") {
+				body["think"] = effort == "thinking"
 			}
 		}
 	}
@@ -855,8 +845,8 @@ func (d *localRuntime) ollamaThinkingSupported(ctx context.Context) bool {
 
 type ollamaModelCapabilities struct {
 	thinking        bool
-	thinkingBoolean bool
 	thinkingValues  []string
+	thinkingDefault string
 	vision          bool
 	contextLength   int
 }
@@ -905,9 +895,11 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 	thinkingValuesPresent := false
 	if len(details.Thinking) > 0 && string(details.Thinking) != "null" {
 		var thinking struct {
-			Values []json.RawMessage `json:"values"`
+			Values  []json.RawMessage `json:"values"`
+			Default string            `json:"default"`
 		}
 		if json.Unmarshal(details.Thinking, &thinking) == nil {
+			capabilities.thinkingDefault = thinking.Default
 			thinkingValuesPresent = thinking.Values != nil
 			for _, raw := range thinking.Values {
 				var value string
@@ -917,12 +909,12 @@ func (d *localRuntime) ollamaModelCapabilities(ctx context.Context) (ollamaModel
 				}
 				var enabled bool
 				if json.Unmarshal(raw, &enabled) == nil && enabled {
-					capabilities.thinkingBoolean, capabilities.thinking = true, true
+					capabilities.thinking = true
 				}
 			}
 			capabilities.thinking = capabilities.thinking || len(capabilities.thinkingValues) > 0
-		} else if err := json.Unmarshal(details.Thinking, &capabilities.thinkingBoolean); err == nil {
-			capabilities.thinking = capabilities.thinkingBoolean
+		} else {
+			_ = json.Unmarshal(details.Thinking, &capabilities.thinking)
 		}
 	}
 	for _, capability := range details.Capabilities {

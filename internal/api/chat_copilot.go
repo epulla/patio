@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/zalando/go-keyring"
 	connectorcli "patio/internal/connector"
@@ -113,8 +114,23 @@ func startCopilot(m *chatManager, c chat, configDir string, rt *chatRuntime) (ch
 	}
 	args := []string{"--acp", "--stdio"}
 	args = append(args, "--additional-mcp-config", "@"+configPath)
-	if value := effortFor(c.Effort, copilotEfforts); value != "" {
-		args = append(args, "--reasoning-effort", value)
+	if c.Effort != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		lookup := m.options.copilotModels
+		if lookup == nil {
+			lookup = copilotModelsList
+		}
+		models, listErr := lookup(ctx, path, connectorcli.Env("copilot", configDir, secret))
+		cancel()
+		selected := c.Model
+		for _, model := range models {
+			if selected == "" && model.isDefault || model.ID == selected {
+				if listErr == nil && hasEffort(c.Effort, derefModelEfforts(model.Efforts)) {
+					args = append(args, "--reasoning-effort", c.Effort)
+				}
+				break
+			}
+		}
 	}
 	process, err := factory(path, args, connectorcli.Env("copilot", configDir, secret), c.Workdir)
 	if err != nil {

@@ -186,7 +186,7 @@ type settingsDefaultsArgs struct {
 	Model          *string         `json:"model,omitempty" jsonschema:"Optional default model"`
 	Language       *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
 	Folder         json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
-	Effort         *string         `json:"effort,omitempty" jsonschema:"Reasoning effort: default, small, medium, high or xhigh"`
+	Effort         *string         `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
 	LegacyThinking *bool           `json:"thinking,omitempty"`
 	ShowThinking   *bool           `json:"show_thinking,omitempty"`
 	DefaultBotID   *string         `json:"default_bot_id,omitempty"`
@@ -198,7 +198,7 @@ type apiBotArgs struct {
 	Color         string  `json:"color,omitempty"`
 	ConnectorID   *string `json:"connector_id,omitempty"`
 	Model         string  `json:"model,omitempty"`
-	Effort        string  `json:"effort,omitempty" jsonschema:"Reasoning effort: default, small, medium, high or xhigh"`
+	Effort        string  `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
 }
 type apiBotUpdateArgs struct {
 	ID string `json:"id"`
@@ -300,7 +300,7 @@ type scheduledTaskArgs struct {
 	BotID          *string `json:"bot_id,omitempty" jsonschema:"Optional bot UUID"`
 	Model          string  `json:"model"`
 	Folder         *string `json:"folder,omitempty"`
-	Effort         string  `json:"effort,omitempty" jsonschema:"Reasoning effort: default, small, medium, high or xhigh"`
+	Effort         string  `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
 	LegacyThinking *bool   `json:"thinking,omitempty"`
 	AutoAllow      *bool   `json:"auto_allow,omitempty" jsonschema:"Defaults true when omitted"`
 	Schedule       string  `json:"schedule,omitempty" jsonschema:"5-field cron in local time; exactly one of schedule or run_at"`
@@ -1369,7 +1369,7 @@ func addChatMessagingTools(s *sdk.Server, h http.Handler, database *sql.DB) {
 			properties["model"] = map[string]any{"type": "string"}
 			properties["bot"] = map[string]any{"type": "string"}
 			properties["prompt"] = map[string]any{"type": "string"}
-			properties["effort"] = map[string]any{"type": "string", "enum": []string{"default", "small", "medium", "high", "xhigh"}}
+			properties["effort"] = map[string]any{"type": "string", "description": "Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"}
 			properties["workflow_edge"] = map[string]any{"type": "string"}
 			required = append(required, "prompt")
 			description = "Create child chat handoff. In a workflow chat, pass workflow_edge from your instructions; Patio picks the bot. bot: name of the bot to run the child (its connector, model and persona); explicit connector_id/model override. Without bot, connector, model, effort and auto-allow default to the calling chat's."

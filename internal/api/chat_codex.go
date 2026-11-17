@@ -197,10 +197,10 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 		return err
 	}
 	var effort string
-	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
+	if err := d.manager.db.QueryRow(`SELECT CASE effort WHEN 'default' THEN '' ELSE effort END FROM chat WHERE id=?`, d.chatID).Scan(&effort); err != nil {
 		return err
 	}
-	if effort != "default" && !d.modelsLoaded {
+	if effort != "" && !d.modelsLoaded {
 		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
 		models, err := d.client.Models(ctx)
 		cancel()
@@ -219,17 +219,8 @@ func (d *codexRuntime) send(request ChatSendRequest) error {
 		} `json:"turn"`
 	}
 	params := map[string]any{"threadId": d.threadID, "input": codexUserInput(request.Text, files)}
-	value := effortFor(effort, d.modelEfforts)
-	if effort == "small" {
-		for _, supported := range d.modelEfforts {
-			if supported == "minimal" {
-				value = "minimal"
-				break
-			}
-		}
-	}
-	if value != "" {
-		params["effort"] = value
+	if hasEffort(effort, d.modelEfforts) {
+		params["effort"] = effort
 	}
 	if err := d.client.Call(d.ctx, "turn/start", params, &response); err != nil {
 		return err

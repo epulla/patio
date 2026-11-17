@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -86,8 +87,13 @@ func startClaude(m *chatManager, c chat, configDir string, rt *chatRuntime) (cha
 		}
 		args = append(args, "--append-system-prompt", prompt)
 	}
-	if value := effortFor(c.Effort, claudeEfforts); value != "" {
-		args = append(args, "--effort", value)
+	if c.ConnectorID != nil && c.Effort != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		value := claudeEffortFor(ctx, m.options, *c.ConnectorID, path, configDir, c.Model, c.Effort)
+		cancel()
+		if value != "" {
+			args = append(args, "--effort", value)
+		}
 	}
 	factory := m.options.processFactory
 	if factory == nil {

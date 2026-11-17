@@ -344,16 +344,18 @@ func (d *opencodeRuntime) endpoint(path string) string {
 
 func (d *opencodeRuntime) currentEffort() string {
 	var level string
-	_ = d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&level)
+	_ = d.manager.db.QueryRow(`SELECT CASE effort WHEN 'default' THEN '' ELSE effort END FROM chat WHERE id=?`, d.chatID).Scan(&level)
 	return level
 }
 
 func (d *opencodeRuntime) resolveVariant(level string) string {
 	if !d.variantsLoaded {
-		path := "/api/model"
 		if d.server.major < 2 {
-			path = d.endpoint("/config/providers")
-		} else if d.model == "" {
+			d.variantsLoaded = true
+			return ""
+		}
+		path := "/api/model"
+		if d.model == "" {
 			path = "/api/model/default"
 		}
 		ctx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
@@ -362,42 +364,9 @@ func (d *opencodeRuntime) resolveVariant(level string) string {
 		if err == nil {
 			defer resp.Body.Close()
 			var catalog struct {
-				Data      json.RawMessage `json:"data"`
-				Providers []struct {
-					ID     string `json:"id"`
-					Models map[string]struct {
-						ID       string                     `json:"id"`
-						Variants map[string]json.RawMessage `json:"variants"`
-					} `json:"models"`
-				} `json:"providers"`
-				Default map[string]string `json:"default"`
+				Data json.RawMessage `json:"data"`
 			}
 			if resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&catalog) == nil {
-				if d.server.major < 2 {
-					provider, modelID, ok := strings.Cut(d.model, "/")
-					if d.model == "" && len(catalog.Default) == 1 {
-						for p, m := range catalog.Default {
-							provider, modelID, ok = p, m, true
-						}
-					}
-					if ok {
-						for _, p := range catalog.Providers {
-							if p.ID == provider {
-								for key, model := range p.Models {
-									if key == modelID || model.ID == modelID {
-										for name := range model.Variants {
-											d.modelVariants = append(d.modelVariants, name)
-										}
-										break
-									}
-								}
-								break
-							}
-						}
-					}
-					d.variantsLoaded = true
-					return effortFor(level, d.modelVariants)
-				}
 				d.variantsLoaded = true
 				var models []struct {
 					ID         string `json:"id"`
@@ -436,7 +405,10 @@ func (d *opencodeRuntime) resolveVariant(level string) string {
 			}
 		}
 	}
-	return effortFor(level, d.modelVariants)
+	if hasEffort(level, d.modelVariants) {
+		return level
+	}
+	return ""
 }
 
 func (d *opencodeRuntime) applyVariant(level string) error {
@@ -447,7 +419,7 @@ func (d *opencodeRuntime) applyVariant(level string) error {
 	if variant == d.effortVariant && d.variantApplied {
 		return nil
 	}
-	if level == "default" && !d.variantApplied && !d.storedSession {
+	if level == "" && !d.variantApplied && !d.storedSession {
 		return nil
 	}
 	provider, id, ok := strings.Cut(d.model, "/")
@@ -553,7 +525,7 @@ func (d *opencodeRuntime) createSession() error {
 
 func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	var level string
-	if err := d.manager.db.QueryRow(`SELECT effort FROM chat WHERE id=?`, d.chatID).Scan(&level); err != nil {
+	if err := d.manager.db.QueryRow(`SELECT CASE effort WHEN 'default' THEN '' ELSE effort END FROM chat WHERE id=?`, d.chatID).Scan(&level); err != nil {
 		return err
 	}
 	if d.firstPrompt {
@@ -603,9 +575,6 @@ func (d *opencodeRuntime) send(request ChatSendRequest) error {
 	} else {
 		if model != nil {
 			body["model"] = model
-		}
-		if variant := d.resolveVariant(level); variant != "" {
-			body["variant"] = variant
 		}
 	}
 	resp, err := d.server.request(context.Background(), http.MethodPost, endpoint, body)

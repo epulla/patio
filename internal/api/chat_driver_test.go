@@ -539,7 +539,7 @@ func TestChatSendRunningConflictAndStop(t *testing.T) {
 		findClaude:     func() (string, error) { return "claude-test", nil },
 		commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil },
 		processFactory: func(path string, args, env []string, cwd string) (chatProcess, error) {
-			if path != "claude-test" || len(args) != 5 || args[1] != "--append-system-prompt" || args[3] != "--effort" || args[4] != "low" || !strings.Contains(args[2], "/tickets/<ticket id>") || !strings.Contains(args[2], "/ai/chats/<chat id>") || !strings.Contains(args[2], "This chat's ID is "+chatID) || cwd != filepath.Join(root, "chats", chatID) {
+			if path != "claude-test" || len(args) != 3 || args[1] != "--append-system-prompt" || !strings.Contains(args[2], "/tickets/<ticket id>") || !strings.Contains(args[2], "/ai/chats/<chat id>") || !strings.Contains(args[2], "This chat's ID is "+chatID) || cwd != filepath.Join(root, "chats", chatID) {
 				t.Errorf("process launch = %q %#v %q", path, args, cwd)
 			}
 			return fake, nil
@@ -1796,7 +1796,7 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	chatID := createDriverTestChat(t, database, connectorID, root)
-	if _, err := database.Exec(`UPDATE chat SET effort='small' WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET effort='low' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	processes := []*pipeChatProcess{newPipeChatProcess(), newPipeChatProcess()}
@@ -1804,6 +1804,9 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 	launch := 0
 	server := New(database, "local", false, "dev", root, Options{
 		findClaude: func() (string, error) { return "claude-test", nil },
+		claudeModels: func(context.Context, string, []string) ([]selectableModel, error) {
+			return []selectableModel{{ID: "default", Efforts: &[]string{"low", "high"}}}, nil
+		},
 		commandBuilder: func(_, _, _, model, session string) ([]string, error) {
 			args := []string{"--model", model}
 			if session != "" {
@@ -1814,7 +1817,7 @@ func TestChatThinkingChangeRestartsClaudeWithResume(t *testing.T) {
 		processFactory: func(_ string, args, env []string, _ string) (chatProcess, error) {
 			launches = append(launches, append([]string(nil), args...))
 			if launch == 0 && !reflect.DeepEqual(args[len(args)-2:], []string{"--effort", "low"}) {
-				t.Errorf("small-effort Claude args = %v", args)
+				t.Errorf("low-effort Claude args = %v", args)
 			}
 			if launch == 1 && !reflect.DeepEqual(env, connectorEnv("claude", "")) {
 				t.Errorf("thinking-on Claude env changed defaults: %v", env)
@@ -1889,7 +1892,7 @@ func TestChatSendRejectsUnsupportedConnector(t *testing.T) {
 func createDriverTestChat(t *testing.T, database *sql.DB, connectorID, root string) string {
 	t.Helper()
 	id := uid()
-	if _, err := database.Exec(`INSERT INTO chat(id,connector_id,title,model,effort,created_at,updated_at,bot_id) VALUES(?,?, 'New chat','', 'small',?,?,'ai')`, id, connectorID, now(), now()); err != nil {
+	if _, err := database.Exec(`INSERT INTO chat(id,connector_id,title,model,effort,created_at,updated_at,bot_id) VALUES(?,?, 'New chat','', 'low',?,?,'ai')`, id, connectorID, now(), now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "chats", id), 0o700); err != nil {

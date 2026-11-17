@@ -256,7 +256,7 @@ func TestOpenCodeDefaultModelCatalogRetriesAfterFailure(t *testing.T) {
 	if got := d.resolveVariant("high"); got != "" {
 		t.Fatalf("failed catalog variant=%q", got)
 	}
-	if got := d.resolveVariant("xhigh"); got != "high" {
+	if got := d.resolveVariant("high"); got != "high" {
 		t.Fatalf("recovered catalog variant=%q", got)
 	}
 	if calls.Load() != 2 || d.defaultModelRef["id"] != "model-id" || d.defaultModelRef["providerID"] != "provider-id" {
@@ -264,11 +264,10 @@ func TestOpenCodeDefaultModelCatalogRetriesAfterFailure(t *testing.T) {
 	}
 }
 
-func TestOpenCodeV1PromptUsesCatalogVariant(t *testing.T) {
+func TestOpenCodeV1PromptSendsNoVariant(t *testing.T) {
 	for _, tc := range []struct{ name, model, effort, want string }{
-		{"nearest", "provider/model", "medium", "low"},
-		{"implicit", "", "high", "high"},
-		{"default", "provider/model", "default", ""},
+		{"explicit", "provider/model", "high", ""},
+		{"implicit", "", "high", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			database, _, root := chatAPI(t)
@@ -280,11 +279,6 @@ func TestOpenCodeV1PromptUsesCatalogVariant(t *testing.T) {
 			var body map[string]any
 			fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
-				case r.URL.Path == "/config/providers":
-					if r.URL.Query().Get("directory") == "" {
-						t.Error("v1 catalog missing directory")
-					}
-					_, _ = w.Write([]byte(`{"providers":[{"id":"provider","models":{"model":{"id":"model","variants":{"low":{},"high":{}}}}}],"default":{"provider":"model"}}`))
 				case strings.HasSuffix(r.URL.Path, "/prompt_async"):
 					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 						t.Error(err)
@@ -353,7 +347,7 @@ func TestOpenCodeV2ImplicitModelVariantReconciliation(t *testing.T) {
 		t.Fatalf("implicit create model=%v", model)
 	}
 	resumed := &opencodeRuntime{manager: manager, chatID: chatID, server: server, session: runtime.session, ctx: context.Background(), storedSession: true}
-	if err := resumed.applyVariant("medium"); err != nil {
+	if err := resumed.applyVariant("low"); err != nil {
 		t.Fatal(err)
 	}
 	changed := updated[0]["model"].(map[string]any)
@@ -364,7 +358,7 @@ func TestOpenCodeV2ImplicitModelVariantReconciliation(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := &opencodeRuntime{manager: manager, chatID: chatID, server: server, session: runtime.session, ctx: context.Background(), storedSession: true}
-	if err := restarted.applyVariant("default"); err != nil {
+	if err := restarted.applyVariant(""); err != nil {
 		t.Fatal(err)
 	}
 	cleared := updated[len(updated)-1]["model"].(map[string]any)

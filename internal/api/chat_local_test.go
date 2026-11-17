@@ -831,7 +831,7 @@ func TestOpenAIFallbackThinkingChangesNextTurnWithoutRestart(t *testing.T) {
 		if calls.Add(1) == 1 && last["content"] != "first" {
 			t.Errorf("small-effort user content = %#v", last["content"])
 		}
-		if calls.Load() == 1 && request["reasoning_effort"] != "low" {
+		if _, exists := request["reasoning_effort"]; exists {
 			t.Errorf("reasoning_effort = %#v", request["reasoning_effort"])
 		}
 		if calls.Load() == 2 && last["content"] != "second" {
@@ -840,7 +840,7 @@ func TestOpenAIFallbackThinkingChangesNextTurnWithoutRestart(t *testing.T) {
 		writeSSE(w, `{"choices":[{"delta":{"content":"OK"}}]}`)
 	})
 	defer server.Close()
-	if _, err := database.Exec(`UPDATE chat SET effort='small' WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET effort='low' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	if code := sendLocalMessage(t, server, chatID, "first"); code != http.StatusAccepted {
@@ -982,7 +982,7 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 			)
 		}
 	})
-	if _, err := database.Exec(`UPDATE chat SET model='thinking-model' WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET model='thinking-model',effort='none' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	var connectorID string
@@ -1028,8 +1028,8 @@ func TestLocalOllamaNativeToolLoopThinkingAndContextNote(t *testing.T) {
 		t.Fatalf("context note count = %d, %v", contextNotes, err)
 	}
 	var updated chat
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "high"}, &updated); code != http.StatusOK || updated.Effort != "high" {
-		t.Fatalf("set Ollama high effort = %d, %#v", code, updated)
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "thinking"}, &updated); code != http.StatusOK || updated.Effort != "thinking" {
+		t.Fatalf("set Ollama thinking effort = %d, %#v", code, updated)
 	}
 	if code := sendLocalMessage(t, server, chatID, "second turn"); code != http.StatusAccepted {
 		t.Fatalf("second native send = %d", code)
@@ -1120,7 +1120,7 @@ func TestLocalOllamaThinkingCapabilitySendsThink(t *testing.T) {
 		}
 		writeNDJSON(w, `{"message":{"content":"Hello"},"done":true}`)
 	})
-	if _, err := database.Exec(`UPDATE chat SET model='thinking-model',effort='default' WHERE id=?`, chatID); err != nil {
+	if _, err := database.Exec(`UPDATE chat SET model='thinking-model',effort='' WHERE id=?`, chatID); err != nil {
 		t.Fatal(err)
 	}
 	if code := sendLocalMessage(t, server, chatID, "hello"); code != http.StatusAccepted {
@@ -1138,11 +1138,12 @@ func TestOllamaThinkingValues(t *testing.T) {
 		want                 any
 		present              bool
 	}{
-		{"false-only", "high", `[false]`, nil, false},
-		{"booleans-small", "small", `[true,false]`, false, true},
-		{"booleans-high", "high", `[true,false]`, true, true},
-		{"levels-nearest", "medium", `["low","high"]`, "low", true},
-		{"default-omits", "default", `["low","high"]`, nil, false},
+		{"false-only", "thinking", `[false]`, nil, false},
+		{"booleans-none", "none", `[true,false]`, false, true},
+		{"booleans-thinking", "thinking", `[true,false]`, true, true},
+		{"level-listed", "low", `["low","high"]`, "low", true},
+		{"level-missing", "medium", `["low","high"]`, nil, false},
+		{"default-omits", "", `["low","high"]`, nil, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got map[string]any

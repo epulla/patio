@@ -363,16 +363,6 @@ func TestCodexMCPRequestsOverPipe(t *testing.T) {
 	}
 }
 
-func TestCodexEffortFallbackSelection(t *testing.T) {
-	models := []connectorcli.Model{{ID: "other", Efforts: []string{"minimal"}}, {ID: "selected", Efforts: []string{"high", "medium", "low"}}}
-	if got := effortFor("small", codexModelEfforts(models, "selected")); got != "low" {
-		t.Fatalf("selected effort=%q, want low", got)
-	}
-	if got := effortFor("small", codexModelEfforts(models, "missing")); got != "" {
-		t.Fatalf("unknown model effort=%q, want empty", got)
-	}
-}
-
 func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {
 	database, _, root := chatAPI(t)
 	connectorID := createCodexTestConnector(t, database)
@@ -390,18 +380,20 @@ func TestCodexUnknownModelOmitsEffortWithoutFailingTurn(t *testing.T) {
 	}
 }
 
-func TestCodexSmallUsesMinimalWhenSupported(t *testing.T) {
-	database, _, root := chatAPI(t)
-	connectorID := createCodexTestConnector(t, database)
-	chatID := createDriverTestChat(t, database, connectorID, root)
-	_, _ = database.Exec(`UPDATE chat SET model='selected',effort='small' WHERE id=?`, chatID)
-	client := &effortTestCodexClient{models: []connectorcli.Model{{ID: "selected", Efforts: []string{"low", "minimal"}}}}
-	driver := &codexRuntime{manager: newChatManager(database, Options{}), chatID: chatID, client: client, threadID: "thread", ctx: context.Background(), model: "selected"}
-	if err := driver.send(ChatSendRequest{Text: "hello"}); err != nil {
-		t.Fatal(err)
-	}
-	if client.turnParams["effort"] != "minimal" {
-		t.Fatalf("turn/start effort=%#v, want minimal", client.turnParams["effort"])
+func TestCodexSendsNativeEffortOnlyWhenSupported(t *testing.T) {
+	for _, tc := range []struct{ effort, want string }{{"minimal", "minimal"}, {"xhigh", ""}} {
+		database, _, root := chatAPI(t)
+		connectorID := createCodexTestConnector(t, database)
+		chatID := createDriverTestChat(t, database, connectorID, root)
+		_, _ = database.Exec(`UPDATE chat SET model='selected',effort=? WHERE id=?`, tc.effort, chatID)
+		client := &effortTestCodexClient{models: []connectorcli.Model{{ID: "selected", Efforts: []string{"low", "minimal"}}}}
+		driver := &codexRuntime{manager: newChatManager(database, Options{}), chatID: chatID, client: client, threadID: "thread", ctx: context.Background(), model: "selected"}
+		if err := driver.send(ChatSendRequest{Text: "hello"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := client.turnParams["effort"].(string); got != tc.want {
+			t.Fatalf("%s: turn/start effort=%q, want %q", tc.effort, got, tc.want)
+		}
 	}
 }
 

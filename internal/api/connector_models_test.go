@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -13,16 +16,15 @@ import (
 )
 
 func TestConnectorModelsAndRecordedCLIParsers(t *testing.T) {
-	database, handler, _ := chatAPI(t)
-	id := createTestConnector(t, database)
-	var response struct {
-		Models []selectableModel `json:"models"`
+	_, handler, _ := chatAPI(t)
+	claude := filepath.Join(t.TempDir(), "claude")
+	response := `{"type":"control_response","response":{"subtype":"success","request_id":"r1","response":{"models":[{"value":"default","displayName":"Default","supportsEffort":true,"supportedEffortLevels":["low","max"]},{"value":"claude-haiku-4-5","displayName":"Haiku 4.5"}]}}}`
+	if err := os.WriteFile(claude, []byte("#!/bin/sh\nread line\necho '{\"type\":\"system\"}'\necho '"+response+"'\nsleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/"+id+"/models", nil, &response); code != http.StatusOK || len(response.Models) != 4 || response.Models[0].ID != "" || response.Models[1].ID != "opus" || response.Models[1].Label != "Opus" || response.Models[3].ID != "haiku" {
-		t.Fatalf("Claude models = %d %#v", code, response.Models)
-	}
-	if response.Models[0].Efforts == nil || len(*response.Models[0].Efforts) != 5 || response.Models[1].Efforts == nil {
-		t.Fatalf("Claude efforts = %#v", response.Models)
+	claudeModels, err := claudeInitializeModels(context.Background(), claude, nil)
+	if err != nil || len(claudeModels) != 2 || claudeModels[0].ID != "default" || strings.Join(*claudeModels[0].Efforts, ",") != "low,max" || claudeModels[1].Label != "Haiku 4.5" || claudeModels[1].Efforts == nil || len(*claudeModels[1].Efforts) != 0 {
+		t.Fatalf("Claude initialize models = %#v, %v", claudeModels, err)
 	}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/missing/models", nil, nil); code != http.StatusNotFound {
 		t.Fatalf("missing connector status = %d", code)
@@ -180,5 +182,18 @@ func TestConvertModelsPreservesCodexEfforts(t *testing.T) {
 	models := convertModels([]connectorcli.Model{{ID: "codex-model", Label: "Codex", Efforts: []string{"minimal", "low"}}})
 	if len(models) != 1 || models[0].Efforts == nil || len(*models[0].Efforts) != 2 || (*models[0].Efforts)[0] != "minimal" {
 		t.Fatalf("converted Codex models=%#v", models)
+	}
+}
+
+func TestCopilotModelsListReadsReasoningLevels(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"result":{"models":[{"id":"auto","name":"Auto","capabilities":{}},{"id":"gpt","name":"GPT","isDefault":true,"capabilities":{"supports":{"reasoningEffort":true},"supportedReasoningEfforts":["low","high"],"defaultReasoningEffort":"high"}}]}}`
+	copilot := filepath.Join(t.TempDir(), "copilot")
+	script := fmt.Sprintf("#!/bin/sh\nprintf 'Content-Length: %d\\r\\n\\r\\n%%s' '%s'\nsleep 5\n", len(body), body)
+	if err := os.WriteFile(copilot, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	models, err := copilotModelsList(context.Background(), copilot, nil)
+	if err != nil || len(models) != 2 || models[0].Efforts != nil || !models[1].isDefault || strings.Join(*models[1].Efforts, ",") != "low,high" || models[1].DefaultEffort != "high" {
+		t.Fatalf("Copilot models = %#v, %v", models, err)
 	}
 }

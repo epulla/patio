@@ -26,10 +26,11 @@ type Request struct {
 }
 
 type Model struct {
-	ID          string   `json:"id"`
-	Label       string   `json:"label"`
-	Description string   `json:"description"`
-	Efforts     []string `json:"efforts,omitempty"`
+	ID            string   `json:"id"`
+	Label         string   `json:"label"`
+	Description   string   `json:"description"`
+	Efforts       []string `json:"efforts,omitempty"`
+	DefaultEffort string   `json:"default_effort,omitempty"`
 }
 
 type rpcMessage struct {
@@ -168,6 +169,7 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 			SupportedReasoningEfforts []struct {
 				ReasoningEffort string `json:"reasoningEffort"`
 			} `json:"supportedReasoningEfforts"`
+			DefaultReasoningEffort string `json:"defaultReasoningEffort"`
 		} `json:"data"`
 	}
 	if err := c.Call(ctx, "model/list", map[string]any{}, &response); err != nil {
@@ -189,7 +191,7 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 				efforts = append(efforts, effort.ReasoningEffort)
 			}
 		}
-		models = append(models, Model{ID: model.ID, Label: label, Description: model.Description, Efforts: efforts})
+		models = append(models, Model{ID: model.ID, Label: label, Description: model.Description, Efforts: efforts, DefaultEffort: model.DefaultReasoningEffort})
 	}
 	return models, nil
 }
