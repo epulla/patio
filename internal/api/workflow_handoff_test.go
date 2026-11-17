@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,13 @@ func workflowHandoffFixture(t *testing.T, graph workflowGraph, budget int) (*Ser
 	if _, err := db.Exec(`UPDATE chat SET workflow_id=?,workflow_node='b',workflow_run_id=? WHERE id=?`, wid, root, second); err != nil {
 		t.Fatal(err)
 	}
-	s := New(db, "local", false, "dev", rootDir)
+	// Fake CLI so runs that start a chat don't need Claude installed (CI has none).
+	s := New(db, "local", false, "dev", rootDir, Options{
+		DBPath:         filepath.Join(rootDir, "test.db"),
+		findClaude:     func() (string, error) { return "claude-test", nil },
+		commandBuilder: func(_, _, _, _, _ string) ([]string, error) { return []string{"fake"}, nil },
+		processFactory: func(string, []string, []string, string) (chatProcess, error) { return newPipeChatProcess(), nil },
+	})
 	t.Cleanup(func() { _ = s.Close() })
 	return s, root, first, second, wid
 }

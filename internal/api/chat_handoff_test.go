@@ -287,7 +287,11 @@ func TestReplaceDropsOwnQueuedMessages(t *testing.T) {
 	if st := status(); st != "stopped" {
 		t.Fatalf("status after plain replace=%s", st)
 	}
-	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(got) == 1 && strings.Contains(got[0], "(stopped)") })
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(got) == 1 && strings.Contains(got[0], "(stopped)")
+	})
 }
 
 func TestHandoffStatusLabelForSingleReport(t *testing.T) {
