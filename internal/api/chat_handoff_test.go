@@ -318,10 +318,47 @@ func TestHandoffStatusLabelForSingleReport(t *testing.T) {
 	}
 }
 
+func TestSweepHandoffTimesOutOnlyIdleChildren(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		active func(s *Server, child, other string)
+	}{
+		{"recent message", func(s *Server, child, _ string) {
+			if _, err := s.db.Exec(`UPDATE chat SET updated_at=? WHERE id=?`, now(), child); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"running turn", func(s *Server, child, _ string) { s.chats.runtime(child).busy.Store(true) }},
+		{"waiting on own handoff", func(s *Server, child, other string) { queueHandoff(t, s, child, other, true) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, parent, child, other := newHandoffChats(t)
+			queueHandoff(t, s, parent, child, true)
+			if _, err := s.db.Exec(`UPDATE chat_handoff SET created_at='2020-01-01T00:00:00.000Z',deadline_at='2020-01-01T00:01:00.000Z' WHERE from_chat_id=?`, parent); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.Exec(`UPDATE chat SET updated_at='2020-01-01T00:00:00.000Z' WHERE id=?`, child); err != nil {
+				t.Fatal(err)
+			}
+			tc.active(s, child, other)
+			if err := s.SweepHandoffs(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var status string
+			if err := s.db.QueryRow(`SELECT status FROM chat_handoff WHERE from_chat_id=?`, parent).Scan(&status); err != nil || status != "pending" {
+				t.Fatalf("status=%s err=%v", status, err)
+			}
+		})
+	}
+}
+
 func TestSweepHandoffTimeout(t *testing.T) {
 	s, parent, child, _ := newHandoffChats(t)
 	queueHandoff(t, s, parent, child, true)
 	if _, err := s.db.Exec(`UPDATE chat_handoff SET created_at='2020-01-01T00:00:00.000Z',deadline_at='2020-01-01T00:01:00.000Z' WHERE from_chat_id=?`, parent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE chat SET updated_at='2020-01-01T00:00:00.000Z' WHERE id=?`, child); err != nil {
 		t.Fatal(err)
 	}
 	var report string
@@ -333,10 +370,10 @@ func TestSweepHandoffTimeout(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT status,result FROM chat_handoff WHERE from_chat_id=?`, parent).Scan(&status, &result); err != nil {
 		t.Fatal(err)
 	}
-	if status != "failed" || !strings.Contains(result, "Timed out") {
+	if status != "failed" || result != "No activity for 1 min" {
 		t.Fatalf("status=%s result=%s", status, result)
 	}
-	if !strings.Contains(report, "Timed out") {
+	if !strings.Contains(report, "No activity for 1 min") {
 		t.Fatalf("report=%q", report)
 	}
 	var notices int
@@ -397,6 +434,9 @@ func TestSweepTimesOutHeldHandoff(t *testing.T) {
 	s, parent, child, _ := newHandoffChats(t)
 	queueHandoff(t, s, parent, child, true)
 	if _, err := s.db.Exec(`UPDATE chat_handoff SET held=1,created_at='2020-01-01T00:00:00.000Z',deadline_at='2020-01-01T00:01:00.000Z' WHERE to_chat_id=?`, child); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE chat SET updated_at='2020-01-01T00:00:00.000Z' WHERE id=?`, child); err != nil {
 		t.Fatal(err)
 	}
 	s.chats.reportBack = func(_, _, _ string) error { return nil }

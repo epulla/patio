@@ -28,25 +28,27 @@ func (s *Server) StartHandoffSweeper(ctx context.Context, every time.Duration) e
 }
 
 func (s *Server) SweepHandoffs(ctx context.Context) error {
-	type expired struct{ id, parent, child, title, created, deadline string }
+	type expired struct{ id, parent, child, title, created, deadline, updated string }
 	var list []expired
 	err := txrun(s.db, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT h.id,h.from_chat_id,h.to_chat_id,h.created_at,h.deadline_at,c.title FROM chat_handoff h JOIN chat c ON c.id=h.to_chat_id WHERE h.status='pending' AND h.deadline_at<?`, now())
+		// A child waiting on its own handoff (e.g. a Reviewer chat) is active; that handoff has its own timeout.
+		rows, err := tx.QueryContext(ctx, `SELECT h.id,h.from_chat_id,h.to_chat_id,h.created_at,h.deadline_at,c.title,c.updated_at FROM chat_handoff h JOIN chat c ON c.id=h.to_chat_id WHERE h.status='pending' AND h.deadline_at<? AND NOT EXISTS(SELECT 1 FROM chat_handoff g WHERE g.from_chat_id=h.to_chat_id AND g.status='pending' AND g.to_chat_id NOT IN (SELECT from_chat_id FROM chat_handoff WHERE to_chat_id=h.to_chat_id AND status='pending'))`, now())
 		if err != nil {
 			return err
 		}
+		var candidates []expired
 		for rows.Next() {
 			var e expired
-			if err := rows.Scan(&e.id, &e.parent, &e.child, &e.created, &e.deadline, &e.title); err != nil {
+			if err := rows.Scan(&e.id, &e.parent, &e.child, &e.created, &e.deadline, &e.title, &e.updated); err != nil {
 				rows.Close()
 				return err
 			}
-			list = append(list, e)
+			candidates = append(candidates, e)
 		}
 		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 			return err
 		}
-		for _, e := range list {
+		for _, e := range candidates {
 			created, err := time.Parse("2006-01-02T15:04:05.000Z", e.created)
 			if err != nil {
 				return err
@@ -59,9 +61,14 @@ func (s *Server) SweepHandoffs(ctx context.Context) error {
 			if n < 1 {
 				n = 30
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE chat_handoff SET status='failed',result=?,finished_at=? WHERE id=? AND status='pending'`, fmt.Sprintf("Timed out after %d min", n), now(), e.id); err != nil {
+			// The timeout counts from the child's last saved message or tool event, not from the handoff start.
+			if s.chats.Running(e.child) || e.updated >= time.Now().UTC().Add(-time.Duration(n)*time.Minute).Format("2006-01-02T15:04:05.000Z") {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE chat_handoff SET status='failed',result=?,finished_at=? WHERE id=? AND status='pending'`, fmt.Sprintf("No activity for %d min", n), now(), e.id); err != nil {
 				return err
 			}
+			list = append(list, e)
 		}
 		return nil
 	})
