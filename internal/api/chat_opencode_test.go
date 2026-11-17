@@ -453,21 +453,29 @@ func TestOpenCodeTracksBusySubagentSessions(t *testing.T) {
 }
 
 func TestOpenCodeSyncBusySubagentsUsesActiveSessions(t *testing.T) {
+	manager := &chatManager{}
+	manager.setSubagentBusy("chat", "finished", true)
+	manager.setSubagentBusy("chat", "late-finish", true)
+	// Events that arrive while the snapshot request is in flight are newer than the snapshot.
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/session/active" {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":{"running":{"type":"running"}}}`))
+		manager.setSubagentBusy("chat", "late-start", true)
+		manager.setSubagentBusy("chat", "late-finish", false)
+		_, _ = w.Write([]byte(`{"data":{"running":{"type":"running"},"late-finish":{"type":"running"}}}`))
 	}))
 	defer httpServer.Close()
-	manager := &chatManager{}
-	manager.setSubagentBusy("chat", "finished", true)
 	parent := &opencodeRuntime{chatID: "chat", manager: manager}
-	s := &opencodeServer{major: 2, baseURL: httpServer.URL, client: httpServer.Client(), ctx: context.Background(), chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: map[string]string{"running": "parent", "finished": "parent"}}
+	s := &opencodeServer{major: 2, baseURL: httpServer.URL, client: httpServer.Client(), ctx: context.Background(), chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: map[string]string{"running": "parent", "finished": "parent", "late-start": "parent", "late-finish": "parent"}}
 	s.syncBusySubagents()
-	if got := manager.busySubagents["chat"]; !reflect.DeepEqual(got, map[string]bool{"running": true}) {
-		t.Fatalf("busy=%v", got)
+	busy := map[string]bool{}
+	for session, state := range manager.subagents["chat"] {
+		busy[session] = state.busy
+	}
+	if want := map[string]bool{"running": true, "finished": false, "late-start": true, "late-finish": false}; !reflect.DeepEqual(busy, want) {
+		t.Fatalf("busy=%v want %v", busy, want)
 	}
 }
 

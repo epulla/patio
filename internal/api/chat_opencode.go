@@ -948,7 +948,7 @@ func (d *opencodeRuntime) releaseServer() {
 		d.mu.Lock()
 		d.closed = true
 		// Events for this chat's subagents stop reaching it, so their busy state would never clear.
-		d.manager.resetSubagents(d.chatID, nil)
+		d.manager.forgetSubagents(d.chatID)
 		d.mu.Unlock()
 		s := d.server
 		s.mu.Lock()
@@ -1006,12 +1006,18 @@ func (s *opencodeServer) events() {
 	}
 }
 
-// syncBusySubagents replaces each chat's busy subagent sessions with the ones OpenCode reports
-// active. OpenCode 1.x has no such list, so its state stays as the events left it.
+// syncBusySubagents applies the subagent sessions OpenCode reports active to each chat; events
+// newer than the snapshot win. OpenCode 1.x has no such list, so its state stays as the events left it.
 func (s *opencodeServer) syncBusySubagents() {
 	if s.major < 2 {
 		return
 	}
+	s.mu.Lock()
+	since := make(map[*opencodeRuntime]uint64, len(s.chats))
+	for _, d := range s.chats {
+		since[d] = d.manager.subagentVersion()
+	}
+	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
 	defer cancel()
 	resp, err := s.request(ctx, http.MethodGet, "/api/session/active", nil)
@@ -1037,16 +1043,10 @@ func (s *opencodeServer) syncBusySubagents() {
 			busy[d] = append(busy[d], sid)
 		}
 	}
-	s.mu.Lock()
-	drivers := make([]*opencodeRuntime, 0, len(s.chats))
-	for _, d := range s.chats {
-		drivers = append(drivers, d)
-	}
-	s.mu.Unlock()
-	for _, d := range drivers {
+	for d, version := range since {
 		d.mu.Lock()
 		if !d.closed {
-			d.manager.resetSubagents(d.chatID, busy[d])
+			d.manager.syncSubagents(d.chatID, busy[d], version)
 		}
 		d.mu.Unlock()
 	}

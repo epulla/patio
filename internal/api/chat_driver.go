@@ -76,46 +76,79 @@ type chatManager struct {
 	// turnNotes holds text added once to a chat's next turn for the model only (chat id → note), for
 	// prompt changes after the session started, such as a chat switched to Telegram.
 	turnNotes sync.Map
-	// busySubagents holds each chat's running subagent sessions (chat id → session ids); they can run after its turn ended.
-	subagentMu    sync.Mutex
-	busySubagents map[string]map[string]bool
+	// subagents holds each chat's subagent sessions (chat id → session id → state); they can run after its turn ended.
+	subagentMu  sync.Mutex
+	subagents   map[string]map[string]subagentState
+	subagentSeq uint64
+}
+
+// subagentState records whether a subagent session is busy and the sequence number of the update that said so.
+type subagentState struct {
+	busy bool
+	seq  uint64
 }
 
 func (m *chatManager) setSubagentBusy(chatID, session string, busy bool) {
 	m.subagentMu.Lock()
 	defer m.subagentMu.Unlock()
-	if !busy {
-		delete(m.busySubagents[chatID], session)
-		return
+	m.subagentSeq++
+	if m.subagents == nil {
+		m.subagents = map[string]map[string]subagentState{}
 	}
-	if m.busySubagents == nil {
-		m.busySubagents = map[string]map[string]bool{}
+	if m.subagents[chatID] == nil {
+		m.subagents[chatID] = map[string]subagentState{}
 	}
-	if m.busySubagents[chatID] == nil {
-		m.busySubagents[chatID] = map[string]bool{}
-	}
-	m.busySubagents[chatID][session] = true
+	m.subagents[chatID][session] = subagentState{busy, m.subagentSeq}
 }
 
-func (m *chatManager) resetSubagents(chatID string, sessions []string) {
+// subagentVersion is the sequence number of the latest subagent event; take it before a snapshot.
+func (m *chatManager) subagentVersion() uint64 {
 	m.subagentMu.Lock()
 	defer m.subagentMu.Unlock()
-	delete(m.busySubagents, chatID)
-	for _, session := range sessions {
-		if m.busySubagents == nil {
-			m.busySubagents = map[string]map[string]bool{}
-		}
-		if m.busySubagents[chatID] == nil {
-			m.busySubagents[chatID] = map[string]bool{}
-		}
-		m.busySubagents[chatID][session] = true
+	return m.subagentSeq
+}
+
+// syncSubagents applies a snapshot of the chat's busy sessions taken after update since; sessions
+// with a newer event keep that event's state.
+func (m *chatManager) syncSubagents(chatID string, busy []string, since uint64) {
+	m.subagentMu.Lock()
+	defer m.subagentMu.Unlock()
+	if m.subagents == nil {
+		m.subagents = map[string]map[string]subagentState{}
 	}
+	if m.subagents[chatID] == nil {
+		m.subagents[chatID] = map[string]subagentState{}
+	}
+	sessions := m.subagents[chatID]
+	inSnapshot := map[string]bool{}
+	for _, session := range busy {
+		inSnapshot[session] = true
+		if _, ok := sessions[session]; !ok {
+			sessions[session] = subagentState{true, since}
+		}
+	}
+	for session, state := range sessions {
+		if state.seq <= since {
+			sessions[session] = subagentState{inSnapshot[session], state.seq}
+		}
+	}
+}
+
+func (m *chatManager) forgetSubagents(chatID string) {
+	m.subagentMu.Lock()
+	defer m.subagentMu.Unlock()
+	delete(m.subagents, chatID)
 }
 
 func (m *chatManager) subagentBusy(chatID string) bool {
 	m.subagentMu.Lock()
 	defer m.subagentMu.Unlock()
-	return len(m.busySubagents[chatID]) > 0
+	for _, state := range m.subagents[chatID] {
+		if state.busy {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
