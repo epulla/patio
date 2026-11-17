@@ -120,6 +120,17 @@ func TestOpenCodeChatServerAndEvents(t *testing.T) {
 	fake.publish(t, map[string]any{"type": "message.part.updated", "properties": map[string]any{"part": map[string]any{"id": "text-2", "sessionID": firstSession, "messageID": "assistant-1", "type": "text", "text": "Done.", "time": map[string]any{"start": 2}}, "delta": "Done."}})
 	fake.publish(t, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": firstSession}})
 	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	// "done" is emitted just after the turn stops running; wait for it instead of racing it.
+	waitFor(t, func() bool {
+		emittedMu.Lock()
+		defer emittedMu.Unlock()
+		for _, event := range emitted {
+			if event["type"] == "done" {
+				return true
+			}
+		}
+		return false
+	})
 	var assistant, tool string
 	if err := database.QueryRow(`SELECT content FROM chat_message WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1`, chatID).Scan(&assistant); err != nil || assistant != "Checking:\n\nDone." {
 		t.Fatalf("assistant stored as %q, %v", assistant, err)
