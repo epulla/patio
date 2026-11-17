@@ -237,18 +237,22 @@ func TestCopilotSteersRunningPrompt(t *testing.T) {
 	}
 	writeACPTestMessage(process, map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "steer-session", "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"text": "after"}}}})
 	reply(second.ID, map[string]any{"stopReason": "end_turn"})
-	waitFor(t, func() bool { return !server.chats.Running(chatID) })
+	// "done" is emitted after the turn's DB writes, so wait for it rather than for Running.
+	done := 0
+	countDone := func() {
+		for _, event := range drainEvents(events) {
+			if isDoneChatEvent(event) {
+				done++
+			}
+		}
+	}
+	waitFor(t, func() bool { countDone(); return done > 0 })
 	var count int
 	var content string
 	if err := database.QueryRow(`SELECT COUNT(*),MAX(content) FROM chat_message WHERE chat_id=? AND role='assistant'`, chatID).Scan(&count, &content); err != nil || count != 1 || content != "before after" {
 		t.Fatalf("assistant count=%d content=%q err=%v", count, content, err)
 	}
-	done := 0
-	for _, event := range drainEvents(events) {
-		if isDoneChatEvent(event) {
-			done++
-		}
-	}
+	countDone()
 	if done != 1 {
 		t.Fatalf("done events=%d want 1", done)
 	}
