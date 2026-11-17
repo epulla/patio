@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"net/http"
@@ -410,45 +411,57 @@ func TestOpenCodeV1SessionCreatedMapsChildToParent(t *testing.T) {
 	}
 }
 
-func TestOpenCodeSubagentEventsCountAsChatActivity(t *testing.T) {
+func TestOpenCodeTracksBusySubagentSessions(t *testing.T) {
+	v1Busy := map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": "child", "status": map[string]string{"type": "busy"}}}
+	v2Started := map[string]any{"type": "session.execution.started", "data": map[string]string{"sessionID": "child"}}
 	for _, tc := range []struct {
-		name  string
-		v2    bool
-		event map[string]any
+		name       string
+		v2         bool
+		start, end map[string]any
 	}{
-		{"v1", false, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": "child", "status": map[string]string{"type": "busy"}}}},
-		{"v2", true, map[string]any{"type": "session.text.delta", "data": map[string]string{"sessionID": "child", "delta": "x"}}},
+		{"v1 status idle", false, v1Busy, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": "child", "status": map[string]string{"type": "idle"}}}},
+		{"v1 session.idle", false, v1Busy, map[string]any{"type": "session.idle", "properties": map[string]any{"sessionID": "child"}}},
+		{"v2 succeeded", true, v2Started, map[string]any{"type": "session.execution.succeeded", "data": map[string]string{"sessionID": "child"}}},
+		{"v2 interrupted", true, v2Started, map[string]any{"type": "session.execution.interrupted", "data": map[string]string{"sessionID": "child"}}},
+		{"v2 failed", true, v2Started, map[string]any{"type": "session.execution.failed", "data": map[string]any{"sessionID": "child", "error": map[string]string{"message": "boom"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &chatRuntime{driver: &idleTestDriver{closed: make(chan struct{})}}
-			manager := &chatManager{idleTimeout: time.Hour, chats: map[string]*chatRuntime{"chat": rt}}
+			manager := &chatManager{}
 			parent := &opencodeRuntime{chatID: "chat", manager: manager}
 			s := &opencodeServer{major: 1, chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: map[string]string{"child": "parent"}}
-			event, err := json.Marshal(tc.event)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var raw map[string]json.RawMessage
-			if err := json.Unmarshal(event, &raw); err != nil {
-				t.Fatal(err)
-			}
 			dispatch := s.dispatch
 			if tc.v2 {
 				dispatch = s.dispatchV2
 			}
-			if err := dispatch(raw); err != nil {
-				t.Fatal(err)
+			for i, event := range []map[string]any{tc.start, tc.end} {
+				data, err := json.Marshal(event)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var raw map[string]json.RawMessage
+				if err := json.Unmarshal(data, &raw); err != nil {
+					t.Fatal(err)
+				}
+				if err := dispatch(raw); err != nil {
+					t.Fatal(err)
+				}
+				if busy := manager.subagentBusy("chat"); busy != (i == 0) {
+					t.Fatalf("after event %d busy=%v", i, busy)
+				}
 			}
-			if _, ok := manager.subagentActivity.Load("chat"); !ok {
-				t.Fatal("subagent event not recorded as chat activity")
-			}
-			rt.mu.Lock()
-			defer rt.mu.Unlock()
-			if rt.lastActivity.IsZero() {
-				t.Fatal("subagent event did not keep the runtime from closing as idle")
-			}
-			rt.idleTimer.Stop()
 		})
+	}
+}
+
+func TestOpenCodeEventReconnectForgetsBusySubagents(t *testing.T) {
+	manager := &chatManager{}
+	manager.setSubagentBusy("chat", "child", true)
+	s := &opencodeServer{ctx: context.Background(), chats: map[string]*opencodeRuntime{"parent": {chatID: "chat", manager: manager}}}
+	if err := s.readEvents(io.NopCloser(strings.NewReader(""))); err != nil {
+		t.Fatal(err)
+	}
+	if manager.subagentBusy("chat") {
+		t.Fatal("busy subagent survived an event stream reconnect")
 	}
 }
 

@@ -76,8 +76,31 @@ type chatManager struct {
 	// turnNotes holds text added once to a chat's next turn for the model only (chat id → note), for
 	// prompt changes after the session started, such as a chat switched to Telegram.
 	turnNotes sync.Map
-	// subagentActivity holds the last subagent event time (chat id → time.Time), which can arrive between turns.
-	subagentActivity sync.Map
+	// busySubagents holds each chat's running subagent sessions (chat id → session ids); they can run after its turn ended.
+	subagentMu    sync.Mutex
+	busySubagents map[string]map[string]bool
+}
+
+func (m *chatManager) setSubagentBusy(chatID, session string, busy bool) {
+	m.subagentMu.Lock()
+	defer m.subagentMu.Unlock()
+	if !busy {
+		delete(m.busySubagents[chatID], session)
+		return
+	}
+	if m.busySubagents == nil {
+		m.busySubagents = map[string]map[string]bool{}
+	}
+	if m.busySubagents[chatID] == nil {
+		m.busySubagents[chatID] = map[string]bool{}
+	}
+	m.busySubagents[chatID][session] = true
+}
+
+func (m *chatManager) subagentBusy(chatID string) bool {
+	m.subagentMu.Lock()
+	defer m.subagentMu.Unlock()
+	return len(m.busySubagents[chatID]) > 0
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {
@@ -1109,6 +1132,10 @@ func (m *chatManager) closeIdleRuntime(id string, rt *chatRuntime) error {
 		return nil
 	}
 	remaining := m.idleTimeout - time.Since(rt.lastActivity)
+	if m.subagentBusy(id) {
+		// Closing would stop the subagent's events, including the turn its result starts.
+		remaining = m.idleTimeout
+	}
 	if remaining > 0 {
 		m.resetRuntimeTimerLocked(id, rt, remaining)
 		rt.mu.Unlock()

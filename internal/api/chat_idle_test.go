@@ -22,6 +22,24 @@ func TestChatRuntimeClosesAfterIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestBusySubagentKeepsIdleRuntimeOpen(t *testing.T) {
+	manager, c, driver := newIdleTestManager(t, 60*time.Millisecond)
+	if _, err := manager.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	manager.setSubagentBusy(c.ID, "subagent", true)
+	if err := manager.finishTurn(c.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-driver.closed:
+		t.Fatal("runtime closed while its subagent was busy")
+	case <-time.After(300 * time.Millisecond):
+	}
+	manager.setSubagentBusy(c.ID, "subagent", false)
+	waitForDriverClose(t, driver)
+}
+
 func TestReloadMCPClosesIdleRuntime(t *testing.T) {
 	m, c, d := newIdleTestManager(t, time.Hour)
 	if _, err := m.Send(c, "idle-test", "", ChatSendRequest{Text: "first"}); err != nil {

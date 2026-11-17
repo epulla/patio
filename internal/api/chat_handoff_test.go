@@ -345,7 +345,7 @@ func TestSweepHandoffTimesOutOnlyIdleChildren(t *testing.T) {
 			}
 		}},
 		{"running turn", func(s *Server, child, _ string) { s.chats.runtime(child).busy.Store(true) }},
-		{"subagent event", func(s *Server, child, _ string) { s.chats.subagentActivity.Store(child, time.Now()) }},
+		{"busy subagent", func(s *Server, child, _ string) { s.chats.setSubagentBusy(child, "subagent", true) }},
 		{"waiting on own handoff", func(s *Server, child, other string) { queueHandoff(t, s, child, other, true) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

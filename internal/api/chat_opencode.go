@@ -1000,6 +1000,14 @@ func (s *opencodeServer) events() {
 
 func (s *opencodeServer) readEvents(body io.ReadCloser) error {
 	defer body.Close()
+	// Events missed while disconnected could leave a finished subagent marked busy forever.
+	s.mu.Lock()
+	for _, d := range s.chats {
+		d.manager.subagentMu.Lock()
+		delete(d.manager.busySubagents, d.chatID)
+		d.manager.subagentMu.Unlock()
+	}
+	s.mu.Unlock()
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 64*1024), opencodeSSELimit)
 	var data strings.Builder
@@ -1106,9 +1114,6 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 	}
 	driver, child := s.driverForSession(sid)
-	if driver != nil && child {
-		driver.markSubagentActive()
-	}
 	if driver != nil {
 		switch typ {
 		case "message.updated":
@@ -1288,6 +1293,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 	case "session.idle", "session.status":
 		if typ == "session.idle" {
 			if child {
+				driver.manager.setSubagentBusy(driver.chatID, sid, false)
 				return nil
 			}
 			return driver.finish(nil)
@@ -1297,6 +1303,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 		if err := json.Unmarshal(props["status"], &status); err != nil {
 			return err
+		}
+		if child {
+			driver.manager.setSubagentBusy(driver.chatID, sid, status.Type != "idle")
 		}
 		if status.Type == "idle" {
 			if child {
@@ -1459,9 +1468,6 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 	if driver == nil {
 		return nil
 	}
-	if child {
-		driver.markSubagentActive()
-	}
 	switch typ {
 	case "session.reasoning.delta":
 		var delta struct {
@@ -1588,16 +1594,20 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 			}
 		}()
 	case "session.execution.started":
-		if !child {
+		if child {
+			driver.manager.setSubagentBusy(driver.chatID, sid, true)
+		} else {
 			driver.startAutonomousTurn()
 		}
 	case "session.execution.succeeded", "session.execution.interrupted":
 		if child {
+			driver.manager.setSubagentBusy(driver.chatID, sid, false)
 			return nil
 		}
 		return driver.finish(nil)
 	case "session.execution.failed":
 		if child {
+			driver.manager.setSubagentBusy(driver.chatID, sid, false)
 			return nil
 		}
 		var failure struct {
@@ -1638,17 +1648,6 @@ func (d *opencodeRuntime) markBusy() {
 	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
 		rt.mu.Lock()
 		rt.busy.Store(true)
-		d.manager.markRuntimeActiveLocked(d.chatID, rt)
-		rt.mu.Unlock()
-	}
-}
-
-// markSubagentActive records work by a background subagent, which can run after the chat's turn
-// ended: it keeps the runtime from closing as idle and the chat's handoff from timing out.
-func (d *opencodeRuntime) markSubagentActive() {
-	d.manager.subagentActivity.Store(d.chatID, time.Now())
-	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
-		rt.mu.Lock()
 		d.manager.markRuntimeActiveLocked(d.chatID, rt)
 		rt.mu.Unlock()
 	}
