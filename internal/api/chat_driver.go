@@ -628,6 +628,10 @@ func (m *chatManager) finishTurn(id, assistantText string, turnErr error) error 
 		return err
 	}
 	result := assistantText
+	if strings.TrimSpace(result) == "" {
+		// Agent messages need text, so an empty reply would fail to report back.
+		result = "(no reply)"
+	}
 	if stopping {
 		result = "Stopped by the user before finishing."
 	} else if turnErr != nil {

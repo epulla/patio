@@ -319,6 +319,21 @@ func TestHandoffStatusLabelForSingleReport(t *testing.T) {
 	}
 }
 
+func TestEmptyFinalReplyStillReportsBack(t *testing.T) {
+	s, parent, child, _ := newHandoffChats(t)
+	queueHandoff(t, s, parent, child, true)
+	var mu sync.Mutex
+	var got []string
+	s.chats.reportBack = func(_, _, text string) error { mu.Lock(); got = append(got, text); mu.Unlock(); return nil }
+	if err := s.chats.finishTurn(child, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	s.chats.background.Wait()
+	if len(got) != 1 || got[0] != "(no reply)" {
+		t.Fatalf("reports=%q", got)
+	}
+}
+
 func TestSweepHandoffTimesOutOnlyIdleChildren(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
