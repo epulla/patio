@@ -583,13 +583,13 @@ func TestChatEffortUpdate(t *testing.T) {
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	var created chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Effort != "default" {
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]string{"connector_id": connectorID}, &created); code != http.StatusCreated || created.Effort != "" {
 		t.Fatalf("create chat = %d, %#v", code, created)
 	}
 	var listed struct {
 		Chats []chat `json:"chats"`
 	}
-	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 1 || listed.Chats[0].Effort != "default" {
+	if code := requestJSON(t, handler, http.MethodGet, "/api/chats", nil, &listed); code != http.StatusOK || len(listed.Chats) != 1 || listed.Chats[0].Effort != "" {
 		t.Fatalf("list chats = %d, %#v", code, listed)
 	}
 	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "high"}, &created); code != http.StatusOK || created.Effort != "high" {
@@ -623,10 +623,10 @@ func TestChatThinkingCompatibilityMapsFalseToSmallAndRejectsInvalidEffort(t *tes
 	database, handler, _ := chatAPI(t)
 	connectorID := createTestConnector(t, database)
 	var created chat
-	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "thinking": false}, &created); code != http.StatusCreated || created.Effort != "small" {
+	if code := requestJSON(t, handler, http.MethodPost, "/api/chats", map[string]any{"connector_id": connectorID, "thinking": false}, &created); code != http.StatusCreated || created.Effort != "low" {
 		t.Fatalf("legacy thinking false = %d, %#v", code, created)
 	}
-	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "invalid"}, nil); code != http.StatusBadRequest {
+	if code := requestJSON(t, handler, http.MethodPut, "/api/chats/"+created.ID, map[string]any{"effort": "Invalid"}, nil); code != http.StatusBadRequest {
 		t.Fatalf("invalid effort status = %d", code)
 	}
 }

@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 49 {
-		t.Fatalf("migration count = %d, want 49", migrations)
+	if migrations != 50 {
+		t.Fatalf("migration count = %d, want 50", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("read chat effort default: %v", err)
 	}
 	if effort != "default" {
-		t.Fatalf("new chat effort = %q, want default", effort)
+		t.Fatalf("new chat effort = %q, want empty default", effort)
 	}
 	if _, err := second.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES('migration-question','migration-test','question','{}','now')`); err != nil {
 		t.Fatalf("insert question message: %v", err)
@@ -138,9 +138,9 @@ func TestEffortMigrationBackfillsLegacyThinking(t *testing.T) {
 	}
 	defer database.Close()
 	for _, check := range []struct{ query, id, want string }{
-		{`SELECT effort FROM chat WHERE id=?`, "small-chat", "small"}, {`SELECT effort FROM chat WHERE id=?`, "default-chat", "default"},
-		{`SELECT effort FROM scheduled_task WHERE id=?`, "small-task", "small"}, {`SELECT effort FROM scheduled_task WHERE id=?`, "default-task", "default"},
-		{`SELECT effort FROM "user" WHERE id=?`, "small-bot", "default"}, {`SELECT effort FROM "user" WHERE id=?`, "default-bot", "default"},
+		{`SELECT effort FROM chat WHERE id=?`, "small-chat", "low"}, {`SELECT effort FROM chat WHERE id=?`, "default-chat", ""},
+		{`SELECT effort FROM scheduled_task WHERE id=?`, "small-task", "low"}, {`SELECT effort FROM scheduled_task WHERE id=?`, "default-task", ""},
+		{`SELECT effort FROM "user" WHERE id=?`, "small-bot", ""}, {`SELECT effort FROM "user" WHERE id=?`, "default-bot", ""},
 	} {
 		var got string
 		if err := database.QueryRow(check.query, check.id).Scan(&got); err != nil || got != check.want {
@@ -148,8 +148,8 @@ func TestEffortMigrationBackfillsLegacyThinking(t *testing.T) {
 		}
 	}
 	var setting string
-	if err := database.QueryRow(`SELECT value FROM app_setting WHERE key='effort'`).Scan(&setting); err != nil || setting != `"small"` {
-		t.Errorf("effort setting=%q, %v; want JSON small", setting, err)
+	if err := database.QueryRow(`SELECT value FROM app_setting WHERE key='effort'`).Scan(&setting); err != nil || setting != `"low"` {
+		t.Errorf("effort setting=%q, %v; want JSON low", setting, err)
 	}
 }
 

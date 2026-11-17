@@ -205,6 +205,7 @@ func (s *Server) scanChatRow(row interface{ Scan(...any) error }) (chat, string,
 	if err := row.Scan(&c.ID, &c.ConnectorID, &c.Title, &c.TitleLocked, &c.Model, &c.Folder, &c.SessionID, &c.CreatedAt, &c.UpdatedAt, &c.Effort, &c.ShowThinking, &c.AutoAllow, &c.ScheduledTaskID, &c.ScheduledLate, &c.ParentChatID, &c.BotID); err != nil {
 		return c, "", "", "", err
 	}
+	c.Effort = normalizeEffort(c.Effort)
 	c.Workdir = s.chatWorkdir(c)
 	c.Capabilities = chatCapabilities{Reasoning: thinkingCapability{Supported: true}}
 	var kind, baseURL, connectorModel string
@@ -430,8 +431,9 @@ func (s *Server) newChat(in createChatInput) (chat, int, error) {
 		_ = s.db.QueryRow(`SELECT effort FROM "user" WHERE id=?`, *botID).Scan(&effort)
 	}
 	if !validEffort(effort) {
-		return chat{}, 400, errors.New("effort must be default, small, medium, high or xhigh")
+		return chat{}, 400, errors.New("effort must be an empty string or lowercase level token")
 	}
+	effort = normalizeEffort(effort)
 	if in.ShowThinking != nil {
 		showThinking = *in.ShowThinking
 	}
@@ -1058,9 +1060,10 @@ func (s *Server) updateChat(w http.ResponseWriter, r *http.Request) {
 		effort = effortFromThinking(*in.LegacyThinking)
 	}
 	if !validEffort(effort) {
-		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		errw(w, 400, "effort must be an empty string or lowercase level token")
 		return
 	}
+	effort = normalizeEffort(effort)
 	folderChanged := len(in.Folder) > 0 && (folderIn == nil) != (c.Folder == nil) || folderIn != nil && c.Folder != nil && *folderIn != *c.Folder
 	var moved []movedFile
 	if folderChanged {

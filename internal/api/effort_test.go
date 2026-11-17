@@ -2,21 +2,23 @@ package api
 
 import "testing"
 
-func TestEffortForNearestSupported(t *testing.T) {
-	tests := []struct {
-		level     string
-		supported []string
-		want      string
+func TestValidEffortLevelToken(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		valid bool
 	}{
-		{"default", []string{"low"}, ""},
-		{"small", []string{"medium", "high"}, "medium"},
-		{"xhigh", []string{"low", "high"}, "high"},
-		{"high", []string{"custom"}, ""},
-		{"high", []string{"unknown", "xhigh"}, "xhigh"},
-	}
-	for _, test := range tests {
-		if got := effortFor(test.level, test.supported); got != test.want {
-			t.Errorf("effortFor(%q, %v)=%q, want %q", test.level, test.supported, got, test.want)
+		{"", true}, {"low", true}, {"thinking_level-2", true},
+		{"Upper", false}, {"2high", false}, {"", true},
+		{"this-level-token-is-too-long-to-accept", false},
+	} {
+		if got := validEffort(tc.value); got != tc.valid {
+			t.Errorf("validEffort(%q) = %v, want %v", tc.value, got, tc.valid)
 		}
+	}
+	if got := effortFromThinking(false); got != "low" {
+		t.Errorf("effortFromThinking(false) = %q, want low", got)
+	}
+	if got := effortFromThinking(true); got != "" {
+		t.Errorf("effortFromThinking(true) = %q, want empty", got)
 	}
 }

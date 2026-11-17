@@ -25,6 +25,7 @@ const botColumns = `id,name,description,persona_prompt,color,connector_id,model,
 func scanBot(row interface{ Scan(...any) error }) (bot, error) {
 	var b bot
 	err := row.Scan(&b.ID, &b.Name, &b.Description, &b.PersonaPrompt, &b.Color, &b.ConnectorID, &b.Model, &b.Effort)
+	b.Effort = normalizeEffort(b.Effort)
 	return b, err
 }
 func (s *Server) listBots(w http.ResponseWriter, _ *http.Request) {
@@ -94,13 +95,11 @@ func (s *Server) saveBot(w http.ResponseWriter, r *http.Request, create bool) {
 	if fields.Effort != nil {
 		in.Effort = *fields.Effort
 	}
-	if in.Effort == "" {
-		in.Effort = "default"
-	}
 	if !validEffort(in.Effort) {
-		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		errw(w, 400, "effort must be an empty string or lowercase level token")
 		return
 	}
+	in.Effort = normalizeEffort(in.Effort)
 	if fields.ConnectorID != nil {
 		if string(fields.ConnectorID) == "null" {
 			in.ConnectorID = nil

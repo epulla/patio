@@ -848,7 +848,7 @@ func TestOpenAIFallbackThinkingChangesNextTurnWithoutRestart(t *testing.T) {
 	}
 	waitLocalDone(t, events)
 	var updated chat
-	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "default"}, &updated); code != http.StatusOK || updated.Effort != "default" {
+	if code := requestJSON(t, server, http.MethodPut, "/api/chats/"+chatID, map[string]string{"effort": "default"}, &updated); code != http.StatusOK || updated.Effort != "" {
 		t.Fatalf("enable thinking = %d, %#v", code, updated)
 	}
 	if code := sendLocalMessage(t, server, chatID, "second"); code != http.StatusAccepted {

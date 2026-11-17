@@ -1,5 +1,9 @@
 package api
 
+import "regexp"
+
+var effortToken = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,23}$`)
+
 func effortFor(level string, supported []string) string {
 	if level == "default" {
 		return ""
@@ -27,17 +31,19 @@ func effortFor(level string, supported []string) string {
 }
 
 func validEffort(s string) bool {
-	switch s {
-	case "default", "small", "medium", "high", "xhigh":
-		return true
-	default:
-		return false
-	}
+	return s == "default" || s == "" || effortToken.MatchString(s)
 }
 
 func effortFromThinking(b bool) string {
 	if b {
-		return "default"
+		return ""
 	}
-	return "small"
+	return "low"
+}
+
+func normalizeEffort(s string) string {
+	if s == "default" {
+		return ""
+	}
+	return s
 }

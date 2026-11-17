@@ -801,9 +801,10 @@ func (s *Server) createChatHandoff(w http.ResponseWriter, r *http.Request) {
 		effort = in.Effort
 	}
 	if !validEffort(effort) {
-		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		errw(w, 400, "effort must be an empty string or lowercase level token")
 		return
 	}
+	effort = normalizeEffort(effort)
 	depth := 0
 	parent := caller.ID
 	for parent != "" {

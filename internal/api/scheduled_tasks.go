@@ -49,6 +49,7 @@ func scanScheduledTask(row interface{ Scan(...any) error }) (scheduledTask, erro
 	var t scheduledTask
 	var autoAllow, enabled int
 	err := row.Scan(&t.ID, &t.Title, &t.Prompt, &t.ConnectorID, &t.BotID, &t.Model, &t.Folder, &t.Effort, &autoAllow, &t.Schedule, &t.RunAt, &enabled, &t.NextRunAt, &t.CreatedAt, &t.UpdatedAt)
+	t.Effort = normalizeEffort(t.Effort)
 	t.AutoAllow, t.Enabled = autoAllow != 0, enabled != 0
 	return t, err
 }
@@ -87,12 +88,10 @@ func (s *Server) validateScheduledTask(in *scheduledTaskInput) (*string, error) 
 	if in.LegacyThinking != nil && in.Effort == "" {
 		in.Effort = effortFromThinking(*in.LegacyThinking)
 	}
-	if in.Effort == "" {
-		in.Effort = "default"
-	}
 	if !validEffort(in.Effort) {
-		return nil, errors.New("effort must be default, small, medium, high or xhigh")
+		return nil, errors.New("effort must be an empty string or lowercase level token")
 	}
+	in.Effort = normalizeEffort(in.Effort)
 	if !required(in.Title) || !required(in.Prompt) {
 		return nil, errors.New("title and prompt required")
 	}

@@ -44,7 +44,7 @@ func hopLimitReached(hops, limit int) bool {
 }
 
 func (s *Server) chatDefaults() (settingsDefaults, error) {
-	defaults := settingsDefaults{AutoAllow: true, Effort: "default", DefaultBotID: "ai", Language: "system", AITitles: true, AgentHopLimit: defaultAgentHopLimit}
+	defaults := settingsDefaults{AutoAllow: true, Effort: "", DefaultBotID: "ai", Language: "system", AITitles: true, AgentHopLimit: defaultAgentHopLimit}
 	rows, err := s.db.Query(`SELECT key,value FROM app_setting`)
 	if err != nil {
 		return defaults, err
@@ -138,6 +138,7 @@ func (s *Server) chatDefaults() (settingsDefaults, error) {
 		if err := json.Unmarshal([]byte(raw), &defaults.Effort); err != nil {
 			return defaults, err
 		}
+		defaults.Effort = normalizeEffort(defaults.Effort)
 	}
 	if raw, ok := values["show_thinking"]; ok {
 		if err := json.Unmarshal([]byte(raw), &defaults.ShowThinking); err != nil {
@@ -272,9 +273,10 @@ func (s *Server) putSettingsDefaults(w http.ResponseWriter, r *http.Request) {
 		effort = effortFromThinking(*in.LegacyThinking)
 	}
 	if !validEffort(effort) {
-		errw(w, 400, "effort must be default, small, medium, high or xhigh")
+		errw(w, 400, "effort must be an empty string or lowercase level token")
 		return
 	}
+	effort = normalizeEffort(effort)
 	if in.ShowThinking != nil {
 		showThinking = *in.ShowThinking
 	}

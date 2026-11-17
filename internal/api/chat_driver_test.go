@@ -1172,7 +1172,7 @@ func TestCreateChatHandoffInheritsChatSettings(t *testing.T) {
 	if err := db.QueryRow(`SELECT connector_id,model,effort,show_thinking,auto_allow FROM chat WHERE id=?`, out.ChatID).Scan(&gotConnector, &model, &effort, &showThinking, &autoAllow); err != nil {
 		t.Fatal(err)
 	}
-	if gotConnector != connector || model != "caller-model" || effort != "default" || !showThinking || !autoAllow {
+	if gotConnector != connector || model != "caller-model" || effort != "" || !showThinking || !autoAllow {
 		t.Fatalf("child settings=%q %q %q %v %v", gotConnector, model, effort, showThinking, autoAllow)
 	}
 	var explicit struct {
