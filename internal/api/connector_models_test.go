@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,14 +18,16 @@ import (
 
 func TestConnectorModelsAndRecordedCLIParsers(t *testing.T) {
 	_, handler, _ := chatAPI(t)
-	claude := filepath.Join(t.TempDir(), "claude")
-	response := `{"type":"control_response","response":{"subtype":"success","request_id":"r1","response":{"models":[{"value":"default","displayName":"Default","supportsEffort":true,"supportedEffortLevels":["low","max"]},{"value":"claude-haiku-4-5","displayName":"Haiku 4.5"}]}}}`
-	if err := os.WriteFile(claude, []byte("#!/bin/sh\nread line\necho '{\"type\":\"system\"}'\necho '"+response+"'\nsleep 5\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	claudeModels, err := claudeInitializeModels(context.Background(), claude, nil)
-	if err != nil || len(claudeModels) != 2 || claudeModels[0].ID != "default" || strings.Join(*claudeModels[0].Efforts, ",") != "low,max" || claudeModels[1].Label != "Haiku 4.5" || claudeModels[1].Efforts == nil || len(*claudeModels[1].Efforts) != 0 {
-		t.Fatalf("Claude initialize models = %#v, %v", claudeModels, err)
+	if runtime.GOOS != "windows" { // the fake Claude CLI is a /bin/sh script
+		claude := filepath.Join(t.TempDir(), "claude")
+		response := `{"type":"control_response","response":{"subtype":"success","request_id":"r1","response":{"models":[{"value":"default","displayName":"Default","supportsEffort":true,"supportedEffortLevels":["low","max"]},{"value":"claude-haiku-4-5","displayName":"Haiku 4.5"}]}}}`
+		if err := os.WriteFile(claude, []byte("#!/bin/sh\nread line\necho '{\"type\":\"system\"}'\necho '"+response+"'\nsleep 5\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		claudeModels, err := claudeInitializeModels(context.Background(), claude, nil)
+		if err != nil || len(claudeModels) != 2 || claudeModels[0].ID != "default" || strings.Join(*claudeModels[0].Efforts, ",") != "low,max" || claudeModels[1].Label != "Haiku 4.5" || claudeModels[1].Efforts == nil || len(*claudeModels[1].Efforts) != 0 {
+			t.Fatalf("Claude initialize models = %#v, %v", claudeModels, err)
+		}
 	}
 	if code := requestJSON(t, handler, http.MethodGet, "/api/connectors/missing/models", nil, nil); code != http.StatusNotFound {
 		t.Fatalf("missing connector status = %d", code)
@@ -111,6 +114,9 @@ func TestConnectorModelsCLIFailureNote(t *testing.T) {
 }
 
 func TestConnectorModelsOpenCodeEfforts(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "catalog", true: "catalog failure"}[fail], func(t *testing.T) {
 			database, _, root := chatAPI(t)
@@ -190,6 +196,9 @@ func TestConvertModelsPreservesCodexEfforts(t *testing.T) {
 }
 
 func TestCopilotModelsListReadsReasoningLevels(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
 	for _, tc := range []struct{ name, body, want string }{
 		{"levels", `{"jsonrpc":"2.0","id":1,"result":{"models":[{"id":"auto","name":"Auto","capabilities":{}},{"id":"gpt","name":"GPT","isDefault":true,"capabilities":{"supports":{"reasoningEffort":true}},"supportedReasoningEfforts":["low","high"],"defaultReasoningEffort":"high"}]}}`, "auto=unknown gpt=low,high/high"},
 		{"rpc-error", `{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"not signed in"}}`, "error"},
