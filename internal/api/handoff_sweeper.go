@@ -32,7 +32,8 @@ func (s *Server) SweepHandoffs(ctx context.Context) error {
 	var list []expired
 	err := txrun(s.db, func(tx *sql.Tx) error {
 		// A child waiting on its own handoff (e.g. a Reviewer chat) is active; that handoff has its own timeout.
-		rows, err := tx.QueryContext(ctx, `SELECT h.id,h.from_chat_id,h.to_chat_id,h.created_at,h.deadline_at,c.title,c.updated_at FROM chat_handoff h JOIN chat c ON c.id=h.to_chat_id WHERE h.status='pending' AND h.deadline_at<? AND NOT EXISTS(SELECT 1 FROM chat_handoff g WHERE g.from_chat_id=h.to_chat_id AND g.status='pending' AND g.to_chat_id NOT IN (SELECT from_chat_id FROM chat_handoff WHERE to_chat_id=h.to_chat_id AND status='pending'))`, now())
+		// Handoffs that lead back to the child form a cycle and don't count, or an idle cycle would never time out.
+		rows, err := tx.QueryContext(ctx, `SELECT h.id,h.from_chat_id,h.to_chat_id,h.created_at,h.deadline_at,c.title,c.updated_at FROM chat_handoff h JOIN chat c ON c.id=h.to_chat_id WHERE h.status='pending' AND h.deadline_at<? AND NOT EXISTS(SELECT 1 FROM chat_handoff g WHERE g.from_chat_id=h.to_chat_id AND g.status='pending' AND h.to_chat_id NOT IN (WITH RECURSIVE r(id) AS (SELECT g.to_chat_id UNION SELECT x.to_chat_id FROM chat_handoff x JOIN r ON x.from_chat_id=r.id WHERE x.status='pending') SELECT id FROM r))`, now())
 		if err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -347,6 +348,32 @@ func TestSweepHandoffTimesOutOnlyIdleChildren(t *testing.T) {
 			var status string
 			if err := s.db.QueryRow(`SELECT status FROM chat_handoff WHERE from_chat_id=?`, parent).Scan(&status); err != nil || status != "pending" {
 				t.Fatalf("status=%s err=%v", status, err)
+			}
+		})
+	}
+}
+
+func TestSweepHandoffTimesOutIdleCycles(t *testing.T) {
+	for _, size := range []int{2, 3} {
+		t.Run(strconv.Itoa(size), func(t *testing.T) {
+			s, a, b, c := newHandoffChats(t)
+			chats := []string{a, b, c}[:size]
+			for i, from := range chats {
+				queueHandoff(t, s, from, chats[(i+1)%size], true)
+			}
+			if _, err := s.db.Exec(`UPDATE chat_handoff SET created_at='2020-01-01T00:00:00.000Z',deadline_at='2020-01-01T00:01:00.000Z'`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.Exec(`UPDATE chat SET updated_at='2020-01-01T00:00:00.000Z'`); err != nil {
+				t.Fatal(err)
+			}
+			s.chats.reportBack = func(_, _, _ string) error { return nil }
+			if err := s.SweepHandoffs(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var pending int
+			if err := s.db.QueryRow(`SELECT count(*) FROM chat_handoff WHERE status='pending'`).Scan(&pending); err != nil || pending != 0 {
+				t.Fatalf("pending=%d err=%v", pending, err)
 			}
 		})
 	}
