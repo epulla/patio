@@ -48,8 +48,8 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow("PRAGMA user_version").Scan(&migrations); err != nil {
 		t.Fatal(err)
 	}
-	if migrations != 50 {
-		t.Fatalf("migration count = %d, want 50", migrations)
+	if migrations != 49 {
+		t.Fatalf("migration count = %d, want 49", migrations)
 	}
 	if _, err := second.Exec(`INSERT INTO chat(id,title,created_at,updated_at) VALUES('migration-test','test','now','now')`); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestOpenCreatesExpectedTablesAndIsIdempotent(t *testing.T) {
 	if err := second.QueryRow(`SELECT effort FROM chat WHERE id='migration-test'`).Scan(&effort); err != nil {
 		t.Fatalf("read chat effort default: %v", err)
 	}
-	if effort != "default" {
+	if effort != "" {
 		t.Fatalf("new chat effort = %q, want empty default", effort)
 	}
 	if _, err := second.Exec(`INSERT INTO chat_message(id,chat_id,role,content,created_at) VALUES('migration-question','migration-test','question','{}','now')`); err != nil {

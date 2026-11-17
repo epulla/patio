@@ -182,14 +182,13 @@ type attachFileArgs struct {
 	ChatID   string `json:"chat_id,omitempty" jsonschema:"This chat's ID from your instructions; selects the folder path is read from"`
 }
 type settingsDefaultsArgs struct {
-	ConnectorID    json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
-	Model          *string         `json:"model,omitempty" jsonschema:"Optional default model"`
-	Language       *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
-	Folder         json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
-	Effort         *string         `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
-	LegacyThinking *bool           `json:"thinking,omitempty"`
-	ShowThinking   *bool           `json:"show_thinking,omitempty"`
-	DefaultBotID   *string         `json:"default_bot_id,omitempty"`
+	ConnectorID  json.RawMessage `json:"connector_id,omitempty" jsonschema:"Optional connector UUID or null to clear"`
+	Model        *string         `json:"model,omitempty" jsonschema:"Optional default model"`
+	Language     *string         `json:"language,omitempty" jsonschema:"Optional notification language: system, en, or es"`
+	Folder       json.RawMessage `json:"folder,omitempty" jsonschema:"Optional folder path or null to clear"`
+	Effort       *string         `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
+	ShowThinking *bool           `json:"show_thinking,omitempty"`
+	DefaultBotID *string         `json:"default_bot_id,omitempty"`
 }
 type apiBotArgs struct {
 	Name          string  `json:"name" jsonschema:"Unique bot name without whitespace"`
@@ -294,18 +293,17 @@ type updateScheduledTaskArgs struct {
 	scheduledTaskArgs
 }
 type scheduledTaskArgs struct {
-	Title          string  `json:"title" jsonschema:"Task title"`
-	Prompt         string  `json:"prompt" jsonschema:"Prompt to run"`
-	ConnectorID    *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
-	BotID          *string `json:"bot_id,omitempty" jsonschema:"Optional bot UUID"`
-	Model          string  `json:"model"`
-	Folder         *string `json:"folder,omitempty"`
-	Effort         string  `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
-	LegacyThinking *bool   `json:"thinking,omitempty"`
-	AutoAllow      *bool   `json:"auto_allow,omitempty" jsonschema:"Defaults true when omitted"`
-	Schedule       string  `json:"schedule,omitempty" jsonschema:"5-field cron in local time; exactly one of schedule or run_at"`
-	RunAt          *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
-	Enabled        *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
+	Title       string  `json:"title" jsonschema:"Task title"`
+	Prompt      string  `json:"prompt" jsonschema:"Prompt to run"`
+	ConnectorID *string `json:"connector_id,omitempty" jsonschema:"Optional UUID from existing connectors"`
+	BotID       *string `json:"bot_id,omitempty" jsonschema:"Optional bot UUID"`
+	Model       string  `json:"model"`
+	Folder      *string `json:"folder,omitempty"`
+	Effort      string  `json:"effort,omitempty" jsonschema:"Reasoning effort: the model's own level name (e.g. low, high, max); empty lets the model decide"`
+	AutoAllow   *bool   `json:"auto_allow,omitempty" jsonschema:"Defaults true when omitted"`
+	Schedule    string  `json:"schedule,omitempty" jsonschema:"5-field cron in local time; exactly one of schedule or run_at"`
+	RunAt       *string `json:"run_at,omitempty" jsonschema:"RFC3339 time for one-off; exactly one of schedule or run_at"`
+	Enabled     *bool   `json:"enabled,omitempty" jsonschema:"Defaults true when omitted"`
 }
 type monitorIDArgs struct {
 	ID string `json:"id" jsonschema:"Monitor UUID"`
@@ -779,9 +777,6 @@ func newServer(h http.Handler, version string, database *sql.DB, approval *Appro
 		}
 		if a.Effort != nil {
 			body["effort"] = *a.Effort
-		}
-		if a.LegacyThinking != nil {
-			body["thinking"] = *a.LegacyThinking
 		}
 		for key, value := range map[string]*bool{"show_thinking": a.ShowThinking} {
 			if value != nil {

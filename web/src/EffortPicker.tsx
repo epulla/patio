@@ -20,8 +20,9 @@ const text = {
 };
 
 /** Lists the model's own effort levels; renders nothing when the model has none or they are unknown. */
-export default function EffortPicker({ id, label, model, value, disabled, onChange }: { id?: string; label?: string; model?: ModelOption; value: string; disabled?: boolean; onChange: (effort: string) => void }) {
+export default function EffortPicker({ id, label, tip, models, modelID, value, disabled, onChange }: { id?: string; label?: string; tip?: string; models: ModelOption[]; modelID: string; value: string; disabled?: boolean; onChange: (effort: string) => void }) {
   const t = useText(text);
+  const model = models.find((m) => m.id === modelID);
   const efforts = model?.efforts;
   if (!efforts?.length) return null;
   const name = (level: string) => t.levels[level] ?? level.charAt(0).toUpperCase() + level.slice(1);
@@ -36,6 +37,12 @@ export default function EffortPicker({ id, label, model, value, disabled, onChan
       onChange={onChange}
     />
   );
+  if (tip !== undefined)
+    return (
+      <span className="tip-up tip-wide effort-tip" data-tour="effort" data-tip={tip}>
+        {picker}
+      </span>
+    );
   return label ? (
     <label>
       {label}

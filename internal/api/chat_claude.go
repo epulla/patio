@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -120,8 +121,15 @@ func stringValue(value *string) string {
 	return *value
 }
 
+var claudeStreamArgs = []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"}
+
+func claudeControlRequest(id, subtype string) ([]byte, error) {
+	payload, err := json.Marshal(map[string]any{"type": "control_request", "request_id": id, "request": map[string]string{"subtype": subtype}})
+	return append(payload, '\n'), err
+}
+
 func buildClaudeArgsWithConfig(model, sessionID, configPath, prompt string) []string {
-	args := []string{"-p", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", prompt, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	args := append(slices.Clone(claudeStreamArgs), "--include-partial-messages", "--disallowedTools", "AskUserQuestion", "--append-system-prompt", prompt)
 	if model != "" {
 		args = append(args, "--model", model)
 	}
@@ -204,12 +212,12 @@ func (d *claudeRuntime) steer(request ChatSendRequest) error {
 	}
 	d.steering = true
 	d.steerRequest = request
-	payload, err := json.Marshal(map[string]any{"type": "control_request", "request_id": fmt.Sprintf("steer-%d", time.Now().UnixNano()), "request": map[string]string{"subtype": "interrupt"}})
+	payload, err := claudeControlRequest(fmt.Sprintf("steer-%d", time.Now().UnixNano()), "interrupt")
 	if err != nil {
 		d.steering = false
 		return err
 	}
-	_, err = d.process.Stdin().Write(append(payload, '\n'))
+	_, err = d.process.Stdin().Write(payload)
 	if err != nil {
 		d.steering = false
 	}

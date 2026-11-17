@@ -785,10 +785,11 @@ func (d *localRuntime) streamOllamaWithImages(ctx context.Context, messages []ma
 	}
 	if effort != "" {
 		if capabilities, ok := d.ollamaModelCapabilities(ctx); ok {
-			if hasEffort(effort, capabilities.thinkingValues) {
+			if efforts, _ := ollamaEfforts(capabilities); hasEffort(effort, *efforts) {
 				body["think"] = effort
-			} else if len(capabilities.thinkingValues) == 0 && capabilities.thinking && (effort == "none" || effort == "thinking") {
-				body["think"] = effort == "thinking"
+				if len(capabilities.thinkingValues) == 0 {
+					body["think"] = effort == "thinking"
+				}
 			}
 		}
 	}

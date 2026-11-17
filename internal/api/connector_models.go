@@ -283,23 +283,36 @@ func ollamaEfforts(capabilities ollamaModelCapabilities) (*[]string, string) {
 	return &efforts, ""
 }
 
-func claudeInitializeModels(ctx context.Context, path string, env []string) ([]selectableModel, error) {
-	cmd := exec.CommandContext(ctx, path, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose")
+// startLookup runs a CLI for one metadata request; the caller must call stop.
+func startLookup(ctx context.Context, path string, args, env []string) (io.Writer, io.Reader, func(), error) {
+	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = env
 	proc.HideConsole(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		return nil, nil, nil, err
+	}
+	return stdin, stdout, func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }, nil
+}
+
+func claudeInitializeModels(ctx context.Context, path string, env []string) ([]selectableModel, error) {
+	stdin, stdout, stop, err := startLookup(ctx, path, claudeStreamArgs, env)
+	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	if _, err := io.WriteString(stdin, "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"initialize\"}}\n"); err != nil {
+	defer stop()
+	request, err := claudeControlRequest("r1", "initialize")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := stdin.Write(request); err != nil {
 		return nil, err
 	}
 	scanner := bufio.NewScanner(stdout)
@@ -339,21 +352,11 @@ func claudeInitializeModels(ctx context.Context, path string, env []string) ([]s
 }
 
 func copilotModelsList(ctx context.Context, path string, env []string) ([]selectableModel, error) {
-	cmd := exec.CommandContext(ctx, path, "--headless", "--stdio")
-	cmd.Env = env
-	proc.HideConsole(cmd)
-	stdin, err := cmd.StdinPipe()
+	stdin, stdout, stop, err := startLookup(ctx, path, []string{"--headless", "--stdio"}, env)
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	defer stop()
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"models.list","params":{}}`)
 	if _, err := fmt.Fprintf(stdin, "Content-Length: %d\r\n\r\n%s", len(body), body); err != nil {
 		return nil, err

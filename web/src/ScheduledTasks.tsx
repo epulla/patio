@@ -546,7 +546,7 @@ function TaskEditor({
               onChange={setModel}
             />
           </div>
-          <EffortPicker label={t.effort} model={models.find((m) => m.id === model)} value={effort} onChange={setEffort} />
+          <EffortPicker label={t.effort} models={models} modelID={model} value={effort} onChange={setEffort} />
           <label className="grow">
             {t.folder}
             <Picker

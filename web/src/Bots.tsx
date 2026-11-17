@@ -268,7 +268,7 @@ function BotEditor({
             </span>
             <ModelPicker models={models} value={model} loading={modelsLoading} pinKind={connectors?.find((c) => c.id === connectorID)?.kind} onChange={setModel} />
           </div>
-          <EffortPicker label={t.effort} model={models.find((m) => m.id === model)} value={effort} onChange={setEffort} />
+          <EffortPicker label={t.effort} models={models} modelID={model} value={effort} onChange={setEffort} />
         </div>
         <label>
           {t.persona}
