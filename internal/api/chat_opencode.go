@@ -146,6 +146,10 @@ func startOpenCode(m *chatManager, c chat, configDir string, rt *chatRuntime) (c
 	server.mu.Lock()
 	server.chats[driver.session] = driver
 	server.mu.Unlock()
+	if driver.storedSession {
+		// A restarted chat may still have subagents running from before.
+		m.goBackground(server.syncBusySubagents)
+	}
 	return driver, nil
 }
 
@@ -943,6 +947,8 @@ func (d *opencodeRuntime) releaseServer() {
 		d.mcpJobs.Wait()
 		d.mu.Lock()
 		d.closed = true
+		// Events for this chat's subagents stop reaching it, so their busy state would never clear.
+		d.manager.resetSubagents(d.chatID, nil)
 		d.mu.Unlock()
 		s := d.server
 		s.mu.Lock()
@@ -981,6 +987,8 @@ func (s *opencodeServer) events() {
 		resp, err := s.request(s.ctx, http.MethodGet, endpoint, nil)
 		if err == nil {
 			if resp.StatusCode == http.StatusOK {
+				// Subagents may have started or finished while the stream was down.
+				s.syncBusySubagents()
 				if err := s.readEvents(resp.Body); err != nil && s.ctx.Err() == nil {
 					wait = 100 * time.Millisecond
 				}
@@ -998,16 +1006,62 @@ func (s *opencodeServer) events() {
 	}
 }
 
-func (s *opencodeServer) readEvents(body io.ReadCloser) error {
-	defer body.Close()
-	// Events missed while disconnected could leave a finished subagent marked busy forever.
+// syncBusySubagents replaces each chat's busy subagent sessions with the ones OpenCode reports
+// active. OpenCode 1.x has no such list, so its state stays as the events left it.
+func (s *opencodeServer) syncBusySubagents() {
+	if s.major < 2 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+	defer cancel()
+	resp, err := s.request(ctx, http.MethodGet, "/api/session/active", nil)
+	if err != nil {
+		log.Printf("list active opencode sessions: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("list active opencode sessions returned %s", resp.Status)
+		return
+	}
+	var active struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&active); err != nil {
+		log.Printf("decode active opencode sessions: %v", err)
+		return
+	}
+	busy := map[*opencodeRuntime][]string{}
+	for sid := range active.Data {
+		if d, child := s.driverForSession(sid); d != nil && child {
+			busy[d] = append(busy[d], sid)
+		}
+	}
 	s.mu.Lock()
+	drivers := make([]*opencodeRuntime, 0, len(s.chats))
 	for _, d := range s.chats {
-		d.manager.subagentMu.Lock()
-		delete(d.manager.busySubagents, d.chatID)
-		d.manager.subagentMu.Unlock()
+		drivers = append(drivers, d)
 	}
 	s.mu.Unlock()
+	for _, d := range drivers {
+		d.mu.Lock()
+		if !d.closed {
+			d.manager.resetSubagents(d.chatID, busy[d])
+		}
+		d.mu.Unlock()
+	}
+}
+
+func (d *opencodeRuntime) setSubagentBusy(sid string, busy bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.closed {
+		d.manager.setSubagentBusy(d.chatID, sid, busy)
+	}
+}
+
+func (s *opencodeServer) readEvents(body io.ReadCloser) error {
+	defer body.Close()
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 64*1024), opencodeSSELimit)
 	var data strings.Builder
@@ -1293,7 +1347,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 	case "session.idle", "session.status":
 		if typ == "session.idle" {
 			if child {
-				driver.manager.setSubagentBusy(driver.chatID, sid, false)
+				driver.setSubagentBusy(sid, false)
 				return nil
 			}
 			return driver.finish(nil)
@@ -1305,7 +1359,7 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 			return err
 		}
 		if child {
-			driver.manager.setSubagentBusy(driver.chatID, sid, status.Type != "idle")
+			driver.setSubagentBusy(sid, status.Type != "idle")
 		}
 		if status.Type == "idle" {
 			if child {
@@ -1595,19 +1649,19 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 		}()
 	case "session.execution.started":
 		if child {
-			driver.manager.setSubagentBusy(driver.chatID, sid, true)
+			driver.setSubagentBusy(sid, true)
 		} else {
 			driver.startAutonomousTurn()
 		}
 	case "session.execution.succeeded", "session.execution.interrupted":
 		if child {
-			driver.manager.setSubagentBusy(driver.chatID, sid, false)
+			driver.setSubagentBusy(sid, false)
 			return nil
 		}
 		return driver.finish(nil)
 	case "session.execution.failed":
 		if child {
-			driver.manager.setSubagentBusy(driver.chatID, sid, false)
+			driver.setSubagentBusy(sid, false)
 			return nil
 		}
 		var failure struct {

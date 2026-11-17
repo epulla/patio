@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"net"
 	"net/http"
@@ -453,15 +452,37 @@ func TestOpenCodeTracksBusySubagentSessions(t *testing.T) {
 	}
 }
 
-func TestOpenCodeEventReconnectForgetsBusySubagents(t *testing.T) {
+func TestOpenCodeSyncBusySubagentsUsesActiveSessions(t *testing.T) {
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/session/active" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"running":{"type":"running"}}}`))
+	}))
+	defer httpServer.Close()
 	manager := &chatManager{}
-	manager.setSubagentBusy("chat", "child", true)
-	s := &opencodeServer{ctx: context.Background(), chats: map[string]*opencodeRuntime{"parent": {chatID: "chat", manager: manager}}}
-	if err := s.readEvents(io.NopCloser(strings.NewReader(""))); err != nil {
+	manager.setSubagentBusy("chat", "finished", true)
+	parent := &opencodeRuntime{chatID: "chat", manager: manager}
+	s := &opencodeServer{major: 2, baseURL: httpServer.URL, client: httpServer.Client(), ctx: context.Background(), chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: map[string]string{"running": "parent", "finished": "parent"}}
+	s.syncBusySubagents()
+	if got := manager.busySubagents["chat"]; !reflect.DeepEqual(got, map[string]bool{"running": true}) {
+		t.Fatalf("busy=%v", got)
+	}
+}
+
+func TestOpenCodeCloseForgetsBusySubagents(t *testing.T) {
+	manager := &chatManager{}
+	s := &opencodeServer{refs: 2, chats: map[string]*opencodeRuntime{}}
+	d := &opencodeRuntime{chatID: "chat", manager: manager, server: s, session: "parent", cancel: func() {}}
+	s.chats["parent"] = d
+	d.setSubagentBusy("child", true)
+	if err := d.close(); err != nil {
 		t.Fatal(err)
 	}
+	d.setSubagentBusy("child", true)
 	if manager.subagentBusy("chat") {
-		t.Fatal("busy subagent survived an event stream reconnect")
+		t.Fatal("closed chat kept a busy subagent")
 	}
 }
 

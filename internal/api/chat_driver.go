@@ -97,6 +97,21 @@ func (m *chatManager) setSubagentBusy(chatID, session string, busy bool) {
 	m.busySubagents[chatID][session] = true
 }
 
+func (m *chatManager) resetSubagents(chatID string, sessions []string) {
+	m.subagentMu.Lock()
+	defer m.subagentMu.Unlock()
+	delete(m.busySubagents, chatID)
+	for _, session := range sessions {
+		if m.busySubagents == nil {
+			m.busySubagents = map[string]map[string]bool{}
+		}
+		if m.busySubagents[chatID] == nil {
+			m.busySubagents[chatID] = map[string]bool{}
+		}
+		m.busySubagents[chatID][session] = true
+	}
+}
+
 func (m *chatManager) subagentBusy(chatID string) bool {
 	m.subagentMu.Lock()
 	defer m.subagentMu.Unlock()
