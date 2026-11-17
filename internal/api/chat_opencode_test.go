@@ -410,6 +410,48 @@ func TestOpenCodeV1SessionCreatedMapsChildToParent(t *testing.T) {
 	}
 }
 
+func TestOpenCodeSubagentEventsCountAsChatActivity(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		v2    bool
+		event map[string]any
+	}{
+		{"v1", false, map[string]any{"type": "session.status", "properties": map[string]any{"sessionID": "child", "status": map[string]string{"type": "busy"}}}},
+		{"v2", true, map[string]any{"type": "session.text.delta", "data": map[string]string{"sessionID": "child", "delta": "x"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &chatRuntime{driver: &idleTestDriver{closed: make(chan struct{})}}
+			manager := &chatManager{idleTimeout: time.Hour, chats: map[string]*chatRuntime{"chat": rt}}
+			parent := &opencodeRuntime{chatID: "chat", manager: manager}
+			s := &opencodeServer{major: 1, chats: map[string]*opencodeRuntime{"parent": parent}, ancestors: map[string]string{"child": "parent"}}
+			event, err := json.Marshal(tc.event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(event, &raw); err != nil {
+				t.Fatal(err)
+			}
+			dispatch := s.dispatch
+			if tc.v2 {
+				dispatch = s.dispatchV2
+			}
+			if err := dispatch(raw); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := manager.subagentActivity.Load("chat"); !ok {
+				t.Fatal("subagent event not recorded as chat activity")
+			}
+			rt.mu.Lock()
+			defer rt.mu.Unlock()
+			if rt.lastActivity.IsZero() {
+				t.Fatal("subagent event did not keep the runtime from closing as idle")
+			}
+			rt.idleTimer.Stop()
+		})
+	}
+}
+
 type openCodeFake struct {
 	t              *testing.T
 	mu             sync.Mutex

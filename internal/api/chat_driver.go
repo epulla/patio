@@ -76,6 +76,8 @@ type chatManager struct {
 	// turnNotes holds text added once to a chat's next turn for the model only (chat id → note), for
 	// prompt changes after the session started, such as a chat switched to Telegram.
 	turnNotes sync.Map
+	// subagentActivity holds the last subagent event time (chat id → time.Time), which can arrive between turns.
+	subagentActivity sync.Map
 }
 
 func (m *chatManager) chatMCPServers(chatID string) ([]mcpServerSpec, error) {

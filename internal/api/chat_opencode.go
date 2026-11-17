@@ -1106,6 +1106,9 @@ func (s *opencodeServer) dispatch(event map[string]json.RawMessage) error {
 		}
 	}
 	driver, child := s.driverForSession(sid)
+	if driver != nil && child {
+		driver.markSubagentActive()
+	}
 	if driver != nil {
 		switch typ {
 		case "message.updated":
@@ -1456,6 +1459,9 @@ func (s *opencodeServer) dispatchV2(event map[string]json.RawMessage) error {
 	if driver == nil {
 		return nil
 	}
+	if child {
+		driver.markSubagentActive()
+	}
 	switch typ {
 	case "session.reasoning.delta":
 		var delta struct {
@@ -1632,6 +1638,17 @@ func (d *opencodeRuntime) markBusy() {
 	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
 		rt.mu.Lock()
 		rt.busy.Store(true)
+		d.manager.markRuntimeActiveLocked(d.chatID, rt)
+		rt.mu.Unlock()
+	}
+}
+
+// markSubagentActive records work by a background subagent, which can run after the chat's turn
+// ended: it keeps the runtime from closing as idle and the chat's handoff from timing out.
+func (d *opencodeRuntime) markSubagentActive() {
+	d.manager.subagentActivity.Store(d.chatID, time.Now())
+	if rt := d.manager.lookupRuntime(d.chatID); rt != nil {
+		rt.mu.Lock()
 		d.manager.markRuntimeActiveLocked(d.chatID, rt)
 		rt.mu.Unlock()
 	}

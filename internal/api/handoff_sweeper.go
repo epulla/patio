@@ -62,8 +62,12 @@ func (s *Server) SweepHandoffs(ctx context.Context) error {
 			if n < 1 {
 				n = 30
 			}
-			// The timeout counts from the child's last saved message or tool event, not from the handoff start.
-			if s.chats.Running(e.child) || e.updated >= time.Now().UTC().Add(-time.Duration(n)*time.Minute).Format("2006-01-02T15:04:05.000Z") {
+			// The timeout counts from the child's last saved message, tool event or subagent event, not from the handoff start.
+			window := time.Duration(n) * time.Minute
+			if last, ok := s.chats.subagentActivity.Load(e.child); ok && time.Since(last.(time.Time)) < window {
+				continue
+			}
+			if s.chats.Running(e.child) || e.updated >= time.Now().UTC().Add(-window).Format("2006-01-02T15:04:05.000Z") {
 				continue
 			}
 			if _, err := tx.ExecContext(ctx, `UPDATE chat_handoff SET status='failed',result=?,finished_at=? WHERE id=? AND status='pending'`, fmt.Sprintf("No activity for %d min", n), now(), e.id); err != nil {
