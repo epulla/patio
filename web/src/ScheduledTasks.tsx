@@ -354,7 +354,7 @@ function TaskEditor({
   const [bots, setBots] = useState<Bot[]>([]);
   const [model, setModel] = useState(task?.model ?? "");
   const [folder, setFolder] = useState(task?.folder ?? "");
-  const [effort, setEffort] = useState<Effort>(task?.effort ?? "default");
+  const [effort, setEffort] = useState<Effort>(task?.effort ?? "");
   const [autoAllow, setAutoAllow] = useState(task?.auto_allow ?? true);
   const [enabled, setEnabled] = useState(task?.enabled ?? true);
   const [when, setWhen] = useState(() => parseWhen(task));
@@ -546,10 +546,7 @@ function TaskEditor({
               onChange={setModel}
             />
           </div>
-          <label>
-            {t.effort}
-            <EffortPicker value={effort} onChange={setEffort} />
-          </label>
+          <EffortPicker label={t.effort} model={models.find((m) => m.id === model)} value={effort} onChange={setEffort} />
           <label className="grow">
             {t.folder}
             <Picker

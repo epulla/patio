@@ -7,7 +7,8 @@ export type Board = {
   updated_at: string;
 };
 export type Config = { show_hidden: boolean; version: string };
-export type Effort = "default" | "small" | "medium" | "high" | "xhigh";
+/** A model's own reasoning level name; "" lets the model decide. */
+export type Effort = string;
 export type ChatDefaults = {
   connector_id: string | null;
   model: string;

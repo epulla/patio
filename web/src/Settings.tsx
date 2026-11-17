@@ -1002,10 +1002,9 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
                   />
                 </div>
               )}
-              <label>
-                {t.effort}
-                <EffortPicker value={defaults.effort} onChange={(effort) => save({ effort })} />
-              </label>
+              {defaults.connector_id && (
+                <EffortPicker label={t.effort} model={models.find((m) => m.id === defaults.model)} value={defaults.effort} onChange={(effort) => save({ effort })} />
+              )}
               <label>
                 {t.folder}
                 <Picker

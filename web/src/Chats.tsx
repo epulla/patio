@@ -1501,6 +1501,7 @@ export function Conversation({
   const end = useRef<HTMLDivElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const { models, loading: modelsLoading } = useModels(detail?.chat.connector_id);
+  const currentModel = models.find((m) => m.id === detail?.chat.model);
 
   // Every db-changed reloads; the server answers "unchanged" when this chat's version still matches.
   const loaded = useRef<{ id: string; version: string }>(undefined);
@@ -2631,9 +2632,9 @@ export function Conversation({
                 disabled={!connector || running}
                 onChange={(model) => update({ model })}
               />
-              {detail.chat.capabilities.thinking.supported && models.find((m) => m.id === detail.chat.model)?.efforts?.length !== 0 && (
+              {detail.chat.capabilities.thinking.supported && !!currentModel?.efforts?.length && (
                 <span className="tip-up tip-wide effort-tip" data-tour="effort" data-tip={thinkingTitle(detail.chat, running)}>
-                  <EffortPicker value={detail.chat.effort} disabled={!connector || running} onChange={(effort) => update({ effort })} />
+                  <EffortPicker model={currentModel} value={detail.chat.effort} disabled={!connector || running} onChange={(effort) => update({ effort })} />
                 </span>
               )}
             </div>

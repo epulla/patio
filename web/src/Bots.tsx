@@ -180,7 +180,7 @@ function BotEditor({
   const [color, setColor] = useState(bot?.color || "#3b82f6");
   const [connectorID, setConnectorID] = useState(bot?.connector_id ?? "");
   const [model, setModel] = useState(bot?.model ?? "");
-  const [effort, setEffort] = useState<Effort>(bot?.effort ?? "default");
+  const [effort, setEffort] = useState<Effort>(bot?.effort ?? "");
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
@@ -268,10 +268,7 @@ function BotEditor({
             </span>
             <ModelPicker models={models} value={model} loading={modelsLoading} pinKind={connectors?.find((c) => c.id === connectorID)?.kind} onChange={setModel} />
           </div>
-          <label>
-            {t.effort}
-            <EffortPicker value={effort} onChange={setEffort} />
-          </label>
+          <EffortPicker label={t.effort} model={models.find((m) => m.id === model)} value={effort} onChange={setEffort} />
         </div>
         <label>
           {t.persona}
