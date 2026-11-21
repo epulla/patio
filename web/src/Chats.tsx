@@ -1459,8 +1459,8 @@ export function Conversation({
   const filesSplitter = useSplitter({ storageKey: "chat-files-width", defaultWidth: 300, min: 200, max: 600, side: "left", label: t.resizeFiles, limit: filesRoom });
   const [splitSizes, setSplitSizes] = useState([0.5, 0.5]);
   const input = useRef<HTMLTextAreaElement>(null);
-  const composer = useComposerResize(input, compact ? 2 : 3, t.resizeComposer);
   const [detail, setDetail] = useState<ChatDetail>();
+  const composer = useComposerResize(input, compact ? 2 : 3, !!detail, t.resizeComposer);
   const [streaming, setStreaming] = useState("");
   const [thinking, setThinking] = useState("");
   const [running, setRunning] = useState(false);

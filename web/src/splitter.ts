@@ -63,10 +63,12 @@ export function useSplitter({
 }
 
 const composerKey = "chat-composer-height";
+const composerEvent = "composer-height";
 
 // A horizontal separator on the composer's top edge: drag up or ↑ grows the textarea, double-click resets.
 // One height for every chat persists in localStorage; the default rows are the floor and 60% of the conversation the ceiling.
-export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, rows: number, label: string) {
+// ready is false until the textarea mounts (the conversation renders it only after loading).
+export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, rows: number, ready: boolean, label: string) {
   const [saved, setSaved] = useState(() => Number(localStorage.getItem(composerKey)) || 0);
   const [floor, setFloor] = useState(0);
   const [room, setRoom] = useState(Infinity);
@@ -78,7 +80,7 @@ export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, 
     element.style.height = "";
     setFloor(element.offsetHeight);
     element.style.height = height;
-  }, [input, rows]);
+  }, [input, rows, ready]);
 
   useEffect(() => {
     const pane = input.current?.closest(".conversation");
@@ -86,7 +88,14 @@ export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, 
     const observer = new ResizeObserver(() => setRoom(Math.round(pane.clientHeight * 0.6)));
     observer.observe(pane);
     return () => observer.disconnect();
-  }, [input]);
+  }, [input, ready]);
+
+  // Other mounted composers (grid panes, dock, pop-outs in this window) follow the shared height.
+  useEffect(() => {
+    const sync = (event: Event) => setSaved((event as CustomEvent<number>).detail);
+    window.addEventListener(composerEvent, sync);
+    return () => window.removeEventListener(composerEvent, sync);
+  }, []);
 
   const ceiling = Math.max(floor, room);
   const height = Math.max(floor, Math.min(saved || floor, ceiling));
@@ -95,7 +104,7 @@ export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, 
     const clamped = Math.round(Math.min(Math.max(next, floor), ceiling));
     if (clamped <= floor) localStorage.removeItem(composerKey);
     else localStorage.setItem(composerKey, String(clamped));
-    setSaved(clamped <= floor ? 0 : clamped);
+    window.dispatchEvent(new CustomEvent(composerEvent, { detail: clamped <= floor ? 0 : clamped }));
   }
 
   const props: HTMLAttributes<HTMLDivElement> = {
