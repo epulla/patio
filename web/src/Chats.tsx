@@ -132,13 +132,13 @@ export function useModels(connectorID: string | null | undefined) {
     api
       .get<{ models: ModelOption[]; note?: string }>(`/api/connectors/${id}/models${force ? "?refresh=1" : ""}`)
       .then((result) => {
+        if (request !== latest.current) return;
         const models = result.models.length ? result.models : fallbackModels;
         // A note means the connector failed; keep the last good list, else show what came back and retry next time.
         if (!result.note) modelCache.set(id, models);
-        return modelCache.get(id) ?? models;
+        setState({ id, models: modelCache.get(id) ?? models, loading: false, refreshing: false });
       })
-      .catch(() => modelCache.get(id) ?? fallbackModels)
-      .then((models) => request === latest.current && setState({ id, models, loading: false, refreshing: false }));
+      .catch(() => request === latest.current && setState({ id, models: modelCache.get(id) ?? fallbackModels, loading: false, refreshing: false }));
   }
   useEffect(() => {
     latest.current++;

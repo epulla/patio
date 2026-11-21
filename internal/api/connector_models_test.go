@@ -319,6 +319,9 @@ func TestClaudeModelListRefresh(t *testing.T) {
 		findClaude: func() (string, error) { return "claude-test", nil },
 		claudeModels: func(context.Context, string, []string) ([]selectableModel, error) {
 			calls++
+			if calls > 2 {
+				return nil, fmt.Errorf("claude down")
+			}
 			id := "model-a"
 			if calls > 1 {
 				id = "model-b"
@@ -348,6 +351,18 @@ func TestClaudeModelListRefresh(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("Claude lookups = %d, want 2", calls)
+	}
+	var failed struct {
+		Note string `json:"note"`
+	}
+	if code := requestJSON(t, server, http.MethodGet, "/api/connectors/"+connectorID+"/models?refresh=1", nil, &failed); code != http.StatusOK || failed.Note == "" {
+		t.Fatalf("failed refresh = %d %#v", code, failed)
+	}
+	var kept struct {
+		Models []selectableModel `json:"models"`
+	}
+	if code := requestJSON(t, server, http.MethodGet, "/api/connectors/"+connectorID+"/models", nil, &kept); code != http.StatusOK || len(kept.Models) != 2 || kept.Models[1].ID != "model-b" {
+		t.Fatalf("models after failed refresh = %d %#v", code, kept.Models)
 	}
 }
 
