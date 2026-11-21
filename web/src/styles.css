@@ -4341,7 +4341,7 @@ main.chat-window .app-version {
 }
 .model-search {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 .model-pop input {
   flex: 1;
@@ -4352,6 +4352,10 @@ main.chat-window .app-version {
 .model-search .icon {
   width: 34px;
   height: 34px;
+}
+.model-search .svg-icon {
+  width: 15px;
+  height: 15px;
 }
 .model-pop ul {
   margin: 0;
