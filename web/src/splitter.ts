@@ -100,8 +100,10 @@ export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, 
   const ceiling = Math.max(floor, room);
   const height = Math.max(floor, Math.min(saved || floor, ceiling));
 
+  const clamp = (next: number) => Math.round(Math.min(Math.max(next, floor), ceiling));
+
   function resize(next: number) {
-    const clamped = Math.round(Math.min(Math.max(next, floor), ceiling));
+    const clamped = clamp(next);
     if (clamped <= floor) localStorage.removeItem(composerKey);
     else localStorage.setItem(composerKey, String(clamped));
     window.dispatchEvent(new CustomEvent(composerEvent, { detail: clamped <= floor ? 0 : clamped }));
@@ -122,8 +124,23 @@ export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, 
       const start = height;
       const origin = event.clientY;
       element.setPointerCapture(event.pointerId);
-      element.onpointermove = (moved) => resize(start + origin - moved.clientY);
-      element.onlostpointercapture = () => (element.onpointermove = null);
+      // Drag writes the textarea's height straight to the DOM once per frame; React state, storage and other panes update on release.
+      let next = start;
+      let frame = 0;
+      element.onpointermove = (moved) => {
+        next = clamp(start + origin - moved.clientY);
+        frame ||= requestAnimationFrame(() => {
+          frame = 0;
+          if (input.current) input.current.style.height = `${next}px`;
+        });
+      };
+      element.onlostpointercapture = () => {
+        element.onpointermove = null;
+        cancelAnimationFrame(frame);
+        // At the floor React drops its inline height, so clear the one the drag wrote.
+        if (next <= floor && input.current) input.current.style.height = "";
+        if (next !== start) resize(next);
+      };
     },
     onDoubleClick: () => resize(floor),
     onKeyDown: (event) => {
