@@ -123,27 +123,32 @@ export function useModels(connectorID: string | null | undefined) {
   const t = useText(labels);
   const fallbackModels: ModelOption[] = [{ id: "", label: t.defaultModel }];
   const cached = connectorID ? modelCache.get(connectorID) : fallbackModels;
-  const [state, setState] = useState({ id: connectorID, models: cached ?? fallbackModels, loading: !cached });
-  useEffect(() => {
-    if (!connectorID) return setState({ id: connectorID, models: fallbackModels, loading: false });
-    const hit = modelCache.get(connectorID);
-    if (hit) return setState({ id: connectorID, models: hit, loading: false });
-    let active = true;
-    setState({ id: connectorID, models: fallbackModels, loading: true });
+  const [state, setState] = useState({ id: connectorID, models: cached ?? fallbackModels, loading: !cached, refreshing: false });
+  // Only the latest request may update state, so a slow revalidation can't overwrite a newer list.
+  const latest = useRef(0);
+  function load(id: string, force: boolean) {
+    const request = ++latest.current;
+    setState((s) => (s.id === id ? { ...s, refreshing: true } : s));
     api
-      .get<{ models: ModelOption[]; note?: string }>(`/api/connectors/${connectorID}/models`)
+      .get<{ models: ModelOption[]; note?: string }>(`/api/connectors/${id}/models${force ? "?refresh=1" : ""}`)
       .then((result) => {
         const models = result.models.length ? result.models : fallbackModels;
-        // A note means the connector failed and only "Default" came back; retry next time.
-        if (!result.note) modelCache.set(connectorID, models);
-        if (active) setState({ id: connectorID, models, loading: false });
+        // A note means the connector failed; keep the last good list, else show what came back and retry next time.
+        if (!result.note) modelCache.set(id, models);
+        return modelCache.get(id) ?? models;
       })
-      .catch(() => active && setState({ id: connectorID, models: fallbackModels, loading: false }));
-    return () => {
-      active = false;
-    };
+      .catch(() => modelCache.get(id) ?? fallbackModels)
+      .then((models) => request === latest.current && setState({ id, models, loading: false, refreshing: false }));
+  }
+  useEffect(() => {
+    latest.current++;
+    if (!connectorID) return setState({ id: connectorID, models: fallbackModels, loading: false, refreshing: false });
+    const hit = modelCache.get(connectorID);
+    setState({ id: connectorID, models: hit ?? fallbackModels, loading: !hit, refreshing: false });
+    if (!hit) load(connectorID, false);
   }, [connectorID]);
-  return state.id === connectorID ? state : { models: fallbackModels, loading: true };
+  const refresh = (force: boolean) => connectorID && load(connectorID, force);
+  return state.id === connectorID ? { ...state, refresh } : { models: fallbackModels, loading: true, refreshing: false, refresh };
 }
 
 function MessageTime({ iso }: { iso: string }) {
@@ -1500,7 +1505,7 @@ export function Conversation({
   const [dragging, setDragging] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
-  const { models, loading: modelsLoading } = useModels(detail?.chat.connector_id);
+  const { models, loading: modelsLoading, refreshing: modelsRefreshing, refresh: refreshModels } = useModels(detail?.chat.connector_id);
 
   // Every db-changed reloads; the server answers "unchanged" when this chat's version still matches.
   const loaded = useRef<{ id: string; version: string }>(undefined);
@@ -2628,6 +2633,8 @@ export function Conversation({
                 models={models}
                 value={detail.chat.model}
                 loading={modelsLoading}
+                refreshing={modelsRefreshing}
+                onRefresh={refreshModels}
                 disabled={!connector || running}
                 onChange={(model) => update({ model })}
               />
@@ -3322,7 +3329,7 @@ export function NewChatDialog({
   const defaultModel = (id: string) => startModel(connectors, defaults, id);
   const [connectorID, setConnectorID] = useState(connectors[0]?.id ?? "");
   const [model, setModel] = useState(() => defaultModel(connectors[0]?.id ?? ""));
-  const { models, loading: modelsLoading } = useModels(connectorID);
+  const { models, loading: modelsLoading, refreshing: modelsRefreshing, refresh: refreshModels } = useModels(connectorID);
 
   useEffect(() => {
     if (!modelsLoading && model && model === defaults?.model && !models.some((m) => m.id === model)) {
@@ -3414,6 +3421,8 @@ export function NewChatDialog({
               models={models}
               value={model}
               loading={modelsLoading}
+              refreshing={modelsRefreshing}
+              onRefresh={refreshModels}
               pinKind={connectors.find((c) => c.id === connectorID)?.kind}
               onChange={(id) => ((picked.current = true), setModel(id))}
             />

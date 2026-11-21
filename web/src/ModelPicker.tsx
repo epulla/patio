@@ -3,8 +3,8 @@ import { Icon } from "./icons";
 import { useText } from "./i18n";
 
 const text = {
-  en: { pinned: "Pinned", loading: "loading", none: "none", modelLabel: "Model", loadingModels: "Loading models…", chooseModel: "Choose a model", searchModels: "Search models", noMatch: (query: string) => `No models match “${query}”`, unpin: "Unpin", pin: "Pin", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Unpin" : "Pin"} (${shortcut})` },
-  es: { pinned: "Fijados", loading: "cargando", none: "ninguno", modelLabel: "Modelo", loadingModels: "Cargando modelos…", chooseModel: "Elige un modelo", searchModels: "Buscar modelos", noMatch: (query: string) => `Ningún modelo coincide con “${query}”`, unpin: "Quitar de fijados", pin: "Fijar", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Quitar de fijados" : "Fijar"} (${shortcut})` },
+  en: { pinned: "Pinned", loading: "loading", none: "none", modelLabel: "Model", loadingModels: "Loading models…", chooseModel: "Choose a model", searchModels: "Search models", refreshModels: "Refresh models", noMatch: (query: string) => `No models match “${query}”`, unpin: "Unpin", pin: "Pin", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Unpin" : "Pin"} (${shortcut})` },
+  es: { pinned: "Fijados", loading: "cargando", none: "ninguno", modelLabel: "Modelo", loadingModels: "Cargando modelos…", chooseModel: "Elige un modelo", searchModels: "Buscar modelos", refreshModels: "Actualizar modelos", noMatch: (query: string) => `Ningún modelo coincide con “${query}”`, unpin: "Quitar de fijados", pin: "Fijar", pinTip: (unpin: boolean, shortcut: string) => `${unpin ? "Quitar de fijados" : "Fijar"} (${shortcut})` },
 };
 
 export type ModelOption = { id: string; label: string; description?: string; efforts?: string[]; default_effort?: string };
@@ -44,6 +44,8 @@ export default function ModelPicker({
   disabled,
   up,
   pinKind,
+  refreshing,
+  onRefresh,
   onChange,
 }: {
   models: ModelOption[];
@@ -53,6 +55,9 @@ export default function ModelPicker({
   up?: boolean;
   /** Connector kind; pinned models are remembered per kind. */
   pinKind?: string;
+  refreshing?: boolean;
+  /** Called with force=false on open and force=true from the refresh button. */
+  onRefresh?: (force: boolean) => void;
   onChange: (id: string) => void;
 }) {
   const t = useText(text);
@@ -137,6 +142,7 @@ export default function ModelPicker({
     // Open at the top (pinned models first); the current model keeps its check mark.
     setActive(0);
     setOpen(true);
+    onRefresh?.(false);
   }
 
   function close() {
@@ -209,21 +215,36 @@ export default function ModelPicker({
           // Keep focus in the search box when clicking options or padding.
           onMouseDown={(event) => event.target instanceof HTMLInputElement || event.preventDefault()}
         >
-          <input
-            autoFocus
-            role="combobox"
-            aria-label={t.searchModels}
-            aria-expanded="true"
-            aria-controls={`${id}-list`}
-            aria-activedescendant={ordered[active] ? optionID(active) : undefined}
-            placeholder={t.searchModels}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActive(0);
-            }}
-            onKeyDown={keyDown}
-          />
+          <div className="model-search">
+            <input
+              autoFocus
+              role="combobox"
+              aria-label={t.searchModels}
+              aria-expanded="true"
+              aria-controls={`${id}-list`}
+              aria-activedescendant={ordered[active] ? optionID(active) : undefined}
+              placeholder={t.searchModels}
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(0);
+              }}
+              onKeyDown={keyDown}
+            />
+            {onRefresh && (
+              <button
+                type="button"
+                className="icon ghost"
+                aria-label={t.refreshModels}
+                aria-busy={refreshing}
+                data-tip={t.refreshModels}
+                disabled={refreshing}
+                onClick={() => onRefresh(true)}
+              >
+                {refreshing ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" />}
+              </button>
+            )}
+          </div>
           <ul id={`${id}-list`} role="listbox" aria-label={t.searchModels}>
             {ordered.length === 0 && <li className="model-empty muted">{t.noMatch(query.trim())}</li>}
             {groups.map((group, g) => (

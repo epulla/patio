@@ -310,6 +310,47 @@ func TestClaudeModelListKeepsCachedDefaultEffort(t *testing.T) {
 	}
 }
 
+func TestClaudeModelListRefresh(t *testing.T) {
+	database, _, root := chatAPI(t)
+	connectorID := createTestConnector(t, database)
+	calls := 0
+	server := New(database, "local", false, "dev", root, Options{
+		DBPath:     filepath.Join(root, "test.db"),
+		findClaude: func() (string, error) { return "claude-test", nil },
+		claudeModels: func(context.Context, string, []string) ([]selectableModel, error) {
+			calls++
+			id := "model-a"
+			if calls > 1 {
+				id = "model-b"
+			}
+			return []selectableModel{{ID: id}}, nil
+		},
+	})
+	defer server.Close()
+	for i, path := range []string{
+		"/api/connectors/" + connectorID + "/models",
+		"/api/connectors/" + connectorID + "/models",
+		"/api/connectors/" + connectorID + "/models?refresh=1",
+	} {
+		var response struct {
+			Models []selectableModel `json:"models"`
+		}
+		if code := requestJSON(t, server, http.MethodGet, path, nil, &response); code != http.StatusOK || len(response.Models) != 2 {
+			t.Fatalf("Claude models = %d %#v", code, response.Models)
+		}
+		want := "model-a"
+		if i == 2 {
+			want = "model-b"
+		}
+		if response.Models[1].ID != want {
+			t.Fatalf("Claude model = %q, want %q", response.Models[1].ID, want)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("Claude lookups = %d, want 2", calls)
+	}
+}
+
 func TestLocalModelsNoteFailedOllamaLookup(t *testing.T) {
 	keyring.MockInit()
 	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

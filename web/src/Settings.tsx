@@ -942,7 +942,7 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
       .catch(setError);
   }, [foldersVersion]);
 
-  const { models, loading: modelsLoading } = useModels(defaults?.connector_id);
+  const { models, loading: modelsLoading, refreshing: modelsRefreshing, refresh: refreshModels } = useModels(defaults?.connector_id);
   const titleModels = useModels(defaults?.title_connector_id);
 
   async function save(change: Partial<ChatDefaults>) {
@@ -997,6 +997,8 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
                     models={models}
                     value={defaults.model}
                     loading={modelsLoading}
+                    refreshing={modelsRefreshing}
+                    onRefresh={refreshModels}
                     pinKind={connectors.find((c) => c.id === defaults.connector_id)?.kind}
                     onChange={(model) => save({ model })}
                   />
@@ -1051,6 +1053,8 @@ export function Defaults({ foldersVersion }: { foldersVersion: number }) {
                       models={titleModels.models}
                       value={defaults.title_model}
                       loading={titleModels.loading}
+                      refreshing={titleModels.refreshing}
+                      onRefresh={titleModels.refresh}
                       pinKind={connectors.find((c) => c.id === defaults.title_connector_id)?.kind}
                       onChange={(title_model) => save({ title_model })}
                     />

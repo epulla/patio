@@ -53,9 +53,10 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defaultEntry := defaultModel
+	refresh := r.URL.Query().Get("refresh") == "1"
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry)
+	models, err := s.selectableModels(ctx, c.ID, c.Kind, c.BaseURL.String, c.ConfigDir.String, &defaultEntry, refresh)
 	if err != nil {
 		if (c.Kind == "opencode" || c.Kind == "copilot" || c.Kind == "local") && len(models) > 0 {
 			models = append([]selectableModel{defaultEntry}, models...)
@@ -73,7 +74,7 @@ func (s *Server) connectorModels(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, map[string][]selectableModel{"models": append([]selectableModel{defaultEntry}, models...)})
 }
 
-func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, configDir string, defaultEntry *selectableModel) ([]selectableModel, error) {
+func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, configDir string, defaultEntry *selectableModel, refresh bool) ([]selectableModel, error) {
 	switch kind {
 	case "claude":
 		finder := s.chats.options.findClaude
@@ -85,7 +86,7 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 			return nil, err
 		}
 		env := connectorcli.Env(kind, configDir, "")
-		claudeModels, err := loadClaudeModels(ctx, s.chats.options, id, path, env)
+		claudeModels, err := loadClaudeModels(ctx, s.chats.options, id, path, env, refresh)
 		if err != nil {
 			return nil, err
 		}
@@ -222,8 +223,8 @@ func (s *Server) selectableModels(ctx context.Context, id, kind, baseURL, config
 	}
 }
 
-func loadClaudeModels(ctx context.Context, options Options, connectorID, path string, env []string) ([]selectableModel, error) {
-	if cached, ok := claudeModelCache.Load(connectorID); ok {
+func loadClaudeModels(ctx context.Context, options Options, connectorID, path string, env []string, refresh bool) ([]selectableModel, error) {
+	if cached, ok := claudeModelCache.Load(connectorID); ok && !refresh {
 		return cached.([]selectableModel), nil
 	}
 	lookup := options.claudeModels
@@ -234,12 +235,16 @@ func loadClaudeModels(ctx context.Context, options Options, connectorID, path st
 	if err != nil {
 		return nil, err
 	}
+	if refresh {
+		claudeModelCache.Store(connectorID, models)
+		return models, nil
+	}
 	cached, _ := claudeModelCache.LoadOrStore(connectorID, models)
 	return cached.([]selectableModel), nil
 }
 
 func claudeEffortFor(ctx context.Context, options Options, connectorID, path, configDir, model, level string) string {
-	models, err := loadClaudeModels(ctx, options, connectorID, path, connectorcli.Env("claude", configDir, ""))
+	models, err := loadClaudeModels(ctx, options, connectorID, path, connectorcli.Env("claude", configDir, ""), false)
 	if err != nil {
 		return ""
 	}

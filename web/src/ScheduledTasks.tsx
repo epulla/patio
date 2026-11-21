@@ -365,7 +365,7 @@ function TaskEditor({
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
   const [defaults, setDefaults] = useState<ChatDefaults>();
-  const { models, loading: modelsLoading } = useModels(connectorID || null);
+  const { models, loading: modelsLoading, refreshing: modelsRefreshing, refresh: refreshModels } = useModels(connectorID || null);
   const defaultModel = (list: Connector[], id: string) => startModel(list, defaults, id);
 
   useEffect(() => {
@@ -542,6 +542,8 @@ function TaskEditor({
               models={models}
               value={model}
               loading={modelsLoading}
+              refreshing={modelsRefreshing}
+              onRefresh={refreshModels}
               pinKind={connectors?.find((c) => c.id === connectorID)?.kind}
               onChange={setModel}
             />

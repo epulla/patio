@@ -184,7 +184,7 @@ function BotEditor({
   const [defaults, setDefaults] = useState<ChatDefaults>();
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
-  const { models, loading: modelsLoading } = useModels(connectorID || null);
+  const { models, loading: modelsLoading, refreshing: modelsRefreshing, refresh: refreshModels } = useModels(connectorID || null);
 
   useEffect(() => {
     api
@@ -266,7 +266,7 @@ function BotEditor({
             <span className="label-row">
               {t.model} {modelsLoading && <span className="spinner" role="status" aria-label={t.loadingModels} />}
             </span>
-            <ModelPicker models={models} value={model} loading={modelsLoading} pinKind={connectors?.find((c) => c.id === connectorID)?.kind} onChange={setModel} />
+            <ModelPicker models={models} value={model} loading={modelsLoading} refreshing={modelsRefreshing} onRefresh={refreshModels} pinKind={connectors?.find((c) => c.id === connectorID)?.kind} onChange={setModel} />
           </div>
           <EffortPicker label={t.effort} models={models} modelID={model} value={effort} onChange={setEffort} />
         </div>
