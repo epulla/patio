@@ -4222,6 +4222,21 @@ main.chat-window .app-version {
 .composer textarea:focus-visible {
   outline: none;
 }
+.composer-resize {
+  position: absolute;
+  inset: -6px 12px auto;
+  height: 11px;
+  z-index: 1;
+  touch-action: none;
+  cursor: row-resize;
+  border-radius: 3px;
+}
+.composer-resize:is(:hover, :focus-visible) {
+  background: linear-gradient(var(--primary), var(--primary)) center / 100% 2px no-repeat;
+}
+.composer-resize:focus-visible {
+  outline: none;
+}
 .composer-actions {
   display: flex;
   flex-wrap: wrap;

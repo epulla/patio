@@ -1,4 +1,4 @@
-import { useState, type HTMLAttributes } from "react";
+import { useEffect, useLayoutEffect, useState, type HTMLAttributes, type RefObject } from "react";
 
 // A vertical separator on a panel's left or right edge: drag, ←/→ in 24px steps, double-click resets; width persists in localStorage.
 // limit caps the shown width to the room available right now without discarding the saved preference.
@@ -60,4 +60,70 @@ export function useSplitter({
   };
 
   return { width, props };
+}
+
+const composerKey = "chat-composer-height";
+
+// A horizontal separator on the composer's top edge: drag up or ↑ grows the textarea, double-click resets.
+// One height for every chat persists in localStorage; the default rows are the floor and 60% of the conversation the ceiling.
+export function useComposerResize(input: RefObject<HTMLTextAreaElement | null>, rows: number, label: string) {
+  const [saved, setSaved] = useState(() => Number(localStorage.getItem(composerKey)) || 0);
+  const [floor, setFloor] = useState(0);
+  const [room, setRoom] = useState(Infinity);
+
+  useLayoutEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    const height = element.style.height;
+    element.style.height = "";
+    setFloor(element.offsetHeight);
+    element.style.height = height;
+  }, [input, rows]);
+
+  useEffect(() => {
+    const pane = input.current?.closest(".conversation");
+    if (!pane) return;
+    const observer = new ResizeObserver(() => setRoom(Math.round(pane.clientHeight * 0.6)));
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [input]);
+
+  const ceiling = Math.max(floor, room);
+  const height = Math.max(floor, Math.min(saved || floor, ceiling));
+
+  function resize(next: number) {
+    const clamped = Math.round(Math.min(Math.max(next, floor), ceiling));
+    if (clamped <= floor) localStorage.removeItem(composerKey);
+    else localStorage.setItem(composerKey, String(clamped));
+    setSaved(clamped <= floor ? 0 : clamped);
+  }
+
+  const props: HTMLAttributes<HTMLDivElement> = {
+    role: "separator",
+    tabIndex: 0,
+    "aria-label": label,
+    "aria-orientation": "horizontal",
+    "aria-valuemin": floor,
+    "aria-valuemax": ceiling,
+    "aria-valuenow": height,
+    onPointerDown: (event) => {
+      event.preventDefault();
+      const element = event.currentTarget;
+      element.focus();
+      const start = height;
+      const origin = event.clientY;
+      element.setPointerCapture(event.pointerId);
+      element.onpointermove = (moved) => resize(start + origin - moved.clientY);
+      element.onlostpointercapture = () => (element.onpointermove = null);
+    },
+    onDoubleClick: () => resize(floor),
+    onKeyDown: (event) => {
+      const step = ({ ArrowUp: 24, ArrowDown: -24 } as Record<string, number>)[event.key];
+      if (!step) return;
+      event.preventDefault();
+      resize(height + step);
+    },
+  };
+
+  return { height: saved ? height : undefined, props };
 }
